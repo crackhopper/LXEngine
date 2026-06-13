@@ -366,7 +366,11 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
                             StringID pass, const RenderTarget &target,
                             StringID renderPathNodeSignature,
                             std::optional<RenderPathGeometryContract>
-                                geometryContract) {
+                                geometryContract,
+                            std::optional<RenderPathNodeRenderingMode>
+                                renderingMode,
+                            std::vector<RenderPathAttachmentContract>
+                                attachments) {
   if (context.domain() == RenderDomain::Offline) {
     clearItems();
     if (pass == Pass_OfflineRayTrace) {
@@ -401,9 +405,9 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
 
   const std::optional<Vec3f> cameraEye =
       resolveSortCameraEye(scene, options, target);
-  buildRealtime(scene, pass, target, renderPathNodeSignature,
-                geometryContract, std::move(sceneResources), visibleMask,
-                cameraEye);
+  buildRealtime(scene, pass, target, renderPathNodeSignature, geometryContract,
+                renderingMode, std::move(attachments),
+                std::move(sceneResources), visibleMask, cameraEye);
 }
 
 void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
@@ -411,6 +415,10 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
                                     StringID renderPathNodeSignature,
                                     std::optional<RenderPathGeometryContract>
                                         geometryContract,
+                                    std::optional<RenderPathNodeRenderingMode>
+                                        renderingMode,
+                                    std::vector<RenderPathAttachmentContract>
+                                        attachments,
                                     DescriptorResourceList sceneResources,
                                     VisibilityLayerMask visibleMask,
                                     std::optional<Vec3f> cameraEye) {
@@ -457,6 +465,10 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       if (const auto drawRecordIndex =
               tryResolveGpuObjectIndex(uploadView, validatedData.objectHandle)) {
         item.raster.drawRecordIndex = *drawRecordIndex;
+        if (*drawRecordIndex < uploadView.draws.size()) {
+          item.raster.materialRefIndex =
+              uploadView.draws[*drawRecordIndex].materialRefIndex;
+        }
       } else if (needsDrawRecord) {
         throw std::logic_error(
             "RenderWorkQueue cannot resolve draw object handle to SceneDraws "
@@ -470,6 +482,8 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     item.target = target.toDesc();
     item.debugId = renderable->getDebugId();
     item.renderPathNodeSignature = renderPathNodeSignature;
+    item.renderingMode = renderingMode;
+    item.attachments = attachments;
     item.pipelineKey =
         PipelineKey::build(item.materialTypeVariant,
                            item.renderPathNodeSignature);

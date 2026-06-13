@@ -29,6 +29,12 @@ public:
                        VkExtent2D extent,
                        const std::vector<VkClearValue> &clearValues);
   void endRenderPass() { vkCmdEndRenderPass(m_handle); }
+  void beginRendering(VkExtent2D extent,
+                      const std::vector<VkRenderingAttachmentInfo>
+                          &colorAttachments,
+                      const VkRenderingAttachmentInfo *depthAttachment,
+                      u32 layerCount = 1);
+  void endRendering() { vkCmdEndRendering(m_handle); }
 
   void setViewport(u32 width, u32 height);
   void setScissor(u32 width, u32 height);

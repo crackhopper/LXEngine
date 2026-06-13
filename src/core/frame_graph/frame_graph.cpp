@@ -141,7 +141,7 @@ void FrameGraph::build(const RenderWorkBuildContext &context) {
   for (auto &pass : m_passes) {
     pass.queue.build(context, pass.name, RenderTarget{pass.target},
                      getFramePassRenderPathNodeSignature(pass),
-                     pass.geometry);
+                     pass.geometry, pass.renderingMode, pass.attachments);
   }
 }
 

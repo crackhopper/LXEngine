@@ -4,6 +4,7 @@
 #include "../device.hpp"
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -79,6 +80,46 @@ VkCompareOp compareOpToVk(CompareOp op) {
   return VK_COMPARE_OP_LESS_OR_EQUAL;
 }
 
+VkFormat imageFormatToVk(ImageFormat format) {
+  switch (format) {
+  case ImageFormat::RGBA8:
+    return VK_FORMAT_R8G8B8A8_UNORM;
+  case ImageFormat::RGBA16Float:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
+  case ImageFormat::BGRA8:
+    return VK_FORMAT_B8G8R8A8_UNORM;
+  case ImageFormat::R8:
+    return VK_FORMAT_R8_UNORM;
+  case ImageFormat::D32Float:
+    return VK_FORMAT_D32_SFLOAT;
+  case ImageFormat::D24UnormS8:
+    return VK_FORMAT_D24_UNORM_S8_UINT;
+  case ImageFormat::D32FloatS8:
+    return VK_FORMAT_D32_SFLOAT_S8_UINT;
+  }
+  throw std::runtime_error("Unsupported ImageFormat for graphics pipeline");
+}
+
+VkSampleCountFlagBits samplesToVk(u32 samples) {
+  switch (samples) {
+  case 1:
+    return VK_SAMPLE_COUNT_1_BIT;
+  case 2:
+    return VK_SAMPLE_COUNT_2_BIT;
+  case 4:
+    return VK_SAMPLE_COUNT_4_BIT;
+  case 8:
+    return VK_SAMPLE_COUNT_8_BIT;
+  }
+  throw std::runtime_error("Unsupported render path attachment sample count: " +
+                           std::to_string(samples));
+}
+
+bool isStencilFormat(VkFormat format) {
+  return format == VK_FORMAT_D24_UNORM_S8_UINT ||
+         format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+}
+
 VkBlendFactor blendFactorToVk(BlendFactor f) {
   switch (f) {
   case BlendFactor::Zero:
@@ -144,8 +185,26 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
     : m_device(device), m_deviceHandle(device.getLogicalDevice()),
       m_stages(buildInfo.stages), m_bindings(buildInfo.bindings),
       m_vertexLayout(buildInfo.vertexLayout), m_target(buildInfo.target),
+      m_renderingMode(buildInfo.renderingMode),
+      m_attachments(buildInfo.attachments),
       m_renderState(buildInfo.renderState), m_topology(buildInfo.topology),
-      m_pushConstant(buildInfo.pushConstant) {}
+      m_pushConstant(buildInfo.pushConstant) {
+  if (!m_attachments.empty()) {
+    const u32 expectedSamples = m_attachments.front().samples;
+    const u32 expectedLayers = m_attachments.front().layers;
+    for (const auto &attachment : m_attachments) {
+      if (attachment.samples != expectedSamples) {
+        throw std::runtime_error(
+            "Render path attachment sample count mismatch in one pipeline");
+      }
+      if (attachment.layers != expectedLayers) {
+        throw std::runtime_error(
+            "Render path attachment layer count mismatch in one pipeline");
+      }
+    }
+    m_msaaSamples = samplesToVk(expectedSamples);
+  }
+}
 
 VulkanGraphicsPipeline::~VulkanGraphicsPipeline() {
   if (m_deviceHandle != VK_NULL_HANDLE) {
@@ -280,7 +339,15 @@ VulkanGraphicsPipeline::getColorBlendStateCreateInfo() {
   attachment.dstAlphaBlendFactor = blendFactorToVk(m_renderState.dstBlend);
   attachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
-  m_colorBlendAttachments.assign(m_target.colorAttachmentCount(), attachment);
+  usize colorAttachmentCount = m_target.colorAttachmentCount();
+  if (!m_attachments.empty()) {
+    colorAttachmentCount = static_cast<usize>(std::count_if(
+        m_attachments.begin(), m_attachments.end(),
+        [](const RenderPathAttachmentContract &contract) {
+          return !contract.depth;
+        }));
+  }
+  m_colorBlendAttachments.assign(colorAttachmentCount, attachment);
 
   VkPipelineColorBlendStateCreateInfo colorBlending{};
   colorBlending.sType =
@@ -336,6 +403,24 @@ VulkanGraphicsPipeline::getVertexInputStateCreateInfo() {
 }
 
 VkPipeline VulkanGraphicsPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
+  const bool useDynamicRendering =
+      m_renderingMode.has_value() &&
+      *m_renderingMode == RenderPathNodeRenderingMode::Dynamic;
+  if (useDynamicRendering && !m_device.supportsDynamicRendering()) {
+    throw std::runtime_error(
+        "RenderPathNode requested dynamic rendering but Vulkan device did not "
+        "enable dynamicRendering");
+  }
+  if (!useDynamicRendering && renderPass == VK_NULL_HANDLE) {
+    throw std::runtime_error(
+        "Traditional graphics pipeline requires a non-null VkRenderPass");
+  }
+  if (useDynamicRendering && m_attachments.empty()) {
+    throw std::runtime_error(
+        "Dynamic graphics pipeline requires explicit RenderPathNode "
+        "attachment contracts");
+  }
+
   VkPipelineShaderStageCreateInfo stages[2]{};
   stages[0] = getVertexShaderStageCreateInfo();
   stages[1] = getFragmentShaderStageCreateInfo();
@@ -356,6 +441,40 @@ VkPipeline VulkanGraphicsPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
   VkPipelineColorBlendStateCreateInfo colorBlending =
       getColorBlendStateCreateInfo();
 
+  std::vector<VkFormat> dynamicColorFormats;
+  std::optional<VkFormat> dynamicDepthFormat;
+  std::optional<VkFormat> dynamicStencilFormat;
+  VkPipelineRenderingCreateInfo dynamicRenderingInfo{};
+  if (useDynamicRendering) {
+    for (const auto &attachment : m_attachments) {
+      const VkFormat format = imageFormatToVk(attachment.format);
+      if (attachment.depth) {
+        if (dynamicDepthFormat.has_value()) {
+          throw std::runtime_error(
+              "Dynamic graphics pipeline received multiple depth "
+              "attachments");
+        }
+        dynamicDepthFormat = format;
+        if (isStencilFormat(format)) {
+          dynamicStencilFormat = format;
+        }
+      } else {
+        dynamicColorFormats.push_back(format);
+      }
+    }
+
+    dynamicRenderingInfo.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    dynamicRenderingInfo.colorAttachmentCount =
+        static_cast<u32>(dynamicColorFormats.size());
+    dynamicRenderingInfo.pColorAttachmentFormats =
+        dynamicColorFormats.empty() ? nullptr : dynamicColorFormats.data();
+    dynamicRenderingInfo.depthAttachmentFormat =
+        dynamicDepthFormat.value_or(VK_FORMAT_UNDEFINED);
+    dynamicRenderingInfo.stencilAttachmentFormat =
+        dynamicStencilFormat.value_or(VK_FORMAT_UNDEFINED);
+  }
+
   VkGraphicsPipelineCreateInfo pipelineInfo{};
   pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   pipelineInfo.stageCount = 2;
@@ -369,7 +488,12 @@ VkPipeline VulkanGraphicsPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
   pipelineInfo.pDepthStencilState = &depthStencil;
   pipelineInfo.pColorBlendState = &colorBlending;
   pipelineInfo.layout = m_layout;
-  pipelineInfo.renderPass = renderPass;
+  if (useDynamicRendering) {
+    pipelineInfo.pNext = &dynamicRenderingInfo;
+    pipelineInfo.renderPass = VK_NULL_HANDLE;
+  } else {
+    pipelineInfo.renderPass = renderPass;
+  }
   pipelineInfo.subpass = 0;
   pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 

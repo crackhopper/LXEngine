@@ -258,6 +258,46 @@ void testFromRenderWorkItemPreservesTargetDesc() {
   EXPECT(info.target == targetDesc, "build desc should preserve target desc");
 }
 
+void testFromRenderWorkItemPreservesRenderPathRenderingContract() {
+  auto item = buildItem();
+  item.renderingMode = RenderPathNodeRenderingMode::Dynamic;
+  item.attachments = {
+      RenderPathAttachmentContract{
+          .target = "scene.hdrColor",
+          .format = ImageFormat::RGBA16Float,
+          .samples = 1,
+          .layers = 1,
+          .depth = false,
+      },
+      RenderPathAttachmentContract{
+          .target = "scene.depth",
+          .format = ImageFormat::D32Float,
+          .samples = 1,
+          .layers = 1,
+          .depth = true,
+      },
+  };
+
+  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
+
+  EXPECT(info.renderingMode == RenderPathNodeRenderingMode::Dynamic,
+         "build desc should preserve render path rendering mode");
+  EXPECT(info.attachments.size() == 2,
+         "build desc should preserve attachment contracts");
+  if (info.attachments.size() == 2) {
+    EXPECT(info.attachments[0].target == "scene.hdrColor",
+           "color attachment target preserved");
+    EXPECT(info.attachments[0].format == ImageFormat::RGBA16Float,
+           "color attachment format preserved");
+    EXPECT(!info.attachments[0].depth, "color attachment depth flag");
+    EXPECT(info.attachments[1].target == "scene.depth",
+           "depth attachment target preserved");
+    EXPECT(info.attachments[1].format == ImageFormat::D32Float,
+           "depth attachment format preserved");
+    EXPECT(info.attachments[1].depth, "depth attachment depth flag");
+  }
+}
+
 void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
   using V = VertexPosNormalUvBone;
   auto vb = VertexBuffer<V>::create({
@@ -373,6 +413,7 @@ int main() {
   testFromRenderWorkItemRenderStateFromMaterial();
   testFromRenderWorkItemIsDeterministic();
   testFromRenderWorkItemPreservesTargetDesc();
+  testFromRenderWorkItemPreservesRenderPathRenderingContract();
   testFromRenderWorkItemFiltersVertexLayoutToShaderInputs();
   testMaterialSourceVariantAffectsShaderProgramSignature();
 

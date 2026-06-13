@@ -35,6 +35,19 @@ namespace {
          name == "emissiveMap";
 }
 
+[[nodiscard]] bool shaderConsumesBinding(const IShaderSharedPtr &shader,
+                                         std::string_view name) {
+  if (!shader) {
+    return false;
+  }
+  for (const auto &binding : shader->getReflectionBindings()) {
+    if (binding.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void addMaterialV2Diagnostic(MaterialV2ValidationResult &result, usize itemIndex,
                              const RenderWorkItem &item,
                              StringID pass, StringID bindingName,
@@ -134,10 +147,17 @@ validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass) {
               GlobalStringTable::get().toDebugString(bindingName) + "'");
     }
 
-    if (item.raster.materialIndex == u32_max) {
+    if (shaderConsumesBinding(item.shaderInfo, "SceneMaterials") &&
+        item.raster.materialIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneMaterials"),
           "Material v2 validation requires a typed SceneMaterials index");
+    }
+    if (!shaderConsumesBinding(item.shaderInfo, "SceneMaterials") &&
+        item.raster.materialRefIndex == u32_max) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("SceneMaterialRefs"),
+          "Material v2 validation requires a typed source material ref index");
     }
     if (item.raster.drawRecordIndex == u32_max) {
       addMaterialV2Diagnostic(

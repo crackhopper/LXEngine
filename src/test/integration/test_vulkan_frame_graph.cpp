@@ -1,4 +1,5 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
+#include "core/asset/material_pass_definition.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/ibl_environment.hpp"
@@ -8,6 +9,7 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -33,7 +35,51 @@ bool isKnownEnvironmentFailure(const std::string &message) {
 }
 
 LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
-  return LX_test::makeForwardMinimalMaterialForVulkanTests();
+  auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
+  const LX_core::ResourceUri sourceUri(
+      "assets://shaders/glsl/common/materials/uber.contract.glsl");
+  auto reflected =
+      LX_infra::loadAndReflectMaterialContractSource(sourceUri);
+  if (!reflected.reflection.has_value()) {
+    std::string message = "failed to reflect frame graph test material source";
+    for (const auto &diagnostic : reflected.diagnostics) {
+      message += "\n  ";
+      message += diagnostic;
+    }
+    throw std::runtime_error(message);
+  }
+  material->setMaterialSourceUri(sourceUri);
+  material->setMaterialSourceReflectionHash(
+      reflected.reflection->reflectionHash);
+  material->setMaterialSourceSignature(
+      reflected.reflection->sourceSignature());
+  material->setMaterialContractReflection(std::move(*reflected.reflection));
+
+  auto shaderProgram = material->getPassShaderProgram(LX_core::Pass_Forward);
+  if (!shaderProgram.has_value()) {
+    throw std::runtime_error(
+        "frame graph test material missing Forward shader program");
+  }
+  LX_core::ShaderProgramSet sourceShaderProgram = shaderProgram->get();
+  sourceShaderProgram.variants.push_back(LX_core::ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = sourceUri,
+      .materialSourceSignature = material->getMaterialSourceSignature(),
+  });
+  LX_core::MaterialPassDefinition definition;
+  definition.renderState =
+      material->getPassRenderState(LX_core::Pass_Forward);
+  definition.shaderProgram = std::move(sourceShaderProgram);
+  auto materialTemplate = material->getTemplate();
+  if (!materialTemplate) {
+    throw std::runtime_error("frame graph test material missing template");
+  }
+  materialTemplate->setPassDefinition(LX_core::Pass_Forward,
+                                      std::move(definition));
+  materialTemplate->rebuildMaterialInterface();
+  material->syncGpuData();
+  return material;
 }
 
 LX_core::SceneSharedPtr makeFrameGraphScene() {

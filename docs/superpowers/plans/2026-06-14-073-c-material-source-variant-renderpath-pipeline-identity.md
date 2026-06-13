@@ -45,7 +45,7 @@ Do not let subagents implement compatibility fallbacks. If a package cannot comp
 - [x] Task 4: Add RenderPathNode contract, built-in resource vocabulary, and node signature.
 - [x] Task 5: Hard-cut `PipelineKey` to `MaterialTypeVariant + RenderPathNodeSignature`.
 - [x] Task 6: Implement material type variant resolver and final shader reflection.
-- [ ] Task 7: Add dynamic/traditional rendering mode plumbing to pipeline build.
+- [x] Task 7: Add dynamic/traditional rendering mode plumbing to pipeline build.
 - [ ] Task 8: Implement Helmet material conversion tool and generated scene.
 - [ ] Task 9: Add Helmet realtime smoke and diagnostics.
 - [ ] Task 10: Close requirement status and notes site verification.
@@ -491,38 +491,38 @@ cmake --build build --target test_material_source_variant_pipeline test_render_r
 
 ### Step 7.1: Carry rendering mode and attachment contract
 
-- [ ] `PipelineBuildDesc` must carry:
+- [x] `PipelineBuildDesc` must carry:
 
 ```cpp
 RenderPathNodeRenderingMode renderingMode;
 std::vector<RenderPathAttachmentContract> attachments;
 ```
 
-- [ ] Attachment formats come from RenderPathNode target contract for both dynamic and traditional Vulkan graphics pipeline creation.
+- [x] Attachment formats come from RenderPathNode target contract for both dynamic and traditional Vulkan graphics pipeline creation.
 
 ### Step 7.2: Implement dynamic rendering pipeline creation
 
-- [ ] For `dynamic`, set `VkGraphicsPipelineCreateInfo::renderPass = VK_NULL_HANDLE`.
-- [ ] Add `VkPipelineRenderingCreateInfo` to `pNext` with color/depth/stencil formats.
-- [ ] Command recording for dynamic passes must use `vkCmdBeginRendering` / `vkCmdEndRendering`.
-- [ ] If the Vulkan device lacks Vulkan 1.3 / `VK_KHR_dynamic_rendering`, fail with a backend unsupported rendering mode diagnostic.
+- [x] For `dynamic`, set `VkGraphicsPipelineCreateInfo::renderPass = VK_NULL_HANDLE`.
+- [x] Add `VkPipelineRenderingCreateInfo` to `pNext` with color/depth/stencil formats.
+- [x] Command recording for dynamic passes must use `vkCmdBeginRendering` / `vkCmdEndRendering`.
+- [x] If the Vulkan device lacks Vulkan 1.3 / `VK_KHR_dynamic_rendering`, fail with a backend unsupported rendering mode diagnostic.
 
 ### Step 7.3: Preserve traditional as explicit mode
 
-- [ ] For `traditional`, keep existing render pass/framebuffer path.
-- [ ] Do not auto-switch between modes.
-- [ ] PipelineKey still uses the RenderPathNodeSignature; no separate RenderTarget key axis returns.
+- [x] For `traditional`, keep existing render pass/framebuffer path.
+- [x] Do not auto-switch between modes.
+- [x] PipelineKey still uses the RenderPathNodeSignature; no separate RenderTarget key axis returns.
 
 ### Step 7.4: Run Vulkan tests
 
-- [ ] Run headless tests:
+- [x] Run headless tests:
 
 ```bash
 cmake --build build --target test_vulkan_pipeline test_material_source_variant_pipeline
 ./build/src/test/test_material_source_variant_pipeline
 ```
 
-- [ ] If available, run video-device tests:
+- [x] If available, run video-device tests:
 
 ```bash
 xvfb-run -a ./build/src/test/test_vulkan_pipeline

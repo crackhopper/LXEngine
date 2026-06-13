@@ -55,6 +55,9 @@ void appendRenderStorageDescriptor(DescriptorResourceList &out,
                                    const SceneResourceTable &resources,
                                    StringID bindingName,
                                    std::vector<std::byte> bytes) {
+  if (bytes.empty()) {
+    return;
+  }
   const GpuResourceRef resource = resources.addRenderGpuResource(
       std::make_unique<SceneStorageBufferResource>(bindingName,
                                                    std::move(bytes)));
@@ -104,6 +107,11 @@ void appendRealtimeSceneGpuMaterialResources(
                                 copyBytes(uploadView.objects));
   appendRenderStorageDescriptor(out, resources, StringID("SceneMaterials"),
                                 copyBytes(uploadView.materials));
+  appendRenderStorageDescriptor(out, resources, StringID("SceneMaterialRefs"),
+                                copyBytes(uploadView.materialRefs));
+  appendRenderStorageDescriptor(out, resources,
+                                StringID("SceneSourceMaterialRecords"),
+                                copyBytes(uploadView.sourceMaterialRecords));
   appendRenderStorageDescriptor(out, resources, StringID("SceneDraws"),
                                 copyBytes(uploadView.draws));
   out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));

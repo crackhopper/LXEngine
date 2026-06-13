@@ -48,6 +48,7 @@ struct RasterDrawWorkPayload final {
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
   u32 materialIndex = u32_max;
+  u32 materialRefIndex = u32_max;
   u32 drawRecordIndex = u32_max;
   u32 indexCount = 0;
   u32 firstIndex = 0;
@@ -114,6 +115,8 @@ struct RenderWorkItem final {
   StringID materialSignature;
   StringID materialTypeVariant;
   StringID renderPathNodeSignature;
+  std::optional<RenderPathNodeRenderingMode> renderingMode;
+  std::vector<RenderPathAttachmentContract> attachments;
   PipelineKey pipelineKey;
 };
 

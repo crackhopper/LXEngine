@@ -52,6 +52,7 @@ public:
   VkSwapchainKHR getHandle() const { return m_handle; }
   VkExtent2D getExtent() const { return m_extent; }
   VkImage getImage(u32 index) const { return m_images[index]; }
+  VkImageView getImageView(u32 index) const { return m_imageViews[index]; }
   VulkanFrameBuffer &getFramebuffer(u32 index);
   usize getImageCount() const { return m_images.size(); }
   VkFormat getImageFormat() const;

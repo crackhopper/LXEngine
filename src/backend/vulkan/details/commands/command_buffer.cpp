@@ -58,6 +58,23 @@ void VulkanCommandBuffer::beginRenderPass(
   vkCmdBeginRenderPass(m_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
+void VulkanCommandBuffer::beginRendering(
+    VkExtent2D extent,
+    const std::vector<VkRenderingAttachmentInfo> &colorAttachments,
+    const VkRenderingAttachmentInfo *depthAttachment, u32 layerCount) {
+  VkRenderingInfo renderingInfo{};
+  renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderingInfo.renderArea.offset = {0, 0};
+  renderingInfo.renderArea.extent = extent;
+  renderingInfo.layerCount = layerCount;
+  renderingInfo.colorAttachmentCount =
+      static_cast<u32>(colorAttachments.size());
+  renderingInfo.pColorAttachments =
+      colorAttachments.empty() ? nullptr : colorAttachments.data();
+  renderingInfo.pDepthAttachment = depthAttachment;
+  vkCmdBeginRendering(m_handle, &renderingInfo);
+}
+
 void VulkanCommandBuffer::setViewport(u32 width, u32 height) {
   const VkViewport viewport = makeVulkanViewport(width, height);
   vkCmdSetViewport(m_handle, 0, 1, &viewport);

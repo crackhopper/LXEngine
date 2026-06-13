@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/asset/material_instance.hpp"
+#include "core/asset/render_effect.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_key.hpp"
@@ -50,6 +51,8 @@ struct PipelineBuildDesc {
   PipelineKey key;
   StringID shaderVariantKey;
   RenderTargetDesc target;
+  std::optional<RenderPathNodeRenderingMode> renderingMode;
+  std::vector<RenderPathAttachmentContract> attachments;
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
   VertexLayout vertexLayout;

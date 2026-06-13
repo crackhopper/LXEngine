@@ -66,6 +66,8 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
     info.key = item.pipelineKey;
     info.shaderVariantKey = item.shaderProgram.getPipelineSignature();
     info.target = item.target;
+    info.renderingMode = item.renderingMode;
+    info.attachments = item.attachments;
     info.stages = item.shaderInfo->getAllStages();
     info.bindings = item.shaderInfo->getReflectionBindings();
     info.pushConstant = PushConstantRange{};
@@ -90,6 +92,8 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   info.key = item.pipelineKey;
   info.shaderVariantKey = item.shaderProgram.getPipelineSignature();
   info.target = item.target;
+  info.renderingMode = item.renderingMode;
+  info.attachments = item.attachments;
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();
 

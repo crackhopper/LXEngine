@@ -98,7 +98,7 @@ void Gui::init(const InitParams& params) {
   pImpl->descriptorPool = createImGuiDescriptorPool(params.device);
 
   ImGui_ImplVulkan_InitInfo initInfo = {};
-  initInfo.ApiVersion = VK_API_VERSION_1_0;
+  initInfo.ApiVersion = VK_API_VERSION_1_3;
   initInfo.Instance = params.instance;
   initInfo.PhysicalDevice = params.physicalDevice;
   initInfo.Device = params.device;
@@ -109,9 +109,48 @@ void Gui::init(const InitParams& params) {
   initInfo.DescriptorPoolSize = 0;
   initInfo.MinImageCount = static_cast<u32>(params.swapchainImageCount);
   initInfo.ImageCount = static_cast<u32>(params.swapchainImageCount);
-  initInfo.PipelineInfoMain.RenderPass = params.renderPass;
+  initInfo.PipelineInfoMain.RenderPass =
+      params.useDynamicRendering ? VK_NULL_HANDLE : params.renderPass;
   initInfo.PipelineInfoMain.Subpass = 0;
   initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+  initInfo.UseDynamicRendering = params.useDynamicRendering;
+#ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
+  VkFormat dynamicColorFormat = params.colorAttachmentFormat;
+  if (params.useDynamicRendering) {
+    if (dynamicColorFormat == VK_FORMAT_UNDEFINED) {
+      vkDestroyDescriptorPool(pImpl->device, pImpl->descriptorPool, nullptr);
+      pImpl->descriptorPool = VK_NULL_HANDLE;
+#if defined(USE_SDL)
+      ImGui_ImplSDL3_Shutdown();
+#elif defined(USE_GLFW)
+      ImGui_ImplGlfw_Shutdown();
+#endif
+      ImGui::DestroyContext();
+      throw std::runtime_error(
+          "Gui dynamic rendering requires a color attachment format");
+    }
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount =
+        1;
+    initInfo.PipelineInfoMain.PipelineRenderingCreateInfo
+        .pColorAttachmentFormats = &dynamicColorFormat;
+  }
+#else
+  if (params.useDynamicRendering) {
+    vkDestroyDescriptorPool(pImpl->device, pImpl->descriptorPool, nullptr);
+    pImpl->descriptorPool = VK_NULL_HANDLE;
+#if defined(USE_SDL)
+    ImGui_ImplSDL3_Shutdown();
+#elif defined(USE_GLFW)
+    ImGui_ImplGlfw_Shutdown();
+#endif
+    ImGui::DestroyContext();
+    throw std::runtime_error(
+        "Gui dynamic rendering requested but ImGui Vulkan backend was built "
+        "without dynamic rendering support");
+  }
+#endif
   initInfo.Allocator = nullptr;
   initInfo.CheckVkResultFn = nullptr;
 

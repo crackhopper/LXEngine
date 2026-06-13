@@ -54,6 +54,7 @@ public:
   VkSurfaceFormatKHR getSurfaceFormat() const { return m_surfaceFormat; }
   VkFormat getDepthFormat() const { return m_depthFormat; }
   VkExtent2D getExtent() const { return m_extent; }
+  bool supportsDynamicRendering() const { return m_dynamicRenderingSupported; }
 
   // 队列一定存在，否则创建实例的时候就会扔出异常。
   VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
@@ -149,6 +150,7 @@ private:
   VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
   VkDevice m_device = VK_NULL_HANDLE;
   std::vector<const char *> m_deviceExtensions;
+  bool m_dynamicRenderingSupported = false;
 
   // 队列
   VkQueue m_graphicsQueue = VK_NULL_HANDLE;

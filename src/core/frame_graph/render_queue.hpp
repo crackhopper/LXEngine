@@ -54,13 +54,18 @@ public:
 
   void build(const RenderWorkBuildContext &context, StringID pass,
              const RenderTarget &target, StringID renderPathNodeSignature,
-             std::optional<RenderPathGeometryContract> geometryContract);
+             std::optional<RenderPathGeometryContract> geometryContract,
+             std::optional<RenderPathNodeRenderingMode> renderingMode =
+                 std::nullopt,
+             std::vector<RenderPathAttachmentContract> attachments = {});
 
 private:
   void buildRealtime(const Scene &scene, StringID pass,
                      const RenderTarget &target,
                      StringID renderPathNodeSignature,
                      std::optional<RenderPathGeometryContract> geometryContract,
+                     std::optional<RenderPathNodeRenderingMode> renderingMode,
+                     std::vector<RenderPathAttachmentContract> attachments,
                      DescriptorResourceList sceneResources,
                      VisibilityLayerMask visibleMask,
                      std::optional<Vec3f> cameraEye);

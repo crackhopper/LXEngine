@@ -965,6 +965,8 @@ public:
     m_swapchain =
         VulkanSwapchain::create(device(), _window, kMaxFramesInFlight);
     m_swapchain->initialize(resourceManager().getRenderPass());
+    m_swapchainImageLayouts.assign(m_swapchain->getImageCount(),
+                                   VK_IMAGE_LAYOUT_UNDEFINED);
 
     // REQ-017: bring up ImGui overlay inside the swapchain render pass.
     infra::Gui::InitParams guiParams{};
@@ -977,7 +979,9 @@ public:
     guiParams.presentQueue = device().getPresentQueue();
     guiParams.surface = device().getSurface();
     guiParams.nativeWindowHandle = _window->getNativeHandle();
-    guiParams.renderPass = resourceManager().getRenderPass().getHandle();
+    guiParams.renderPass = VK_NULL_HANDLE;
+    guiParams.useDynamicRendering = true;
+    guiParams.colorAttachmentFormat = device().getSurfaceFormat().format;
     guiParams.swapchainImageCount = m_swapchain->getImageCount();
     m_gui.init(guiParams);
   }
@@ -1346,8 +1350,6 @@ public:
     const bool skipGuiFrame = expEnvEnabled("LX_RENDER_SKIP_GUI_FRAME") ||
                               m_pendingScreenDump.has_value();
 
-    bool swapchainRenderPassActive = false;
-    bool guiFrameActive = false;
     const usize finalSwapchainPassIndex = findFinalSwapchainPassIndex();
     const usize finalSwapchainGroupStartIndex =
         findFinalSwapchainGroupStartIndex(finalSwapchainPassIndex);
@@ -1355,74 +1357,29 @@ public:
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
       const auto &compiledPass = compiledPasses[passIndex];
-      if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
-        const bool isFinalSwapchainGroup =
-            finalSwapchainPassIndex != compiledPasses.size() &&
-            passIndex >= finalSwapchainGroupStartIndex &&
-            passIndex <= finalSwapchainPassIndex;
-        if (!swapchainRenderPassActive) {
-          auto &renderPass = resourceManager().getRenderPass();
-          cmd->beginRenderPass(
-              renderPass.getHandle(),
-              m_swapchain->getFramebuffer(imageIndex).getHandle(), extent,
-              renderPass.getClearValues());
-          cmd->setViewport(extent.width, extent.height);
-          cmd->setScissor(extent.width, extent.height);
-          swapchainRenderPassActive = true;
-        }
-
-        if (isFinalSwapchainGroup &&
-            passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame) {
-          m_gui.beginFrame();
-          guiFrameActive = true;
-          if (m_drawUiCallback) {
-            m_drawUiCallback();
-          }
-        }
-
-        drawPassQueue(passIndex, *cmd);
-
-        if (!isFinalSwapchainGroup || passIndex == finalSwapchainPassIndex) {
-          if (guiFrameActive) {
-            m_gui.endFrame(cmd->getHandle());
-            guiFrameActive = false;
-          }
-          cmd->endRenderPass();
-          swapchainRenderPassActive = false;
-        }
-        continue;
-      }
-
-      if (swapchainRenderPassActive) {
-        if (guiFrameActive) {
-          m_gui.endFrame(cmd->getHandle());
-          guiFrameActive = false;
-        }
-        cmd->endRenderPass();
-        swapchainRenderPassActive = false;
-      }
-
       prepareShadowCascadePass(passIndex);
-      const VkExtent2D passExtent = prepareOffscreenPass(
-          passIndex, currentFrameIndex, compiledPass, extent, *cmd);
-      auto &renderPass = resourceManager().getRenderPass(compiledPass.target);
-      cmd->beginRenderPass(
-          renderPass.getHandle(),
-          m_offscreenFramebuffers[passIndex][currentFrameIndex]->getHandle(),
-          passExtent, renderPass.getClearValues());
-      cmd->setViewport(passExtent.width, passExtent.height);
-      cmd->setScissor(passExtent.width, passExtent.height);
-      drawPassQueue(passIndex, *cmd);
-      cmd->endRenderPass();
-      transitionPassWritesToShaderRead(compiledPass, *cmd);
+      const bool isFinalSwapchainGroup =
+          compiledPass.target.role == LX_core::RenderTargetRole::Swapchain &&
+          finalSwapchainPassIndex != compiledPasses.size() &&
+          passIndex >= finalSwapchainGroupStartIndex &&
+          passIndex <= finalSwapchainPassIndex;
+      const bool beginGuiFrame =
+          isFinalSwapchainGroup &&
+          passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame;
+      const bool endGuiFrame =
+          isFinalSwapchainGroup && passIndex == finalSwapchainPassIndex &&
+          !skipGuiFrame;
+      const auto renderingMode = explicitRenderingModeFor(compiledPass);
+      if (renderingMode == LX_core::RenderPathNodeRenderingMode::Dynamic) {
+        recordDynamicPass(passIndex, imageIndex, extent, *cmd, beginGuiFrame,
+                          endGuiFrame);
+      } else {
+        recordTraditionalPass(passIndex, currentFrameIndex, imageIndex, extent,
+                              *cmd, beginGuiFrame, endGuiFrame);
+      }
     }
 
-    if (swapchainRenderPassActive) {
-      if (guiFrameActive) {
-        m_gui.endFrame(cmd->getHandle());
-      }
-      cmd->endRenderPass();
-    }
+    transitionSwapchainImage(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, *cmd);
     recordPendingScreenDump(imageIndex, extent, *cmd);
     cmd->end();
 
@@ -2122,11 +2079,9 @@ private:
       --start;
     }
 
-    // Legacy VkRenderPass cannot preserve forward color for debug/GUI overlay
-    // if we end and begin again with the current clear/load contract. Only the
-    // final contiguous swapchain run is intentionally grouped under one active
-    // VkRenderPass; offscreen passes and non-final swapchain passes remain
-    // one begin/end per compiled pass.
+    // The final contiguous swapchain run owns one ImGui frame. Dynamic
+    // rendering still records one begin/end per pass; this boundary only
+    // decides where ImGui::NewFrame and ImGui::Render happen.
     return start;
   }
 
@@ -2269,6 +2224,8 @@ private:
       if (graphPass.name == item.pass) {
         item.renderPathNodeSignature =
             LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.renderingMode = graphPass.renderingMode;
+        item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
         graphPass.queue.addItem(std::move(item));
@@ -2356,6 +2313,8 @@ private:
       if (graphPass.name == LX_core::Pass_DeferredLighting) {
         item.renderPathNodeSignature =
             LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.renderingMode = graphPass.renderingMode;
+        item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
         graphPass.queue.addItem(std::move(item));
@@ -2431,6 +2390,8 @@ private:
       if (graphPass.name == LX_core::Pass_Forward) {
         item.renderPathNodeSignature =
             LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.renderingMode = graphPass.renderingMode;
+        item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
         graphPass.queue.addItem(std::move(item));
@@ -2456,7 +2417,7 @@ private:
                              }),
                          passName, renderTarget,
                          LX_core::getFramePassRenderPathNodeSignature(pass),
-                         pass.geometry);
+                         pass.geometry, pass.renderingMode, pass.attachments);
         return;
       }
     }
@@ -2478,7 +2439,7 @@ private:
                              }),
                          LX_core::Pass_DebugOverlay, debugRenderTarget,
                          LX_core::getFramePassRenderPathNodeSignature(pass),
-                         pass.geometry);
+                         pass.geometry, pass.renderingMode, pass.attachments);
         return;
       }
     }
@@ -2779,7 +2740,8 @@ private:
   VkExtent2D prepareOffscreenPass(usize passIndex, u32 currentFrameIndex,
                                   const LX_core::CompiledFrameGraphPass &pass,
                                   VkExtent2D fallbackExtent,
-                                  VulkanCommandBuffer &cmd) {
+                                  VulkanCommandBuffer &cmd,
+                                  bool createFramebuffer = true) {
     if (pass.target.role == LX_core::RenderTargetRole::Swapchain) {
       return fallbackExtent;
     }
@@ -2819,11 +2781,13 @@ private:
       appendAttachment(write->get(), *pass.target.depthFormat);
     }
 
-    auto &framebuffer = m_offscreenFramebuffers[passIndex][currentFrameIndex];
-    if (!framebuffer) {
-      auto &renderPass = resourceManager().getRenderPass(pass.target);
-      framebuffer = VulkanFrameBuffer::create(device(), renderPass.getHandle(),
-                                              attachments, fallbackExtent);
+    if (createFramebuffer) {
+      auto &framebuffer = m_offscreenFramebuffers[passIndex][currentFrameIndex];
+      if (!framebuffer) {
+        auto &renderPass = resourceManager().getRenderPass(pass.target);
+        framebuffer = VulkanFrameBuffer::create(
+            device(), renderPass.getHandle(), attachments, fallbackExtent);
+      }
     }
     return fallbackExtent;
   }
@@ -2840,6 +2804,251 @@ private:
                                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                      VK_ACCESS_SHADER_READ_BIT, cmd);
     }
+  }
+
+  const LX_core::FramePass &
+  sourceGraphPassFor(const LX_core::CompiledFrameGraphPass &compiledPass) const {
+    const auto &graphPasses = m_frameGraph.getPasses();
+    if (compiledPass.sourcePassIndex >= graphPasses.size()) {
+      throw std::runtime_error("CompiledFrameGraphPass has invalid source pass "
+                               "index");
+    }
+    return graphPasses[compiledPass.sourcePassIndex];
+  }
+
+  LX_core::RenderPathNodeRenderingMode
+  explicitRenderingModeFor(const LX_core::CompiledFrameGraphPass &compiledPass)
+      const {
+    const auto &graphPass = sourceGraphPassFor(compiledPass);
+    if (!graphPass.renderingMode.has_value()) {
+      throw std::runtime_error(
+          "FrameGraph pass missing explicit RenderPathNode rendering.mode: " +
+          LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+    }
+    return *graphPass.renderingMode;
+  }
+
+  u32 dynamicRenderingLayerCount(const LX_core::FramePass &graphPass) const {
+    if (graphPass.attachments.empty()) {
+      throw std::runtime_error(
+          "Dynamic rendering pass has no attachment contract: " +
+          LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+    }
+    const u32 layers = graphPass.attachments.front().layers;
+    for (const auto &attachment : graphPass.attachments) {
+      if (attachment.layers != layers) {
+        throw std::runtime_error(
+            "Dynamic rendering pass attachment layers mismatch: " +
+            LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+      }
+    }
+    return layers;
+  }
+
+  VkPipelineStageFlags swapchainStageForLayout(VkImageLayout layout) const {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_UNDEFINED:
+      return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+      return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+      return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    default:
+      return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+  }
+
+  VkAccessFlags swapchainAccessForLayout(VkImageLayout layout) const {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+      return VK_ACCESS_TRANSFER_READ_BIT;
+    default:
+      return 0;
+    }
+  }
+
+  void transitionSwapchainImage(u32 imageIndex, VkImageLayout newLayout,
+                                VulkanCommandBuffer &cmd) {
+    if (imageIndex >= m_swapchainImageLayouts.size()) {
+      throw std::runtime_error("Swapchain image layout state is missing");
+    }
+    VkImageLayout &currentLayout = m_swapchainImageLayouts[imageIndex];
+    if (currentLayout == newLayout) {
+      return;
+    }
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = currentLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = m_swapchain->getImage(imageIndex);
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = swapchainAccessForLayout(currentLayout);
+    barrier.dstAccessMask = swapchainAccessForLayout(newLayout);
+
+    cmd.pipelineBarrier(swapchainStageForLayout(currentLayout),
+                        swapchainStageForLayout(newLayout), barrier);
+    currentLayout = newLayout;
+  }
+
+  VkAttachmentLoadOp
+  dynamicLoadOpForWrite(const LX_core::FrameGraphWrite &write) const {
+    return write.writeMode.has_value() ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                       : VK_ATTACHMENT_LOAD_OP_CLEAR;
+  }
+
+  VkRenderingAttachmentInfo makeDynamicColorAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
+    VkRenderingAttachmentInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    info.imageView = imageView;
+    info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    info.loadOp = dynamicLoadOpForWrite(write);
+    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    info.clearValue.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    return info;
+  }
+
+  VkRenderingAttachmentInfo makeDynamicDepthAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
+    VkRenderingAttachmentInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    info.imageView = imageView;
+    info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    info.loadOp = dynamicLoadOpForWrite(write);
+    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    info.clearValue.depthStencil = {1.0f, 0};
+    return info;
+  }
+
+  void recordDynamicPass(usize passIndex, u32 imageIndex, VkExtent2D extent,
+                         VulkanCommandBuffer &cmd, bool beginGuiFrame,
+                         bool endGuiFrame) {
+    const auto &compiledPass = m_compiledFrameGraph.getPasses()[passIndex];
+    const auto &graphPass = sourceGraphPassFor(compiledPass);
+    const VkExtent2D passExtent =
+        compiledPass.target.role == LX_core::RenderTargetRole::Swapchain
+            ? extent
+            : prepareOffscreenPass(passIndex, m_frameIndex % kMaxFramesInFlight,
+                                   compiledPass, extent, cmd,
+                                   /*createFramebuffer=*/false);
+
+    std::vector<VkRenderingAttachmentInfo> colorAttachments;
+    const auto colorWrites =
+        findWritesForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Color);
+    colorAttachments.reserve(colorWrites.size());
+    if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+      transitionSwapchainImage(imageIndex,
+                               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, cmd);
+      if (colorWrites.size() != 1) {
+        throw std::runtime_error(
+            "Dynamic swapchain pass must declare exactly one color write: " +
+            LX_core::GlobalStringTable::get().toDebugString(
+                compiledPass.name));
+      }
+      colorAttachments.push_back(makeDynamicColorAttachmentInfo(
+          m_swapchain->getImageView(imageIndex), colorWrites.front().get()));
+    } else {
+      for (const auto &write : colorWrites) {
+        auto attachment =
+            resourceManager().getFrameGraphAttachment(write.get().resource.name);
+        if (!attachment.has_value() || !attachment->get().texture) {
+          throw std::runtime_error(
+              "Dynamic offscreen pass missing color attachment: " +
+              LX_core::GlobalStringTable::get().toDebugString(
+                  write.get().resource.name));
+        }
+        colorAttachments.push_back(makeDynamicColorAttachmentInfo(
+            attachment->get().texture->getImageView(), write.get()));
+      }
+    }
+
+    std::optional<VkRenderingAttachmentInfo> depthAttachment;
+    const auto depthWrite =
+        findWriteForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Depth);
+    if (depthWrite.has_value()) {
+      if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+        depthAttachment = makeDynamicDepthAttachmentInfo(
+            m_swapchain->getDepthImageView(imageIndex), depthWrite->get());
+      } else {
+        auto attachment = resourceManager().getFrameGraphAttachment(
+            depthWrite->get().resource.name);
+        if (!attachment.has_value() || !attachment->get().texture) {
+          throw std::runtime_error(
+              "Dynamic offscreen pass missing depth attachment: " +
+              LX_core::GlobalStringTable::get().toDebugString(
+                  depthWrite->get().resource.name));
+        }
+        depthAttachment = makeDynamicDepthAttachmentInfo(
+            attachment->get().texture->getImageView(), depthWrite->get());
+      }
+    }
+
+    if (beginGuiFrame) {
+      m_gui.beginFrame();
+      if (m_drawUiCallback) {
+        m_drawUiCallback();
+      }
+    }
+    cmd.beginRendering(passExtent, colorAttachments,
+                       depthAttachment.has_value() ? &*depthAttachment
+                                                   : nullptr,
+                       dynamicRenderingLayerCount(graphPass));
+    cmd.setViewport(passExtent.width, passExtent.height);
+    cmd.setScissor(passExtent.width, passExtent.height);
+    drawPassQueue(passIndex, cmd);
+    if (endGuiFrame) {
+      m_gui.endFrame(cmd.getHandle());
+    }
+    cmd.endRendering();
+    transitionPassWritesToShaderRead(compiledPass, cmd);
+  }
+
+  void recordTraditionalPass(usize passIndex, u32 currentFrameIndex,
+                             u32 imageIndex, VkExtent2D extent,
+                             VulkanCommandBuffer &cmd, bool beginGuiFrame,
+                             bool endGuiFrame) {
+    if (beginGuiFrame || endGuiFrame) {
+      throw std::runtime_error(
+          "GUI overlay requires dynamic rendering for swapchain passes");
+    }
+    const auto &compiledPass = m_compiledFrameGraph.getPasses()[passIndex];
+    if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+      auto &renderPass = resourceManager().getRenderPass();
+      cmd.beginRenderPass(renderPass.getHandle(),
+                          m_swapchain->getFramebuffer(imageIndex).getHandle(),
+                          extent, renderPass.getClearValues());
+      cmd.setViewport(extent.width, extent.height);
+      cmd.setScissor(extent.width, extent.height);
+      drawPassQueue(passIndex, cmd);
+      cmd.endRenderPass();
+      return;
+    }
+
+    const VkExtent2D passExtent =
+        prepareOffscreenPass(passIndex, currentFrameIndex, compiledPass, extent,
+                             cmd, /*createFramebuffer=*/true);
+    auto &renderPass = resourceManager().getRenderPass(compiledPass.target);
+    cmd.beginRenderPass(
+        renderPass.getHandle(),
+        m_offscreenFramebuffers[passIndex][currentFrameIndex]->getHandle(),
+        passExtent, renderPass.getClearValues());
+    cmd.setViewport(passExtent.width, passExtent.height);
+    cmd.setScissor(passExtent.width, passExtent.height);
+    drawPassQueue(passIndex, cmd);
+    cmd.endRenderPass();
+    transitionPassWritesToShaderRead(compiledPass, cmd);
   }
 
   void recordPendingScreenDump(u32 imageIndex, VkExtent2D extent,
@@ -2943,6 +3152,8 @@ private:
     if (!m_swapchain->rebuild(resourceManager().getRenderPass())) {
       return;
     }
+    m_swapchainImageLayouts.assign(m_swapchain->getImageCount(),
+                                   VK_IMAGE_LAYOUT_UNDEFINED);
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
     m_swapchainNeedsRebuild = false;
@@ -2982,6 +3193,7 @@ private:
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   std::optional<PendingScreenDump> m_pendingScreenDump;
+  std::vector<VkImageLayout> m_swapchainImageLayouts;
   std::vector<LX_core::DirectionalLightDataUniquePtr>
       m_shadowCascadeUboSnapshots;
 };

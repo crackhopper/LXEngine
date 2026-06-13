@@ -145,6 +145,40 @@ void logCameraUploadIfChanged(std::string_view reason,
             << " byteSize=" << cpuRes.getByteSize() << " dataHash=" << dataHash
             << " bufferToken=" << handleToken << std::endl;
 }
+
+bool usesDynamicRendering(const LX_core::PipelineBuildDesc &info) {
+  return info.type == LX_core::PipelineBuildType::Graphics &&
+         info.renderingMode.has_value() &&
+         *info.renderingMode == LX_core::RenderPathNodeRenderingMode::Dynamic;
+}
+
+const char *resourceTypeName(ResourceType type) {
+  switch (type) {
+  case ResourceType::VertexBuffer:
+    return "VertexBuffer";
+  case ResourceType::IndexBuffer:
+    return "IndexBuffer";
+  case ResourceType::UniformBuffer:
+    return "UniformBuffer";
+  case ResourceType::StorageBuffer:
+    return "StorageBuffer";
+  case ResourceType::CombinedImageSampler:
+    return "CombinedImageSampler";
+  case ResourceType::Special:
+    return "Special";
+  }
+  return "Unknown";
+}
+
+void validateNonEmptyBufferResource(const IGpuResource &cpuRes) {
+  if (cpuRes.getByteSize() != 0) {
+    return;
+  }
+  throw std::runtime_error(
+      "Cannot create zero-byte Vulkan buffer for resource type " +
+      std::string(resourceTypeName(cpuRes.getType())) + " binding=" +
+      GlobalStringTable::get().toDebugString(cpuRes.getBindingName()));
+}
 } // namespace
 
 VulkanResourceManager::VulkanResourceManager(Token, VulkanDevice &device)
@@ -211,6 +245,7 @@ VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
 
   switch (type) {
   case ResourceType::VertexBuffer:
+    validateNonEmptyBufferResource(cpuRes);
     return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes.getByteSize(),
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -218,6 +253,7 @@ VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::IndexBuffer:
+    validateNonEmptyBufferResource(cpuRes);
     return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes.getByteSize(),
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -225,12 +261,14 @@ VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::UniformBuffer:
+    validateNonEmptyBufferResource(cpuRes);
     return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes.getByteSize(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 
   case ResourceType::StorageBuffer:
+    validateNonEmptyBufferResource(cpuRes);
     return std::make_unique<VulkanAnyResource>(VulkanBuffer::create(
         m_device, cpuRes.getByteSize(), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -431,7 +469,8 @@ VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
   LX_core::PipelineBuildDesc info =
       LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
   const VkRenderPass renderPass =
-      info.type == LX_core::PipelineBuildType::Graphics
+      info.type == LX_core::PipelineBuildType::Graphics &&
+              !usesDynamicRendering(info)
           ? getRenderPass(info.target).getHandle()
           : VK_NULL_HANDLE;
   return m_pipelineCache->getOrCreatePipeline(info, renderPass);
@@ -441,7 +480,8 @@ void VulkanResourceManager::preloadPipelines(
     const std::vector<LX_core::PipelineBuildDesc> &infos) {
   for (const auto &info : infos) {
     const VkRenderPass renderPass =
-        info.type == LX_core::PipelineBuildType::Graphics
+        info.type == LX_core::PipelineBuildType::Graphics &&
+                !usesDynamicRendering(info)
             ? getRenderPass(info.target).getHandle()
             : VK_NULL_HANDLE;
     m_pipelineCache->preload({info}, renderPass);
