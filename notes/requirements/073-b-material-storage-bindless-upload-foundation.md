@@ -260,7 +260,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 
 ## 实施状态
 
-进行中。
+完成。
 
 已完成：
 
@@ -272,7 +272,19 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - source texture slot 解析支持 table-owned parameter `TextureHandle` 和 parser canonical dependency URI；显式贴图缺资源时保持 fail-fast。
 - source signature mismatch、同 source signature storage layout 冲突、显式 texture slot 无法解析时会在 upload 阶段抛出可审计 diagnostics。
 - backend/GPU resource table shell 可以消费 upload view，建立 texture bindless slots、per-source material storage buffers、object/draw/mesh staging buffers，以及 position/index/primitive/attribute geometry staging buffers；material storage report 保留 sourceStorageIndex、source signature 和 storage ABI hash 追踪信息。
+- build/runtime shader source 同步已纳入测试 target 依赖，避免 CTest 从 `build/` runtime root 读取过期 `.contract.glsl`。
+- Offline loader 的 Material v2 测试已改为验证 source-contract `materialRefs + sourceMaterialRecords`，不再把旧 `materialIndexByHandle` 当作 Material v3 注册证据。
 
-仍需完成：
+验证：
 
-- 最终 073-b 验证和状态收口。
+- `cmake --build build --target test_material_source_contract test_scene_resource_upload_view_v2 test_bindless_indirect_contract test_scene_resource_table`
+- `./build/src/test/test_material_source_contract`
+- `./build/src/test/test_scene_resource_upload_view_v2`
+- `./build/src/test/test_bindless_indirect_contract`
+- `./build/src/test/test_scene_resource_table`
+- `cmake --build build --target test_material_instance test_material_v2_parser test_material_v2_resource_dependencies test_gltf_scene_asset_loader test_offline_gpu_scene`
+- `./build/src/test/test_offline_gpu_scene`
+- `ctest --test-dir build --output-on-failure -L auto -LE requires_video_device`
+- `rg -n "SceneGpuMaterialRecord|MaterialUBO|toGpuMaterialRecord|\\.materials" src/test/integration/test_material_source_contract.cpp src/test/integration/test_scene_resource_upload_view_v2.cpp src/test/integration/test_bindless_indirect_contract.cpp src/test/integration/test_scene_resource_table.cpp`
+
+旧 material truth 审计结果：073-b 正向 source-contract 测试使用 `materialRefs + sourceMaterialRecords`；`SceneGpuMaterialRecord` / `toGpuMaterialRecord` 只保留在 legacy/default 路径覆盖或明确的 legacy 断言中。

@@ -37,7 +37,7 @@ The following work is not deferred vaguely; each item has an owning follow-up re
 | Removal of old `SceneGpuMaterialRecord` / `MaterialUBO` realtime truth, per-material descriptor fallback, hidden debug/default-material fallback, and Helmet/BMW realtime smoke | `REQ-073-e` |
 | OfflineRT RenderPathGraph compute path and offline config hard cut | `REQ-073-f` / `REQ-073-g` |
 
-## Current Implementation Pressure
+## Current Implementation Status
 
 After Task 7, the code has moved past the initial scaffolding:
 
@@ -48,11 +48,13 @@ After Task 7, the code has moved past the initial scaffolding:
 - `SceneResourceTable` owns builtin `white`, `black`, and `flatNormal` texture resources.
 - `VulkanGpuResourceTable::uploadSceneBindlessTables()` consumes the upload view into texture bindless slots, per-source material buffers, object/draw/mesh buffers, and position/index/primitive/attribute geometry buffers.
 
-The remaining pressure for `REQ-073-b` is now final verification:
+Final `REQ-073-b` verification has passed. The remaining material migration
+boundary is outside this requirement:
 
 - old `SceneGpuMaterialRecord` still exists only for legacy/default realtime paths and must not become positive Material v3 truth again.
 
-The implementation plan should therefore extend the existing scaffolding rather than start over.
+`REQ-073-d` and `REQ-073-e` own the later renderer consumption and old-path
+removal work.
 
 ## Source Storage Terminology
 

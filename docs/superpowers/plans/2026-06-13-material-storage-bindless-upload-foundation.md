@@ -39,7 +39,7 @@ Texture slot resolution is intentionally strict: source material packing first u
 - [x] Task 5: Built source storages/material refs in upload view and updated `test_scene_resource_table` for hard-cut source-contract behavior.
 - [x] Task 6: Added negative upload diagnostics for source signature mismatch, source storage layout conflict, and unresolved explicit texture slots.
 - [x] Task 7: Backend scene bindless staging API, including texture slots, per-source material buffers, object/draw/mesh buffers, and geometry stream buffers.
-- [ ] Task 8: Final verification and requirement closeout.
+- [x] Task 8: Final verification and requirement closeout.
 
 ## Task 1: Reflect Explicit Storage Fields
 
@@ -656,7 +656,7 @@ git commit -m "Stage scene bindless upload tables"
 - Modify: `notes/requirements/073-b-material-storage-bindless-upload-foundation.md`
 - Test: existing integration tests
 
-- [ ] **Step 1: Run targeted tests**
+- [x] **Step 1: Run targeted tests**
 
 Run:
 
@@ -670,7 +670,7 @@ cmake --build build --target test_material_source_contract test_scene_resource_u
 
 Expected: all pass.
 
-- [ ] **Step 2: Run auto suite**
+- [x] **Step 2: Run auto suite**
 
 Run:
 
@@ -680,7 +680,7 @@ ctest --test-dir build --output-on-failure -L auto -LE requires_video_device
 
 Expected: PASS. If unrelated failures exist, record exact test names and diagnostics in the final notes update.
 
-- [ ] **Step 3: Audit old material truth in 073-b positive tests**
+- [x] **Step 3: Audit old material truth in 073-b positive tests**
 
 Run:
 
@@ -690,7 +690,7 @@ rg -n "SceneGpuMaterialRecord|MaterialUBO|toGpuMaterialRecord|\\.materials" src/
 
 Expected: no positive 073-b test uses old `SceneGpuMaterialRecord` / `MaterialUBO` as material truth. Legacy mentions must be named as legacy or negative assertions.
 
-- [ ] **Step 4: Update implementation status**
+- [x] **Step 4: Update implementation status**
 
 Set `notes/requirements/073-b-material-storage-bindless-upload-foundation.md` implementation status to completed, listing:
 
@@ -701,7 +701,7 @@ Set `notes/requirements/073-b-material-storage-bindless-upload-foundation.md` im
 - backend bindless table staging;
 - fail-fast diagnostics.
 
-- [ ] **Step 5: Commit final status**
+- [x] **Step 5: Commit final status**
 
 ```bash
 git add notes/requirements/073-b-material-storage-bindless-upload-foundation.md
