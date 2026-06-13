@@ -2305,10 +2305,12 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   for (SceneSourceLocalMaterialStorageView &storage :
        m_gpuSourceMaterialStorages) {
     storage.recordOffset = static_cast<u32>(m_gpuSourceMaterialRecords.size());
+    u32 sourceLocalMaterialIndex = 0;
     for (const StringID sourceSignature : materialSourceSignatures) {
       if (sourceSignature == storage.sourceSignature) {
         m_gpuSourceMaterialRecords.push_back(
-            SourceLocalMaterialRecord{.sourceSignature = sourceSignature});
+            SourceLocalMaterialRecord{
+                .sourceLocalMaterialIndex = sourceLocalMaterialIndex++});
       }
     }
   }

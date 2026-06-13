@@ -99,17 +99,16 @@ findSourceStorage(const SceneResourceTableUploadView &view,
   return found == view.sourceMaterialStorages.end() ? nullptr : &*found;
 }
 
-bool sourceRecordRangeHasOnlySignature(
+bool sourceRecordRangeHasContiguousLocalIndices(
     const SceneResourceTableUploadView &view,
-    const SceneSourceLocalMaterialStorageView &storage,
-    StringID sourceSignature) {
+    const SceneSourceLocalMaterialStorageView &storage) {
   if (storage.recordOffset + storage.recordCount >
       view.sourceMaterialRecords.size()) {
     return false;
   }
   for (u32 i = 0; i < storage.recordCount; ++i) {
     if (view.sourceMaterialRecords[storage.recordOffset + i]
-            .sourceSignature != sourceSignature) {
+            .sourceLocalMaterialIndex != i) {
       return false;
     }
   }
@@ -385,9 +384,9 @@ void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
   EXPECT(view.sourceMaterialRecords.size() == 2,
          "source-local record span should contain both material records");
   EXPECT(storage != nullptr &&
-             sourceRecordRangeHasOnlySignature(view, *storage,
-                                               sourceSignature),
-         "same source storage range should contain only that source");
+             sourceRecordRangeHasContiguousLocalIndices(view, *storage),
+         "same source storage range should contain contiguous source-local "
+         "indices");
 }
 
 void testUploadViewSplitsSourceLocalMaterialsBySignature() {
@@ -430,13 +429,11 @@ void testUploadViewSplitsSourceLocalMaterialsBySignature() {
   EXPECT(view.sourceMaterialRecords.size() == 2,
          "source-local record span should contain both source records");
   EXPECT(matteStorage != nullptr &&
-             sourceRecordRangeHasOnlySignature(view, *matteStorage,
-                                               matteSignature),
-         "matte storage range should contain only matte records");
+             sourceRecordRangeHasContiguousLocalIndices(view, *matteStorage),
+         "matte storage range should contain contiguous source-local indices");
   EXPECT(metalStorage != nullptr &&
-             sourceRecordRangeHasOnlySignature(view, *metalStorage,
-                                               metalSignature),
-         "metal storage range should contain only metal records");
+             sourceRecordRangeHasContiguousLocalIndices(view, *metalStorage),
+         "metal storage range should contain contiguous source-local indices");
 }
 
 void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
@@ -492,13 +489,11 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
          "metal source-local record range should follow first-seen source "
          "ordering");
   EXPECT(matteStorage != nullptr &&
-             sourceRecordRangeHasOnlySignature(view, *matteStorage,
-                                               matteSignature),
-         "matte source-local range must not include interleaved metal record");
+             sourceRecordRangeHasContiguousLocalIndices(view, *matteStorage),
+         "matte source-local range should contain contiguous local indices");
   EXPECT(metalStorage != nullptr &&
-             sourceRecordRangeHasOnlySignature(view, *metalStorage,
-                                               metalSignature),
-         "metal source-local range should contain only metal records");
+             sourceRecordRangeHasContiguousLocalIndices(view, *metalStorage),
+         "metal source-local range should contain contiguous local indices");
 }
 
 void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {

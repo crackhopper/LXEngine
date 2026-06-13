@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <initializer_list>
 #include <iostream>
@@ -66,6 +67,53 @@ LX_core::MaterialContractReflection makePackerContract() {
   contract.reflectionHash = "matte-reflect-v1";
   contract.storageAbiHash = "matte-storage-v1";
   contract.accessorAbiHash = "material-surface-v1";
+  contract.parameters.push_back(LX_core::MaterialContractParameter{
+      "Kd",
+      true,
+      {LX_core::MaterialContractParameterKind::Rgb,
+       LX_core::MaterialContractParameterKind::Texture}});
+  contract.parameters.push_back(LX_core::MaterialContractParameter{
+      "metallic",
+      false,
+      {LX_core::MaterialContractParameterKind::Float,
+       LX_core::MaterialContractParameterKind::Texture}});
+  contract.parameters.push_back(LX_core::MaterialContractParameter{
+      "normalmap", false, {LX_core::MaterialContractParameterKind::Texture}});
+  contract.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "baseColor",
+      .type = LX_core::MaterialContractStorageFieldType::Vec4,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterValue,
+      .parameterName = "Kd",
+      .defaultValue = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+  });
+  contract.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "baseColorTexture",
+      .type = LX_core::MaterialContractStorageFieldType::TextureSlot,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterTexture,
+      .parameterName = "Kd",
+      .defaultTextureSemantic = "white",
+  });
+  contract.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "baseColorChannel",
+      .type = LX_core::MaterialContractStorageFieldType::ChannelSelector,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterChannel,
+      .parameterName = "Kd",
+      .defaultChannel = "rgba",
+  });
+  contract.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "metallic",
+      .type = LX_core::MaterialContractStorageFieldType::Float,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterValue,
+      .parameterName = "metallic",
+      .defaultValue = LX_core::Vec4f{0.0f, 0.0f, 0.0f, 0.0f},
+  });
+  contract.storageFields.push_back(LX_core::MaterialContractStorageField{
+      .name = "normalTexture",
+      .type = LX_core::MaterialContractStorageFieldType::TextureSlot,
+      .inputKind = LX_core::MaterialContractStorageInputKind::ParameterTexture,
+      .parameterName = "normalmap",
+      .defaultTextureSemantic = "flatNormal",
+  });
   return contract;
 }
 
@@ -74,25 +122,89 @@ LX_core::MaterialContractPackResult packWithDefaults(
   LX_core::MaterialContractPackInput input;
   input.contract = makePackerContract();
   input.defaultTextureSlots = defaults;
+  input.sourceLocalMaterialIndex = 0;
   return LX_core::packMaterialContractRecord(input);
 }
 
-void testPackerPreservesSourceSignatureAndDefaultTextureSlots() {
+std::optional<
+    std::reference_wrapper<const LX_core::SourceLocalMaterialFieldLayout>>
+findPackedField(const LX_core::MaterialContractPackResult &result,
+                std::string_view name) {
+  return result.layout.findField(name);
+}
+
+u32 readPackedU32(const std::vector<u8> &bytes, usize offset) {
+  u32 value = 0;
+  std::memcpy(&value, bytes.data() + offset, sizeof(value));
+  return value;
+}
+
+float readPackedFloat(const std::vector<u8> &bytes, usize offset) {
+  float value = 0.0f;
+  std::memcpy(&value, bytes.data() + offset, sizeof(value));
+  return value;
+}
+
+void testPackerBuildsSourceReflectedBytesRecord() {
   LX_core::MaterialContractDefaultTextureSlots defaults;
   defaults.white = 1;
   defaults.black = 2;
   defaults.flatNormal = 3;
 
-  const auto packed = packWithDefaults(defaults);
+  auto materialTemplate = LX_core::MaterialTemplate::create("matte");
+  auto material = LX_core::MaterialInstance::createUnique(materialTemplate);
+  LX_core::MaterialParameterEnvelope kdTexture;
+  kdTexture.kind = LX_core::MaterialEnvelopeKind::Texture;
+  kdTexture.valueType = LX_core::MaterialEnvelopeValueType::Rgb;
+  kdTexture.uri = "assets://textures/materials/base-color.png";
+  material->setMaterialEnvelope(LX_core::StringID("Kd"), kdTexture);
+
+  LX_core::MaterialParameterEnvelope metallicValue;
+  metallicValue.kind = LX_core::MaterialEnvelopeKind::Float;
+  metallicValue.floatValue = 0.75f;
+  material->setMaterialEnvelope(LX_core::StringID("metallic"), metallicValue);
+
+  LX_core::MaterialContractPackInput input;
+  input.material = material.get();
+  input.contract = makePackerContract();
+  input.defaultTextureSlots = defaults;
+  input.sourceLocalMaterialIndex = 7;
+  input.textureSlotForUri = [](const LX_core::ResourceUri &uri) -> u32 {
+    if (uri == LX_core::ResourceUri(
+                   "assets://textures/materials/base-color.png")) {
+      return 5;
+    }
+    return u32_max;
+  };
+
+  const auto packed = LX_core::packMaterialContractRecord(input);
   EXPECT(packed.diagnostics.empty(), "default-only material should pack");
-  EXPECT(packed.record.sourceSignature == makePackerContract().sourceSignature(),
-         "packer should preserve source signature");
-  EXPECT(packed.record.defaultWhiteTextureSlot == 1,
-         "packer should preserve white default slot");
-  EXPECT(packed.record.defaultBlackTextureSlot == 2,
-         "packer should preserve black default slot");
-  EXPECT(packed.record.defaultFlatNormalTextureSlot == 3,
-         "packer should preserve flatNormal default slot");
+  EXPECT(packed.record.sourceLocalMaterialIndex == 7,
+         "packer should preserve source-local material index");
+  EXPECT(!packed.record.bytes.empty(), "record bytes should be packed");
+
+  const auto baseColorTexture = findPackedField(packed, "baseColorTexture");
+  EXPECT(baseColorTexture.has_value(),
+         "packed layout should expose baseColorTexture field");
+  EXPECT(baseColorTexture.has_value() &&
+             readPackedU32(packed.record.bytes,
+                           baseColorTexture->get().offset) == 5,
+         "base color texture slot should be packed from texture resolver");
+
+  const auto metallic = findPackedField(packed, "metallic");
+  EXPECT(metallic.has_value(), "packed layout should expose metallic field");
+  EXPECT(metallic.has_value() &&
+             readPackedFloat(packed.record.bytes, metallic->get().offset) ==
+                 0.75f,
+         "metallic factor should be packed from material envelope");
+
+  const auto normalTexture = findPackedField(packed, "normalTexture");
+  EXPECT(normalTexture.has_value(),
+         "packed layout should expose normalTexture field");
+  EXPECT(normalTexture.has_value() &&
+             readPackedU32(packed.record.bytes,
+                           normalTexture->get().offset) == 3,
+         "missing normal texture should use flat normal default slot");
 }
 
 void testPackerRequiresEveryDefaultTextureSlot() {
@@ -2270,7 +2382,7 @@ int main() {
   }
 
   testSourceSignatureIgnoresInstanceValues();
-  testPackerPreservesSourceSignatureAndDefaultTextureSlots();
+  testPackerBuildsSourceReflectedBytesRecord();
   testPackerRequiresEveryDefaultTextureSlot();
   testMaterialParserRequiresBsdfSource();
   testMaterialParserRejectsUnknownParameterFromContract();
