@@ -901,11 +901,19 @@ void testOfflineSceneLoaderMapsMaterialV2ToOfflineRayTracePass() {
   EXPECT(!strictLoaded.offlineShader,
          "loader without explicit OfflineRT provider must not invent shader");
   auto strictUpload = strictLoaded.table.buildUploadView();
-  EXPECT(!strictUpload.materialIndexByHandle.empty(),
+  const RenderSceneSnapshot strictSnapshot = strictLoaded.table.buildSnapshot();
+  EXPECT(!strictSnapshot.materialHandles.empty(),
          "strict loader should still register the material");
-  if (!strictUpload.materialIndexByHandle.empty()) {
+  EXPECT(strictUpload.materials.empty(),
+         "strict source-contract material should not create a legacy material "
+         "record");
+  EXPECT(!strictUpload.materialRefs.empty() &&
+             !strictUpload.sourceMaterialRecords.empty(),
+         "strict source-contract material should create a material ref and "
+         "source-local record");
+  if (!strictSnapshot.materialHandles.empty()) {
     const auto material =
-        strictLoaded.table.resolve(strictUpload.materialIndexByHandle[0].handle);
+        strictLoaded.table.resolve(strictSnapshot.materialHandles[0]);
     EXPECT(material.has_value(),
            "strict loader material handle should resolve from the table");
     if (material.has_value()) {
@@ -924,13 +932,19 @@ void testOfflineSceneLoaderMapsMaterialV2ToOfflineRayTracePass() {
          "Material v2 loader should use the explicit OfflineRT shader");
 
   auto upload = loaded.table.buildUploadView();
-  EXPECT(!upload.materialIndexByHandle.empty(),
+  const RenderSceneSnapshot snapshot = loaded.table.buildSnapshot();
+  EXPECT(!snapshot.materialHandles.empty(),
          "loader should register the Material v2 instance");
-  if (upload.materialIndexByHandle.empty()) {
+  EXPECT(upload.materials.empty(),
+         "source-contract Material v2 instance should not create a legacy "
+         "material record");
+  EXPECT(!upload.materialRefs.empty() && !upload.sourceMaterialRecords.empty(),
+         "source-contract Material v2 instance should create a material ref "
+         "and source-local record");
+  if (snapshot.materialHandles.empty()) {
     return;
   }
-  const auto material =
-      loaded.table.resolve(upload.materialIndexByHandle[0].handle);
+  const auto material = loaded.table.resolve(snapshot.materialHandles[0]);
   EXPECT(material.has_value(),
          "loader material handle should resolve from the table");
   if (!material.has_value()) {
