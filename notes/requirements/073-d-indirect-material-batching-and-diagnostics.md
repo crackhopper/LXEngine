@@ -4,7 +4,7 @@
 
 ## 背景
 
-`REQ-073-b` 会提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 会让 pass shader 和 pipeline identity 使用 material source variant。此时 renderer 已经有足够结构事实把 draw submission 从“每材质 descriptor / 每 item fallback”推进到按兼容签名分批的 indirect path。
+`REQ-073-b` 会提供 bindless-ready texture/material/object/draw/mesh table，并证明 backend/GPU resource table 能建立对应 slot/staging；`REQ-073-c` 会让 pass shader 和 pipeline identity 使用 material source variant。此时 renderer 才有足够结构事实把 draw submission 从“每材质 descriptor / 每 item fallback”推进到按兼容签名分批的 indirect path。
 
 本 REQ 的核心是 batching 和 diagnostics，不负责最终删除旧 fallback。最终硬切和视觉 smoke 由 `REQ-073-e` 完成。
 
@@ -18,7 +18,7 @@
 
 ## 非目标
 
-- 不实现 material storage foundation；由 `REQ-073-b` 处理。
+- 不实现 material storage / backend table upload foundation；由 `REQ-073-b` 处理。
 - 不实现 shader source variant；由 `REQ-073-c` 处理。
 - 不删除 realtime 旧 fallback；由 `REQ-073-e` 处理。
 - 不要求 Helmet/BMW 最终视觉验收；由 `REQ-073-e` 处理。
@@ -75,9 +75,9 @@ geometry pass descriptor resources SHALL 来自 global bindless-ready tables。
 
 要求：
 
-- texture、sampler、material storage、object、draw、mesh/geometry tables 可从 work item 追踪。
+- texture、sampler、material storage、object、draw、mesh/geometry tables 可从 work item 追踪；这些 table/slot/staging 由 `REQ-073-b` 建立，本 REQ 负责让 RenderWorkQueue 和 geometry pass 默认消费它们。
 - per-material descriptor 不能作为 indirect path 的成功条件。
-- 如果 backend 暂时无法消费某 table，必须输出 unsupported diagnostic，而不是静默回退。
+- 如果 geometry pass 所需 table/staging 缺失或与 work item 不匹配，必须输出 unsupported diagnostic，而不是静默回退。
 
 ### R4: Split Diagnostics
 
@@ -151,7 +151,7 @@ validation profile SHALL 暴露 realtime batching stats：
 - `src/core/frame_graph/render_work_item*`
 - `src/core/scene/scene_resource_table*`
 - `src/core/scene/scene_gpu_records.*`
-- Vulkan realtime submission / descriptor binding path
+- Vulkan realtime submission / descriptor binding path consuming `REQ-073-b` tables
 - validation diagnostics and tests
 
 ## 边界与约束
@@ -163,7 +163,7 @@ validation profile SHALL 暴露 realtime batching stats：
 
 ## 依赖
 
-- `REQ-073-b`: bindless-ready material/object/draw/mesh tables。
+- `REQ-073-b`: bindless-ready material/object/draw/mesh tables and backend table/staging foundation。
 - `REQ-073-c`: material source shader variant 和 final shader reflection。
 
 ## 后续工作

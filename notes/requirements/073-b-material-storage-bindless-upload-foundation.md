@@ -1,6 +1,6 @@
 # REQ-073-b: Material Storage And Bindless Upload Foundation
 
-> 2026-06-13 拆分：原 `REQ-073-b` 同时包含 material storage、bindless tables、shader variant、indirect batching、RenderPath 术语迁移和 realtime hard cut，范围过大。本文件收窄为第一段实现：让 `REQ-073-a` 的 source-reflected material contract 真实进入 SceneResourceTable upload view 和 bindless-ready CPU/GPU 数据表。后续 shader variant、indirect batching 和 hard cut 分别由 `REQ-073-c`、`REQ-073-d`、`REQ-073-e` 承接。
+> 2026-06-13 拆分并收紧边界：原 `REQ-073-b` 同时包含 material storage、bindless tables、shader variant、indirect batching、RenderPath 术语迁移和 realtime hard cut，范围过大。本文件只保留第一段实现，但这段必须形成 foundation 闭环：`REQ-073-a` 的 source-reflected material contract 要真实进入 `SceneResourceTableUploadView`，并能被 backend/GPU resource table 消费为 bindless-ready texture/sampler/material/object/draw/mesh 数据。后续 shader variant、indirect batching 和 realtime hard cut 分别由 `REQ-073-c`、`REQ-073-d`、`REQ-073-e` 承接。
 
 ## 背景
 
@@ -10,10 +10,10 @@
 
 - 每个 material source 需要自己的 source-local material storage。
 - 缺失贴图不能继续靠 invalid texture index + shader 分支兜底。
-- texture、sampler、material、object、draw、mesh/geometry 数据必须能以全局 table 形式进入后续 shader 和 indirect draw。
+- texture、sampler、material、object、draw、mesh/geometry 数据必须能以全局 table 形式进入 backend/GPU resource table 的 bindless-ready staging。
 - upload view 必须能说明每个 material record 的 factor、texture slot、channel selector、source signature 和 source-local index。
 
-本 REQ 只建立这层 upload foundation；它不负责 shader URI 迁移、不负责 indirect draw 覆盖、不删除旧默认路径。
+本 REQ 不只是 CPU-only view。它必须证明 backend 能消费这些 table 并建立稳定 slot/staging 数据；但它不负责 shader URI 迁移、不负责 RenderWorkQueue indirect batching、不负责删除旧 realtime 默认路径。
 
 ## 目标
 
@@ -21,14 +21,15 @@
 2. 为 `white`、`black`、`flatNormal` 默认纹理建立稳定 resource identity 和 table slot。
 3. 让 `Kd`、`metallic`、`roughness`、`ao`、`emissive`、`normalmap` 以 factor × texture/channel 形式进入 material record。
 4. 建立 bindless-ready 的 texture、sampler、material、object、draw、mesh/geometry table 数据。
-5. 输出可审计 diagnostics，证明 material record 来自 `bsdf.source` 反射，而不是旧 `MaterialUBO` bytes。
+5. 让 backend/GPU resource table 可以消费 upload view，建立或更新对应 table/slot/staging 数据。
+6. 输出可审计 diagnostics，证明 material record 来自 `bsdf.source` 反射，而不是旧 `MaterialUBO` bytes。
 
 ## 非目标
 
 - 不实现 RenderPath material source shader variant 展开；由 `REQ-073-c` 处理。
 - 不迁移 `assets/shaders/glsl/techniques/` 到 `render_paths/`；由 `REQ-073-c` 处理。
-- 不要求所有 raster work item 进入 indirect batch；由 `REQ-073-d` 处理。
-- 不删除 realtime 旧 descriptor / per-item fallback；由 `REQ-073-e` 处理。
+- 不要求 RenderWorkQueue / geometry pass 默认消费新 table 生成 indirect batch；由 `REQ-073-d` 处理。
+- 不删除 realtime 旧 descriptor / per-item fallback / 旧 `SceneGpuMaterialRecord` 默认路径；由 `REQ-073-e` 处理。
 - 不处理 OfflineRT 配置入口；由 `REQ-073-f` / `REQ-073-g` 处理。
 - 不实现 package、pipeline cache blob 或 BC7 压缩。
 
@@ -43,7 +44,7 @@
 - 每个 storage 记录自己的 source signature、source URI、reflection hash 和 storage ABI hash。
 - 同一 source signature 下的 material 使用连续的 source-local material index。
 - 不同 source signature 不能共享 material record layout 或 source-local index 空间。
-- object/draw record 中引用 material 时，必须能追踪到 `{source signature, source-local material index}`。
+- object/draw record 中引用 material 时，必须能追踪到 `{source signature, source-local material index}`；旧全局 material index 如暂时保留，只能作为 legacy shadow index，不能作为 source-local record 的替代。
 - 如果同一 source signature 反射出不一致 layout，必须报告 engine invariant violation；不得 fallback、拆第二套 layout 或静默选择其中一个。
 
 ### R2: Material Record Contents
@@ -59,12 +60,14 @@ material record SHALL 只保存 shader 需要的结构化数据。
 | texture slots | baseColor、metallic/roughness、AO、emissive、normal 或默认纹理 slot |
 | channel selector | packed metallic/roughness/AO 的通道选择 |
 | flags | alpha、normal map、double-sided 等后续可扩展位 |
+| source-local material index | 当前 material 在本 source storage 内的连续 index |
 
 规则：
 
 - material record 不保存 material URI 字符串、backend object pointer 或旧 `MaterialUBO` bytes。
 - texture 是否存在、texture id、material URI、material handle 和参数值不能改变 source signature。
 - source 不支持的参数必须在 parser/contract 阶段失败，upload 阶段不能补隐式语义。
+- 当前首版 `SourceLocalMaterialRecord` 可以保留固定 C++ 结构或 bytes payload，但 payload 内容必须来自 contract reflection 和 MaterialInstance 参数，不得从旧 `SceneGpuMaterialRecord` 反向推导。
 
 ### R3: Default Texture Resources
 
@@ -83,11 +86,12 @@ Resource table / upload path SHALL 注册稳定的默认纹理资源。
 - 默认纹理有稳定 resource identity。
 - 默认纹理只注册/上传一次。
 - 缺失贴图指向默认 texture table slot，不创建材质本地 placeholder。
+- backend/GPU resource table 能为默认纹理建立稳定 bindless/table slot。
 - shader 后续仍走同一采样路径，不需要 `hasSceneTexture` 分支判断缺失贴图。
 
 ### R4: Bindless-ready Tables
 
-upload view SHALL 提供后续 backend 可直接消费的 table 数据。
+upload view SHALL 提供 backend 可直接消费的 table 数据。
 
 最低表：
 
@@ -96,17 +100,35 @@ upload view SHALL 提供后续 backend 可直接消费的 table 数据。
 | texture table | imported textures + default textures |
 | sampler table | sampler state |
 | material storage table | per-source material records |
-| object table | transform、mesh/material/source-local index、visibility |
-| draw table | object/material/mesh/draw offsets |
+| object table | transform、mesh/source-local material index、visibility |
+| draw table | object/source-local material/mesh/draw offsets |
 | mesh/geometry table | global position/index/attribute stream ranges |
 
 要求：
 
 - 所有 table entry 只保存 handle、slot、offset、count 和结构签名，不保存 backend object pointer。
 - 同一 canonical texture URI 在 texture table 中去重。
-- mesh/geometry table 首版可以保留现有 buffer 分组，但必须输出拆分原因，供 `REQ-073-d` 判断 indirect batch compatibility。
+- mesh/geometry table 首版可以保留现有 buffer 分组，但必须输出 table export 的 unsupported/skip 原因；batch compatibility split diagnostics 由 `REQ-073-d` 处理。
 
-### R5: Diagnostics
+### R5: Backend/GPU Resource Table Foundation
+
+backend/GPU resource table SHALL 能消费 `SceneResourceTableUploadView` 的 bindless-ready tables。
+
+最低要求：
+
+- imported texture 与 default texture 建立稳定 bindless/table slot。
+- sampler state 进入 sampler table 或等价 descriptor staging。
+- per-source material records 进入 material storage table 或等价 upload buffer staging。
+- object、draw、mesh/geometry table 进入 backend 可追踪的 staging/buffer 描述。
+- backend diagnostics 能把每个 slot / staging record 追踪回 resource identity、source signature 和 source-local material index。
+
+约束：
+
+- 本 REQ 只要求 backend 能建立 table/slot/staging 数据；不要求 realtime renderer 默认 path 已经绑定并消费这些 table。
+- 如果 backend 暂时不能上传某类 table，必须输出 unsupported diagnostic 并使对应验证失败，不能静默忽略。
+- 不允许用 per-material descriptor 或旧 `MaterialUBO` upload 证明 bindless foundation 成功。
+
+### R6: Diagnostics
 
 upload view / validation profile SHALL 输出可审计 diagnostics：
 
@@ -115,9 +137,10 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - 默认纹理 slot。
 - texture table 去重统计。
 - object/draw/material index 映射。
+- backend table/slot/staging 统计。
 - 无法进入 bindless-ready table 的资源和原因。
 
-缺少默认纹理、缺少 source signature、material record layout 不一致、texture slot 无效时必须 fail-fast。
+缺少默认纹理、缺少 source signature、material record layout 不一致、texture slot 无效、source-local material index 无效、backend table upload 不支持时必须 fail-fast。
 
 ## 测试
 
@@ -152,7 +175,17 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 
 构造含 mesh、material、texture、object 的小场景，断言 upload view 导出 texture/material/object/draw/mesh table，并且 handle/slot/index 可互相追踪。
 
-### T5: Negative Diagnostics
+### T5: Backend Table Consumption
+
+构造含 imported texture、默认纹理、source-local material storage、object、draw、mesh/geometry 的小场景，断言 backend/GPU resource table 能消费 upload view 并建立：
+
+- imported/default texture slots。
+- sampler table 或 descriptor staging。
+- material storage staging。
+- object/draw/mesh table staging。
+- slot/staging 到 resource identity 和 source-local material index 的 diagnostics。
+
+### T6: Negative Diagnostics
 
 覆盖：
 
@@ -161,6 +194,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - source signature layout 冲突。
 - texture dependency 无法解析。
 - object 指向无效 source-local material index。
+- backend 不支持 required table upload。
 
 ## 修改范围
 
@@ -168,8 +202,10 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - `src/core/asset/material_instance.*`
 - `src/core/scene/scene_resource_table*`
 - `src/core/scene/scene_gpu_records.*`
+- backend/GPU resource table table/slot/staging foundation
 - material loader / glTF loader / PBRT converter 的 material record 输入路径
 - scene resource upload view tests
+- backend table consumption tests
 - material source contract tests
 
 ## 边界与约束
@@ -177,7 +213,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - 不写 shader runtime source/type branch。
 - 不用旧 `MaterialUBO` bytes 作为 material record 通过条件。
 - 不为缺失贴图创建材质本地 placeholder。
-- 不在本 REQ 删除旧 draw fallback；这里只让新数据可用且可诊断。
+- 不在本 REQ 删除旧 draw fallback；这里只让新数据和 backend table/staging 可用且可诊断。
 
 ## 依赖
 

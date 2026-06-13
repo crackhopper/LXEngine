@@ -6,7 +6,7 @@
 
 在 foundation、shader variant 和 indirect batching 都落地后，系统仍可能保留这些旧入口：
 
-- 旧共享 `MaterialUBO` 作为 PBR 参数真相。
+- 旧共享 `MaterialUBO` / `SceneGpuMaterialRecord` 作为 PBR 参数真相。
 - per-material descriptor 或 non-bindless per-item draw fallback。
 - material-local technique / defaultTechnique。
 - `techniques/...` shader URI 默认路径。
@@ -40,7 +40,7 @@ realtime 默认路径 SHALL 不再把旧共享 `MaterialUBO` / `SceneGpuMaterial
 
 - Forward / Deferred PBR shader 只通过 Material Accessor ABI 读取材质。
 - upload path 的正向验证只读取 source-reflected material record。
-- old material record 如暂时保留，必须位于 named legacy rejection/audit 或非默认兼容层。
+- `REQ-073-b` 如果为了过渡仍保留旧 material span 或 legacy shadow index，本 REQ 必须把它从 realtime 默认成功路径中删除或隔离到 named legacy rejection/audit。
 - ordinary positive tests 不得以旧 `MaterialUBO` 字段作为成功条件。
 
 ### R2: Remove Per-material Descriptor Fallback
