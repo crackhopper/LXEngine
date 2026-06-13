@@ -7,6 +7,13 @@
 // parameter: Kd required rgb texture spectrum
 // parameter: sigma required float texture
 // parameter: normalmap optional texture
+// storageField: baseColor vec4 parameter Kd value default=1,1,1,1
+// storageField: baseColorTexture textureSlot parameter Kd texture defaultTexture=white
+// storageField: baseColorChannel channelSelector parameter Kd channel default=rgba
+// storageField: sigma float parameter sigma value default=0
+// storageField: sigmaTexture textureSlot parameter sigma texture defaultTexture=white
+// storageField: sigmaChannel channelSelector parameter sigma channel default=r
+// storageField: normalTexture textureSlot parameter normalmap texture defaultTexture=flatNormal
 // LX_MATERIAL_CONTRACT_END
 
 #include "../material_surface.glsl"

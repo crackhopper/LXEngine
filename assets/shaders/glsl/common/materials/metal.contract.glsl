@@ -9,6 +9,15 @@
 // parameter: uroughness optional float texture
 // parameter: vroughness optional float texture
 // parameter: normalmap optional texture
+// storageField: eta vec4 parameter eta value default=1,1,1,1
+// storageField: k vec4 parameter k value default=1,1,1,1
+// storageField: uRoughness float parameter uroughness value default=0.25
+// storageField: uRoughnessTexture textureSlot parameter uroughness texture defaultTexture=white
+// storageField: uRoughnessChannel channelSelector parameter uroughness channel default=r
+// storageField: vRoughness float parameter vroughness value default=0.25
+// storageField: vRoughnessTexture textureSlot parameter vroughness texture defaultTexture=white
+// storageField: vRoughnessChannel channelSelector parameter vroughness channel default=r
+// storageField: normalTexture textureSlot parameter normalmap texture defaultTexture=flatNormal
 // LX_MATERIAL_CONTRACT_END
 
 #include "../material_surface.glsl"

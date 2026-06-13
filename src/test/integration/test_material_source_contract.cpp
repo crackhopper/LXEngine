@@ -291,6 +291,35 @@ void expectContractParameters(
   }
 }
 
+bool storageFieldReferencesKnownInput(
+    const LX_core::MaterialContractReflection &reflection,
+    const LX_core::MaterialContractStorageField &field) {
+  if (field.inputKind ==
+      LX_core::MaterialContractStorageInputKind::Constant) {
+    return true;
+  }
+  return reflection.findParameter(field.parameterName).has_value();
+}
+
+void expectSupportedContractStorageFields(
+    const LX_core::MaterialContractReflection &reflection,
+    std::string_view path) {
+  if (reflection.supportStatus !=
+      LX_core::MaterialContractSupportStatus::Supported) {
+    return;
+  }
+
+  EXPECT(!reflection.storageFields.empty(),
+         std::string(path) +
+             " supported contract should declare storage fields");
+  for (const LX_core::MaterialContractStorageField &field :
+       reflection.storageFields) {
+    EXPECT(storageFieldReferencesKnownInput(reflection, field),
+           std::string(path) + " storage field " + field.name +
+               " should reference a declared parameter or constant");
+  }
+}
+
 LX_infra::MaterialContractReflectionResult makeParserContract(
     const LX_core::ResourceUri &sourceUri, std::string_view sourceText) {
   EXPECT(!sourceText.empty(),
@@ -732,6 +761,7 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
            {"amount", true, {Kind::Float}},
            {"normalmap", false, {Kind::Texture}}});
     }
+    expectSupportedContractStorageFields(reflection, path);
 
     const auto loaded =
         LX_infra::loadMaterialContractSourceText(LX_core::ResourceUri(path));
