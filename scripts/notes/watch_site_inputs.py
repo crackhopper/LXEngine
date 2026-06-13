@@ -18,6 +18,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 NOTES_DIR = REPO_ROOT / "notes"
+SUPERPOWERS_SRC_DIR = REPO_ROOT / "docs" / "superpowers"
 MKDOCS_SRC = REPO_ROOT / "mkdocs.yml"
 NAV_CONFIG = NOTES_DIR / "nav.yml"
 GENERATOR = REPO_ROOT / "scripts" / "notes" / "generate_site_config.py"
@@ -76,12 +77,13 @@ def should_watch(path: Path) -> bool:
         or path == NAV_CONFIG
         or path == GENERATOR
         or path == SOURCE_ANALYSIS_SCRIPT
+        or SUPERPOWERS_SRC_DIR in path.parents
         or NOTES_DIR in path.parents
     )
 
 
 def iter_watch_files() -> list[Path]:
-    roots = [NOTES_DIR, REPO_ROOT / "scripts" / "notes"]
+    roots = [NOTES_DIR, SUPERPOWERS_SRC_DIR, REPO_ROOT / "scripts" / "notes"]
     if SOURCE_ANALYSIS_SCRIPT.parent.is_dir():
         roots.append(SOURCE_ANALYSIS_SCRIPT.parent)
 

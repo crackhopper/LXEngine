@@ -5,8 +5,9 @@
 #   1. 扫描 notes/requirements/*.md (不含 index.md / README.md / finished/)，按文件名编号展示实施队列
 #   2. 确保 notes/requirements/index.md 存在 (否则生成一份默认索引)
 #   3. 扫描 notes/tools/*.md 并生成 tools/index.md
-#   4. 读取 notes/nav.yml 作为站点导航唯一来源
-#   5. 读取 mkdocs.yml -> 注入 nav / watch / hooks -> 写出 mkdocs.gen.yml
+#   4. 镜像近期活跃的 docs/superpowers/specs 与 plans 到 notes/superpowers/
+#   5. 读取 notes/nav.yml 作为站点导航唯一来源
+#   6. 读取 mkdocs.yml -> 注入 nav / watch / hooks -> 写出 mkdocs.gen.yml
 #
 # 由 scripts/notes/serve_site.sh 调用。
 
@@ -15,7 +16,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
+from dataclasses import dataclass
+from datetime import date, timedelta
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -27,6 +31,12 @@ REQ_DIR = NOTES_DIR / "requirements"
 TOOLS_DIR = NOTES_DIR / "tools"
 ROADMAPS_DIR = NOTES_DIR / "roadmaps"
 TEMPORARY_DIR = NOTES_DIR / "temporary"
+SUPERPOWERS_SRC_DIR = REPO_ROOT / "docs" / "superpowers"
+SUPERPOWERS_SPECS_SRC_DIR = SUPERPOWERS_SRC_DIR / "specs"
+SUPERPOWERS_PLANS_SRC_DIR = SUPERPOWERS_SRC_DIR / "plans"
+SUPERPOWERS_NOTES_DIR = NOTES_DIR / "superpowers"
+SUPERPOWERS_SPECS_NOTES_DIR = SUPERPOWERS_NOTES_DIR / "specs"
+SUPERPOWERS_PLANS_NOTES_DIR = SUPERPOWERS_NOTES_DIR / "plans"
 MKDOCS_SRC = REPO_ROOT / "mkdocs.yml"
 MKDOCS_GEN = REPO_ROOT / "mkdocs.gen.yml"
 NAV_CONFIG = NOTES_DIR / "nav.yml"
@@ -41,8 +51,23 @@ WILDCARD_CHAT_HOSTS = {"0.0.0.0", "::", "[::]"}
 NAV_SECTION_TITLE = "需求（进行中）"
 TOOLS_SECTION_TITLE = "相关工具"
 TEMPORARY_SECTION_TITLE = "临时笔记"
+SUPERPOWERS_SECTION_TITLE = "Superpowers"
+SUPERPOWERS_SPECS_SECTION_TITLE = "设计 Specs"
+SUPERPOWERS_PLANS_SECTION_TITLE = "执行 Plans"
+DEFAULT_SUPERPOWERS_RECENT_DAYS = 0
+DEFAULT_SUPERPOWERS_ACTIVE_REQS = "073"
 HEADING_RE = re.compile(r"^#\s+(.+?)\s*$")
 NATURAL_TOKEN_RE = re.compile(r"(\d+)")
+DATED_SUPERPOWERS_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-.+\.md$")
+REQ_TOKEN_RE = re.compile(r"(?<!\d)(\d{3})(?:-?([a-z]))?(?!\d)")
+
+
+@dataclass(frozen=True)
+class SuperpowersDoc:
+    source: Path
+    target: Path
+    nav_path: str
+    title: str
 
 
 def natural_name_key(name: str) -> list[tuple[int, object]]:
@@ -123,6 +148,174 @@ def discover_temporary() -> list[Path]:
     ]
     files.sort(key=lambda p: natural_name_key(p.name))
     return files
+
+
+def parse_dated_superpowers_name(name: str) -> date | None:
+    m = DATED_SUPERPOWERS_RE.match(name)
+    if not m:
+        return None
+    return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def collect_active_requirement_tokens(req_files: list[Path]) -> set[str]:
+    configured = os.environ.get(
+        "NOTES_SUPERPOWERS_ACTIVE_REQS",
+        DEFAULT_SUPERPOWERS_ACTIVE_REQS,
+    )
+    configured = configured.strip().lower()
+    if configured and configured != "auto":
+        return {
+            token.strip()
+            for token in re.split(r"[,;\s]+", configured)
+            if token.strip()
+        }
+
+    tokens: set[str] = set()
+    for req_file in req_files:
+        m = REQ_TOKEN_RE.search(req_file.name.lower())
+        if not m:
+            continue
+        number = m.group(1)
+        suffix = m.group(2)
+        tokens.add(number)
+        if suffix:
+            tokens.add(f"{number}-{suffix}")
+            tokens.add(f"{number}{suffix}")
+    return tokens
+
+
+def is_active_superpowers_doc(path: Path, active_req_tokens: set[str]) -> bool:
+    if path.name == "README.md":
+        return False
+
+    name = path.name.lower()
+    if any(token in name for token in active_req_tokens):
+        return True
+
+    recent_days = int(
+        os.environ.get("NOTES_SUPERPOWERS_RECENT_DAYS", str(DEFAULT_SUPERPOWERS_RECENT_DAYS))
+    )
+    if recent_days <= 0:
+        return False
+
+    doc_date = parse_dated_superpowers_name(path.name)
+    if doc_date is None:
+        return False
+    active_from = date.today() - timedelta(days=recent_days)
+    return doc_date >= active_from
+
+
+def discover_active_superpowers_docs(
+    source_dir: Path,
+    target_dir: Path,
+    nav_prefix: str,
+    active_req_tokens: set[str],
+) -> list[SuperpowersDoc]:
+    if not source_dir.is_dir():
+        return []
+
+    docs: list[SuperpowersDoc] = []
+    for source in sorted(source_dir.glob("*.md"), key=lambda p: natural_name_key(p.name)):
+        if not is_active_superpowers_doc(source, active_req_tokens):
+            continue
+        target = target_dir / source.name
+        docs.append(
+            SuperpowersDoc(
+                source=source,
+                target=target,
+                nav_path=f"{nav_prefix}/{source.name}",
+                title=extract_title(source, source.stem),
+            )
+        )
+    return docs
+
+
+def clean_generated_superpowers_dir() -> None:
+    if SUPERPOWERS_NOTES_DIR.exists():
+        shutil.rmtree(SUPERPOWERS_NOTES_DIR)
+    SUPERPOWERS_SPECS_NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    SUPERPOWERS_PLANS_NOTES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def copy_superpowers_docs(docs: list[SuperpowersDoc]) -> None:
+    for doc in docs:
+        doc.target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(doc.source, doc.target)
+
+
+def write_superpowers_collection_index(
+    target_dir: Path,
+    title: str,
+    docs: list[SuperpowersDoc],
+) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"# {title}",
+        "",
+        "本页由 `scripts/notes/generate_site_config.py` 自动生成。这里只镜像当前活跃需求编号命中的 Superpowers 文档。默认活跃编号为 `073`；可用 `NOTES_SUPERPOWERS_ACTIVE_REQS` 调整，或用 `NOTES_SUPERPOWERS_RECENT_DAYS` 临时打开最近 N 天窗口。",
+        "",
+    ]
+    if docs:
+        for doc in docs:
+            source_rel = doc.source.relative_to(REPO_ROOT).as_posix()
+            lines.append(f"- [{doc.title}]({doc.target.name}) — `{source_rel}`")
+    else:
+        lines.append("当前没有活跃文档。")
+    lines.append("")
+    write_text_if_changed(target_dir / "index.md", "\n".join(lines))
+
+
+def write_superpowers_index(
+    spec_docs: list[SuperpowersDoc],
+    plan_docs: list[SuperpowersDoc],
+) -> None:
+    SUPERPOWERS_NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Superpowers 当前工作",
+        "",
+        "这个入口把 `docs/superpowers/specs/` 和 `docs/superpowers/plans/` 中近期活跃的文档镜像到 notes 站点，便于在浏览器里审阅设计和执行计划。",
+        "",
+        f"- [设计 Specs](specs/index.md)：{len(spec_docs)} 篇",
+        f"- [执行 Plans](plans/index.md)：{len(plan_docs)} 篇",
+        "",
+        "历史已完成文档仍保留在 `docs/superpowers/`，但默认不进入网页导航，避免审阅当前需求时被旧内容淹没。",
+        "",
+    ]
+    write_text_if_changed(SUPERPOWERS_NOTES_DIR / "index.md", "\n".join(lines))
+
+
+def mirror_active_superpowers_docs(
+    req_files: list[Path],
+) -> tuple[list[SuperpowersDoc], list[SuperpowersDoc]]:
+    active_req_tokens = collect_active_requirement_tokens(req_files)
+    spec_docs = discover_active_superpowers_docs(
+        SUPERPOWERS_SPECS_SRC_DIR,
+        SUPERPOWERS_SPECS_NOTES_DIR,
+        "superpowers/specs",
+        active_req_tokens,
+    )
+    plan_docs = discover_active_superpowers_docs(
+        SUPERPOWERS_PLANS_SRC_DIR,
+        SUPERPOWERS_PLANS_NOTES_DIR,
+        "superpowers/plans",
+        active_req_tokens,
+    )
+
+    clean_generated_superpowers_dir()
+    copy_superpowers_docs(spec_docs)
+    copy_superpowers_docs(plan_docs)
+    write_superpowers_collection_index(
+        SUPERPOWERS_SPECS_NOTES_DIR,
+        SUPERPOWERS_SPECS_SECTION_TITLE,
+        spec_docs,
+    )
+    write_superpowers_collection_index(
+        SUPERPOWERS_PLANS_NOTES_DIR,
+        SUPERPOWERS_PLANS_SECTION_TITLE,
+        plan_docs,
+    )
+    write_superpowers_index(spec_docs, plan_docs)
+    return spec_docs, plan_docs
 
 
 def load_source_analysis_targets() -> list[object]:
@@ -327,6 +520,8 @@ def expand_nav_token(
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
     source_analysis_targets: list[object],
+    superpowers_spec_docs: list[SuperpowersDoc],
+    superpowers_plan_docs: list[SuperpowersDoc],
 ) -> list[dict]:
     if token == "@requirements":
         return [
@@ -339,6 +534,16 @@ def expand_nav_token(
         return [build_generated_nav_item(p) for p in temporary_files]
     if token == "@source_analysis":
         return [{target.title: target.output.removeprefix("notes/")} for target in source_analysis_targets]
+    if token == "@superpowers_specs":
+        return [
+            build_generated_nav_item(doc.target, doc.nav_path)
+            for doc in superpowers_spec_docs
+        ]
+    if token == "@superpowers_plans":
+        return [
+            build_generated_nav_item(doc.target, doc.nav_path)
+            for doc in superpowers_plan_docs
+        ]
     raise ValueError(f"unsupported nav token '{token}'")
 
 
@@ -349,6 +554,8 @@ def normalize_nav_list(
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
     source_analysis_targets: list[object],
+    superpowers_spec_docs: list[SuperpowersDoc],
+    superpowers_plan_docs: list[SuperpowersDoc],
 ) -> list:
     normalized: list = []
     for index, entry in enumerate(entries):
@@ -361,6 +568,8 @@ def normalize_nav_list(
                     roadmap_dirs,
                     temporary_files,
                     source_analysis_targets,
+                    superpowers_spec_docs,
+                    superpowers_plan_docs,
                 )
             )
             continue
@@ -372,6 +581,8 @@ def normalize_nav_list(
                 roadmap_dirs,
                 temporary_files,
                 source_analysis_targets,
+                superpowers_spec_docs,
+                superpowers_plan_docs,
             )
         )
     return normalized
@@ -384,6 +595,8 @@ def normalize_nav_entry(
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
     source_analysis_targets: list[object],
+    superpowers_spec_docs: list[SuperpowersDoc],
+    superpowers_plan_docs: list[SuperpowersDoc],
 ) -> object:
     if isinstance(entry, str):
         return validate_note_path(entry, context)
@@ -408,6 +621,8 @@ def normalize_nav_entry(
                     roadmap_dirs,
                     temporary_files,
                     source_analysis_targets,
+                    superpowers_spec_docs,
+                    superpowers_plan_docs,
                 )
             }
 
@@ -421,6 +636,8 @@ def load_nav_config(
     roadmap_dirs: list[Path],
     temporary_files: list[Path],
     source_analysis_targets: list[object],
+    superpowers_spec_docs: list[SuperpowersDoc],
+    superpowers_plan_docs: list[SuperpowersDoc],
 ) -> list:
     if not NAV_CONFIG.is_file():
         raise FileNotFoundError(f"{NAV_CONFIG} not found")
@@ -439,6 +656,8 @@ def load_nav_config(
         roadmap_dirs,
         temporary_files,
         source_analysis_targets,
+        superpowers_spec_docs,
+        superpowers_plan_docs,
     )
 
 
@@ -455,6 +674,9 @@ def inject_into_mkdocs(req_files: list[Path], tool_files: list[Path], nav: list)
     rel_notes = os.path.relpath(NOTES_DIR, REPO_ROOT)
     if rel_notes not in watch:
         watch.append(rel_notes)
+    rel_superpowers = os.path.relpath(SUPERPOWERS_SRC_DIR, REPO_ROOT)
+    if rel_superpowers not in watch:
+        watch.append(rel_superpowers)
     rel_nav = os.path.relpath(NAV_CONFIG, REPO_ROOT)
     if rel_nav not in watch:
         watch.append(rel_nav)
@@ -486,7 +708,7 @@ def inject_into_mkdocs(req_files: list[Path], tool_files: list[Path], nav: list)
 
     header = (
         "# AUTO-GENERATED by scripts/notes/generate_site_config.py — DO NOT EDIT.\n"
-        "# Source: mkdocs.yml + notes/nav.yml + notes/requirements/*.md + notes/tools/*.md\n"
+        "# Source: mkdocs.yml + notes/nav.yml + notes/requirements/*.md + notes/tools/*.md + docs/superpowers/{specs,plans}/*.md\n"
     )
     rendered = header + yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False)
     MKDOCS_GEN.write_text(rendered, encoding="utf-8")
@@ -505,7 +727,15 @@ def main() -> int:
     write_index(req_files)
     write_tools_index(tool_files)
     write_temporary_index(temporary_files)
-    nav = load_nav_config(req_files, roadmap_dirs, temporary_files, source_analysis_targets)
+    superpowers_spec_docs, superpowers_plan_docs = mirror_active_superpowers_docs(req_files)
+    nav = load_nav_config(
+        req_files,
+        roadmap_dirs,
+        temporary_files,
+        source_analysis_targets,
+        superpowers_spec_docs,
+        superpowers_plan_docs,
+    )
     inject_into_mkdocs(req_files, tool_files, nav)
 
     print(f">> Generated {MKDOCS_GEN.relative_to(REPO_ROOT)}")
@@ -522,6 +752,12 @@ def main() -> int:
     print(f"   {TEMPORARY_SECTION_TITLE}: {len(temporary_files)} 篇")
     for p in temporary_files:
         print(f"     - {p.name}")
+    print(f"   {SUPERPOWERS_SECTION_TITLE}/{SUPERPOWERS_SPECS_SECTION_TITLE}: {len(superpowers_spec_docs)} 篇")
+    for doc in superpowers_spec_docs:
+        print(f"     - {doc.source.relative_to(SUPERPOWERS_SRC_DIR).as_posix()}")
+    print(f"   {SUPERPOWERS_SECTION_TITLE}/{SUPERPOWERS_PLANS_SECTION_TITLE}: {len(superpowers_plan_docs)} 篇")
+    for doc in superpowers_plan_docs:
+        print(f"     - {doc.source.relative_to(SUPERPOWERS_SRC_DIR).as_posix()}")
     return 0
 
 
