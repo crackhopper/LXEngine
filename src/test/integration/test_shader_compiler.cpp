@@ -218,7 +218,7 @@ static ShaderVariant materialContractSourceVariant() {
   return ShaderVariant{
       .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
       .enabled = true,
-      .macroValue = "\"common/materials/uber.contract.glsl\"",
+      .macroValue = "\"common/materials/standard_pbr.contract.glsl\"",
   };
 }
 
@@ -265,9 +265,26 @@ static bool testPbrShadersUseMaterialAccessorAbi(
                 << " should expose the material contract source hook\n";
       return false;
     }
+    if (source.find("#include \"common/material_bsdf.glsl\"") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should include common/material_bsdf.glsl\n";
+      return false;
+    }
     if (source.find("lxLoadMaterialSurface") == std::string::npos) {
       std::cerr << "  FAIL: " << shader.label
                 << " should call lxLoadMaterialSurface\n";
+      return false;
+    }
+    if (source.find("lxEvaluateBsdf") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxEvaluateBsdf\n";
+      return false;
+    }
+    if (std::string(shader.label) == "OfflineRT direct ray" &&
+        source.find("lxSampleBsdf") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxSampleBsdf\n";
       return false;
     }
     if (source.find("struct lxSceneMaterialRecord") != std::string::npos) {
@@ -278,6 +295,71 @@ static bool testPbrShadersUseMaterialAccessorAbi(
   }
 
   std::cout << "  PASS: PBR shaders use Material Accessor ABI source hook\n";
+  return true;
+}
+
+static bool testVariantOnlyShaderNakedCompileFailsWithDiagnostic(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Variant-only shader naked compile diagnostic\n";
+  std::cout << "========================================\n";
+
+  const auto fragPath =
+      shaderDir / "techniques" / "Forward" / "pbr.frag";
+  const auto compileResult = ShaderCompiler::compileFile(fragPath, {});
+  if (compileResult.success) {
+    std::cerr << "  FAIL: pbr.frag naked compile should fail without "
+                 "LX_MATERIAL_CONTRACT_SOURCE\n";
+    return false;
+  }
+  if (compileResult.errorMessage.find("LX_MATERIAL_CONTRACT_SOURCE") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: naked compile diagnostic should name "
+                 "LX_MATERIAL_CONTRACT_SOURCE: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  std::cout << "  PASS: naked variant-only shader compile fails clearly\n";
+  return true;
+}
+
+static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Material source variants compile variant-only shaders\n";
+  std::cout << "========================================\n";
+
+  const std::vector<ShaderVariant> variants = withMaterialContractSource();
+  const auto forward = ShaderCompiler::compileProgram(
+      shaderDir / "techniques" / "Forward" / "pbr.vert",
+      shaderDir / "techniques" / "Forward" / "pbr.frag", variants);
+  if (!forward.success) {
+    std::cerr << "  FAIL: Forward material source variant compile failed: "
+              << forward.errorMessage << "\n";
+    return false;
+  }
+
+  const auto deferred = ShaderCompiler::compileProgram(
+      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert",
+      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag", variants);
+  if (!deferred.success) {
+    std::cerr << "  FAIL: Deferred material source variant compile failed: "
+              << deferred.errorMessage << "\n";
+    return false;
+  }
+
+  const auto offline = ShaderCompiler::compileFile(
+      shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp",
+      variants);
+  if (!offline.success) {
+    std::cerr << "  FAIL: OfflineRT material source variant compile failed: "
+              << offline.errorMessage << "\n";
+    return false;
+  }
+
+  std::cout << "  PASS: Forward, Deferred, and OfflineRT material source "
+               "variants compile\n";
   return true;
 }
 
@@ -1140,6 +1222,10 @@ int main(int argc, char *argv[]) {
   int failures = 0;
 
   if (!testPbrShadersUseMaterialAccessorAbi(shaderDir))
+    ++failures;
+  if (!testVariantOnlyShaderNakedCompileFailsWithDiagnostic(shaderDir))
+    ++failures;
+  if (!testMaterialSourceVariantCompilesVariantOnlyShaders(shaderDir))
     ++failures;
 
   // Test 1: Contract-source PBR

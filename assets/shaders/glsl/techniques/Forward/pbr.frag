@@ -2,6 +2,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "common/material_surface.glsl"
+#include "common/material_bsdf.glsl"
 #include "common/pbr.glsl"
 #if defined(LX_MATERIAL_CONTRACT_SOURCE)
 #include LX_MATERIAL_CONTRACT_SOURCE
@@ -82,7 +83,19 @@ void main() {
     pbrInput.ao = ao;
     pbrInput.emissive = max(surface.emissive, vec3(0.0));
 
-    vec3 Lo = lxPbrDirectLight(pbrInput);
+    LxBsdfEvaluateInput bsdfInput;
+    bsdfInput.normal = N;
+    bsdfInput.wi = L;
+    bsdfInput.wo = V;
+    bsdfInput.baseColor = albedo.rgb;
+    bsdfInput.metallic = metallic;
+    bsdfInput.roughness = roughness;
+    bsdfInput.ao = ao;
+    bsdfInput.emissive = pbrInput.emissive;
+    LxBsdfEvaluateOutput bsdf = lxEvaluateBsdf(bsdfInput);
+
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 Lo = bsdf.value * pbrInput.lightColor * NdotL * ao;
     vec3 F0 = lxPbrF0(albedo.rgb, metallic);
 
     vec3 ambient = vec3(0.0);

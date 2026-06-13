@@ -31,25 +31,7 @@
 // LX_MATERIAL_CONTRACT_END
 
 #include "../material_surface.glsl"
-
-struct LxBsdfEvaluateInput {
-  vec3 baseColor;
-  vec3 normal;
-};
-
-struct LxBsdfEvaluateOutput {
-  vec3 value;
-};
-
-struct LxBsdfSampleInput {
-  vec3 normal;
-};
-
-struct LxBsdfSampleOutput {
-  vec3 wi;
-  vec3 value;
-  float pdf;
-};
+#include "../material_bsdf.glsl"
 
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
   LxMaterialSurface surface;
@@ -66,15 +48,9 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geomet
 }
 
 LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput) {
-  LxBsdfEvaluateOutput output;
-  output.value = bsdfInput.baseColor;
-  return output;
+  return lxEvaluateLambertLikeBsdf(bsdfInput);
 }
 
 LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput) {
-  LxBsdfSampleOutput output;
-  output.wi = bsdfInput.normal;
-  output.value = vec3(1.0);
-  output.pdf = 1.0;
-  return output;
+  return lxSampleCosineHemisphereBsdf(bsdfInput);
 }

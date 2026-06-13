@@ -2,6 +2,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "common/material_surface.glsl"
+#include "common/material_bsdf.glsl"
 #if defined(LX_MATERIAL_CONTRACT_SOURCE)
 #include LX_MATERIAL_CONTRACT_SOURCE
 #else
@@ -48,7 +49,19 @@ void main() {
     vec3 N = normalize(surface.normal);
     vec3 emissive = max(surface.emissive, vec3(0.0));
 
-    outAlbedoAlpha = vec4(albedo.rgb, albedo.a);
+    LxBsdfEvaluateInput bsdfInput;
+    bsdfInput.normal = N;
+    bsdfInput.wi = N;
+    bsdfInput.wo = N;
+    bsdfInput.baseColor = albedo.rgb;
+    bsdfInput.metallic = metallic;
+    bsdfInput.roughness = roughness;
+    bsdfInput.ao = ao;
+    bsdfInput.emissive = emissive;
+    LxBsdfEvaluateOutput bsdf = lxEvaluateBsdf(bsdfInput);
+    vec3 bsdfBaseColor = max(bsdf.value * LX_BSDF_PI, vec3(0.0));
+
+    outAlbedoAlpha = vec4(bsdfBaseColor, albedo.a);
     outNormalRoughness = vec4(normalize(N) * 0.5 + 0.5, roughness);
     outMaterial = vec4(metallic, ao, 0.0, 0.0);
     outAlbedoAlpha.rgb += emissive;
