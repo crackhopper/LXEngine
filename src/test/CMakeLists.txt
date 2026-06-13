@@ -166,6 +166,9 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   )
 
   add_dependencies(BuildTest ${TEST_EXE})
+  if(TARGET SyncShaderRuntimeSources)
+    add_dependencies(${TEST_EXE} SyncShaderRuntimeSources)
+  endif()
   lx_register_ctest(${TEST_EXE})
 
   # set_target_properties(${TEST_EXE} PROPERTIES
