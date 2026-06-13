@@ -1,6 +1,6 @@
 // LX_MATERIAL_CONTRACT_BEGIN
 // type: glass
-// status: supported
+// status: unsupported
 // reflectionHash: glass-source-contract-v1
 // storageAbiHash: pbrt-envelope-storage-v1
 // accessorAbiHash: material-surface-v1

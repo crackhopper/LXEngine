@@ -391,7 +391,7 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 ## 实施状态
 
-进行中。
+合同层已完成；GPU/bindless/indirect 验证由 `REQ-073-b` 承接。
 
 截至 2026-06-13，已落地：
 
@@ -402,21 +402,15 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 - RenderPathGraph 解析阶段只解析 shader source descriptor；遇到需要 `LX_MATERIAL_CONTRACT_SOURCE` 的 shader 时登记为 `requiresMaterialSourceVariant`，不在没有 material source 的阶段编译。普通 source-resolved shader 若缺 compiled/reflected payload 仍然失败。
 - glTF Helmet 和 PBRT BMW converter 输出路径显式写入并校验 `bsdf.source`。
 - `MaterialSurfaceSchema` 已从 Material v3 正向路径删除，仅保留 legacy/audit 测试引用。
-
-仍留在本 REQ 的未完成项：
-
-| 项目 | 为什么还没做 |
-|---|---|
-| material contract source 的 accessor ABI 负向测试仍不完整 | 当前已有 shader include 和 PBR pass 调用路径，但还缺“source 未实现 `lxLoadMaterialSurface`、返回结构缺字段、required binding 缺失”的专门测试；这些需要构造 fake/bad contract source，避免用真实 production source 污染测试资产 |
-| 同一 source signature 冲突 record layout 的 fake reflection 注入测试仍待补齐 | 代码已有 reflection set validation 的基础，但还没有专门测试把相同 source signature 和不同 layout 注入同一校验集合；这个属于 engine invariant 测试，不能用 fallback 或兼容路径掩盖 |
-| `glass` / `fourier` / `mix` 等 unsupported source 的加载期失败口径仍需复核 | 当前 contract source 文件存在，部分 source 可能只是近似 stub；还需要明确哪些 source 是 supported、哪些应 unsupported，并补加载失败诊断测试，避免把未完成物理表达伪装为准确材质 |
-| Helmet/BMW 低分辨率视觉 validation 尚未作为 073-a 完成门槛关闭 | 当前已校验 `bsdf.source` 写入和 headless auto 测试，但真正非全黑/材质近似正确性依赖后续 bindless/indirect GPU 上传路径，因此 073-a 只保留资产合同检查，不把视觉 smoke 伪装为已完成 |
+- Material Accessor ABI 已有负向 reflection 测试覆盖缺失 accessor、错误返回类型、错误参数、宏/注释/disabled preprocessor 伪装等失败路径。
+- 同一 source signature 反射出不一致参数 schema 或 accessor ABI 时已有 invariant validation 测试覆盖；它必须诊断为 engine invariant violation，不能 fallback 或拆第二个 layout。
+- `glass`、`fourier`、`mix` 当前没有准确 realtime contract，内置 contract source 标记为 unsupported，Material parser 必须加载期失败。
 
 已移交到后续需求：
 
 | 后续需求 | 移交内容 | 为什么不在 073-a 内完成 |
 |---|---|---|
-| `REQ-073-b` | source-reflected material storage ABI 的真实 GPU 上传、source-local material index、默认纹理 set、factor × texture material record、bindless texture/material table、indirect batch 和 Helmet/BMW realtime smoke | 这些内容需要 GPU table、bindless slot、backend submission 和 indirect draw 同时成立；在 073-a 的 parser/shader contract 阶段提前做只能得到局部假验证 |
+| `REQ-073-b` | source-reflected material storage ABI 的真实 GPU 上传、source-local material index、默认纹理 set、factor × texture material record、bindless texture/material table、indirect batch 和 Helmet/BMW realtime smoke / low-res visual validation | 这些内容需要 GPU table、bindless slot、backend submission 和 indirect draw 同时成立；在 073-a 的 parser/shader contract 阶段提前做只能得到局部假验证 |
 | `REQ-073-d` / `REQ-073-e` | OfflineRT RenderPathGraph compute path 和配置化入口 hard cut | OfflineRT 配置入口与实时 material contract 是相邻但独立的执行路径；本阶段只保证 Offline PBR direct shader 能使用 accessor ABI |
 | PBRT 后续专门需求 | 完整 PBRT `glass`、`fourier`、`mix`、conductor `eta/k` 的物理准确表达 | 073-a 的目标是建立统一合同和 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 |
 

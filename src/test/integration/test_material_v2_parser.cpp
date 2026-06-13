@@ -105,6 +105,23 @@ void expectParses(std::string_view label, std::string_view yamlText) {
          std::string(label) + " should parse without diagnostics");
 }
 
+void expectRejectsUnsupported(std::string_view label,
+                              std::string_view yamlText) {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, std::string("memory://") + std::string(label), yamlText);
+  expect(parsed.instance == nullptr,
+         std::string(label) + " should reject unsupported contract source");
+  bool mentionsUnsupported = false;
+  for (const std::string &diagnostic : parsed.diagnostics) {
+    mentionsUnsupported =
+        mentionsUnsupported || diagnostic.find("unsupported") != std::string::npos;
+  }
+  expect(mentionsUnsupported,
+         std::string(label) + " diagnostic should mention unsupported");
+}
+
 void testParserAcceptsMinimalRequiredBsdfs() {
   expectParses("matte", R"(
 schema: lxe.material.v2
@@ -116,7 +133,7 @@ bsdf:
     sigma: { kind: float, value: 0.0 }
 )");
 
-  expectParses("glass", R"(
+  expectRejectsUnsupported("glass", R"(
 schema: lxe.material.v2
 bsdf:
   type: glass
@@ -161,7 +178,7 @@ bsdf:
     vroughness: { kind: float, value: 0.35 }
 )");
 
-  expectParses("fourier", R"(
+  expectRejectsUnsupported("fourier", R"(
 schema: lxe.material.v2
 bsdf:
   type: fourier
@@ -170,7 +187,7 @@ bsdf:
     bsdffile: { kind: bsdfTable, uri: bsdf/fabric.bsdf }
 )");
 
-  expectParses("mix", R"(
+  expectRejectsUnsupported("mix", R"(
 schema: lxe.material.v2
 bsdf:
   type: mix

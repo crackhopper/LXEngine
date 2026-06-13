@@ -1,6 +1,6 @@
 // LX_MATERIAL_CONTRACT_BEGIN
 // type: mix
-// status: supported
+// status: unsupported
 // reflectionHash: mix-source-contract-v1
 // storageAbiHash: pbrt-envelope-storage-v1
 // accessorAbiHash: material-surface-v1

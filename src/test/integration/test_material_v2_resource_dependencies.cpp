@@ -138,7 +138,7 @@ bsdf:
          "material dependency graph should deduplicate repeated texture edges");
 }
 
-void testMixMaterialRefReadsTargetHeaderWithoutFullParse() {
+void testUnsupportedMixMaterialRejectsBeforeMaterialRefDependencyScan() {
   const fs::path root = makeTempRoot();
   const fs::path owner = root / "materials" / "mix.material";
   const fs::path leaf = root / "materials" / "leaf.material";
@@ -162,17 +162,12 @@ bsdf:
     amount: { kind: float, value: 0.35 }
 )");
 
-  EXPECT(parsed.instance != nullptr,
-         "mix material should accept non-mix material reference header");
-  EXPECT(parsed.diagnostics.empty(),
-         "header-only material reference validation should not require target "
-         "parameters");
-  EXPECT(parsed.dependencies.size() == 2,
-         "mix material refs should remain parameter dependencies");
-  EXPECT(parsed.dependencies.size() == 2 &&
-             parsed.dependencies[0].resourceHandle ==
-                 parsed.dependencies[1].resourceHandle,
-         "same material reference URI should deduplicate header handles");
+  EXPECT(parsed.instance == nullptr,
+         "unsupported mix material should fail before runtime dependency use");
+  EXPECT(!parsed.diagnostics.empty(),
+         "unsupported mix material should emit diagnostics");
+  EXPECT(parsed.dependencies.empty(),
+         "unsupported mix material should not register materialRef dependencies");
 }
 
 void testMixMaterialRefRejectsTargetMixHeader() {
@@ -291,14 +286,9 @@ bsdf:
   const std::string &diagnostic = parsed.diagnostics.front();
   EXPECT(diagnostic.find(owner.generic_string()) != std::string::npos,
          "diagnostic should include owner material URI");
-  EXPECT(diagnostic.find("bsdf.parameters.namedmaterial1") != std::string::npos,
-         "diagnostic should include parameter path");
-  EXPECT(diagnostic.find(
-             (root / "materials" / "missing.material").generic_string()) !=
-             std::string::npos,
-         "diagnostic should include target resource URI");
-  EXPECT(diagnostic.find("MaterialResourceParser") != std::string::npos,
-         "diagnostic should include parser name");
+  EXPECT(diagnostic.find("unsupported") != std::string::npos,
+         "diagnostic should reject unsupported mix source before materialRef "
+         "dependency lookup");
 }
 
 void testGenericMaterialLoaderWritesDependenciesIntoCallerTable() {
@@ -405,7 +395,7 @@ techniques:
 
 int main() {
   testParserResourceDependenciesSurviveTableRegistration();
-  testMixMaterialRefReadsTargetHeaderWithoutFullParse();
+  testUnsupportedMixMaterialRejectsBeforeMaterialRefDependencyScan();
   testMixMaterialRefRejectsTargetMixHeader();
   testMixMaterialRefRejectsTargetHeaderWithoutSource();
   testMixMaterialRefRejectsNamedStringReference();

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <filesystem>
 #include <initializer_list>
 #include <iostream>
 #include <optional>
@@ -16,6 +17,10 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifndef LXE_SOURCE_DIR
+#define LXE_SOURCE_DIR ""
+#endif
 
 namespace {
 
@@ -440,6 +445,46 @@ bsdf:
          "unsupported contract diagnostic should attach to bsdf.source");
 }
 
+void testMaterialParserRejectsBuiltInUnsupportedContracts() {
+  struct UnsupportedCase final {
+    const char *type;
+    const char *source;
+  };
+  constexpr UnsupportedCase cases[] = {
+      {"glass", "assets://shaders/glsl/common/materials/glass.contract.glsl"},
+      {"fourier",
+       "assets://shaders/glsl/common/materials/fourier.contract.glsl"},
+      {"mix", "assets://shaders/glsl/common/materials/mix.contract.glsl"},
+  };
+
+  for (const UnsupportedCase &unsupported : cases) {
+    LX_core::SceneResourceTable table;
+    LX_infra::MaterialResourceParser parser;
+    const auto parsed = parser.parse(
+        table, LX_core::ResourceUri(std::string("memory://materials/") +
+                                    unsupported.type + ".material"),
+        std::string(R"yaml(
+schema: lxe.material.v2
+bsdf:
+  type: )yaml") +
+            unsupported.type + R"yaml(
+  source: )yaml" +
+            unsupported.source + R"yaml(
+  parameters: {}
+)yaml");
+
+    EXPECT(parsed.instance == nullptr,
+           std::string(unsupported.type) +
+               " built-in unsupported contract should fail parse");
+    EXPECT(diagnosticsContain(parsed.diagnostics, "unsupported"),
+           std::string(unsupported.type) +
+               " built-in unsupported contract should diagnose unsupported");
+    EXPECT(diagnosticsContain(parsed.diagnostics, "bsdf.source"),
+           std::string(unsupported.type) +
+               " built-in unsupported diagnostic should name bsdf.source");
+  }
+}
+
 void testMaterialParserAttachesReflectDiagnosticsToSource() {
   LX_core::SceneResourceTable table;
   LX_infra::MaterialResourceParser parser(makeDiagnosticParserContract,
@@ -578,22 +623,30 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
     const char *path;
     const char *declaredType;
     const char *storageAbiHash;
+    LX_core::MaterialContractSupportStatus supportStatus;
   };
   constexpr BuiltInContractCase cases[] = {
       {"assets://shaders/glsl/common/materials/matte.contract.glsl", "matte",
-       "pbrt-envelope-storage-v1"},
+       "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Supported},
       {"assets://shaders/glsl/common/materials/glass.contract.glsl", "glass",
-       "pbrt-envelope-storage-v1"},
+       "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Unsupported},
       {"assets://shaders/glsl/common/materials/uber.contract.glsl", "uber",
-       "pbrt-envelope-storage-v1"},
+       "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Supported},
       {"assets://shaders/glsl/common/materials/metal.contract.glsl", "metal",
-       "pbrt-envelope-storage-v1"},
+       "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Supported},
       {"assets://shaders/glsl/common/materials/substrate.contract.glsl",
-       "substrate", "pbrt-envelope-storage-v1"},
+       "substrate", "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Supported},
       {"assets://shaders/glsl/common/materials/fourier.contract.glsl",
-       "fourier", "pbrt-envelope-storage-v1"},
+       "fourier", "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Unsupported},
       {"assets://shaders/glsl/common/materials/mix.contract.glsl", "mix",
-       "pbrt-envelope-storage-v1"}};
+       "pbrt-envelope-storage-v1",
+       LX_core::MaterialContractSupportStatus::Unsupported}};
 
   for (const BuiltInContractCase &contractCase : cases) {
     const std::string path(contractCase.path);
@@ -611,9 +664,8 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
         *reflected.reflection;
     EXPECT(reflection.declaredType == contractCase.declaredType,
            path + " should declare expected material type");
-    EXPECT(reflection.supportStatus ==
-               LX_core::MaterialContractSupportStatus::Supported,
-           path + " should be supported");
+    EXPECT(reflection.supportStatus == contractCase.supportStatus,
+           path + " should declare expected support status");
     EXPECT(reflection.reflectionHash ==
                std::string(contractCase.declaredType) + "-source-contract-v1",
            path + " should declare expected reflection hash");
@@ -2030,6 +2082,10 @@ void testValidateReflectionSetRejectsAccessorAbiConflicts() {
 } // namespace
 
 int main() {
+  if (std::filesystem::path sourceRoot{LXE_SOURCE_DIR}; !sourceRoot.empty()) {
+    std::filesystem::current_path(sourceRoot);
+  }
+
   testSourceSignatureIgnoresInstanceValues();
   testPackerPreservesSourceSignatureAndDefaultTextureSlots();
   testPackerRequiresEveryDefaultTextureSlot();
@@ -2037,6 +2093,7 @@ int main() {
   testMaterialParserRejectsUnknownParameterFromContract();
   testMaterialParserRejectsSourceTypeMismatch();
   testMaterialParserRejectsUnsupportedContract();
+  testMaterialParserRejectsBuiltInUnsupportedContracts();
   testMaterialParserAttachesReflectDiagnosticsToSource();
   testMaterialParserRejectsKindNotAllowedByContract();
   testMaterialParserStoresReflectedSourceIdentity();
