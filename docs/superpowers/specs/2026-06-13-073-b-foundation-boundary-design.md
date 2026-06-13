@@ -12,14 +12,16 @@ The requirement stops before renderer default-path consumption, indirect batchin
 
 `REQ-073-b` must deliver:
 
-- source-local material storages keyed by source signature;
-- continuous source-local material indices per source;
-- material records containing factor values, texture slots, channel selectors, flags, source signature, and source-local index;
+- source storages keyed by source signature;
+- stable `sourceStorageIndex` values for storage table rows;
+- continuous source-local material indices per source storage;
+- source-reflected material payloads containing factor values, texture slots, channel selectors, and flags;
+- material refs and storage headers containing source storage identity plus source-local index;
 - stable default texture resources for `white`, `black`, and `flatNormal`;
 - imported/default texture deduplication into texture table slots;
 - bindless-ready texture, sampler, material storage, object, draw, and mesh/geometry tables;
 - backend/GPU resource table consumption of those tables into stable slot/staging data;
-- diagnostics that map backend slot/staging records back to resource identity, source signature, and source-local material index;
+- diagnostics that map backend slot/staging records back to resource identity, `sourceStorageIndex`, source signature, and source-local material index;
 - fail-fast behavior for missing source signatures, default texture slots, invalid texture slots, layout invariant violations, invalid source-local material indices, and unsupported backend table upload.
 
 This means a backend test must be able to consume the upload view and prove that the resource table can create the bindless-ready table/staging state. A CPU span with plausible data is not enough.
@@ -52,6 +54,33 @@ But the current shape is not enough for `REQ-073-b` completion:
 - backend/GPU resource table consumption of the new material/object/draw tables is not yet the validation target.
 
 The implementation plan should therefore extend the existing scaffolding rather than start over.
+
+## Source Storage Terminology
+
+`sourceSignature` and `sourceLocalMaterialIndex` are not duplicate identities.
+
+The clean reference shape is:
+
+```text
+sourceStorageIndex + sourceLocalMaterialIndex
+```
+
+`sourceStorageIndex` selects a row in the source storage table. That row owns the `sourceSignature`, source URI, reflection hash, and storage ABI hash. `sourceLocalMaterialIndex` selects a material record inside that storage.
+
+For example:
+
+```text
+sourceStorageIndex = 0
+  sourceSignature = matte-v1
+  sourceLocalMaterialIndex 0 -> red_paint.material
+  sourceLocalMaterialIndex 1 -> blue_paint.material
+
+sourceStorageIndex = 1
+  sourceSignature = metal-v1
+  sourceLocalMaterialIndex 0 -> chrome.material
+```
+
+Object/draw records should therefore store or resolve to `sourceStorageIndex` plus `sourceLocalMaterialIndex`. They should not repeatedly store `sourceSignature` as a second material reference. Diagnostics can recover the signature through the storage header.
 
 ## Non-goals
 

@@ -8,10 +8,10 @@
 
 但合同层完成后，realtime 渲染仍需要一个干净的数据基础：
 
-- 每个 material source 需要自己的 source-local material storage。
+- 每个 material source 需要自己的 source storage；同一个 storage 内的材质实例使用 source-local material index。
 - 缺失贴图不能继续靠 invalid texture index + shader 分支兜底。
 - texture、sampler、material、object、draw、mesh/geometry 数据必须能以全局 table 形式进入 backend/GPU resource table 的 bindless-ready staging。
-- upload view 必须能说明每个 material record 的 factor、texture slot、channel selector、source signature 和 source-local index。
+- upload view 必须能说明每个 material record 的 factor、texture slot、channel selector、所属 source storage 和 source-local material index。
 
 本 REQ 不只是 CPU-only view。它必须证明 backend 能消费这些 table 并建立稳定 slot/staging 数据；但它不负责 shader URI 迁移、不负责 RenderWorkQueue indirect batching、不负责删除旧 realtime 默认路径。
 
@@ -37,15 +37,42 @@
 
 ### R1: Source-local Material Storage View
 
-`SceneResourceTableUploadView` SHALL 按 material source signature 导出 source-local material storage。
+`SceneResourceTableUploadView` SHALL 按 material source signature 导出 source storage，并在每个 storage 内分配 source-local material index。
 
 要求：
 
 - 每个 storage 记录自己的 source signature、source URI、reflection hash 和 storage ABI hash。
 - 同一 source signature 下的 material 使用连续的 source-local material index。
 - 不同 source signature 不能共享 material record layout 或 source-local index 空间。
-- object/draw record 中引用 material 时，必须能追踪到 `{source signature, source-local material index}`；旧全局 material index 如暂时保留，只能作为 legacy shadow index，不能作为 source-local record 的替代。
+- upload view SHALL 暴露稳定的 `sourceStorageIndex`，它是 source storage table 的行号；`sourceSignature` 只存储在 storage header / diagnostics 中，不在每个 material reference 上重复存储。
+- object/draw record 中引用 material 时，必须能追踪到 `{sourceStorageIndex, sourceLocalMaterialIndex}`；本 REQ 的新增 table、diagnostics 和测试不得把旧全局 material index 当作 Material v3 引用真相。旧字段如果仍因旧 renderer 默认路径存在，只能作为旧路径字段保留，不参与本 REQ 的正向验证。
 - 如果同一 source signature 反射出不一致 layout，必须报告 engine invariant violation；不得 fallback、拆第二套 layout 或静默选择其中一个。
+
+术语约定：
+
+| 术语 | 含义 |
+|---|---|
+| source signature | 某个 material source / reflection hash / storage ABI 的结构身份 |
+| source storage | 使用同一 source signature 的 material record 表 |
+| sourceStorageIndex | source storage table 的行号，用于 object/draw 引用某个 storage |
+| sourceLocalMaterialIndex | 某个 source storage 内的 material record 行号 |
+
+示例：
+
+```text
+sourceStorageIndex = 0
+  sourceSignature = matte-v1
+  records:
+    sourceLocalMaterialIndex 0 -> red_paint.material
+    sourceLocalMaterialIndex 1 -> blue_paint.material
+
+sourceStorageIndex = 1
+  sourceSignature = metal-v1
+  records:
+    sourceLocalMaterialIndex 0 -> chrome.material
+```
+
+`sourceSignature` 选择 layout；`sourceLocalMaterialIndex` 选择该 layout 表里的具体材质实例。两者不能互相替代。
 
 ### R2: Material Record Contents
 
@@ -55,7 +82,7 @@ material record SHALL 只保存 shader 需要的结构化数据。
 
 | 字段 | 说明 |
 |---|---|
-| source signature | 与 shader variant / storage ABI 对齐 |
+| source storage identity | 不写入 material payload；由 storage header 的 `sourceStorageIndex -> sourceSignature` 以及 material ref 的 `{sourceStorageIndex, sourceLocalMaterialIndex}` 表达 |
 | factor values | `Kd`、`metallic`、`roughness`、`ao`、`emissive`、`normalScale` 等 |
 | texture slots | baseColor、metallic/roughness、AO、emissive、normal 或默认纹理 slot |
 | channel selector | packed metallic/roughness/AO 的通道选择 |
@@ -64,10 +91,10 @@ material record SHALL 只保存 shader 需要的结构化数据。
 
 规则：
 
-- material record 不保存 material URI 字符串、backend object pointer 或旧 `MaterialUBO` bytes。
+- material payload 不保存 material URI 字符串、backend object pointer、source signature 或旧 `MaterialUBO` bytes。
 - texture 是否存在、texture id、material URI、material handle 和参数值不能改变 source signature。
 - source 不支持的参数必须在 parser/contract 阶段失败，upload 阶段不能补隐式语义。
-- 当前首版 `SourceLocalMaterialRecord` 可以保留固定 C++ 结构或 bytes payload，但 payload 内容必须来自 contract reflection 和 MaterialInstance 参数，不得从旧 `SceneGpuMaterialRecord` 反向推导。
+- `SourceLocalMaterialRecord` SHALL 使用 source-reflected bytes payload。C++ 类型只承担 envelope/metadata 职责，例如 local index 和 byte range；不得定义一套固定 PBR record 作为 Material v3 layout 真相，也不得从旧 `SceneGpuMaterialRecord` 反向推导。
 
 ### R3: Default Texture Resources
 
@@ -100,8 +127,8 @@ upload view SHALL 提供 backend 可直接消费的 table 数据。
 | texture table | imported textures + default textures |
 | sampler table | sampler state |
 | material storage table | per-source material records |
-| object table | transform、mesh/source-local material index、visibility |
-| draw table | object/source-local material/mesh/draw offsets |
+| object table | transform、mesh、sourceStorageIndex/sourceLocalMaterialIndex、visibility |
+| draw table | object、sourceStorageIndex/sourceLocalMaterialIndex、mesh/draw offsets |
 | mesh/geometry table | global position/index/attribute stream ranges |
 
 要求：
@@ -120,7 +147,7 @@ backend/GPU resource table SHALL 能消费 `SceneResourceTableUploadView` 的 bi
 - sampler state 进入 sampler table 或等价 descriptor staging。
 - per-source material records 进入 material storage table 或等价 upload buffer staging。
 - object、draw、mesh/geometry table 进入 backend 可追踪的 staging/buffer 描述。
-- backend diagnostics 能把每个 slot / staging record 追踪回 resource identity、source signature 和 source-local material index。
+- backend diagnostics 能把每个 slot / staging record 追踪回 resource identity、sourceStorageIndex、source signature 和 source-local material index。
 
 约束：
 
@@ -134,6 +161,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 
 - material source count。
 - 每个 source signature 的 material count 和 storage ABI hash。
+- sourceStorageIndex 到 source signature / storage ABI hash 的映射。
 - 默认纹理 slot。
 - texture table 去重统计。
 - object/draw/material index 映射。
@@ -151,6 +179,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - 同 source material 进入同一 storage。
 - 同 source material 获得不同 source-local material index。
 - 不同 source material 进入不同 storage。
+- object/draw 引用 `{sourceStorageIndex, sourceLocalMaterialIndex}`，并能经 storage header 查回 source signature。
 - material URI / 参数值不改变 source signature。
 
 ### T2: Factor And Texture Record
@@ -183,7 +212,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - sampler table 或 descriptor staging。
 - material storage staging。
 - object/draw/mesh table staging。
-- slot/staging 到 resource identity 和 source-local material index 的 diagnostics。
+- slot/staging 到 resource identity、sourceStorageIndex、source signature 和 source-local material index 的 diagnostics。
 
 ### T6: Negative Diagnostics
 
