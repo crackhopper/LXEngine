@@ -14,6 +14,15 @@
 
 这些路径如果继续存在，会让 Helmet/BMW smoke 和后续 package 序列化证明的是混合状态，而不是干净 Material v3 + RenderPathGraph + bindless/indirect 默认路径。
 
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-e |
+|---|---|---|
+| `REQ-073-a` T3 / T4 / T5 | shader 实际采样 factor × texture，并通过默认纹理后输出非全黑或明确诊断 | source record packing 和默认 texture slot 已在 073-a/b 建立；只有 clean realtime 默认路径能证明 shader 采样不是旧 fallback |
+| `REQ-073-a` T9 | Helmet/BMW 低分辨率 realtime 非全黑 validation | 视觉 smoke 必须等 source storage、shader variant 和 indirect/bindless path 都成立后执行，否则会把旧路径误判为成功 |
+| `REQ-073-b` 未完成项 | 删除旧 realtime `SceneGpuMaterialRecord` / per-material descriptor / non-bindless fallback | 073-b 为过渡保留旧字段不再作为 Material v3 真相；本 REQ 是删除或隔离旧默认成功路径的 clean gate |
+| `REQ-073-b` 未完成项 | realtime smoke 使用 `render_paths/...`、bindless/indirect stats 和 source-reflected material records 证明新路径 | 这些验收必须在 073-c/d 后进行，否则无法判断失败来自 shader variant、batch、table 还是视觉内容 |
+
 ## 目标
 
 1. realtime 默认路径只消费 source-reflected material storage 和 bindless-ready tables。

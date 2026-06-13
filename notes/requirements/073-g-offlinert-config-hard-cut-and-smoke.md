@@ -16,6 +16,14 @@
 
 这些 bridge 如果保留到 package 阶段，会污染 canonical state：package 可能保存的是一部分 graph 配置、一部分代码注入出来的 shader/pass 状态。进入 `REQ-074` 之前，需要把 offline 默认路径硬切到配置驱动。
 
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-g |
+|---|---|---|
+| `REQ-073-a` 未完成项 | OfflineRT 默认入口 hard cut 和 smoke | 073-a 的 accessor ABI 不是入口硬切；旧 provider / hardcoded frame graph 必须等 073-f graph compute path 可运行后再删除 |
+| `REQ-073-b` 未完成项 | 删除 OfflineRT provider/framegraph bridge，禁止用旧 side channel 证明 material source 可渲染 | 073-b 只保证 source records 可进入 offline 相关测试；默认 CLI/integrator 入口是否干净由本 REQ 判定 |
+| `REQ-073-e` clean gate 传递项 | Helmet/BMW offline smoke 不得回退旧 material truth、旧 shader URI 或 pass injection | package 前必须证明 realtime 和 offline 默认路径都面对同一套 canonical SceneResourceTable / RenderPathGraph 状态 |
+
 ## 目标
 
 1. 删除 OfflineRT 默认路径中的 shader/provider/pass/framegraph 硬编码。

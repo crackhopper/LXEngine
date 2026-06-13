@@ -21,6 +21,14 @@
 
 因此，本 REQ 的核心不是重新实现 offline renderer，而是把 offline 的 shader/pass/work-item 来源改为 RenderPathGraph，让 offline 和 realtime 共享同一条 scene/resource/graph/pipeline 组织方式。
 
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-f |
+|---|---|---|
+| `REQ-073-a` 未完成项 | OfflineRT 默认配置入口从硬编码 pass/shader 迁移到 RenderPathGraph compute path 的第一段 | 073-a 只证明 Offline PBR direct shader 可使用 Material Accessor ABI；配置入口需要 RenderPathGraph compute pass、FrameGraph 和 work item 支撑 |
+| `REQ-073-b` 未完成项 | OfflineRT graph compute path 使用 source records / SceneResourceTable upload view 作为资源来源 | 073-b 已让 offline Material v2 测试使用 source records，但默认 OfflineRT 仍有独立 provider/framegraph bridge |
+| `REQ-073-c` 传递项 | OfflineRT shader URI 使用 `render_paths/OfflineRT/...`，并走 material source variant | OfflineRT direct shader 同样需要 final variant shader reflection，不能继续用 `techniques/OfflineRT/...` 或裸 base shader |
+
 ## 目标
 
 1. 增加 `OfflineRT` 的 RenderPathGraph asset。

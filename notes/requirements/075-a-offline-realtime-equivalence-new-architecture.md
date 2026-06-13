@@ -82,11 +82,12 @@ Equivalence test fails if old material/render fallback is used.
 
 - Does not add new material features。
 - Does not add package features。
-- Unsupported PBRT features must be reported explicitly, not silently approximated unless `REQ-073-a` source contract and projection rules allow it。
+- Unsupported PBRT features must be reported explicitly, not silently approximated. Exact support or named approximation for `glass`、`fourier`、`mix`、conductor `eta/k` belongs to `REQ-073-h`; this equivalence REQ may compare those sources only after they are marked supported there.
 
 ## 依赖
 
 - `REQ-073-g`: OfflineRT config hard cut and smoke。
+- `REQ-073-h`: Specialized PBRT BSDF contracts，only when the equivalence profile selects specialized PBRT sources rather than unsupported diagnostics。
 - `REQ-074-g`: post-package hard cut and cleanup。
 
 ## 实施状态

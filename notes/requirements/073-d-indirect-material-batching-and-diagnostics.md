@@ -8,6 +8,15 @@
 
 本 REQ 的核心是 batching 和 diagnostics，不负责最终删除旧 fallback。最终硬切和视觉 smoke 由 `REQ-073-e` 完成。
 
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-d |
+|---|---|---|
+| `REQ-073-a` T7 / T10 | 同 source 不因材质参数值或贴图存在性拆 batch 的 renderer 级验证 | source signature 已在合同层成立，但 batch 是否错误拆分只能在 RenderWorkQueue 消费最终 shader variant 和 bindless table 后验证 |
+| `REQ-073-b` 未完成项 | RenderWorkQueue / geometry pass 默认消费 bindless table 并生成 indirect-capable work item | 073-b 已证明 table/staging 可上传；本 REQ 负责让实时提交路径真正消费这些 table |
+| `REQ-073-b` 未完成项 | material source、batch、pipeline、draw 的集中 diagnostics profile | upload/backend diagnostics 只能说明数据表存在；batch/pipeline/draw 归因必须由 RenderWorkQueue 和 geometry pass 输出 |
+| `REQ-073-a` / `REQ-073-b` Helmet/BMW 验证前置 | Helmet/BMW batching stats | 最终视觉 smoke 属于 073-e；本 REQ 先提供 material source、batch、pipeline、draw count 和 split reason，便于 073-e 判断失败原因 |
+
 ## 目标
 
 1. Forward / Deferred geometry pass 默认生成 indirect-capable render work。

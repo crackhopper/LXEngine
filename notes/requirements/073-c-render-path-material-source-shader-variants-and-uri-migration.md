@@ -21,6 +21,16 @@
 3. shader reflection、descriptor layout、pipeline build desc 和 pipeline key 都来自 variant 后最终 shader。
 4. 默认 RenderPathGraph / shader asset 使用 `render_paths/...` URI。
 5. 旧 `techniques/...` 只能出现在 legacy negative test、历史文档或显式 rejection diagnostic 中。
+6. shader build target 明确区分 base source 和 material source variant，`BuildTest` 不能裸编译需要 source variant 的 shader。
+
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-c |
+|---|---|---|
+| `REQ-073-a` R5 / T6 / T7 | final shader variant、variant 后 shader reflection、compile/reflection key 和 `PipelineKey` 接入 | 这些事实必须在 RenderPath shader resolver 和 pipeline identity 层形成，不能由材质合同层或 base shader reflection 代替 |
+| `REQ-073-a` T7 / T10 | 同 source / 不同材质参数值不拆 pipeline 的 pipeline-key 验证 | pipeline key 是否只包含 source variant identity，需要在最终 shader variant 后验证 |
+| `REQ-073-b` 未完成项 | `techniques/...` 到 `render_paths/...` 的默认 URI 迁移 | URI 迁移必须和 variant resolver、legacy URI rejection 同时完成，避免留下旧 resolver fallback |
+| `REQ-073-b` 未完成项 | `BuildTest` / `CompileShaders` 对 `pbr.frag`、`pbr_gbuffer.frag`、`offline_pbr_direct_ray.comp` 的裸编译失败 | 这些 shader 已经声明需要 `LX_MATERIAL_CONTRACT_SOURCE`；正确修复是建立 variant-aware shader build target，而不是移除 shader 中的 fail-fast |
 
 ## 非目标
 
@@ -118,6 +128,17 @@ variant resolver SHALL 输出可审计 diagnostics：
 
 无法编译或反射时必须停止渲染准备，不能隐藏为 fallback shader。
 
+### R8: Shader Build Target Boundary
+
+shader build / test target SHALL 明确表达 source-variant shader 的编译时机。
+
+要求：
+
+- 需要 `LX_MATERIAL_CONTRACT_SOURCE` 的 shader source 不得作为普通 base shader 裸编译成功条件。
+- `CompileShaders`、`BuildTest` 或等价 build target 要么提供 material source variant context，要么排除 variant-only base source 并由独立 variant target 覆盖。
+- 缺 source variant context 的失败必须命名 shader URI、缺失宏或 source、以及应使用的 variant build path。
+- 不允许通过删除 shader `#error`、注入空 source、或 fallback 到旧 `MaterialUBO` 让裸编译通过。
+
 ## 测试
 
 ### T1: Source Variant Key
@@ -160,10 +181,19 @@ rg/audit Forward / Deferred PBR pass shader，断言没有 material type/source 
 
 覆盖缺 shader、缺 source、unsupported source、legacy URI、reflection failure，断言 diagnostics 包含 base shader、source URI、variant key 和失败原因。
 
+### T8: CompileShaders Variant Boundary
+
+运行 shader build / `BuildTest` 相关目标，断言：
+
+- source-variant shader 不再被普通裸编译目标误判为失败。
+- variant build target 能为 Forward、Deferred 和 OfflineRT direct shader 提供 source context。
+- 人为移除 source context 时失败信息指向缺失 variant，而不是静默 fallback。
+
 ## 修改范围
 
 - RenderPathGraph shader resolver / parser validation
 - shader compiler variant key / include injection
+- CMake / shader build targets for source variants
 - shader reflection cache
 - `PipelineBuildDesc` / `PipelineKey` material source variant 输入
 - `assets/shaders/glsl/render_paths/Forward/`

@@ -51,6 +51,7 @@
 - [REQ-073-e: Realtime Material Path Hard Cut And Smoke](073-e-realtime-material-path-hard-cut-and-smoke.md)
 - [REQ-073-f: OfflineRT RenderPathGraph Compute Path](073-f-offlinert-render-path-graph-compute-path.md)
 - [REQ-073-g: OfflineRT Config Hard Cut And Smoke](073-g-offlinert-config-hard-cut-and-smoke.md)
+- [REQ-073-h: Specialized PBRT BSDF Contracts](073-h-specialized-pbrt-bsdf-contracts.md)
 - [REQ-074-a: Texture Compression Pipeline With BC7](074-a-texture-compression-pipeline-bc7.md)
 - [REQ-074-b: Package Canonical State Readiness Gate](074-b-package-canonical-state-readiness-gate.md)
 - [REQ-074-c: LxScenePackage File Format](074-c-lxscene-package-file-format.md)
