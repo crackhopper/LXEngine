@@ -86,7 +86,7 @@ Equivalence test fails if old material/render fallback is used.
 
 ## 依赖
 
-- `REQ-073-e`: OfflineRT config hard cut and smoke。
+- `REQ-073-g`: OfflineRT config hard cut and smoke。
 - `REQ-074-g`: post-package hard cut and cleanup。
 
 ## 实施状态

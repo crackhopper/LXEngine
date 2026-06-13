@@ -1,10 +1,10 @@
-# REQ-073-e: OfflineRT Config Hard Cut And Smoke
+# REQ-073-g: OfflineRT Config Hard Cut And Smoke
 
-> 2026-06-12 新增：本 REQ 紧跟 `REQ-073-d`，负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。它是进入 `REQ-074-a` 之前的 offline 架构 clean gate。
+> 2026-06-13 后移：本 REQ 原为 `REQ-073-e`。`REQ-073-b` 已拆成四段 realtime/material 工作，因此 OfflineRT config hard cut 后移为 `REQ-073-g`，紧跟 `REQ-073-f`。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。
 
 ## 背景
 
-`REQ-073-d` 会先让 OfflineRT 能通过 RenderPathGraph 配置路径运行。配置路径跑通后，仍可能残留旧代码：
+`REQ-073-f` 会先让 OfflineRT 能通过 RenderPathGraph 配置路径运行。配置路径跑通后，仍可能残留旧代码：
 
 - `OfflineShaderProvider`。
 - `OfflineLoadedScene::offlineShader` / `OfflineRenderJob::offlineShader`。
@@ -174,8 +174,9 @@ BMW M6 OfflineRT direct render：
 
 ## 依赖
 
-- `REQ-073-d`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-b`: RenderPath terminology、shader URI migration、bindless/indirect hard cut。
+- `REQ-073-f`: OfflineRT RenderPathGraph compute path。
+- `REQ-073-e`: realtime material path hard cut and smoke。
+- `REQ-073-c`: RenderPath terminology 和 shader URI migration。
 
 ## 后续工作
 

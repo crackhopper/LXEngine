@@ -1,6 +1,6 @@
 # REQ-074-a: Texture Compression Pipeline With BC7
 
-> 2026-06-12 更新：本 REQ 在 `SceneResourceTable` 管理纹理资源、realtime bindless/indirect hard cut 和 OfflineRT config hard cut 之后，引入纹理编码策略和 BC7 上传路径，降低显存占用和采样带宽压力。它是 `REQ-073-a` 的后续性能与资源质量工作，不重新定义 Material v3 的参数合同。
+> 2026-06-13 更新：本 REQ 在 `SceneResourceTable` 管理纹理资源、realtime material path hard cut 和 OfflineRT config hard cut 之后，引入纹理编码策略和 BC7 上传路径，降低显存占用和采样带宽压力。它是 `REQ-073-a` 的后续性能与资源质量工作，不重新定义 Material v3 的参数合同。
 
 ## 背景
 
@@ -216,8 +216,8 @@ Shader SHALL 不感知纹理是否压缩。
 ## 依赖
 
 - `REQ-073-a`: Material v3 PBRT source contract、metallic extension 和默认纹理集合。
-- `REQ-073-b`: bindless/indirect material path hard cut。
-- `REQ-073-e`: OfflineRT config hard cut，保证后续 texture/package 工作面对同一套 clean SceneResourceTable / RenderPathGraph 默认路径。
+- `REQ-073-e`: realtime material path hard cut and smoke，保证 texture/default texture 进入 clean realtime 默认路径。
+- `REQ-073-g`: OfflineRT config hard cut，保证后续 texture/package 工作面对同一套 clean SceneResourceTable / RenderPathGraph 默认路径。
 
 ## 后续工作
 

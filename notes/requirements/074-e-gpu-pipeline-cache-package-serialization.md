@@ -4,7 +4,7 @@
 
 ## 背景
 
-SceneResourceTable package restore 只能避免 CPU source parsing。首次渲染仍可能因为 shader reflection、pipeline build desc collection、Vulkan pipeline creation 和 driver cache miss 卡顿。Vulkan 提供 pipeline cache blob 能力，本 REQ 将其作为 optional backend cache section 接入 package。由于 `REQ-073-d` / `REQ-073-e` 已经让 OfflineRT compute pass 也走 RenderPathGraph / FrameGraph / RenderWorkItem，pipeline cache metadata 需要同时覆盖 realtime raster pipeline 和 OfflineRT compute pipeline。
+SceneResourceTable package restore 只能避免 CPU source parsing。首次渲染仍可能因为 shader reflection、pipeline build desc collection、Vulkan pipeline creation 和 driver cache miss 卡顿。Vulkan 提供 pipeline cache blob 能力，本 REQ 将其作为 optional backend cache section 接入 package。由于 `REQ-073-f` / `REQ-073-g` 已经让 OfflineRT compute pass 也走 RenderPathGraph / FrameGraph / RenderWorkItem，pipeline cache metadata 需要同时覆盖 realtime raster pipeline 和 OfflineRT compute pipeline。
 
 ## 目标
 
@@ -103,8 +103,8 @@ Same package restore produces same pipeline key/build desc list.
 
 - `REQ-074-c`: LxScenePackage file format。
 - `REQ-074-d`: SceneResourceTable package serialization and restore。
-- `REQ-073-b`: bindless/indirect material path hard cut。
-- `REQ-073-e`: OfflineRT config hard cut and smoke。
+- `REQ-073-e`: realtime material path hard cut and smoke。
+- `REQ-073-g`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 

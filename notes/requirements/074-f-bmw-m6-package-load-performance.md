@@ -93,7 +93,7 @@ Corrupt package or cache mismatch is reported as correctness/fallback diagnostic
 
 - `REQ-074-d`: CPU package restore。
 - `REQ-074-e`: GPU pipeline cache restore。
-- `REQ-073-e`: OfflineRT config hard cut and smoke。
+- `REQ-073-g`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 

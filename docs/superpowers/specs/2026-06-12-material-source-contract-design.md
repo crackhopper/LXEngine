@@ -130,7 +130,7 @@ Diagnostics include material URI, `bsdf.type`, `bsdf.source`, parameter path, so
 
 ## Downstream Impact
 
-`REQ-073-b` validates source-reflected material storage through bindless tables and indirect draw. It should speak in terms of source-local storage, source signature, material contract variant, and accessor ABI rather than C++ material type records.
+`REQ-073-b` to `REQ-073-e` validate the downstream realtime path in smaller implementation cuts: source-local material storage and bindless-ready upload tables, RenderPath material source shader variants and URI migration, indirect material batching, then realtime hard cut and smoke. They should speak in terms of source-local storage, source signature, material contract variant, and accessor ABI rather than C++ material type records.
 
 `REQ-074` package work persists source URI, source reflection hash, material envelopes, dependencies, and source-local material state. It does not persist GPU handles or bindless slots.
 

@@ -384,14 +384,17 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 ## 后续工作
 
-- `REQ-073-b`: bindless/indirect material path hard cut。
+- `REQ-073-b`: Material storage and bindless upload foundation。
+- `REQ-073-c`: RenderPath material source shader variants and URI migration。
+- `REQ-073-d`: Indirect material batching and diagnostics。
+- `REQ-073-e`: Realtime material path hard cut and smoke。
 - 后续专门支持完整 PBRT glass/fourier/mix 或 conductor `eta/k` 的 realtime/offline 表达。
 - normal-map variant / tangent-free fast path 优化。
 - `REQ-074-a`: BC7 texture compression pipeline。
 
 ## 实施状态
 
-合同层已完成；GPU/bindless/indirect 验证由 `REQ-073-b` 承接。
+合同层已完成；GPU/bindless/indirect/realtime smoke 验证由 `REQ-073-b` 到 `REQ-073-e` 分段承接。
 
 截至 2026-06-13，已落地：
 
@@ -410,8 +413,11 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 | 后续需求 | 移交内容 | 为什么不在 073-a 内完成 |
 |---|---|---|
-| `REQ-073-b` | source-reflected material storage ABI 的真实 GPU 上传、source-local material index、默认纹理 set、factor × texture material record、bindless texture/material table、indirect batch 和 Helmet/BMW realtime smoke / low-res visual validation | 这些内容需要 GPU table、bindless slot、backend submission 和 indirect draw 同时成立；在 073-a 的 parser/shader contract 阶段提前做只能得到局部假验证 |
-| `REQ-073-d` / `REQ-073-e` | OfflineRT RenderPathGraph compute path 和配置化入口 hard cut | OfflineRT 配置入口与实时 material contract 是相邻但独立的执行路径；本阶段只保证 Offline PBR direct shader 能使用 accessor ABI |
+| `REQ-073-b` | source-reflected material storage ABI 的真实 GPU 上传、source-local material index、默认纹理 set、factor × texture material record、bindless-ready texture/material/object/draw/mesh table | 这些内容需要 SceneResourceTable upload view 和 GPU table 数据结构真实存在；在 073-a 的 parser/shader contract 阶段提前做只能得到局部假验证 |
+| `REQ-073-c` | RenderPath material source shader variant、final shader reflection、shader URI 从 `techniques/...` 迁移到 `render_paths/...` | shader variant 需要依赖 073-a 的 source contract 和 073-b 的 source-local storage 结构事实，且应在 indirect batching 之前先稳定 pipeline/reflection identity |
+| `REQ-073-d` | indirect material batching、index-only work item、batch split diagnostics 和 Helmet/BMW batching stats | indirect 依赖 bindless table 与 final shader/pipeline identity；提前做会混入旧 descriptor fallback，无法判断 batch split 原因 |
+| `REQ-073-e` | realtime 旧 material/render fallback hard cut、Helmet/BMW realtime smoke / low-res visual validation | 视觉 smoke 应在数据、shader variant 和 indirect path 都成立后执行；无法渲染时必须 fail-fast 诊断，而不是用旧路径隐藏问题 |
+| `REQ-073-f` / `REQ-073-g` | OfflineRT RenderPathGraph compute path 和配置化入口 hard cut | OfflineRT 配置入口与实时 material contract 是相邻但独立的执行路径；本阶段只保证 Offline PBR direct shader 能使用 accessor ABI |
 | PBRT 后续专门需求 | 完整 PBRT `glass`、`fourier`、`mix`、conductor `eta/k` 的物理准确表达 | 073-a 的目标是建立统一合同和 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 |
 
 本阶段验证：
