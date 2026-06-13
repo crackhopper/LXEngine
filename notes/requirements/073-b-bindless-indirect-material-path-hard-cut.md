@@ -32,6 +32,20 @@
 7. 验证 missing bindless / missing material index / missing texture slot fail-fast。
 8. 在本 REQ 结束时执行 realtime 架构 clean、旧代码硬切和 Helmet/BMW smoke 测试。
 
+## 从 REQ-073-a 承接的未完成项
+
+`REQ-073-a` 已完成 material source contract、source signature、shader source variant 和 Material Accessor ABI 的基础切换，但以下内容必须在本 REQ 中闭环，因为它们依赖 bindless/indirect 上传路径，而不是单纯的材质解析或 shader 编译：
+
+| 承接项 | 本 REQ 的完成口径 |
+|---|---|
+| source-reflected material storage ABI 的真实上传 | `SceneResourceTableUploadView` 导出按 source signature 分区的 material records，GPU shader 使用 source-local material index 访问对应 SSBO layout |
+| 默认纹理 set | `white`、`black`、`flatNormal` 拥有稳定 resource identity，缺失贴图指向全局默认 slot，不创建材质本地 placeholder |
+| factor × texture 的上传闭环 | `Kd`、`metallic`、`roughness`、`ao`、`emissive`、`normalmap` 的 factor、texture index、channel selector 进入 material record，并在 shader 中统一采样 |
+| 常量参数和贴图参数不拆 variant / batch | 同一 source signature 下，常量-only 和 texture-backed material 使用同一 storage layout、shader variant 和 compatible indirect batch |
+| Helmet/BMW realtime smoke | smoke diagnostics 必须证明材质走 source-reflected storage、bindless texture table 和 indirect draw，而不是旧 `MaterialUBO` / per-material descriptor path |
+
+这些项目没有留在 `REQ-073-a` 完成，是因为它们需要 GPU table、默认纹理 slot、source-local material index、indirect batch 和 backend submission 同时成立；在 graph/parser/shader contract 阶段提前实现会变成临时 workaround，无法证明真实渲染路径已经 clean。
+
 ## 需求
 
 ### R1: Material V3 Source-reflected Upload View
