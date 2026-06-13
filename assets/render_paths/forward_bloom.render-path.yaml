@@ -11,9 +11,20 @@ passes:
     stage: raster
     dispatch: draw
     shader: techniques/Forward/shadow_depth_only
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: shadow.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
     filters:
       renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate]
+      bsdf: [matte, uber, metal, substrate, standard-pbr]
     sources:
       - geometry.vertex
       - geometry.index
@@ -32,9 +43,24 @@ passes:
     stage: raster
     dispatch: draw
     shader: techniques/Forward/pbr
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
     filters:
       renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate]
+      bsdf: [matte, uber, metal, substrate, standard-pbr]
     sources:
       - geometry.vertex
       - geometry.index
@@ -53,6 +79,13 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_threshold
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: bloom.threshold
+          format: RGBA16Float
+          samples: 1
+          layers: 1
     sources: [hdr.color]
     targets: [bloom.threshold]
     renderState:
@@ -66,6 +99,13 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_blur_h
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: bloom.blurH
+          format: RGBA16Float
+          samples: 1
+          layers: 1
     sources: [bloom.threshold]
     targets: [bloom.blurH]
     renderState:
@@ -79,6 +119,13 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_blur_v
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: bloom.blur
+          format: RGBA16Float
+          samples: 1
+          layers: 1
     sources: [bloom.blurH]
     targets: [bloom.blur]
     renderState:
@@ -92,6 +139,13 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: post_process
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8
+          samples: 1
+          layers: 1
     sources: [hdr.color, bloom.blur, feature.toneMapping]
     targets: [swapchain.color]
     renderState:
@@ -105,6 +159,16 @@ passes:
     stage: raster
     dispatch: draw
     shader: debug_overlay
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.overlay
+          format: BGRA8
+          samples: 1
+          layers: 1
+    geometry:
+      vertex: position-only
+      topology: line-list
     sources: [scene.camera]
     targets: [debug.overlay]
     writeMode: append

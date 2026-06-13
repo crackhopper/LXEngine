@@ -33,6 +33,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gpu_resource_table_contract
   test_upload_task_graph
   test_bindless_indirect_contract
+  test_material_source_variant_pipeline
   test_bindless_validation_contract
   test_071_bridge_audit
   test_071g_legacy_boundary_removal
@@ -190,6 +191,13 @@ endif()
 
 if(TARGET test_material_source_contract)
   target_compile_definitions(test_material_source_contract
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_material_source_variant_pipeline)
+  target_compile_definitions(test_material_source_variant_pipeline
     PRIVATE
     LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
   )

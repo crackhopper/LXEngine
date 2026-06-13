@@ -2,6 +2,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <array>
 #include <string>
 
 namespace LX_infra {
@@ -105,6 +106,38 @@ std::vector<std::string> parseStringList(const YAML::Node &node) {
   return values;
 }
 
+bool isKnownRenderPathResourceName(const std::string &name) {
+  constexpr std::array knownResources{
+      "geometry.vertex",
+      "geometry.index",
+      "material.bsdf",
+      "scene.camera",
+      "scene.lights",
+      "shadow.main",
+      "hdr.color",
+      "depth.main",
+      "swapchain.color",
+      "debug.overlay",
+      "gbuffer.albedoAlpha",
+      "gbuffer.albedo",
+      "gbuffer.normalRoughness",
+      "gbuffer.normal",
+      "gbuffer.material",
+      "feature.toneMapping",
+      "bloom.threshold",
+      "bloom.blur_h",
+      "bloom.blur_v",
+      "bloom.blurH",
+      "bloom.blur",
+  };
+  for (const std::string_view known : knownResources) {
+    if (name == known) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool rejectUnsupportedFields(const YAML::Node &node,
                              RenderPassNodeParseResult &result,
                              const std::string &fieldPrefix) {
@@ -118,8 +151,9 @@ bool rejectUnsupportedFields(const YAML::Node &node,
     }
     const std::string key = it->first.as<std::string>();
     if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
-        key == "sources" || key == "targets" || key == "renderState" ||
-        key == "writeMode" || key == "filters") {
+        key == "rendering" || key == "geometry" || key == "sources" ||
+        key == "targets" || key == "renderState" || key == "writeMode" ||
+        key == "filters") {
       continue;
     }
     if (key == "enginePass") {
@@ -212,6 +246,230 @@ parseRenderState(const YAML::Node &node, RenderPassNodeParseResult &result,
   return state;
 }
 
+std::optional<LX_core::RenderPathNodeRenderingMode>
+parseRenderingMode(const YAML::Node &node, RenderPassNodeParseResult &result,
+                   const std::string &field) {
+  if (!node || !node.IsMap()) {
+    addDiagnostic(result, field, "missing required field");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field,
+                    "rendering field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "mode" || key == "attachments") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported rendering contract field");
+    valid = false;
+  }
+  valid &= requireField(node["mode"], result, field + ".mode");
+  if (!valid) {
+    return std::nullopt;
+  }
+  const std::string mode = node["mode"].as<std::string>();
+  if (mode == "dynamic") {
+    return LX_core::RenderPathNodeRenderingMode::Dynamic;
+  }
+  if (mode == "traditional") {
+    return LX_core::RenderPathNodeRenderingMode::Traditional;
+  }
+  addDiagnostic(result, field + ".mode",
+                "expected dynamic or traditional rendering mode");
+  return std::nullopt;
+}
+
+std::optional<LX_core::RenderPathGeometryVertexContract>
+parseGeometryVertexContract(const YAML::Node &node,
+                            RenderPassNodeParseResult &result,
+                            const std::string &field) {
+  const std::string value = node.as<std::string>();
+  if (value == "position-only") {
+    return LX_core::RenderPathGeometryVertexContract::PositionOnly;
+  }
+  if (value == "position-normal-uv-tangent") {
+    return LX_core::RenderPathGeometryVertexContract::PositionNormalUvTangent;
+  }
+  addDiagnostic(result, field,
+                "expected position-only or position-normal-uv-tangent");
+  return std::nullopt;
+}
+
+std::optional<LX_core::PrimitiveTopology>
+parseGeometryTopology(const YAML::Node &node, RenderPassNodeParseResult &result,
+                      const std::string &field) {
+  const std::string value = node.as<std::string>();
+  if (value == "point-list") {
+    return LX_core::PrimitiveTopology::PointList;
+  }
+  if (value == "line-list") {
+    return LX_core::PrimitiveTopology::LineList;
+  }
+  if (value == "line-strip") {
+    return LX_core::PrimitiveTopology::LineStrip;
+  }
+  if (value == "triangle-list") {
+    return LX_core::PrimitiveTopology::TriangleList;
+  }
+  if (value == "triangle-strip") {
+    return LX_core::PrimitiveTopology::TriangleStrip;
+  }
+  if (value == "triangle-fan") {
+    return LX_core::PrimitiveTopology::TriangleFan;
+  }
+  addDiagnostic(result, field, "unknown primitive topology");
+  return std::nullopt;
+}
+
+std::optional<LX_core::RenderPathGeometryContract>
+parseGeometryContract(const YAML::Node &node, RenderPassNodeParseResult &result,
+                      const std::string &field) {
+  if (!node || !node.IsMap()) {
+    addDiagnostic(result, field, "missing required field");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field,
+                    "geometry field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "vertex" || key == "topology") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported geometry contract field");
+    valid = false;
+  }
+  valid &= requireField(node["vertex"], result, field + ".vertex");
+  valid &= requireField(node["topology"], result, field + ".topology");
+  if (!valid) {
+    return std::nullopt;
+  }
+  auto vertex = parseGeometryVertexContract(node["vertex"], result,
+                                            field + ".vertex");
+  auto topology = parseGeometryTopology(node["topology"], result,
+                                        field + ".topology");
+  if (!vertex.has_value() || !topology.has_value()) {
+    return std::nullopt;
+  }
+  LX_core::RenderPathGeometryContract geometry;
+  geometry.vertex = *vertex;
+  geometry.topology = *topology;
+  return geometry;
+}
+
+std::optional<LX_core::ImageFormat>
+parseImageFormat(const YAML::Node &node, RenderPassNodeParseResult &result,
+                 const std::string &field) {
+  const std::string value = node.as<std::string>();
+  if (value == "RGBA8") {
+    return LX_core::ImageFormat::RGBA8;
+  }
+  if (value == "RGBA16F" || value == "RGBA16Float") {
+    return LX_core::ImageFormat::RGBA16Float;
+  }
+  if (value == "BGRA8") {
+    return LX_core::ImageFormat::BGRA8;
+  }
+  if (value == "R8") {
+    return LX_core::ImageFormat::R8;
+  }
+  if (value == "D32Float") {
+    return LX_core::ImageFormat::D32Float;
+  }
+  if (value == "D24UnormS8") {
+    return LX_core::ImageFormat::D24UnormS8;
+  }
+  if (value == "D32FloatS8") {
+    return LX_core::ImageFormat::D32FloatS8;
+  }
+  addDiagnostic(result, field, "unknown image format");
+  return std::nullopt;
+}
+
+std::vector<LX_core::RenderPathAttachmentContract>
+parseAttachmentContracts(const YAML::Node &node,
+                         RenderPassNodeParseResult &result,
+                         const std::string &field) {
+  std::vector<LX_core::RenderPathAttachmentContract> attachments;
+  if (!node) {
+    return attachments;
+  }
+  if (!node.IsSequence()) {
+    addDiagnostic(result, field, "attachments must be a sequence");
+    return attachments;
+  }
+  attachments.reserve(node.size());
+  for (std::size_t i = 0; i < node.size(); ++i) {
+    const YAML::Node attachmentNode = node[i];
+    const std::string prefix = field + "[" + std::to_string(i) + "]";
+    if (!attachmentNode || !attachmentNode.IsMap()) {
+      addDiagnostic(result, prefix, "attachment must be a map");
+      continue;
+    }
+    bool valid = true;
+    for (auto it = attachmentNode.begin(); it != attachmentNode.end(); ++it) {
+      if (!it->first.IsScalar()) {
+        addDiagnostic(result, prefix,
+                      "attachment field names must be scalar strings");
+        valid = false;
+        continue;
+      }
+      const std::string key = it->first.as<std::string>();
+      if (key == "target" || key == "format" || key == "samples" ||
+          key == "layers" || key == "depth") {
+        continue;
+      }
+      addDiagnostic(result, prefix + "." + key,
+                    "unsupported attachment contract field");
+      valid = false;
+    }
+    valid &= requireField(attachmentNode["target"], result, prefix + ".target");
+    valid &= requireField(attachmentNode["format"], result, prefix + ".format");
+    valid &= requireField(attachmentNode["samples"], result, prefix + ".samples");
+    valid &= requireField(attachmentNode["layers"], result, prefix + ".layers");
+    if (!valid) {
+      continue;
+    }
+    auto format = parseImageFormat(attachmentNode["format"], result,
+                                   prefix + ".format");
+    if (!format.has_value()) {
+      continue;
+    }
+    LX_core::RenderPathAttachmentContract attachment;
+    attachment.target = attachmentNode["target"].as<std::string>();
+    attachment.format = *format;
+    attachment.samples = attachmentNode["samples"].as<u32>();
+    attachment.layers = attachmentNode["layers"].as<u32>();
+    if (const auto depth = attachmentNode["depth"]) {
+      attachment.depth = depth.as<bool>();
+    }
+    attachments.push_back(std::move(attachment));
+  }
+  return attachments;
+}
+
+void validateResourceVocabulary(const std::vector<std::string> &resources,
+                                RenderPassNodeParseResult &result,
+                                const std::string &field) {
+  for (const std::string &resource : resources) {
+    if (!isKnownRenderPathResourceName(resource)) {
+      addDiagnostic(result, field + "." + resource,
+                    "unknown RenderPath resource name");
+    }
+  }
+}
+
 } // namespace
 
 RenderPassNodeParseResult
@@ -245,6 +503,21 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
     addDiagnostic(result, fieldPrefix + ".dispatch", "unknown dispatch");
     return result;
   }
+  std::optional<LX_core::RenderPathNodeRenderingMode> renderingMode;
+  if (*stage == LX_core::RenderPassStage::Raster) {
+    requireField(node["rendering"], result, fieldPrefix + ".rendering");
+    renderingMode = parseRenderingMode(node["rendering"], result,
+                                       fieldPrefix + ".rendering");
+  }
+  std::optional<LX_core::RenderPathGeometryContract> geometry;
+  if (*dispatch == LX_core::RenderPassDispatch::Draw) {
+    requireField(node["geometry"], result, fieldPrefix + ".geometry");
+    geometry = parseGeometryContract(node["geometry"], result,
+                                     fieldPrefix + ".geometry");
+  }
+  if (!result.diagnostics.empty()) {
+    return result;
+  }
   if (!node["sources"].IsSequence()) {
     addDiagnostic(result, fieldPrefix + ".sources", "must be a sequence");
     return result;
@@ -265,14 +538,28 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
     addDiagnostic(result, fieldPrefix + ".targets", "must not be empty");
     return result;
   }
+  std::vector<std::string> sources = parseStringList(node["sources"]);
+  std::vector<std::string> targets = parseStringList(node["targets"]);
+  validateResourceVocabulary(sources, result, fieldPrefix + ".sources");
+  validateResourceVocabulary(targets, result, fieldPrefix + ".targets");
+  auto attachments = parseAttachmentContracts(node["rendering"]["attachments"],
+                                              result,
+                                              fieldPrefix +
+                                                  ".rendering.attachments");
+  if (!result.diagnostics.empty()) {
+    return result;
+  }
 
   LX_core::RenderPassNode pass;
   pass.id = passName;
   pass.shaderUri = node["shader"].as<std::string>();
   pass.stage = *stage;
   pass.dispatch = *dispatch;
-  pass.sources = parseStringList(node["sources"]);
-  pass.targets = parseStringList(node["targets"]);
+  pass.renderingMode = renderingMode;
+  pass.geometry = geometry;
+  pass.attachments = std::move(attachments);
+  pass.sources = std::move(sources);
+  pass.targets = std::move(targets);
   pass.renderState = *renderState;
   if (const auto writeMode = node["writeMode"]) {
     pass.writeMode = writeMode.as<std::string>();
