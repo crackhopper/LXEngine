@@ -82,14 +82,14 @@ glTF metallic-roughness 工作流 SHALL 使用独立 material type。
 
 | 函数 | 用途 | 最低使用者 |
 |---|---|---|
-| `lxEvalBsdf(...)` | 给定出射/入射方向，返回 BSDF 值 | Forward、Deferred lighting、OfflineRT direct |
-| `lxPdfBsdf(...)` | 给定出射/入射方向，返回采样概率 | Forward 可选调试、OfflineRT direct |
-| `lxSampleBsdf(...)` | 给定出射方向和随机数，生成入射方向、权重和 PDF | OfflineRT direct |
+| `lxEvaluateBsdf(...)` | 给定入射/出射方向，返回固定方向对上的 BSDF 值 `f(wi, wo)` | Forward、Deferred lighting、OfflineRT direct |
+| `lxSampleBsdf(...)` | 给定一侧方向和随机数，返回采样出的另一侧方向、该方向对上的 BSDF 值和采样 PDF | OfflineRT direct |
 
 要求：
 
-- Forward 至少要求 final material source variant 提供 `eval/pdf` 所需接口。
-- OfflineRT direct 至少要求 final material source variant 提供 `eval/sample/pdf`。
+- Forward 至少要求 final material source variant 提供 `evaluate` 所需接口。
+- OfflineRT direct 至少要求 final material source variant 提供 `evaluate/sample` 所需接口。
+- 本 REQ 不要求独立 `lxPdfBsdf` 入口；固定方向的 BSDF 值由 `lxEvaluateBsdf` 返回，采样方向、该方向 BSDF 值和 PDF 由 `lxSampleBsdf` 一起返回。
 - pass shader 只 include 当前 material source variant，然后调用统一函数名。
 - pass shader 不写 `#if MATERIAL_TYPE_UBER` / `#elif MATERIAL_TYPE_STANDARD_PBR` 这类按材质类型分支。
 - `LxMaterialSurface` 可作为可选表面摘要访问器保留，用于 GBuffer/debug/显示属性，但不能成为 Forward/OfflineRT 主计算路径的唯一抽象。
@@ -205,8 +205,10 @@ shader build / test target SHALL 明确表达 source-variant shader 的编译时
 
 要求：
 
+- 转换工具是本 REQ 的交付内容，不后置到 smoke hard cut。
 - 转换输出至少包含一个 `standard-pbr` `.material` 和一个引用该 material 的 scene YAML。
 - scene 可以继续引用 glTF mesh 文件；本 REQ 不要求转换 mesh 格式。
+- 转换应保留 glTF baseColor factor/texture、metallic factor、roughness factor、metallic-roughness texture、normal texture、occlusion texture、emissive factor/texture、alpha mode 和 alpha cutoff。
 - 转换后的 scene 不得通过 `assets/materials/pbr.material` 这类旧通用 `uber` 近似材质证明成功。
 - 转换后的 scene 不得依赖运行时 `source: gltf` 隐式桥接来生成材质。
 - realtime smoke 使用转换后的 scene，输出低分辨率非黑图。
@@ -253,8 +255,8 @@ variant resolver、RenderPathNode pipeline contract 和 Helmet smoke SHALL 输�
 
 编译 Forward / Deferred / OfflineRT direct source variants，断言：
 
-- Forward variant 能调用 `lxEvalBsdf`，并满足本 pass 需要的 `lxPdfBsdf` 接口。
-- OfflineRT direct variant 能调用 `lxEvalBsdf`、`lxSampleBsdf`、`lxPdfBsdf`。
+- Forward variant 能调用 `lxEvaluateBsdf`，并获得固定方向对上的 BSDF 值。
+- OfflineRT direct variant 能调用 `lxEvaluateBsdf` 和 `lxSampleBsdf`；`lxSampleBsdf` 返回采样方向、该方向 BSDF 值和 PDF。
 - 人为移除某个 required BSDF 函数时编译或 ABI 校验失败。
 - pass shader 不出现按 material type 的 runtime branch 或宏分支。
 

@@ -13,7 +13,7 @@
 - `RenderPassNode` has `stage`, `dispatch`, `sources`, `targets`, `renderState`, `writeMode`, and filters, but no `rendering`, geometry contract, attachment contract, or node signature in `src/core/asset/render_effect.hpp`.
 - `RenderPassNodeResourceParser` rejects unsupported fields and currently requires only `shader/stage/dispatch/sources/targets/renderState`.
 - `ShaderCompiler` can inject `LX_MATERIAL_CONTRACT_SOURCE`, but `assets/shaders/CMakeLists.txt` still naked-compiles all `.frag/.comp`, including variant-only PBR shaders.
-- Forward/Deferred/OfflineRT shaders still consume `lxLoadMaterialSurface`; BSDF eval/pdf/sample ABI does not exist yet.
+- Forward/Deferred/OfflineRT shaders still consume `lxLoadMaterialSurface`; BSDF evaluate/sample ABI does not exist yet.
 - glTF Helmet currently goes through `assets/materials/pbr.material` with `type: uber`; `GLTFPbrMaterial` lacks factors for base color, metallic, roughness, alpha mode, and alpha cutoff.
 - Scene material loading still accepts `source: gltf` bridge in `src/infra/scene_asset/scene_material_loader.cpp`; `073-c` may leave the bridge for old scenes, but Helmet smoke must not depend on it.
 
@@ -186,43 +186,48 @@ cmake --build build --target test_material_source_contract test_gltf_scene_asset
 - [ ] Add structs with stable field names:
 
 ```glsl
-struct LxBsdfEvalInput { vec3 normal; vec3 viewDir; vec3 lightDir; vec3 baseColor; float metallic; float roughness; float ao; vec3 emissive; };
-struct LxBsdfEvalOutput { vec3 value; float pdf; };
-struct LxBsdfSampleInput { vec3 normal; vec3 viewDir; vec2 xi; };
-struct LxBsdfSampleOutput { vec3 lightDir; vec3 weight; float pdf; };
+struct LxBsdfEvaluateInput { vec3 normal; vec3 wi; vec3 wo; vec3 baseColor; float metallic; float roughness; float ao; vec3 emissive; };
+struct LxBsdfEvaluateOutput { vec3 value; };
+struct LxBsdfSampleInput { vec3 normal; vec3 wo; vec2 xi; };
+struct LxBsdfSampleOutput { vec3 wi; vec3 value; float pdf; };
 ```
 
 - [ ] Required function names:
 
 ```glsl
-LxBsdfEvalOutput lxEvalBsdf(LxBsdfEvalInput input);
-float lxPdfBsdf(LxBsdfEvalInput input);
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput input);
 LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput input);
 ```
+
+- [ ] `lxEvaluateBsdf` receives both directions and returns only the BSDF value
+      for that fixed pair.
+- [ ] `lxSampleBsdf` receives `wo` plus random input and returns the sampled
+      `wi`, the BSDF value for that sampled pair, and the sampling
+      PDF.
+- [ ] Do not add a required standalone `lxPdfBsdf` entry in this requirement.
 
 ### Step 2.2: Reflect required BSDF capability metadata
 
 - [ ] Extend contract comment metadata with capability lines:
 
 ```text
-// bsdfFunction: eval lxEvalBsdf
-// bsdfFunction: pdf lxPdfBsdf
+// bsdfFunction: evaluate lxEvaluateBsdf
 // bsdfFunction: sample lxSampleBsdf
 ```
 
 - [ ] Store capability booleans/names in `MaterialContractReflection`.
-- [ ] Add negative tests for missing eval/pdf/sample when a pass requires them.
+- [ ] Add negative tests for missing evaluate/sample when a pass requires them.
 
 ### Step 2.3: Update supported material sources
 
-- [ ] Implement eval/pdf/sample for `standard-pbr`, `uber`, `matte`, `metal`, and `substrate`.
+- [ ] Implement evaluate/sample for `standard-pbr`, `uber`, `matte`, `metal`, and `substrate`.
 - [ ] Unsupported PBRT contracts may keep `status: unsupported`, but diagnostics must say why they cannot satisfy a pass.
 
 ### Step 2.4: Update pass shaders to call BSDF functions
 
-- [ ] Forward shader builds its direct-light result through `lxEvalBsdf` or a wrapper over it.
+- [ ] Forward shader builds its direct-light result through `lxEvaluateBsdf` or a wrapper over it.
 - [ ] Deferred GBuffer may still write `LxMaterialSurface`, but it must not be the only route for Forward/OfflineRT light transport.
-- [ ] OfflineRT direct shader uses `lxSampleBsdf` and `lxPdfBsdf` instead of hardcoded PBR logic.
+- [ ] OfflineRT direct shader uses `lxSampleBsdf` and `lxEvaluateBsdf` instead of hardcoded PBR logic.
 - [ ] Keep `#include LX_MATERIAL_CONTRACT_SOURCE` fail-fast.
 
 ### Step 2.5: Audit no type/source branching
@@ -538,6 +543,7 @@ xvfb-run -a ./build/src/test/test_vulkan_pipeline
 ### Step 8.1: Build converter
 
 - [ ] The converter reads glTF JSON with Python stdlib.
+- [ ] The converter is a required `073-c` deliverable; do not move it to later smoke/hard-cut requirements.
 - [ ] It emits:
 
 ```text
@@ -709,4 +715,3 @@ git status --short
 git add assets src notes docs scripts
 git commit -m "Implement material source shader variant pipeline identity"
 ```
-

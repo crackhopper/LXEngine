@@ -95,6 +95,28 @@ The converted scene may continue to reference the glTF mesh, but it must not use
 `assets/materials/pbr.material` or a runtime `source: gltf` bridge to prove this
 requirement.
 
+## Material Converter
+
+The Helmet/glTF converter is part of `REQ-073-c`, not a later smoke-only
+cleanup item.
+
+The converter must:
+
+- read glTF metallic-roughness material data;
+- preserve base color factor/texture, metallic factor, roughness factor,
+  metallic-roughness texture, normal texture, occlusion texture, emissive
+  factor/texture, alpha mode, and alpha cutoff;
+- emit a `standard-pbr` Material v2 file with explicit `bsdf.type` and
+  `bsdf.source`;
+- emit a scene YAML that references the generated material and the Helmet mesh;
+- avoid `assets/materials/pbr.material`, `type=uber`, and runtime `source: gltf`
+  as success paths;
+- have a test that asserts the generated material/scene contain the clean path
+  fields and omit old path strings.
+
+This converter is the bridge from real glTF input data to the new material
+source variant architecture. Helmet smoke consumes the converted asset.
+
 ## Shader ABI
 
 Every material source that can be used by lighting passes must implement a
@@ -104,13 +126,21 @@ same functions regardless of the material type.
 Required functions:
 
 ```glsl
-LxBsdfEvalOutput lxEvalBsdf(LxBsdfEvalInput input);
-float lxPdfBsdf(LxBsdfEvalInput input);
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput input);
 LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput input);
 ```
 
+`lxEvaluateBsdf` evaluates a fixed pair of directions. The caller supplies both
+sides of the scattering event, and the material source returns the BSDF value
+`f(wi, wo)` for that pair.
+
+`lxSampleBsdf` samples the missing direction from the supplied incident/outgoing
+side and random sample. It returns the sampled direction, the BSDF value for the
+sampled pair, and the sampling PDF for that sampled direction. There is no
+required standalone `lxPdfBsdf` entry in this requirement.
+
 Forward and Deferred lighting need evaluation. OfflineRT direct lighting needs
-evaluation, sampling, and PDF. `LxMaterialSurface` can remain as an accessor for
+evaluation and sampling. `LxMaterialSurface` can remain as an accessor for
 GBuffer/debug-style data, but it is not the primary lighting interface.
 
 Pass shaders must not contain material type/source runtime branches, and they
