@@ -68,6 +68,12 @@ struct ShaderResourceMetadata final {
   ResourceUri canonicalUri;
   std::vector<ResourceUri> sourceUris;
   IShaderSharedPtr payload;
+  struct MaterialSourceVariant final {
+    StringID materialTypeVariant;
+    StringID renderPathNodeSignature;
+    ShaderProgramSet shaderProgram;
+  };
+  std::vector<MaterialSourceVariant> materialSourceVariants;
   bool sourceResolved = false;
   bool requiresMaterialSourceVariant = false;
 };
@@ -156,6 +162,15 @@ public:
                          std::vector<ResourceUri> sourceUris,
                          IShaderSharedPtr payload,
                          bool requiresMaterialSourceVariant = false);
+  void registerMaterialSourceShaderVariant(
+      const ResourceUri &shaderUri, StringID materialTypeVariant,
+      StringID renderPathNodeSignature, ShaderProgramSet shaderProgram);
+  void forEachMaterialInstance(
+      const std::function<void(MaterialHandle, const MaterialInstance &,
+                               const ResourceUri &)> &callback) const;
+  void forEachMaterialInstanceMutable(
+      const std::function<void(MaterialHandle, MaterialInstance &,
+                               const ResourceUri &)> &callback);
   void updateObject(ObjectHandle handle, ObjectResource object);
   void updateCamera(CameraHandle handle, CameraResource camera);
 

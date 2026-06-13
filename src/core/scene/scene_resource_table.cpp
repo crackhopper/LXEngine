@@ -101,6 +101,24 @@ findCompactRecordIndex(const std::vector<CompactRecordIndex> &indices,
 }
 
 [[nodiscard]] bool
+hasResolvedMaterialSourceVariantPayload(const ShaderResourceMetadata &shader) {
+  for (const auto &variant : shader.materialSourceVariants) {
+    const auto shaderPayload = variant.shaderProgram.getShader();
+    if (!shaderPayload) {
+      continue;
+    }
+    if (shaderPayload->getAllStages().empty()) {
+      continue;
+    }
+    if (!shaderPayload->getReflectionBindings().empty() ||
+        !shaderPayload->getVertexInputs().empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool
 isShaderDependencyResolved(const ShaderResourceMetadata &shader) {
   if (!shader.sourceResolved || shader.sourceUris.empty()) {
     return false;
@@ -1144,6 +1162,82 @@ ShaderHandle SceneResourceTable::registerShaderResource(
   return handle;
 }
 
+void SceneResourceTable::registerMaterialSourceShaderVariant(
+    const ResourceUri &shaderUri, StringID materialTypeVariant,
+    StringID renderPathNodeSignature, ShaderProgramSet shaderProgram) {
+  if (!shaderProgram.getShader()) {
+    throw std::invalid_argument(
+        "material source shader variant for Shader '" + shaderUri.string() +
+        "' has no compiled/reflected payload");
+  }
+
+  for (auto &entry : m_shaders) {
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource ||
+        metadata == nullptr || metadata->type != SceneResourceType::Shader ||
+        metadata->uri != shaderUri) {
+      continue;
+    }
+
+    auto &variants = entry.resource->materialSourceVariants;
+    auto existing = std::find_if(
+        variants.begin(), variants.end(), [&](const auto &candidate) {
+          return candidate.materialTypeVariant == materialTypeVariant &&
+                 candidate.renderPathNodeSignature == renderPathNodeSignature;
+        });
+    if (existing != variants.end()) {
+      existing->shaderProgram = std::move(shaderProgram);
+    } else {
+      variants.push_back(ShaderResourceMetadata::MaterialSourceVariant{
+          .materialTypeVariant = materialTypeVariant,
+          .renderPathNodeSignature = renderPathNodeSignature,
+          .shaderProgram = std::move(shaderProgram),
+      });
+    }
+
+    ResourceMetadata &stored = mutableMetadata(entry.metadataHandle);
+    stored.state = shaderMetadataState(*entry.resource);
+    advanceUploadGeneration();
+    return;
+  }
+
+  throw std::invalid_argument("missing Shader resource '" + shaderUri.string() +
+                              "' for material source variant registration");
+}
+
+void SceneResourceTable::forEachMaterialInstance(
+    const std::function<void(MaterialHandle, const MaterialInstance &,
+                             const ResourceUri &)> &callback) const {
+  for (u32 i = 0; i < m_materials.size(); ++i) {
+    const auto &entry = m_materials[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    const ResourceUri uri =
+        metadata != nullptr ? metadata->uri : ResourceUri{};
+    callback(MaterialHandle{i, entry.generation}, *entry.resource, uri);
+  }
+}
+
+void SceneResourceTable::forEachMaterialInstanceMutable(
+    const std::function<void(MaterialHandle, MaterialInstance &,
+                             const ResourceUri &)> &callback) {
+  for (u32 i = 0; i < m_materials.size(); ++i) {
+    auto &entry = m_materials[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    const ResourceUri uri =
+        metadata != nullptr ? metadata->uri : ResourceUri{};
+    callback(MaterialHandle{i, entry.generation}, *entry.resource, uri);
+  }
+}
+
 RenderPathGraphHandle
 SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
                                             RenderPathGraph graph) {
@@ -2082,6 +2176,17 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       throw std::logic_error("Shader resource '" + shaderUri.string() +
                              "' has resolved source descriptors but no live "
                              "compiled/reflected payload");
+    }
+    if (entry.resource->requiresMaterialSourceVariant &&
+        !hasResolvedMaterialSourceVariantPayload(*entry.resource)) {
+      const ResourceMetadata *metadata =
+          findResourceMetadata(entry.metadataHandle);
+      const ResourceUri shaderUri =
+          metadata != nullptr ? metadata->uri : entry.resource->uri;
+      throw std::logic_error(
+          "Shader resource '" + shaderUri.string() +
+          "' requires material source variant resolution but has no final "
+          "compiled/reflected material source variants");
     }
     const u32 typedIndex = static_cast<u32>(m_gpuShaderResources.size());
     m_gpuShaderResources.push_back(std::cref(*entry.resource));

@@ -172,44 +172,6 @@ getSkeletonComponent(const SceneNode &node) {
   return node.getComponent<SkeletonComponent>();
 }
 
-ShaderProgramSet shaderProgramWithMaterialSourceVariant(
-    const ShaderProgramSet &base, const MaterialInstance &material) {
-  ShaderProgramSet program = base;
-  const ResourceUri &sourceUri = material.getMaterialSourceUri();
-  if (sourceUri.empty()) {
-    return program;
-  }
-
-  const StringID sourceSignature = material.getMaterialSourceSignature();
-  if (sourceSignature.id == 0) {
-    throw std::logic_error(
-        "SceneNodeValidation material has bsdf.source but no material source "
-        "signature: " +
-        sourceUri.string());
-  }
-
-  auto it = std::find_if(program.variants.begin(), program.variants.end(),
-                         [](const ShaderVariant &variant) {
-                           return variant.macroName ==
-                                  "LX_MATERIAL_CONTRACT_SOURCE";
-                         });
-  if (it == program.variants.end()) {
-    program.variants.push_back(ShaderVariant{
-        .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
-        .enabled = true,
-        .materialContractSource = sourceUri,
-        .materialSourceSignature = sourceSignature,
-    });
-    return program;
-  }
-
-  it->enabled = true;
-  it->macroValue.reset();
-  it->materialContractSource = sourceUri;
-  it->materialSourceSignature = sourceSignature;
-  return program;
-}
-
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
@@ -566,15 +528,17 @@ void SceneNode::rebuildValidatedCache() {
     }
 
     const auto &entry = entryOpt->get();
-    ShaderProgramSet shaderProgram =
-        shaderProgramWithMaterialSourceVariant(entry.shaderProgram, *material);
+    ShaderProgramSet shaderProgram = entry.shaderProgram;
     auto shader = shaderProgram.getShader();
-    if (!shader) {
-      shader = material->getPassShader(pass);
-    }
     if (!shader) {
       fatalValidation(*this, pass, *material, shaderProgram,
                       "missing shader for enabled pass", std::cref(layout));
+    }
+    if (material->getMaterialSourceSignature().id != 0 &&
+        !shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE")) {
+      fatalValidation(*this, pass, *material, shaderProgram,
+                      "missing resolver-produced material source variant",
+                      std::cref(layout));
     }
 
     const bool usesSkinning =

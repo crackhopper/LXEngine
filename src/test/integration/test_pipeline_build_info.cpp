@@ -90,6 +90,7 @@ void configureMaterialV2UploadData(const MaterialInstanceSharedPtr &material) {
   material->setBsdfType("matte");
   material->setMaterialSourceUri(ResourceUri(
       "assets://shaders/glsl/common/materials/matte.contract.glsl"));
+  material->setMaterialSourceReflectionHash("matte-source-contract-v1");
   material->setMaterialSourceSignature(StringID("matte-source-signature"));
   MaterialParameterEnvelope kd;
   kd.kind = MaterialEnvelopeKind::Rgb;
@@ -145,6 +146,13 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
 
   ShaderProgramSet set;
   set.shaderName = "fake_shader";
+  set.variants.push_back(ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = ResourceUri(
+          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
+      .materialSourceSignature = StringID("matte-source-signature"),
+  });
   set.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = set;
@@ -287,6 +295,13 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
   auto tmpl = MaterialTemplate::create("filtered_layout_shader");
   ShaderProgramSet set;
   set.shaderName = "filtered_layout_shader";
+  set.variants.push_back(ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = ResourceUri(
+          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
+      .materialSourceSignature = StringID("matte-source-signature"),
+  });
   set.shader = shader;
   MaterialPassDefinition entry;
   entry.shaderProgram = set;

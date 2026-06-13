@@ -22,6 +22,7 @@
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/image/rgba_image_io.hpp"
+#include "infra/resource_parsers/material_source_variant_resolver.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
@@ -102,18 +103,25 @@ loadRenderPathGraphAsset(const char *assetPath,
   return std::move(*parsed.renderPathGraph);
 }
 
-LX_core::RenderPathGraph loadForwardRenderPathGraphAsset(bool bloomEnabled) {
-  return loadRenderPathGraphAsset(bloomEnabled
-                                      ? kDefaultForwardBloomRenderPathGraphAsset
-                                      : kDefaultForwardRenderPathGraphAsset,
-                                  LX_core::RenderPath::Forward);
-}
+void resolveMaterialSourceVariantsOrThrow(
+    LX_core::Scene &scene, const LX_core::RenderPathGraph &graph,
+    const LX_core::ResourceUri &graphUri) {
+  const LX_infra::MaterialSourceVariantResolverResult resolved =
+      LX_infra::resolveMaterialSourceVariants(scene.resources(), graph,
+                                              graphUri);
+  if (resolved.success) {
+    scene.rebuildRenderableCaches();
+    return;
+  }
 
-LX_core::RenderPathGraph loadDeferredRenderPathGraphAsset(bool bloomEnabled) {
-  return loadRenderPathGraphAsset(
-      bloomEnabled ? kDefaultDeferredBloomRenderPathGraphAsset
-                   : kDefaultDeferredRenderPathGraphAsset,
-      LX_core::RenderPath::Deferred);
+  std::string message =
+      "failed to resolve material source shader variants for RenderPathGraph " +
+      graphUri.string();
+  for (const std::string &diagnostic : resolved.diagnostics) {
+    message += "\n  ";
+    message += diagnostic;
+  }
+  throw std::runtime_error(message);
 }
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
@@ -1140,8 +1148,13 @@ public:
       m_frameGraph.addPass(std::move(pass));
     };
     if (deferredMode) {
+      const char *deferredGraphAsset =
+          m_postProcessSettings.bloomEnabled
+              ? kDefaultDeferredBloomRenderPathGraphAsset
+              : kDefaultDeferredRenderPathGraphAsset;
       const LX_core::RenderPathGraph deferredRenderPathGraph =
-          loadDeferredRenderPathGraphAsset(m_postProcessSettings.bloomEnabled);
+          loadRenderPathGraphAsset(deferredGraphAsset,
+                                   LX_core::RenderPath::Deferred);
       const std::vector<LX_core::StringID> deferredPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{
@@ -1159,6 +1172,9 @@ public:
                     LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
                                               deferredPasses, deferredPasses);
+      resolveMaterialSourceVariantsOrThrow(
+          *m_scene, deferredRenderPathGraph,
+          LX_core::ResourceUri(deferredGraphAsset));
       LX_core::FrameGraph deferredGraph =
           LX_core::buildFrameGraphFromRenderPathGraph(
               deferredRenderPathGraph,
@@ -1167,8 +1183,13 @@ public:
         addGraphDeclaredPass(std::move(pass));
       }
     } else {
+      const char *forwardGraphAsset =
+          m_postProcessSettings.bloomEnabled
+              ? kDefaultForwardBloomRenderPathGraphAsset
+              : kDefaultForwardRenderPathGraphAsset;
       const LX_core::RenderPathGraph forwardRenderPathGraph =
-          loadForwardRenderPathGraphAsset(m_postProcessSettings.bloomEnabled);
+          loadRenderPathGraphAsset(forwardGraphAsset,
+                                   LX_core::RenderPath::Forward);
       const std::vector<LX_core::StringID> forwardPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{
@@ -1181,6 +1202,9 @@ public:
                     LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
                                               forwardPasses, forwardPasses);
+      resolveMaterialSourceVariantsOrThrow(
+          *m_scene, forwardRenderPathGraph,
+          LX_core::ResourceUri(forwardGraphAsset));
       LX_core::FrameGraph forwardGraph =
           LX_core::buildFrameGraphFromRenderPathGraph(
               forwardRenderPathGraph,

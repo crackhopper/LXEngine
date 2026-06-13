@@ -110,12 +110,7 @@ PipelineKey buildKey(const Fixture &f, StringID pass,
                                                      ImageFormat::D32Float),
                      std::optional<RenderPathGeometryContract> geometry =
                          RenderPathGeometryContract{}) {
-  auto node = SceneNode::create("pipeline_identity_node");
-  node->addComponent<MeshComponent>(f.mesh);
-  if (skel) {
-    node->addComponent<SkeletonComponent>(skel);
-  }
-  node->addComponent<MaterialComponent>(f.material);
+  (void)skel;
   const auto shaderProgram = f.material->getPassShaderProgram(pass);
   EXPECT(shaderProgram.has_value(), "fixture material must expose pass shader");
 

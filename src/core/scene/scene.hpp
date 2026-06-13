@@ -169,6 +169,14 @@ public:
     return m_renderables;
   }
 
+  void rebuildRenderableCaches() {
+    for (const auto &renderable : m_renderables) {
+      if (const auto node = std::dynamic_pointer_cast<SceneNode>(renderable)) {
+        node->rebuildValidatedCache();
+      }
+    }
+  }
+
   /*
   @source_analysis.section addRenderable：nodeName 唯一与命名注入
   这个方法承担了三件 SceneNode 自己做不了的事：

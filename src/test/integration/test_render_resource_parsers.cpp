@@ -682,13 +682,18 @@ passes:
   EXPECT(table.shaderCount() == 7,
          "each current shader URI form should register a typed shader");
 
-  const LX_core::SceneResourceTableUploadView view = table.buildUploadView();
-  EXPECT(view.shaderResources.size() == 7,
-         "upload view should expose resolved shader descriptors");
-  for (const auto &shaderRef : view.shaderResources) {
-    const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
-    expectResolvedShaderDescriptor(shader, "shader descriptor");
+  bool rejectedUnresolvedVariant = false;
+  try {
+    (void)table.buildUploadView();
+  } catch (const std::logic_error &error) {
+    const std::string message = error.what();
+    rejectedUnresolvedVariant =
+        message.find("requires material source variant resolution") !=
+        std::string::npos;
   }
+  EXPECT(rejectedUnresolvedVariant,
+         "graph-only upload view should reject variant-only shaders before "
+         "material source variant resolver runs");
 }
 
 void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
@@ -723,30 +728,19 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
            std::string(asset.path) +
                " should register one shader descriptor per graph pass");
 
-    bool uploadViewBuilt = false;
-    LX_core::SceneResourceTableUploadView view;
+    bool rejectedUnresolvedVariant = false;
     try {
-      view = table.buildUploadView();
-      uploadViewBuilt = true;
+      (void)table.buildUploadView();
     } catch (const std::exception &error) {
-      EXPECT(false, std::string(asset.path) +
-                        " should build upload view: " + error.what());
+      const std::string message = error.what();
+      rejectedUnresolvedVariant =
+          message.find("requires material source variant resolution") !=
+          std::string::npos;
     }
-    if (!uploadViewBuilt) {
-      continue;
-    }
-
-    bool foundDebugOverlay = false;
-    for (const auto &shaderRef : view.shaderResources) {
-      const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
-      if (shader.uri == LX_core::ResourceUri("debug_overlay")) {
-        foundDebugOverlay = true;
-      }
-      expectResolvedShaderDescriptor(shader, std::string(asset.path));
-    }
-    EXPECT(foundDebugOverlay,
+    EXPECT(rejectedUnresolvedVariant,
            std::string(asset.path) +
-               " should resolve the DebugOverlay shader dependency");
+               " graph-only upload view should stop until material source "
+               "variant resolver produces final shader reflection");
   }
 }
 

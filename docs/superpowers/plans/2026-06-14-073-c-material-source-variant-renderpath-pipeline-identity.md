@@ -44,7 +44,7 @@ Do not let subagents implement compatibility fallbacks. If a package cannot comp
 - [x] Task 3: Make shader build targets variant-aware.
 - [x] Task 4: Add RenderPathNode contract, built-in resource vocabulary, and node signature.
 - [x] Task 5: Hard-cut `PipelineKey` to `MaterialTypeVariant + RenderPathNodeSignature`.
-- [ ] Task 6: Implement material type variant resolver and final shader reflection.
+- [x] Task 6: Implement material type variant resolver and final shader reflection.
 - [ ] Task 7: Add dynamic/traditional rendering mode plumbing to pipeline build.
 - [ ] Task 8: Implement Helmet material conversion tool and generated scene.
 - [ ] Task 9: Add Helmet realtime smoke and diagnostics.
