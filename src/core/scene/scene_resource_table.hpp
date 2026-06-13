@@ -69,6 +69,7 @@ struct ShaderResourceMetadata final {
   std::vector<ResourceUri> sourceUris;
   IShaderSharedPtr payload;
   bool sourceResolved = false;
+  bool requiresMaterialSourceVariant = false;
 };
 
 struct ObjectInstanceView final {
@@ -153,7 +154,8 @@ public:
   [[nodiscard]] ShaderHandle
   registerShaderResource(const ResourceUri &uri,
                          std::vector<ResourceUri> sourceUris,
-                         IShaderSharedPtr payload);
+                         IShaderSharedPtr payload,
+                         bool requiresMaterialSourceVariant = false);
   void updateObject(ObjectHandle handle, ObjectResource object);
   void updateCamera(CameraHandle handle, CameraResource camera);
 
@@ -395,6 +397,10 @@ private:
   mutable std::vector<SceneGpuDrawRecord> m_gpuDraws;
   mutable std::vector<SceneGpuObjectRecord> m_gpuObjects;
   mutable std::vector<SceneGpuMaterialRecord> m_gpuMaterials;
+  mutable std::vector<SceneGpuMaterialRefRecord> m_gpuMaterialRefs;
+  mutable std::vector<SourceLocalMaterialRecord> m_gpuSourceMaterialRecords;
+  mutable std::vector<SceneSourceLocalMaterialStorageView>
+      m_gpuSourceMaterialStorages;
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
       m_gpuTextures;
   mutable std::vector<std::reference_wrapper<const CameraResource>>

@@ -13,6 +13,10 @@
 #include <iostream>
 #include <sstream>
 
+#ifndef LXE_SOURCE_DIR
+#define LXE_SOURCE_DIR ""
+#endif
+
 namespace {
 
 int g_failures = 0;
@@ -50,6 +54,30 @@ LX_core::ResourceUri writeTempRenderPathGraph(const std::string &fileName,
   std::ofstream file(path);
   file << contents;
   return LX_core::ResourceUri("file://" + path.generic_string());
+}
+
+bool shaderHasCompiledPayload(const LX_core::ShaderResourceMetadata &shader) {
+  return shader.payload && !shader.payload->getAllStages().empty() &&
+         (!shader.payload->getReflectionBindings().empty() ||
+          !shader.payload->getVertexInputs().empty());
+}
+
+void expectResolvedShaderDescriptor(
+    const LX_core::ShaderResourceMetadata &shader,
+    const std::string &contextMessage) {
+  EXPECT(shader.sourceResolved,
+         contextMessage + " should prove source resolution succeeded");
+  EXPECT(!shader.sourceUris.empty(),
+         contextMessage + " should retain source URI list");
+  if (shader.requiresMaterialSourceVariant) {
+    EXPECT(!shaderHasCompiledPayload(shader),
+           contextMessage +
+               " should defer compilation until material source is known");
+    return;
+  }
+  EXPECT(shaderHasCompiledPayload(shader),
+         contextMessage +
+             " should retain live compiled shader payload and reflection data");
 }
 
 void testRenderFeatureParsesPureEnvelope() {
@@ -554,18 +582,7 @@ passes:
          "upload view should expose resolved shader descriptors");
   for (const auto &shaderRef : view.shaderResources) {
     const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
-    EXPECT(shader.sourceResolved,
-           "shader descriptor should prove source resolution succeeded");
-    EXPECT(!shader.sourceUris.empty(),
-           "shader descriptor should retain source URI list");
-    EXPECT(static_cast<bool>(shader.payload),
-           "shader descriptor should retain live compiled shader payload");
-    EXPECT(shader.payload && !shader.payload->getAllStages().empty(),
-           "compiled shader payload should retain stage bytecode");
-    EXPECT(shader.payload &&
-               (!shader.payload->getReflectionBindings().empty() ||
-                !shader.payload->getVertexInputs().empty()),
-           "compiled shader payload should retain reflection data");
+    expectResolvedShaderDescriptor(shader, "shader descriptor");
   }
 }
 
@@ -599,7 +616,7 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
            std::string(asset.path) + " should not register as failed");
     EXPECT(table.shaderCount() == asset.shaderCount,
            std::string(asset.path) +
-               " should register one live shader per graph pass");
+               " should register one shader descriptor per graph pass");
 
     bool uploadViewBuilt = false;
     LX_core::SceneResourceTableUploadView view;
@@ -620,17 +637,7 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
       if (shader.uri == LX_core::ResourceUri("debug_overlay")) {
         foundDebugOverlay = true;
       }
-      EXPECT(static_cast<bool>(shader.payload),
-             std::string(asset.path) +
-                 " should retain live compiled shader payloads");
-      EXPECT(shader.payload && !shader.payload->getAllStages().empty(),
-             std::string(asset.path) +
-                 " shader payload should contain compiled stages");
-      EXPECT(shader.payload &&
-                 (!shader.payload->getReflectionBindings().empty() ||
-                  !shader.payload->getVertexInputs().empty()),
-             std::string(asset.path) +
-                 " shader payload should contain reflection data");
+      expectResolvedShaderDescriptor(shader, std::string(asset.path));
     }
     EXPECT(foundDebugOverlay,
            std::string(asset.path) +
@@ -641,6 +648,10 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
 } // namespace
 
 int main() {
+  if (std::filesystem::path sourceRoot{LXE_SOURCE_DIR}; !sourceRoot.empty()) {
+    std::filesystem::current_path(sourceRoot);
+  }
+
   testRenderFeatureParsesPureEnvelope();
   testDefaultRenderFeatureAssetParses();
   testDefaultRenderPathGraphAssetParses();

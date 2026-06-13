@@ -131,6 +131,14 @@ nav:
   - 需求（进行中）:
       - requirements/index.md
       - "@requirements"
+  - Superpowers:
+      - 总览: superpowers/index.md
+      - 设计 Specs:
+          - superpowers/specs/index.md
+          - "@superpowers_specs"
+      - 执行 Plans:
+          - superpowers/plans/index.md
+          - "@superpowers_plans"
   - Use Cases:
       - use_cases/index.md
       - lxe_editor 复杂场景录制: use_cases/lxe_editor/record-complex-scene-edit.md

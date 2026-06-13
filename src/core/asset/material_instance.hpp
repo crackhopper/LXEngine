@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/material_contract.hpp"
 #include "core/asset/material_parameter_envelope.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/asset/parameter_buffer.hpp"
@@ -151,6 +152,16 @@ public:
 
   void setBsdfType(std::string bsdfType);
   [[nodiscard]] const std::string &getBsdfType() const;
+  void setMaterialSourceUri(ResourceUri sourceUri);
+  [[nodiscard]] const ResourceUri &getMaterialSourceUri() const;
+  void setMaterialSourceSignature(StringID signature);
+  [[nodiscard]] StringID getMaterialSourceSignature() const;
+  void setMaterialSourceReflectionHash(std::string hash);
+  [[nodiscard]] const std::string &getMaterialSourceReflectionHash() const;
+  void setMaterialContractReflection(MaterialContractReflection reflection);
+  [[nodiscard]] std::optional<
+      std::reference_wrapper<const MaterialContractReflection>>
+  getMaterialContractReflection() const;
   void setRenderClass(std::string renderClass);
   [[nodiscard]] const std::string &getRenderClass() const;
   void setMaterialTags(std::vector<std::string> tags);
@@ -196,6 +207,10 @@ private:
   std::unordered_map<u64, std::function<void()>> m_passStateListeners;
   u64 m_nextListenerId = 1;
   std::string m_bsdfType;
+  ResourceUri m_materialSourceUri;
+  StringID m_materialSourceSignature;
+  std::string m_materialSourceReflectionHash;
+  std::optional<MaterialContractReflection> m_materialContractReflection;
   std::string m_renderClass;
   std::vector<std::string> m_tags;
   std::unordered_map<std::string, std::string> m_authoringMetadata;

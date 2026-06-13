@@ -43,6 +43,7 @@ void testParserResourceDependenciesSurviveTableRegistration() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
     normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
@@ -137,7 +138,7 @@ bsdf:
          "material dependency graph should deduplicate repeated texture edges");
 }
 
-void testMixMaterialRefReadsTargetHeaderWithoutFullParse() {
+void testUnsupportedMixMaterialRejectsBeforeMaterialRefDependencyScan() {
   const fs::path root = makeTempRoot();
   const fs::path owner = root / "materials" / "mix.material";
   const fs::path leaf = root / "materials" / "leaf.material";
@@ -145,6 +146,7 @@ void testMixMaterialRefReadsTargetHeaderWithoutFullParse() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
 )");
 
   SceneResourceTable table;
@@ -153,23 +155,19 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: leaf.material }
     namedmaterial2: { kind: materialRef, uri: leaf.material }
     amount: { kind: float, value: 0.35 }
 )");
 
-  EXPECT(parsed.instance != nullptr,
-         "mix material should accept non-mix material reference header");
-  EXPECT(parsed.diagnostics.empty(),
-         "header-only material reference validation should not require target "
-         "parameters");
-  EXPECT(parsed.dependencies.size() == 2,
-         "mix material refs should remain parameter dependencies");
-  EXPECT(parsed.dependencies.size() == 2 &&
-             parsed.dependencies[0].resourceHandle ==
-                 parsed.dependencies[1].resourceHandle,
-         "same material reference URI should deduplicate header handles");
+  EXPECT(parsed.instance == nullptr,
+         "unsupported mix material should fail before runtime dependency use");
+  EXPECT(!parsed.diagnostics.empty(),
+         "unsupported mix material should emit diagnostics");
+  EXPECT(parsed.dependencies.empty(),
+         "unsupported mix material should not register materialRef dependencies");
 }
 
 void testMixMaterialRefRejectsTargetMixHeader() {
@@ -180,6 +178,7 @@ void testMixMaterialRefRejectsTargetMixHeader() {
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
 )");
 
   SceneResourceTable table;
@@ -188,6 +187,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: child_mix.material }
     namedmaterial2: { kind: materialRef, uri: child_mix.material }
@@ -200,6 +200,42 @@ bsdf:
          "rejected nested mix material reference should emit diagnostics");
 }
 
+void testMixMaterialRefRejectsTargetHeaderWithoutSource() {
+  const fs::path root = makeTempRoot();
+  const fs::path owner = root / "materials" / "mix.material";
+  const fs::path leaf = root / "materials" / "leaf_without_source.material";
+  writeFile(leaf, R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+)");
+
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, owner.generic_string(), R"(
+schema: lxe.material.v2
+bsdf:
+  type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
+  parameters:
+    namedmaterial1: { kind: materialRef, uri: leaf_without_source.material }
+    namedmaterial2: { kind: materialRef, uri: leaf_without_source.material }
+    amount: { kind: float, value: 0.35 }
+)");
+
+  EXPECT(parsed.instance == nullptr,
+         "mix material should reject materialRef target header without source");
+  EXPECT(!parsed.diagnostics.empty(),
+         "materialRef target header without source should emit diagnostics");
+  bool mentionsSource = false;
+  for (const std::string &diagnostic : parsed.diagnostics) {
+    mentionsSource =
+        mentionsSource || diagnostic.find("bsdf.source") != std::string::npos;
+  }
+  EXPECT(mentionsSource,
+         "materialRef target header diagnostic should name bsdf.source");
+}
+
 void testMixMaterialRefRejectsNamedStringReference() {
   const fs::path root = makeTempRoot();
   const fs::path owner = root / "materials" / "mix.material";
@@ -210,6 +246,7 @@ void testMixMaterialRefRejectsNamedStringReference() {
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: named:matte_base }
     namedmaterial2: { kind: materialRef, uri: named:clearcoat }
@@ -232,6 +269,7 @@ void testMaterialRefDiagnosticsIncludeParserAndResourceContext() {
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: missing.material }
     namedmaterial2: { kind: materialRef, uri: missing.material }
@@ -248,14 +286,9 @@ bsdf:
   const std::string &diagnostic = parsed.diagnostics.front();
   EXPECT(diagnostic.find(owner.generic_string()) != std::string::npos,
          "diagnostic should include owner material URI");
-  EXPECT(diagnostic.find("bsdf.parameters.namedmaterial1") != std::string::npos,
-         "diagnostic should include parameter path");
-  EXPECT(diagnostic.find(
-             (root / "materials" / "missing.material").generic_string()) !=
-             std::string::npos,
-         "diagnostic should include target resource URI");
-  EXPECT(diagnostic.find("MaterialResourceParser") != std::string::npos,
-         "diagnostic should include parser name");
+  EXPECT(diagnostic.find("unsupported") != std::string::npos,
+         "diagnostic should reject unsupported mix source before materialRef "
+         "dependency lookup");
 }
 
 void testGenericMaterialLoaderWritesDependenciesIntoCallerTable() {
@@ -265,6 +298,7 @@ void testGenericMaterialLoaderWritesDependenciesIntoCallerTable() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
     normalmap: { kind: texture, valueType: rgb, uri: ../textures/shared.png }
@@ -361,8 +395,9 @@ techniques:
 
 int main() {
   testParserResourceDependenciesSurviveTableRegistration();
-  testMixMaterialRefReadsTargetHeaderWithoutFullParse();
+  testUnsupportedMixMaterialRejectsBeforeMaterialRefDependencyScan();
   testMixMaterialRefRejectsTargetMixHeader();
+  testMixMaterialRefRejectsTargetHeaderWithoutSource();
   testMixMaterialRefRejectsNamedStringReference();
   testMaterialRefDiagnosticsIncludeParserAndResourceContext();
   testGenericMaterialLoaderWritesDependenciesIntoCallerTable();

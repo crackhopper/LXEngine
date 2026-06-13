@@ -328,6 +328,12 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
   clone->m_textureHandlesByName = uniqueClone->m_textureHandlesByName;
   clone->m_enabledPasses = uniqueClone->m_enabledPasses;
   clone->m_bsdfType = uniqueClone->m_bsdfType;
+  clone->m_materialSourceUri = uniqueClone->m_materialSourceUri;
+  clone->m_materialSourceSignature = uniqueClone->m_materialSourceSignature;
+  clone->m_materialSourceReflectionHash =
+      uniqueClone->m_materialSourceReflectionHash;
+  clone->m_materialContractReflection =
+      uniqueClone->m_materialContractReflection;
   clone->m_renderClass = uniqueClone->m_renderClass;
   clone->m_tags = uniqueClone->m_tags;
   clone->m_authoringMetadata = uniqueClone->m_authoringMetadata;
@@ -366,6 +372,10 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
   clone->m_textureHandlesByName = m_textureHandlesByName;
   clone->m_enabledPasses = m_enabledPasses;
   clone->m_bsdfType = m_bsdfType;
+  clone->m_materialSourceUri = m_materialSourceUri;
+  clone->m_materialSourceSignature = m_materialSourceSignature;
+  clone->m_materialSourceReflectionHash = m_materialSourceReflectionHash;
+  clone->m_materialContractReflection = m_materialContractReflection;
   clone->m_renderClass = m_renderClass;
   clone->m_tags = m_tags;
   clone->m_authoringMetadata = m_authoringMetadata;
@@ -481,7 +491,11 @@ RenderState MaterialInstance::getPassRenderState(StringID pass) const {
 StringID MaterialInstance::getPipelineSignature(StringID pass) const {
   if (!m_template)
     return StringID{};
-  StringID passSig = m_template->getPipelineSignature(pass);
+  const StringID passSig = m_template->getPipelineSignature(pass);
+  if (m_materialSourceSignature.id != 0) {
+    StringID fields[] = {m_materialSourceSignature, passSig};
+    return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
+  }
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
 }
@@ -541,6 +555,56 @@ void MaterialInstance::setBsdfType(std::string bsdfType) {
 }
 
 const std::string &MaterialInstance::getBsdfType() const { return m_bsdfType; }
+
+void MaterialInstance::setMaterialSourceUri(ResourceUri sourceUri) {
+  if (m_materialSourceUri == sourceUri) {
+    return;
+  }
+  m_materialSourceUri = std::move(sourceUri);
+  markMaterialStateDirty();
+}
+
+const ResourceUri &MaterialInstance::getMaterialSourceUri() const {
+  return m_materialSourceUri;
+}
+
+void MaterialInstance::setMaterialSourceSignature(StringID signature) {
+  if (m_materialSourceSignature == signature) {
+    return;
+  }
+  m_materialSourceSignature = signature;
+  markMaterialStateDirty();
+}
+
+StringID MaterialInstance::getMaterialSourceSignature() const {
+  return m_materialSourceSignature;
+}
+
+void MaterialInstance::setMaterialSourceReflectionHash(std::string hash) {
+  if (m_materialSourceReflectionHash == hash) {
+    return;
+  }
+  m_materialSourceReflectionHash = std::move(hash);
+  markMaterialStateDirty();
+}
+
+const std::string &MaterialInstance::getMaterialSourceReflectionHash() const {
+  return m_materialSourceReflectionHash;
+}
+
+void MaterialInstance::setMaterialContractReflection(
+    MaterialContractReflection reflection) {
+  m_materialContractReflection = std::move(reflection);
+  markMaterialStateDirty();
+}
+
+std::optional<std::reference_wrapper<const MaterialContractReflection>>
+MaterialInstance::getMaterialContractReflection() const {
+  if (!m_materialContractReflection.has_value()) {
+    return std::nullopt;
+  }
+  return std::cref(*m_materialContractReflection);
+}
 
 void MaterialInstance::setRenderClass(std::string renderClass) {
   if (m_renderClass == renderClass) {

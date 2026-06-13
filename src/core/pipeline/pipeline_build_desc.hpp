@@ -48,6 +48,7 @@ identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备
 struct PipelineBuildDesc {
   PipelineBuildType type = PipelineBuildType::Graphics;
   PipelineKey key;
+  StringID shaderVariantKey;
   RenderTargetDesc target;
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;

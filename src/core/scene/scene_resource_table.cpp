@@ -13,6 +13,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -27,6 +28,35 @@ namespace {
 [[nodiscard]] u64 nextGeneration(const u64 current) {
   const u64 next = current + 1;
   return next == 0 ? 1 : next;
+}
+
+[[nodiscard]] bool sameVec4(const Vec4f &lhs, const Vec4f &rhs) {
+  return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
+}
+
+[[nodiscard]] bool
+sameStorageFieldLayout(const MaterialContractStorageField &lhs,
+                       const MaterialContractStorageField &rhs) {
+  return lhs.name == rhs.name && lhs.type == rhs.type &&
+         lhs.inputKind == rhs.inputKind &&
+         lhs.parameterName == rhs.parameterName &&
+         lhs.defaultTextureSemantic == rhs.defaultTextureSemantic &&
+         sameVec4(lhs.defaultValue, rhs.defaultValue) &&
+         lhs.defaultChannel == rhs.defaultChannel;
+}
+
+[[nodiscard]] bool sameSourceStorageLayout(
+    const MaterialContractReflection &lhs,
+    const MaterialContractReflection &rhs) {
+  if (lhs.storageFields.size() != rhs.storageFields.size()) {
+    return false;
+  }
+  for (usize i = 0; i < lhs.storageFields.size(); ++i) {
+    if (!sameStorageFieldLayout(lhs.storageFields[i], rhs.storageFields[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 struct CompactRecordIndex final {
@@ -70,12 +100,49 @@ findCompactRecordIndex(const std::vector<CompactRecordIndex> &indices,
          !shader.payload->getVertexInputs().empty();
 }
 
+[[nodiscard]] bool
+isShaderDependencyResolved(const ShaderResourceMetadata &shader) {
+  if (!shader.sourceResolved || shader.sourceUris.empty()) {
+    return false;
+  }
+  return hasLiveShaderPayload(shader) || shader.requiresMaterialSourceVariant;
+}
+
+[[nodiscard]] ResourceState
+shaderMetadataState(const ShaderResourceMetadata &shader) {
+  return isShaderDependencyResolved(shader) ? ResourceState::Ready
+                                            : ResourceState::Unloaded;
+}
+
 [[nodiscard]] std::string missingShaderPayloadMessage(
     const ResourceUri &graphUri, const ResourceUri &shaderUri) {
   return "RenderPathGraph '" + graphUri.string() + "' references Shader '" +
          shaderUri.string() +
          "' with resolved source descriptors but no live compiled/reflected "
          "payload";
+}
+
+[[nodiscard]] const ResourceUri &defaultWhiteTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/white");
+  return uri;
+}
+
+[[nodiscard]] const ResourceUri &defaultBlackTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/black");
+  return uri;
+}
+
+[[nodiscard]] const ResourceUri &defaultFlatNormalTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/flat-normal");
+  return uri;
+}
+
+[[nodiscard]] CombinedTextureSamplerUniquePtr
+makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a) {
+  auto texture = std::make_shared<Texture>(
+      TextureDesc{1, 1, TextureFormat::RGBA8},
+      std::vector<u8>{r, g, b, a});
+  return std::make_unique<CombinedTextureSampler>(std::move(texture));
 }
 
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
@@ -290,7 +357,14 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
 
 } // namespace
 
-SceneResourceTable::SceneResourceTable() = default;
+SceneResourceTable::SceneResourceTable() {
+  (void)registerTexture(defaultWhiteTextureUri(),
+                        makeSolidDefaultTexture(255, 255, 255, 255));
+  (void)registerTexture(defaultBlackTextureUri(),
+                        makeSolidDefaultTexture(0, 0, 0, 255));
+  (void)registerTexture(defaultFlatNormalTextureUri(),
+                        makeSolidDefaultTexture(128, 128, 255, 255));
+}
 SceneResourceTable::~SceneResourceTable() = default;
 SceneResourceTable::SceneResourceTable(SceneResourceTable &&) noexcept =
     default;
@@ -507,7 +581,7 @@ bool SceneResourceTable::hasLiveTypedResourceMetadata(
     for (const auto &entry : m_shaders) {
       if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
           entry.metadataHandle == handle) {
-        return hasLiveShaderPayload(*entry.resource);
+        return isShaderDependencyResolved(*entry.resource);
       }
     }
     return false;
@@ -1010,7 +1084,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
 
 ShaderHandle SceneResourceTable::registerShaderResource(
     const ResourceUri &uri, std::vector<ResourceUri> sourceUris,
-    IShaderSharedPtr payload) {
+    IShaderSharedPtr payload, bool requiresMaterialSourceVariant) {
   if (sourceUris.empty()) {
     return {};
   }
@@ -1023,13 +1097,15 @@ ShaderHandle SceneResourceTable::registerShaderResource(
         metadata != nullptr && metadata->type == SceneResourceType::Shader &&
         metadata->uri == uri && entry.resource->sourceResolved &&
         !entry.resource->sourceUris.empty()) {
-      if (!hasLiveShaderPayload(*entry.resource) && payload) {
+      if ((!hasLiveShaderPayload(*entry.resource) && payload) ||
+          (requiresMaterialSourceVariant &&
+           !entry.resource->requiresMaterialSourceVariant)) {
         entry.resource->sourceUris = std::move(sourceUris);
         entry.resource->payload = std::move(payload);
+        entry.resource->requiresMaterialSourceVariant =
+            requiresMaterialSourceVariant;
         ResourceMetadata &stored = mutableMetadata(entry.metadataHandle);
-        stored.state = hasLiveShaderPayload(*entry.resource)
-                           ? ResourceState::Ready
-                           : ResourceState::Unloaded;
+        stored.state = shaderMetadataState(*entry.resource);
         stored.dependencies = entry.resource->sourceUris;
         stored.diagnostics.clear();
         advanceUploadGeneration();
@@ -1044,15 +1120,14 @@ ShaderHandle SceneResourceTable::registerShaderResource(
   shader->sourceUris = std::move(sourceUris);
   shader->payload = std::move(payload);
   shader->sourceResolved = true;
+  shader->requiresMaterialSourceVariant = requiresMaterialSourceVariant;
   auto handle =
       add<ShaderResourceMetadata, ShaderHandle>(m_shaders, std::move(shader));
   if (handle.isValid()) {
     ResourceMetadata metadata;
     metadata.type = SceneResourceType::Shader;
     metadata.uri = uri;
-    metadata.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
-                         ? ResourceState::Ready
-                         : ResourceState::Unloaded;
+    metadata.state = shaderMetadataState(*m_shaders[handle.index].resource);
     for (const ResourceUri &sourceUri :
          m_shaders[handle.index].resource->sourceUris) {
       metadata.dependencies.push_back(sourceUri);
@@ -1061,9 +1136,7 @@ ShaderHandle SceneResourceTable::registerShaderResource(
         internResourceMetadata(std::move(metadata));
     ResourceMetadata &stored =
         mutableMetadata(m_shaders[handle.index].metadataHandle);
-    stored.state = hasLiveShaderPayload(*m_shaders[handle.index].resource)
-                       ? ResourceState::Ready
-                       : ResourceState::Unloaded;
+    stored.state = shaderMetadataState(*m_shaders[handle.index].resource);
     stored.dependencies = m_shaders[handle.index].resource->sourceUris;
     stored.diagnostics.clear();
   }
@@ -1113,9 +1186,7 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
           metadata != nullptr && metadata->type == SceneResourceType::Shader &&
           (metadata->state == ResourceState::Ready ||
            metadata->state == ResourceState::Dirty) &&
-          entry.resource->sourceResolved &&
-          !entry.resource->sourceUris.empty() &&
-          hasLiveShaderPayload(*entry.resource) &&
+          isShaderDependencyResolved(*entry.resource) &&
           metadata->uri == dependencyUri) {
         return ShaderHandle{i, entry.generation};
       }
@@ -1864,6 +1935,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .draws = m_gpuDraws,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
+        .materialRefs = m_gpuMaterialRefs,
+        .sourceMaterialRecords = m_gpuSourceMaterialRecords,
+        .sourceMaterialStorages = m_gpuSourceMaterialStorages,
         .textures = m_gpuTextures,
         .cameras = m_gpuCameras,
         .lights = m_gpuLights,
@@ -1895,6 +1969,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuDraws.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
+  m_gpuMaterialRefs.clear();
+  m_gpuSourceMaterialRecords.clear();
+  m_gpuSourceMaterialStorages.clear();
   m_gpuTextures.clear();
   m_gpuCameras.clear();
   m_gpuLights.clear();
@@ -1914,6 +1991,21 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuRenderPathGraphIndexByHandle.clear();
   m_gpuRenderFeatureIndexByHandle.clear();
   m_gpuShaderIndexByHandle.clear();
+
+  const auto registerBuiltinUploadTexture =
+      [this](const ResourceUri &uri) -> u32 {
+    const auto texture = findTexture(uri);
+    if (!texture.has_value()) {
+      throw std::logic_error("missing builtin default texture resource '" +
+                             uri.string() + "'");
+    }
+    return registerUploadTexture(*texture);
+  };
+  const MaterialContractDefaultTextureSlots defaultTextureSlots{
+      .white = registerBuiltinUploadTexture(defaultWhiteTextureUri()),
+      .black = registerBuiltinUploadTexture(defaultBlackTextureUri()),
+      .flatNormal = registerBuiltinUploadTexture(defaultFlatNormalTextureUri()),
+  };
 
   m_gpuCameras.reserve(aliveCount(m_cameras));
   for (u32 i = 0; i < m_cameras.size(); ++i) {
@@ -1981,7 +2073,8 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       throw std::logic_error("Shader resource '" + shaderUri.string() +
                              "' has no resolved source descriptors");
     }
-    if (!hasLiveShaderPayload(*entry.resource)) {
+    if (!hasLiveShaderPayload(*entry.resource) &&
+        !entry.resource->requiresMaterialSourceVariant) {
       const ResourceMetadata *metadata =
           findResourceMetadata(entry.metadataHandle);
       const ResourceUri shaderUri =
@@ -2030,9 +2123,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
           metadata != nullptr && metadata->type == SceneResourceType::Shader &&
           (metadata->state == ResourceState::Ready ||
            metadata->state == ResourceState::Dirty) &&
-          entry.resource->sourceResolved &&
-          !entry.resource->sourceUris.empty() &&
-          hasLiveShaderPayload(*entry.resource) &&
+          isShaderDependencyResolved(*entry.resource) &&
           metadata->uri == uri) {
         return ShaderHandle{i, entry.generation};
       }
@@ -2148,63 +2239,169 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     m_gpuMeshes.push_back(record);
   }
 
-  std::vector<CompactRecordIndex> materialIndexToGpuRecord(m_materials.size());
+  struct MaterialUploadRecordIndex final {
+    u32 generation = 0;
+    u32 materialIndex = u32_max;
+    u32 materialRefIndex = u32_max;
+  };
+
+  std::vector<MaterialUploadRecordIndex> materialIndexToGpuRecord(
+      m_materials.size());
+  std::vector<std::vector<SourceLocalMaterialRecord>>
+      sourceMaterialRecordsByStorage;
+  std::vector<const MaterialContractReflection *> sourceContractsByStorage;
   m_gpuMaterials.reserve(aliveCount(m_objects));
+  m_gpuMaterialRefs.reserve(aliveCount(m_objects));
   m_gpuTextures.reserve(aliveCount(m_objects) * 5u);
-  const auto ensureMaterialRecord =
-      [this, &materialIndexToGpuRecord](MaterialHandle handle) -> u32 {
-    if (!isAlive(handle)) {
+  sourceMaterialRecordsByStorage.reserve(aliveCount(m_objects));
+  sourceContractsByStorage.reserve(aliveCount(m_objects));
+
+  const auto textureSlotForUri = [this](const ResourceUri &uri) -> u32 {
+    const auto texture = findTexture(uri);
+    if (!texture.has_value()) {
       return u32_max;
+    }
+    return registerUploadTexture(*texture);
+  };
+
+  const auto textureHandleForMaterialParameter =
+      [this](const MaterialInstance &material,
+             std::string_view parameterName) -> TextureHandle {
+    const std::string parameterKey(parameterName);
+    const StringID parameterId(parameterKey);
+    const auto envelope = material.getMaterialEnvelope(parameterId);
+    if (!envelope.has_value() ||
+        envelope->get().kind != MaterialEnvelopeKind::Texture) {
+      return {};
+    }
+    const TextureHandle directHandle = material.getTextureHandle(parameterId);
+    if (directHandle.isValid()) {
+      return directHandle;
+    }
+    for (const auto &dependency : material.getMaterialDependencies()) {
+      if (dependency.kind != MaterialEnvelopeKind::Texture ||
+          dependency.parameterName != parameterKey) {
+        continue;
+      }
+      if (const auto texture = findTexture(dependency.uri)) {
+        return *texture;
+      }
+    }
+    return {};
+  };
+
+  const auto ensureSourceStorage =
+      [this, &sourceMaterialRecordsByStorage, &sourceContractsByStorage](
+          const MaterialContractReflection &contract) -> u32 {
+    const StringID sourceSignature = contract.sourceSignature();
+    for (u32 i = 0; i < m_gpuSourceMaterialStorages.size(); ++i) {
+      if (m_gpuSourceMaterialStorages[i].sourceSignature == sourceSignature) {
+        if (!sameSourceStorageLayout(*sourceContractsByStorage[i], contract)) {
+          throw std::logic_error(
+              "material source signature conflict for '" +
+              contract.sourceUri.string() +
+              "': inconsistent source storage layout");
+        }
+        return i;
+      }
+    }
+
+    m_gpuSourceMaterialStorages.push_back(SceneSourceLocalMaterialStorageView{
+        .sourceSignature = sourceSignature,
+        .sourceUri = contract.sourceUri,
+        .reflectionHash = contract.reflectionHash,
+        .storageAbiHash = contract.storageAbiHash,
+    });
+    sourceMaterialRecordsByStorage.emplace_back();
+    sourceContractsByStorage.push_back(&contract);
+    return static_cast<u32>(m_gpuSourceMaterialStorages.size() - 1u);
+  };
+
+  const auto ensureMaterialRecord =
+      [this, &materialIndexToGpuRecord, &defaultTextureSlots,
+       &textureSlotForUri, &textureHandleForMaterialParameter,
+       &ensureSourceStorage,
+       &sourceMaterialRecordsByStorage](
+          MaterialHandle handle) -> MaterialUploadRecordIndex {
+    if (!isAlive(handle)) {
+      return {};
     }
     auto &compact = materialIndexToGpuRecord[handle.index];
     if (compact.generation == handle.generation) {
-      return compact.uploadIndex;
+      return compact;
     }
     const auto &entry = m_materials[handle.index];
     if (entry.state != SceneResourceEntryState::Alive || !entry.resource ||
         entry.generation != handle.generation) {
-      return u32_max;
-    }
-    const auto textureHandleForV2Parameter =
-        [this](const MaterialInstance &material,
-               const char *parameterName) -> TextureHandle {
-      const auto envelope =
-          material.getMaterialEnvelope(StringID(parameterName));
-      if (!envelope.has_value() ||
-          envelope->get().kind != MaterialEnvelopeKind::Texture) {
-        return {};
-      }
-      const TextureHandle directHandle =
-          material.getTextureHandle(StringID(parameterName));
-      if (directHandle.isValid()) {
-        return directHandle;
-      }
-      for (const auto &dependency : material.getMaterialDependencies()) {
-        if (dependency.kind != MaterialEnvelopeKind::Texture ||
-            dependency.parameterName != parameterName) {
-          continue;
-        }
-        if (const auto texture = findTexture(dependency.uri)) {
-          return *texture;
-        }
-      }
       return {};
-    };
+    }
+
+    if (const auto contract = entry.resource->getMaterialContractReflection()) {
+      const StringID expectedSourceSignature = contract->get().sourceSignature();
+      const StringID materialSourceSignature =
+          entry.resource->getMaterialSourceSignature();
+      if (materialSourceSignature.id == 0) {
+        throw std::logic_error("missing material source signature for '" +
+                               contract->get().sourceUri.string() + "'");
+      }
+      if (materialSourceSignature != expectedSourceSignature) {
+        throw std::logic_error("material source signature mismatch for '" +
+                               contract->get().sourceUri.string() + "'");
+      }
+
+      const u32 sourceStorageIndex = ensureSourceStorage(contract->get());
+      auto &records = sourceMaterialRecordsByStorage[sourceStorageIndex];
+      const u32 sourceLocalMaterialIndex = static_cast<u32>(records.size());
+
+      MaterialContractPackInput packInput;
+      packInput.material = entry.resource.get();
+      packInput.contract = contract->get();
+      packInput.defaultTextureSlots = defaultTextureSlots;
+      packInput.sourceLocalMaterialIndex = sourceLocalMaterialIndex;
+      packInput.textureSlotForParameter =
+          [this, &entry, &textureHandleForMaterialParameter](
+              std::string_view parameterName) -> u32 {
+        return registerUploadTexture(textureHandleForMaterialParameter(
+            *entry.resource, parameterName));
+      };
+      packInput.textureSlotForUri = textureSlotForUri;
+      MaterialContractPackResult packed =
+          packMaterialContractRecord(packInput);
+      if (!packed.diagnostics.empty()) {
+        throw std::logic_error("failed to pack source material record for '" +
+                               contract->get().sourceUri.string() + "': " +
+                               packed.diagnostics.front());
+      }
+
+      records.push_back(std::move(packed.record));
+      compact = MaterialUploadRecordIndex{
+          .generation = entry.generation,
+          .materialIndex = u32_max,
+          .materialRefIndex = static_cast<u32>(m_gpuMaterialRefs.size()),
+      };
+      m_gpuMaterialRefs.push_back(SceneGpuMaterialRefRecord{
+          .sourceStorageIndex = sourceStorageIndex,
+          .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
+      });
+      return compact;
+    }
+
     auto record = toGpuMaterialRecord(*entry.resource);
     record.baseColorTexture = registerUploadTexture(
-        textureHandleForV2Parameter(*entry.resource, "Kd"));
+        textureHandleForMaterialParameter(*entry.resource, "Kd"));
     record.normalTexture = registerUploadTexture(
-        textureHandleForV2Parameter(*entry.resource, "normalmap"));
-    compact = CompactRecordIndex{
+        textureHandleForMaterialParameter(*entry.resource, "normalmap"));
+    compact = MaterialUploadRecordIndex{
         .generation = entry.generation,
-        .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
+        .materialIndex = static_cast<u32>(m_gpuMaterials.size()),
+        .materialRefIndex = u32_max,
     };
     m_gpuMaterialIndexByHandle.push_back(SceneResourceMaterialUploadIndex{
         .handle = handle,
-        .typedIndex = compact.uploadIndex,
+        .typedIndex = compact.materialIndex,
     });
     m_gpuMaterials.push_back(record);
-    return compact.uploadIndex;
+    return compact;
   };
 
   m_gpuObjects.reserve(aliveCount(m_objects));
@@ -2221,8 +2418,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     if (meshRecordIndex == u32_max) {
       continue;
     }
-    const u32 materialRecordIndex = ensureMaterialRecord(object.material);
-    if (materialRecordIndex == u32_max) {
+    const MaterialUploadRecordIndex materialRecord =
+        ensureMaterialRecord(object.material);
+    if (materialRecord.materialIndex == u32_max &&
+        materialRecord.materialRefIndex == u32_max) {
       continue;
     }
     const u32 objectRecordIndex = static_cast<u32>(m_gpuObjects.size());
@@ -2239,8 +2438,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     m_gpuObjects.push_back(objectRecord);
     m_gpuDraws.push_back(SceneGpuDrawRecord{
         .objectIndex = objectRecordIndex,
-        .materialIndex = materialRecordIndex,
+        .materialIndex = materialRecord.materialIndex,
         .meshIndex = meshRecordIndex,
+        .materialRefIndex = materialRecord.materialRefIndex,
     });
     m_gpuObjectIndexByHandle.push_back(SceneResourceObjectUploadIndex{
         .handle = ObjectHandle{i, entry.generation},
@@ -2255,10 +2455,21 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       primitiveRecord.indexOffset =
           meshRecord.indexOffset + triangleIndexOffset;
       primitiveRecord.meshIndex = meshRecordIndex;
-      primitiveRecord.materialIndex = materialRecordIndex;
+      primitiveRecord.materialIndex = materialRecord.materialIndex;
       primitiveRecord.objectIndex = objectRecordIndex;
       m_gpuPrimitives.push_back(primitiveRecord);
     }
+  }
+
+  for (u32 storageIndex = 0; storageIndex < m_gpuSourceMaterialStorages.size();
+       ++storageIndex) {
+    SceneSourceLocalMaterialStorageView &storage =
+        m_gpuSourceMaterialStorages[storageIndex];
+    const auto &records = sourceMaterialRecordsByStorage[storageIndex];
+    storage.recordOffset = static_cast<u32>(m_gpuSourceMaterialRecords.size());
+    storage.recordCount = static_cast<u32>(records.size());
+    m_gpuSourceMaterialRecords.insert(m_gpuSourceMaterialRecords.end(),
+                                      records.begin(), records.end());
   }
 
   return makeView();

@@ -29,7 +29,7 @@
 
 ## Scope Check
 
-This plan implements `REQ-073-a` only. It prepares source-local storage and shader accessor ABI, but full bindless/indirect enforcement, shader directory migration, package serialization, and offline/realtime equivalence remain in `REQ-073-b`, `REQ-074-*`, and `REQ-075-a`.
+This plan implements `REQ-073-a` only. It prepares source-local storage and shader accessor ABI, but full bindless upload foundation, shader directory migration, indirect batching, realtime hard cut, package serialization, and offline/realtime equivalence remain in `REQ-073-b` to `REQ-073-e`, `REQ-074-*`, and `REQ-075-a`.
 
 ### Task 1: Add Source Contract Reflection Model
 
@@ -1542,7 +1542,7 @@ git commit -m "Remove material surface schema positive path"
 
 **Files:**
 - Modify if drift appears: `notes/requirements/073-a-material-v3-pbrt-metallic-extension.md`
-- Modify if drift appears: `notes/requirements/073-b-bindless-indirect-material-path-hard-cut.md`
+- Modify if drift appears: `notes/requirements/073-b-material-storage-bindless-upload-foundation.md`
 
 - [ ] **Step 1: Run targeted build and auto tests**
 
@@ -1612,7 +1612,7 @@ to:
 - [ ] **Step 5: Commit final status**
 
 ```bash
-git add notes/requirements/073-a-material-v3-pbrt-metallic-extension.md notes/requirements/073-b-bindless-indirect-material-path-hard-cut.md
+git add notes/requirements/073-a-material-v3-pbrt-metallic-extension.md notes/requirements/073-b-material-storage-bindless-upload-foundation.md
 git commit -m "Close material source contract requirement"
 ```
 

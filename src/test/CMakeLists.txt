@@ -18,6 +18,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_string_table
   test_tone_mapping
   test_material_instance
+  test_material_source_contract
   test_material_v2_parser
   test_material_v2_resource_dependencies
   test_material_v2_converter_defaults
@@ -165,6 +166,9 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   )
 
   add_dependencies(BuildTest ${TEST_EXE})
+  if(TARGET SyncShaderRuntimeSources)
+    add_dependencies(${TEST_EXE} SyncShaderRuntimeSources)
+  endif()
   lx_register_ctest(${TEST_EXE})
 
   # set_target_properties(${TEST_EXE} PROPERTIES
@@ -184,8 +188,29 @@ if(TARGET test_default_material_asset_audit)
   target_link_libraries(test_default_material_asset_audit PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
+if(TARGET test_material_source_contract)
+  target_compile_definitions(test_material_source_contract
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
 if(TARGET test_071g_legacy_boundary_removal)
   target_compile_definitions(test_071g_legacy_boundary_removal
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_render_resource_parsers)
+  target_compile_definitions(test_render_resource_parsers
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_scene_resource_abstraction)
+  target_compile_definitions(test_scene_resource_abstraction
     PRIVATE
     LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
   )

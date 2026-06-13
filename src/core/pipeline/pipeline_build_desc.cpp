@@ -64,6 +64,7 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
     PipelineBuildDesc info;
     info.type = PipelineBuildType::Compute;
     info.key = item.pipelineKey;
+    info.shaderVariantKey = item.shaderProgram.getPipelineSignature();
     info.target = item.target;
     info.stages = item.shaderInfo->getAllStages();
     info.bindings = item.shaderInfo->getReflectionBindings();
@@ -87,6 +88,7 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   PipelineBuildDesc info;
   info.type = PipelineBuildType::Graphics;
   info.key = item.pipelineKey;
+  info.shaderVariantKey = item.shaderProgram.getPipelineSignature();
   info.target = item.target;
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();

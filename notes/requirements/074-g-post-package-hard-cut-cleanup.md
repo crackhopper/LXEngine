@@ -1,10 +1,10 @@
 # REQ-074-g: Post-package Hard Cut And Cleanup
 
-> 2026-06-12 更新：本 REQ 在 package restore、GPU pipeline cache restore 和 BMW M6 加载性能验收完成后，再做一次架构硬切与清理。`REQ-073-b` 已完成 realtime hard cut，`REQ-073-e` 已完成 OfflineRT hard cut；本 REQ 聚焦 package / cache 实现期间新增或保留的临时 bridge，使新架构成为 offline/realtime 对比的唯一默认入口。
+> 2026-06-13 更新：本 REQ 在 package restore、GPU pipeline cache restore 和 BMW M6 加载性能验收完成后，再做一次架构硬切与清理。`REQ-073-f` 已完成 realtime hard cut，`REQ-073-h` 已完成 OfflineRT hard cut；本 REQ 聚焦 package / cache 实现期间新增或保留的临时 bridge，使新架构成为 offline/realtime 对比的唯一默认入口。
 
 ## 背景
 
-`REQ-073-b`、`REQ-073-e` 和 `REQ-074-b` 在 package 前切掉会污染 canonical data 的旧路径。package 和 GPU cache 完成后，还可能留下为了迁移保留的 bridge、debug fallback、旧测试 fixture 或临时 adapter。进入 offline/realtime render equivalence 前，需要再次清理，避免对比结果被旧路径绕过。
+`REQ-073-f`、`REQ-073-h` 和 `REQ-074-b` 在 package 前切掉会污染 canonical data 的旧路径。package 和 GPU cache 完成后，还可能留下为了迁移保留的 bridge、debug fallback、旧测试 fixture 或临时 adapter。进入 offline/realtime render equivalence 前，需要再次清理，避免对比结果被旧路径绕过。
 
 ## 目标
 

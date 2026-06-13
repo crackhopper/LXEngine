@@ -99,6 +99,7 @@ struct RenderWorkItem final {
   ShaderPtr shaderInfo;
   RenderState renderState;
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
+  ShaderProgramSet shaderProgram;
 
   RasterDrawWorkPayload raster;
   RasterBatchWorkPayload rasterBatch;

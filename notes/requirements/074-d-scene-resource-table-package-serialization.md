@@ -137,7 +137,7 @@ Change runtime dirty flags or rebuild upload view order; root hash remains stabl
 ## 依赖
 
 - `REQ-074-c`: LxScenePackage file format。
-- `REQ-073-e`: OfflineRT config hard cut and smoke。
+- `REQ-073-h`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 

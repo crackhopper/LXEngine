@@ -67,6 +67,7 @@ static_assert(
     "registration; the table is the unique owner.");
 
 int s_failures = 0;
+constexpr usize kBuiltinDefaultTextureCount = 3;
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -111,6 +112,37 @@ int s_failures = 0;
   std::ostringstream contents;
   contents << file.rdbuf();
   return contents.str();
+}
+
+[[nodiscard]] u32 readRecordU32(const SourceLocalMaterialRecord &record,
+                                usize offset) {
+  u32 value = 0;
+  if (record.bytes.size() < offset + sizeof(value)) {
+    return u32_max;
+  }
+  std::memcpy(&value, record.bytes.data() + offset, sizeof(value));
+  return value;
+}
+
+[[nodiscard]] float readRecordFloat(const SourceLocalMaterialRecord &record,
+                                    usize offset) {
+  float value = 0.0f;
+  if (record.bytes.size() < offset + sizeof(value)) {
+    return value;
+  }
+  std::memcpy(&value, record.bytes.data() + offset, sizeof(value));
+  return value;
+}
+
+[[nodiscard]] bool hasTextureUploadIndex(
+    const SceneResourceTableUploadView &view, TextureHandle handle,
+    u32 typedIndex) {
+  return std::find_if(view.textureIndexByHandle.begin(),
+                      view.textureIndexByHandle.end(),
+                      [&](const SceneResourceTextureUploadIndex &entry) {
+                        return entry.handle == handle &&
+                               entry.typedIndex == typedIndex;
+                      }) != view.textureIndexByHandle.end();
 }
 
 struct TestVertex final {
@@ -507,6 +539,7 @@ void testSceneResourceTableOwnsTypedPayloads() {
 
 void testSceneResourceTableDeduplicatesCanonicalUriRegistrations() {
   SceneResourceTable table;
+  const usize initialTextureCount = table.textureCount();
   const ResourceUri textureUri("memory://texture/dedup-white");
   const TextureHandle firstTexture =
       table.registerTexture(textureUri, uniqueWhiteSampler(1, 1));
@@ -514,7 +547,7 @@ void testSceneResourceTableDeduplicatesCanonicalUriRegistrations() {
       table.registerTexture(textureUri, uniqueWhiteSampler(2, 2));
   EXPECT(firstTexture == secondTexture,
          "duplicate texture URI should return the existing texture handle");
-  EXPECT(table.textureCount() == 1,
+  EXPECT(table.textureCount() == initialTextureCount + 1u,
          "duplicate texture URI should not allocate a second texture entry");
   EXPECT(table.texture(secondTexture).texture()->desc().width == 1,
          "duplicate texture registration should preserve the existing payload");
@@ -587,6 +620,7 @@ void testMeshAndTextureParsersReturnTableOwnedHandles() {
 
 void testMeshAndTextureParsersReuseCanonicalTableOwnedResources() {
   SceneResourceTable table;
+  const usize initialTextureCount = table.textureCount();
   LX_infra::MeshResourceParser meshParser;
   LX_infra::TextureResourceParser textureParser;
 
@@ -616,8 +650,9 @@ void testMeshAndTextureParsersReuseCanonicalTableOwnedResources() {
       firstTextureHandle.has_value() && secondTextureHandle.has_value() &&
           *firstTextureHandle == *secondTextureHandle,
       "same canonical texture URI should reuse the table-owned texture handle");
-  EXPECT(table.textureCount() == 1, "same canonical texture URI should not "
-                                    "allocate a second texture payload");
+  EXPECT(table.textureCount() == initialTextureCount + 1u,
+         "same canonical texture URI should not allocate a second texture "
+         "payload");
 }
 
 void testMeshAndTextureParsersLoadAssetsIntoTableStorageAndFailMissingAssets() {
@@ -1580,45 +1615,65 @@ void testDefaultPbrEnvelopeDrivesUploadView() {
               .getTextureHandle(StringID("emissiveMap"))
               .isValid(),
          "default PBR material should not bind legacy emissiveMap");
+  const TextureHandle kdTextureHandle =
+      registeredMaterial->get().getTextureHandle(StringID("Kd"));
+  const TextureHandle normalTextureHandle =
+      registeredMaterial->get().getTextureHandle(StringID("normalmap"));
+  EXPECT(kdTextureHandle.isValid(),
+         "DamagedHelmet Kd texture should be table-owned after registration");
+  EXPECT(normalTextureHandle.isValid(),
+         "DamagedHelmet normalmap texture should be table-owned after "
+         "registration");
 
   const auto upload = table.buildUploadView();
-  EXPECT(!upload.materials.empty(), "upload view should contain material");
-  EXPECT(upload.textures.size() == 2,
-         "DamagedHelmet material v2 upload should register Kd and normalmap "
-         "texture envelopes");
-  if (upload.materials.empty()) {
+  EXPECT(upload.materials.empty(),
+         "source-contract material should not create a legacy material record");
+  EXPECT(upload.materialRefs.size() == 1,
+         "source-contract draw should reference one material ref");
+  EXPECT(upload.sourceMaterialStorages.size() == 1,
+         "DamagedHelmet source contract should produce one source storage");
+  EXPECT(upload.sourceMaterialRecords.size() == 1,
+         "DamagedHelmet source contract should produce one source-local "
+         "record");
+  EXPECT(upload.textures.size() == kBuiltinDefaultTextureCount + 2u,
+         "DamagedHelmet source material upload should include builtin "
+         "defaults plus Kd and normalmap textures");
+  if (upload.sourceMaterialRecords.empty() || upload.materialRefs.empty() ||
+      upload.draws.empty()) {
     return;
   }
 
-  EXPECT(upload.materials[0].baseColorTexture != u32_max,
-         "Kd texture envelope should assign base color texture index");
-  EXPECT(upload.materials[0].normalTexture != u32_max,
-         "normalmap texture envelope should assign normal texture index");
-  EXPECT(upload.materials[0].metallicRoughnessTexture == u32_max,
-         "material v2 should not synthesize legacy metallicRoughnessMap");
-  EXPECT(upload.materials[0].aoTexture == u32_max,
-         "material v2 should not synthesize legacy aoMap");
-  EXPECT(upload.materials[0].emissiveTexture == u32_max,
-         "material v2 should not synthesize legacy emissiveMap");
-  EXPECT(upload.materials[0].baseColor.x == 1.0f &&
-             upload.materials[0].baseColor.y == 1.0f &&
-             upload.materials[0].baseColor.z == 1.0f &&
-             upload.materials[0].baseColor.w == 1.0f,
-         "DamagedHelmet material v2 Kd envelope should enter the GPU material "
-         "record instead of legacy baseColorFactor");
-  EXPECT(upload.materials[0].pbrParams.x == 0.0f,
-         "DamagedHelmet material v2 uber envelope should not synthesize "
-         "legacy metallicFactor");
-  EXPECT(upload.materials[0].pbrParams.y == 0.5f,
-         "DamagedHelmet material v2 upload should keep the current default "
-         "roughness instead of legacy roughnessFactor");
-  EXPECT(upload.materials[0].pbrParams.w == 0.0f,
-         "DamagedHelmet material v2 upload should not read legacy AO scalar");
+  const SceneGpuMaterialRefRecord &materialRef =
+      upload.materialRefs[upload.draws[0].materialRefIndex];
+  EXPECT(upload.draws[0].materialIndex == u32_max,
+         "source-contract draw should not use the legacy material index");
+  EXPECT(materialRef.sourceStorageIndex == 0 &&
+             materialRef.sourceLocalMaterialIndex == 0,
+         "DamagedHelmet material ref should resolve to source storage row 0 "
+         "and local record 0");
+  const SourceLocalMaterialRecord &record = upload.sourceMaterialRecords[0];
+  const u32 baseColorTexture = readRecordU32(record, 16);
+  const u32 normalTexture = readRecordU32(record, 188);
+  EXPECT(readRecordFloat(record, 0) == 1.0f &&
+             readRecordFloat(record, 4) == 1.0f &&
+             readRecordFloat(record, 8) == 1.0f &&
+             readRecordFloat(record, 12) == 1.0f,
+         "DamagedHelmet Kd texture envelope should preserve default base color "
+         "value fields");
+  EXPECT(baseColorTexture != u32_max && normalTexture != u32_max,
+         "Kd and normalmap texture envelopes should pack compact texture "
+         "slots");
+  EXPECT(hasTextureUploadIndex(upload, kdTextureHandle, baseColorTexture),
+         "Kd texture handle should map to the packed source-local texture "
+         "slot");
+  EXPECT(hasTextureUploadIndex(upload, normalTextureHandle, normalTexture),
+         "normalmap texture handle should map to the packed source-local "
+         "texture slot");
 
   const auto rebuiltUpload = table.buildUploadView();
-  EXPECT(rebuiltUpload.textures.size() == 2,
-         "rebuilt material v2 upload view should not accumulate stale texture "
-         "entries");
+  EXPECT(rebuiltUpload.textures.size() == kBuiltinDefaultTextureCount + 2u,
+         "rebuilt source material upload view should not accumulate stale "
+         "texture entries");
 }
 
 void testSceneWithoutIblDoesNotCreateDefaultEnvironmentResources() {
@@ -1669,8 +1724,9 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
          "material v2 Kd envelope should reach GPU record");
   EXPECT(firstView.materials.front().pbrParams.z == 0.0f,
          "material v2 record should not read shader-binding specular state");
-  EXPECT(firstView.textures.empty(),
-         "material without sampler bindings should not upload textures");
+  EXPECT(firstView.textures.size() == kBuiltinDefaultTextureCount,
+         "material without sampler bindings should only upload builtin "
+         "default textures");
   EXPECT(
       firstView.materials.front().baseColorTexture == u32_max &&
           firstView.materials.front().normalTexture == u32_max &&
@@ -1688,13 +1744,14 @@ void testSceneResourceTableUploadViewTracksTableGeneration() {
          "object visibility should reach GPU record");
 }
 
-void testMaterialV2EnvelopeFeedsGpuMaterialRecord() {
+void testMaterialV2EnvelopeFeedsSourceLocalRecord() {
   SceneResourceTable table;
   LX_infra::MaterialResourceParser parser;
   auto parsed = parser.parse(table, "memory://matte-upload.material", R"(
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.2, 0.4, 0.6] }
     sigma: { kind: float, value: 0.15 }
@@ -1715,22 +1772,36 @@ bsdf:
   (void)table.registerObject(object);
 
   const auto view = table.buildUploadView();
-  EXPECT(view.materials.size() == 1,
-         "material v2 upload view should emit one material record");
-  if (view.materials.empty()) {
+  EXPECT(view.materials.empty(),
+         "source-contract material should not emit legacy material records");
+  EXPECT(view.materialRefs.size() == 1,
+         "source-contract material should emit one material ref");
+  EXPECT(view.sourceMaterialStorages.size() == 1,
+         "source-contract material should emit one source storage");
+  EXPECT(view.sourceMaterialRecords.size() == 1,
+         "source-contract material should emit one source-local record");
+  EXPECT(view.draws.size() == 1 && view.draws[0].materialIndex == u32_max,
+         "source-contract draw should not use the legacy material index");
+  if (view.sourceMaterialRecords.empty() || view.materialRefs.empty() ||
+      view.draws.empty()) {
     return;
   }
 
-  const auto &record = view.materials.front();
-  EXPECT(record.baseColor.x == 0.2f && record.baseColor.y == 0.4f &&
-             record.baseColor.z == 0.6f && record.baseColor.w == 1.0f,
-         "material v2 Kd envelope should feed GPU base color without "
+  const SceneGpuMaterialRefRecord &materialRef =
+      view.materialRefs[view.draws[0].materialRefIndex];
+  EXPECT(materialRef.sourceStorageIndex == 0 &&
+             materialRef.sourceLocalMaterialIndex == 0,
+         "source-contract draw should resolve to storage 0 record 0");
+
+  const SourceLocalMaterialRecord &record = view.sourceMaterialRecords.front();
+  EXPECT(readRecordFloat(record, 0) == 0.2f &&
+             readRecordFloat(record, 4) == 0.4f &&
+             readRecordFloat(record, 8) == 0.6f &&
+             readRecordFloat(record, 12) == 1.0f,
+         "material v2 Kd envelope should feed source-local base color without "
          "shader-binding fallback");
-  EXPECT(record.pbrParams.x == 0.0f,
-         "matte material should not synthesize metallic from legacy PBR state");
-  EXPECT(record.pbrParams.y == 0.5f,
-         "matte material without roughness envelope should keep the GPU "
-         "roughness default");
+  EXPECT(readRecordFloat(record, 24) == 0.15f,
+         "matte sigma envelope should pack into the source-local record");
 }
 
 void testMaterialV2TextureEnvelopeFeedsUploadTextureSlots() {
@@ -1745,6 +1816,7 @@ void testMaterialV2TextureEnvelopeFeedsUploadTextureSlots() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     normalmap: { kind: texture, valueType: rgb, uri: textures/normal.png }
@@ -1768,35 +1840,32 @@ bsdf:
   (void)table.registerObject(object);
 
   const auto view = table.buildUploadView();
-  EXPECT(view.materials.size() == 1,
-         "textured material v2 upload should emit one material record");
-  EXPECT(view.textures.size() == 2,
-         "textured material v2 upload should export Kd and normalmap "
-         "textures");
-  if (view.materials.empty()) {
+  EXPECT(view.materials.empty(),
+         "textured source-contract material should not emit legacy material "
+         "records");
+  EXPECT(view.materialRefs.size() == 1,
+         "textured source-contract material should emit one material ref");
+  EXPECT(view.sourceMaterialRecords.size() == 1,
+         "textured source-contract material should emit one source-local "
+         "record");
+  EXPECT(view.textures.size() == kBuiltinDefaultTextureCount + 2u,
+         "textured source-contract upload should export builtin defaults plus "
+         "Kd and normalmap textures");
+  if (view.sourceMaterialRecords.empty()) {
     return;
   }
 
-  const auto &record = view.materials.front();
-  EXPECT(record.baseColorTexture != u32_max,
+  const SourceLocalMaterialRecord &record = view.sourceMaterialRecords.front();
+  const u32 baseColorTexture = readRecordU32(record, 16);
+  const u32 normalTextureSlot = readRecordU32(record, 36);
+  EXPECT(baseColorTexture != u32_max,
          "Kd texture envelope should feed the baseColorTexture slot");
-  EXPECT(record.normalTexture != u32_max,
+  EXPECT(normalTextureSlot != u32_max,
          "normalmap texture envelope should feed the normalTexture slot");
-  EXPECT(record.metallicRoughnessTexture == u32_max,
-         "material v2 should not synthesize legacy metallicRoughnessMap");
-
-  const auto hasUploadIndex = [&view](TextureHandle handle, u32 typedIndex) {
-    return std::find_if(view.textureIndexByHandle.begin(),
-                        view.textureIndexByHandle.end(),
-                        [&](const SceneResourceTextureUploadIndex &entry) {
-                          return entry.handle == handle &&
-                                 entry.typedIndex == typedIndex;
-                        }) != view.textureIndexByHandle.end();
-  };
-  EXPECT(hasUploadIndex(kdTexture, record.baseColorTexture),
+  EXPECT(hasTextureUploadIndex(view, kdTexture, baseColorTexture),
          "Kd texture envelope should keep TextureHandle to compact texture "
          "index mapping");
-  EXPECT(hasUploadIndex(normalTexture, record.normalTexture),
+  EXPECT(hasTextureUploadIndex(view, normalTexture, normalTextureSlot),
          "normalmap texture envelope should keep TextureHandle to compact "
          "texture index mapping");
 }
@@ -2300,7 +2369,7 @@ int main() {
   testDefaultPbrEnvelopeDrivesUploadView();
   testSceneWithoutIblDoesNotCreateDefaultEnvironmentResources();
   testSceneResourceTableUploadViewTracksTableGeneration();
-  testMaterialV2EnvelopeFeedsGpuMaterialRecord();
+  testMaterialV2EnvelopeFeedsSourceLocalRecord();
   testMaterialV2TextureEnvelopeFeedsUploadTextureSlots();
   testSceneResourceTableUploadViewIgnoresLegacyTextureBindings();
   testSceneResourceTableUploadViewReflectsMaterialMutationAfterBuild();

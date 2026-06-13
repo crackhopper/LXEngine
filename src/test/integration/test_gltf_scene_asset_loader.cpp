@@ -63,6 +63,10 @@ void testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers() {
 
   expect(result.material->getBsdfType() == "uber",
          "DamagedHelmet material should retain material v2 BSDF type");
+  expect(result.material->getMaterialSourceUri().string().find(
+             "uber.contract.glsl") != std::string::npos,
+         "DamagedHelmet generated material should declare explicit "
+         "bsdf.source");
   const auto kd = result.material->getMaterialEnvelope(LX_core::StringID("Kd"));
   expect(kd.has_value(), "DamagedHelmet material should retain Kd envelope");
   expect(kd.has_value() &&
@@ -74,6 +78,58 @@ void testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers() {
 
   expect(result.material->getShaderBindingBufferCount() == 0,
          "material v2 should keep envelope storage without parameter buffers");
+}
+
+void testGltfTextureContractCheckUsesInstanceReflection() {
+  auto material = LX_core::MaterialInstance::create(
+      LX_core::MaterialTemplate::create("gltf_contract_test"));
+
+  LX_core::MaterialContractReflection contract;
+  contract.sourceUri =
+      LX_core::ResourceUri("memory://materials/gltf.contract.glsl");
+  contract.declaredType = "uber";
+  contract.reflectionHash = "gltf-contract-test";
+  contract.storageAbiHash = "gltf-storage-test";
+  contract.accessorAbiHash = "gltf-accessor-test";
+  contract.parameters.push_back(LX_core::MaterialContractParameter{
+      "Kd",
+      true,
+      {LX_core::MaterialContractParameterKind::Rgb,
+       LX_core::MaterialContractParameterKind::Texture}});
+  contract.parameters.push_back(LX_core::MaterialContractParameter{
+      "roughness",
+      false,
+      {LX_core::MaterialContractParameterKind::Float}});
+  material->setMaterialContractReflection(std::move(contract));
+
+  expect(LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(*material,
+                                                                   "Kd"),
+         "glTF texture contract check should use instance reflection for Kd");
+  expect(!LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(
+             *material, "roughness"),
+         "glTF texture contract check should reject non-texture parameter "
+         "from instance reflection");
+  expect(!LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(
+             *material, "missing"),
+         "glTF texture contract check should reject missing parameter from "
+         "instance reflection");
+}
+
+void testGltfTextureContractCheckRejectsMissingInstanceReflection() {
+  auto material = LX_core::MaterialInstance::create(
+      LX_core::MaterialTemplate::create("gltf_contract_missing"));
+
+  try {
+    (void)LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(*material,
+                                                                    "Kd");
+  } catch (const std::runtime_error &error) {
+    expect(std::string(error.what()).find("reflected material contract") !=
+               std::string::npos,
+           "missing instance contract diagnostic should be explicit");
+    return;
+  }
+  expect(false,
+         "glTF texture contract check should throw without instance contract");
 }
 
 void writeTextFile(const std::filesystem::path &path, const std::string &text) {
@@ -340,6 +396,8 @@ void testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave() {
 
 int main() {
   testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers();
+  testGltfTextureContractCheckUsesInstanceReflection();
+  testGltfTextureContractCheckRejectsMissingInstanceReflection();
   testSceneDocumentRejectsDeletedProfileMaterialField();
   testSceneDocumentRejectsDeletedOpaqueMaterialField();
   testSceneDocumentRejectsDeletedNodeMaterialsSchema();

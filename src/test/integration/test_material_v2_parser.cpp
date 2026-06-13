@@ -1,10 +1,7 @@
 #include "core/asset/material_parameter_envelope.hpp"
-#include "core/asset/material_surface_schema.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
 
-#include <algorithm>
-#include <initializer_list>
 #include <iostream>
 #include <string_view>
 
@@ -19,92 +16,6 @@ void expect(bool condition, std::string_view message) {
     std::cerr << "[FAIL] " << message << '\n';
     ++g_failures;
   }
-}
-
-const MaterialParameterSchema *
-findParameter(const MaterialSurfaceSchema &schema, std::string_view name) {
-  const auto it =
-      std::find_if(schema.parameters.begin(), schema.parameters.end(),
-                   [name](const MaterialParameterSchema &parameter) {
-                     return parameter.name == name;
-                   });
-  return it == schema.parameters.end() ? nullptr : &*it;
-}
-
-void expectHasParameter(const MaterialSurfaceSchema &schema,
-                        std::string_view parameterName) {
-  expect(findParameter(schema, parameterName) != nullptr,
-         std::string(schema.bsdfType) + " should expose parameter " +
-             std::string(parameterName));
-}
-
-void expectAllows(const MaterialSurfaceSchema &schema,
-                  std::string_view parameterName, MaterialEnvelopeKind kind) {
-  const MaterialParameterSchema *parameter =
-      findParameter(schema, parameterName);
-  expect(parameter != nullptr, std::string(schema.bsdfType) +
-                                   " should expose parameter " +
-                                   std::string(parameterName));
-  if (parameter == nullptr) {
-    return;
-  }
-
-  expect(std::find(parameter->allowedKinds.begin(),
-                   parameter->allowedKinds.end(),
-                   kind) != parameter->allowedKinds.end(),
-         std::string(schema.bsdfType) + "." + std::string(parameterName) +
-             " should allow requested envelope kind");
-}
-
-void expectSchema(std::string_view bsdfType,
-                  std::initializer_list<std::string_view> parameterNames) {
-  const MaterialSurfaceSchema *schema = findMaterialSurfaceSchema(bsdfType);
-  expect(schema != nullptr,
-         std::string("missing BSDF schema ") + std::string(bsdfType));
-  if (schema == nullptr) {
-    return;
-  }
-
-  for (std::string_view parameterName : parameterNames) {
-    expectHasParameter(*schema, parameterName);
-  }
-}
-
-void testRequiredBsdfSchemas() {
-  expectSchema("matte", {"Kd", "sigma"});
-  expectSchema("glass", {"Kr", "Kt", "eta", "uroughness", "vroughness"});
-  expectSchema("uber", {"Kd", "Ks", "Kr", "Kt", "opacity", "eta"});
-  expectSchema("metal", {"eta", "k"});
-  expectSchema("substrate", {"Kd", "Ks", "uroughness", "vroughness"});
-  expectSchema("fourier", {"bsdffile"});
-  expectSchema("mix", {"namedmaterial1", "namedmaterial2", "amount"});
-}
-
-void testPbrtEnvelopeKindContracts() {
-  const MaterialSurfaceSchema *matte = findMaterialSurfaceSchema("matte");
-  const MaterialSurfaceSchema *metal = findMaterialSurfaceSchema("metal");
-  const MaterialSurfaceSchema *fourier = findMaterialSurfaceSchema("fourier");
-  const MaterialSurfaceSchema *mix = findMaterialSurfaceSchema("mix");
-
-  expect(matte != nullptr, "matte schema should exist");
-  expect(metal != nullptr, "metal schema should exist");
-  expect(fourier != nullptr, "fourier schema should exist");
-  expect(mix != nullptr, "mix schema should exist");
-  if (matte == nullptr || metal == nullptr || fourier == nullptr ||
-      mix == nullptr) {
-    return;
-  }
-
-  expectAllows(*matte, "Kd", MaterialEnvelopeKind::Rgb);
-  expectAllows(*matte, "Kd", MaterialEnvelopeKind::Texture);
-  expectAllows(*matte, "sigma", MaterialEnvelopeKind::Float);
-  expectAllows(*matte, "normalmap", MaterialEnvelopeKind::Texture);
-  expectAllows(*metal, "eta", MaterialEnvelopeKind::Spectrum);
-  expectAllows(*metal, "k", MaterialEnvelopeKind::Spectrum);
-  expectAllows(*fourier, "bsdffile", MaterialEnvelopeKind::BsdfTable);
-  expectAllows(*mix, "namedmaterial1", MaterialEnvelopeKind::MaterialRef);
-  expectAllows(*mix, "namedmaterial2", MaterialEnvelopeKind::MaterialRef);
-  expectAllows(*mix, "amount", MaterialEnvelopeKind::Float);
 }
 
 void testEnvelopeShapeValidation() {
@@ -162,6 +73,27 @@ void testEnvelopeShapeValidation() {
          "mix material references should reject named-string uri");
 }
 
+void testParserRejectsLegacySchemaFallbackWithoutSource() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+
+  const auto parsed = parser.parse(table, "memory://legacy-schema-fallback",
+                                   R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  parameters:
+    Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
+    sigma: { kind: float, value: 0.0 }
+)");
+
+  expect(parsed.instance == nullptr,
+         "Material v2 parser should require bsdf.source instead of C++ schema "
+         "fallback");
+  expect(!parsed.diagnostics.empty(),
+         "missing bsdf.source should emit diagnostics");
+}
+
 void expectParses(std::string_view label, std::string_view yamlText) {
   LX_core::SceneResourceTable table;
   LX_infra::MaterialResourceParser parser;
@@ -173,20 +105,39 @@ void expectParses(std::string_view label, std::string_view yamlText) {
          std::string(label) + " should parse without diagnostics");
 }
 
+void expectRejectsUnsupported(std::string_view label,
+                              std::string_view yamlText) {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const auto parsed = parser.parse(
+      table, std::string("memory://") + std::string(label), yamlText);
+  expect(parsed.instance == nullptr,
+         std::string(label) + " should reject unsupported contract source");
+  bool mentionsUnsupported = false;
+  for (const std::string &diagnostic : parsed.diagnostics) {
+    mentionsUnsupported =
+        mentionsUnsupported || diagnostic.find("unsupported") != std::string::npos;
+  }
+  expect(mentionsUnsupported,
+         std::string(label) + " diagnostic should mention unsupported");
+}
+
 void testParserAcceptsMinimalRequiredBsdfs() {
   expectParses("matte", R"(
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
 )");
 
-  expectParses("glass", R"(
+  expectRejectsUnsupported("glass", R"(
 schema: lxe.material.v2
 bsdf:
   type: glass
+  source: assets://shaders/glsl/common/materials/glass.contract.glsl
   parameters:
     Kr: { kind: rgb, value: [1.0, 1.0, 1.0] }
     Kt: { kind: rgb, value: [1.0, 1.0, 1.0] }
@@ -199,6 +150,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: uber
+  source: assets://shaders/glsl/common/materials/uber.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.5, 0.5, 0.5] }
     Ks: { kind: rgb, value: [0.2, 0.2, 0.2] }
@@ -208,6 +160,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: metal
+  source: assets://shaders/glsl/common/materials/metal.contract.glsl
   parameters:
     eta: { kind: spectrum, uri: spectra/copper_eta.spd }
     k: { kind: spectrum, uri: spectra/copper_k.spd }
@@ -217,6 +170,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: substrate
+  source: assets://shaders/glsl/common/materials/substrate.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.4, 0.3, 0.2] }
     Ks: { kind: rgb, value: [0.1, 0.1, 0.1] }
@@ -224,18 +178,20 @@ bsdf:
     vroughness: { kind: float, value: 0.35 }
 )");
 
-  expectParses("fourier", R"(
+  expectRejectsUnsupported("fourier", R"(
 schema: lxe.material.v2
 bsdf:
   type: fourier
+  source: assets://shaders/glsl/common/materials/fourier.contract.glsl
   parameters:
     bsdffile: { kind: bsdfTable, uri: bsdf/fabric.bsdf }
 )");
 
-  expectParses("mix", R"(
+  expectRejectsUnsupported("mix", R"(
 schema: lxe.material.v2
 bsdf:
   type: mix
+  source: assets://shaders/glsl/common/materials/mix.contract.glsl
   parameters:
     namedmaterial1: { kind: materialRef, uri: memory://materials/matte_base.material }
     namedmaterial2: { kind: materialRef, uri: memory://materials/clearcoat.material }
@@ -252,6 +208,7 @@ void testParserRejectsInvalidEnvelopeInputs() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
 )");
@@ -264,6 +221,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6], uri: textures/kd.png }
     sigma: { kind: float, value: 0.0 }
@@ -277,6 +235,7 @@ bsdf:
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, uri: textures/kd.png }
     sigma: { kind: float, value: 0.0 }
@@ -295,6 +254,7 @@ void testParserRejectsUnknownAndLegacyParallelParameterNames() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     KdTexture: { kind: texture, valueType: rgb, uri: textures/kd.png }
@@ -337,6 +297,7 @@ void testParserRejectsRuntimeEnvelopeProvenanceFields() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6], source: explicit }
     sigma: { kind: float, value: 0.0, pbrt-default: true }
@@ -369,6 +330,7 @@ void testParserRejectsLegacyRootParameterModel() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -408,6 +370,7 @@ void testParserRejectsLegacyRootResourcesMap() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -446,6 +409,7 @@ void testParserRejectsRenderFlowFields() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
     sigma: { kind: float, value: 0.0 }
@@ -519,6 +483,7 @@ void testParserStoresEnvelopeTruthAndDependencies() {
 schema: lxe.material.v2
 bsdf:
   type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
   parameters:
     Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
     normalmap: { kind: texture, valueType: rgb, uri: textures/normal.png }
@@ -561,9 +526,8 @@ bsdf:
 } // namespace
 
 int main() {
-  testRequiredBsdfSchemas();
-  testPbrtEnvelopeKindContracts();
   testEnvelopeShapeValidation();
+  testParserRejectsLegacySchemaFallbackWithoutSource();
   testParserAcceptsMinimalRequiredBsdfs();
   testParserRejectsInvalidEnvelopeInputs();
   testParserRejectsUnknownAndLegacyParallelParameterNames();

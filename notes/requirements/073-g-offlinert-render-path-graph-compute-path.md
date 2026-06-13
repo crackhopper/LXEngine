@@ -1,6 +1,6 @@
-# REQ-073-d: OfflineRT RenderPathGraph Compute Path
+# REQ-073-g: OfflineRT RenderPathGraph Compute Path
 
-> 2026-06-12 新增：本 REQ 位于 `REQ-073-b` 之后、`REQ-074-a` 之前，目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。`REQ-073-a` 已进入开发，本 REQ 不修改 Material v3 参数合同，只整理 offline 如何复用 scene parsing、SceneResourceTable、FrameGraph 和 pipeline 创建路径。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-f`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-g`，位于 `REQ-073-f` realtime clean gate 之后、`REQ-074-a` 之前。目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。
 
 ## 背景
 
@@ -21,6 +21,14 @@
 
 因此，本 REQ 的核心不是重新实现 offline renderer，而是把 offline 的 shader/pass/work-item 来源改为 RenderPathGraph，让 offline 和 realtime 共享同一条 scene/resource/graph/pipeline 组织方式。
 
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-g |
+|---|---|---|
+| `REQ-073-a` 未完成项 | OfflineRT 默认配置入口从硬编码 pass/shader 迁移到 RenderPathGraph compute path 的第一段 | 073-a 只证明 Offline PBR direct shader 可使用 Material Accessor ABI；配置入口需要 RenderPathGraph compute pass、FrameGraph 和 work item 支撑 |
+| `REQ-073-b` 未完成项 | OfflineRT graph compute path 使用 source records / SceneResourceTable upload view 作为资源来源 | 073-b 已让 offline Material v2 测试使用 source records，但默认 OfflineRT 仍有独立 provider/framegraph bridge |
+| `REQ-073-c` / `REQ-073-d` 传递项 | OfflineRT shader URI 使用 `render_paths/OfflineRT/...`，并走 material source variant | OfflineRT direct shader 同样需要 final variant shader reflection，不能继续用 `techniques/OfflineRT/...` 或裸 base shader |
+
 ## 目标
 
 1. 增加 `OfflineRT` 的 RenderPathGraph asset。
@@ -37,7 +45,7 @@
 - 不实现 package 文件格式；由 `REQ-074-c` 处理。
 - 不实现 Vulkan pipeline cache blob 持久化；由 `REQ-074-e` 处理。
 - 不做 offline/realtime 图像等价阈值验收；由 `REQ-075-a` 处理。
-- 不删除所有旧 offline bridge；最终 hard cut 由 `REQ-073-e` 完成。
+- 不删除所有旧 offline bridge；最终 hard cut 由 `REQ-073-h` 完成。
 
 ## 需求
 
@@ -245,16 +253,18 @@ offline render graph collect pipeline descs，断言 compute pipeline desc 可�
 - 不让 `techniques/...` 成为新的默认路径。
 - 不接受未消费的 parser allowlist 字段。
 - 不为 offline 引入第二套 public graph 或 pipeline build 系统。
-- 任何过渡 bridge 必须在代码或 diagnostics 中标记，并交给 `REQ-073-e` 删除。
+- 任何过渡 bridge 必须在代码或 diagnostics 中标记，并交给 `REQ-073-h` 删除。
 
 ## 依赖
 
-- `REQ-073-b`: bindless/indirect material path hard cut、RenderPath terminology 和 shader URI 迁移基础。
+- `REQ-073-c`: Material source shader variant boundary。
+- `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
+- `REQ-073-f`: realtime material path hard cut and smoke，保证 OfflineRT 开始前默认 material/render path 已干净。
 - `REQ-072`: RenderPathGraph / SceneResourceTable closure audit 基础。
 
 ## 后续工作
 
-- `REQ-073-e`: OfflineRT config hard cut and smoke。
+- `REQ-073-h`: OfflineRT config hard cut and smoke。
 - `REQ-074-a`: Texture compression pipeline with BC7。
 
 ## 实施状态

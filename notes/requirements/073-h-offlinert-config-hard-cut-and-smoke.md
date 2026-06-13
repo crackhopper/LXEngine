@@ -1,10 +1,10 @@
-# REQ-073-e: OfflineRT Config Hard Cut And Smoke
+# REQ-073-h: OfflineRT Config Hard Cut And Smoke
 
-> 2026-06-12 新增：本 REQ 紧跟 `REQ-073-d`，负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。它是进入 `REQ-074-a` 之前的 offline 架构 clean gate。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-g`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-h`，紧跟 `REQ-073-g`。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。
 
 ## 背景
 
-`REQ-073-d` 会先让 OfflineRT 能通过 RenderPathGraph 配置路径运行。配置路径跑通后，仍可能残留旧代码：
+`REQ-073-g` 会先让 OfflineRT 能通过 RenderPathGraph 配置路径运行。配置路径跑通后，仍可能残留旧代码：
 
 - `OfflineShaderProvider`。
 - `OfflineLoadedScene::offlineShader` / `OfflineRenderJob::offlineShader`。
@@ -15,6 +15,14 @@
 - 正向测试继续证明旧 provider 能工作。
 
 这些 bridge 如果保留到 package 阶段，会污染 canonical state：package 可能保存的是一部分 graph 配置、一部分代码注入出来的 shader/pass 状态。进入 `REQ-074` 之前，需要把 offline 默认路径硬切到配置驱动。
+
+## 承接自 073-a / 073-b 的未完成项
+
+| 来源 | 本 REQ 承接内容 | 为什么属于 073-h |
+|---|---|---|
+| `REQ-073-a` 未完成项 | OfflineRT 默认入口 hard cut 和 smoke | 073-a 的 accessor ABI 不是入口硬切；旧 provider / hardcoded frame graph 必须等 073-g graph compute path 可运行后再删除 |
+| `REQ-073-b` 未完成项 | 删除 OfflineRT provider/framegraph bridge，禁止用旧 side channel 证明 material source 可渲染 | 073-b 只保证 source records 可进入 offline 相关测试；默认 CLI/integrator 入口是否干净由本 REQ 判定 |
+| `REQ-073-f` clean gate 传递项 | Helmet/BMW offline smoke 不得回退旧 material truth、旧 shader URI 或 pass injection | package 前必须证明 realtime 和 offline 默认路径都面对同一套 canonical SceneResourceTable / RenderPathGraph 状态 |
 
 ## 目标
 
@@ -174,8 +182,9 @@ BMW M6 OfflineRT direct render：
 
 ## 依赖
 
-- `REQ-073-d`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-b`: RenderPath terminology、shader URI migration、bindless/indirect hard cut。
+- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- `REQ-073-f`: realtime material path hard cut and smoke。
+- `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
 
 ## 后续工作
 

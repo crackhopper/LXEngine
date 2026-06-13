@@ -1,6 +1,7 @@
 #pragma once
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/resource/resource_uri.hpp"
 #include "core/utils/hash.hpp"
 #include "core/utils/string_table.hpp"
 #include <algorithm>
@@ -188,9 +189,15 @@ using IShaderSharedPtr = std::shared_ptr<IShader>;
 struct ShaderVariant {
   std::string macroName;
   bool enabled = false;
+  std::optional<std::string> macroValue;
+  std::optional<ResourceUri> materialContractSource;
+  StringID materialSourceSignature;
 
   bool operator==(const ShaderVariant &rhs) const {
-    return enabled == rhs.enabled && macroName == rhs.macroName;
+    return enabled == rhs.enabled && macroName == rhs.macroName &&
+           macroValue == rhs.macroValue &&
+           materialContractSource == rhs.materialContractSource &&
+           materialSourceSignature == rhs.materialSourceSignature;
   }
 };
 
@@ -211,19 +218,48 @@ struct ShaderProgramSet {
 
   StringID getPipelineSignature() const {
     auto &tbl = GlobalStringTable::get();
-    std::vector<std::string> enabled;
+    struct EnabledVariantSignature final {
+      std::string sortKey;
+      std::vector<StringID> parts;
+    };
+
+    std::vector<EnabledVariantSignature> enabled;
     enabled.reserve(variants.size());
     for (const auto &v : variants) {
-      if (v.enabled)
-        enabled.push_back(v.macroName);
+      if (!v.enabled)
+        continue;
+
+      EnabledVariantSignature signature;
+      signature.sortKey = v.macroName;
+      signature.parts.push_back(tbl.Intern(v.macroName));
+      if (v.macroValue.has_value()) {
+        signature.sortKey += "=" + *v.macroValue;
+        signature.parts.push_back(tbl.Intern(*v.macroValue));
+      }
+      if (v.materialContractSource.has_value()) {
+        const std::string source = v.materialContractSource->string();
+        signature.sortKey += "@source:" + source;
+        signature.parts.push_back(tbl.Intern(source));
+      }
+      if (v.materialSourceSignature.id != 0) {
+        signature.sortKey += "@sig:" +
+                             std::to_string(v.materialSourceSignature.id);
+        signature.parts.push_back(v.materialSourceSignature);
+      }
+      enabled.push_back(std::move(signature));
     }
-    std::sort(enabled.begin(), enabled.end());
+    std::sort(enabled.begin(), enabled.end(),
+              [](const EnabledVariantSignature &a,
+                 const EnabledVariantSignature &b) {
+                return a.sortKey < b.sortKey;
+              });
 
     std::vector<StringID> parts;
-    parts.reserve(1 + enabled.size());
+    parts.reserve(1 + enabled.size() * 4);
     parts.push_back(tbl.Intern(shaderName));
-    for (const auto &m : enabled)
-      parts.push_back(tbl.Intern(m));
+    for (const auto &variant : enabled) {
+      parts.insert(parts.end(), variant.parts.begin(), variant.parts.end());
+    }
 
     return tbl.compose(TypeTag::ShaderProgram, parts);
   }

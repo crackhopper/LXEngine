@@ -1,6 +1,5 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
-#include "core/asset/material_surface_schema.hpp"
 #include "core/asset/texture.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -27,8 +26,6 @@ using LX_core::MaterialEnvelopeKind;
 using LX_core::MaterialEnvelopeValueType;
 using LX_core::MaterialInstanceSharedPtr;
 using LX_core::MaterialParameterEnvelope;
-using LX_core::MaterialParameterSchema;
-using LX_core::MaterialSurfaceSchema;
 using LX_core::MeshSharedPtr;
 using LX_core::StringID;
 using LX_core::Texture;
@@ -186,21 +183,7 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
   if (uri.empty()) {
     return;
   }
-  const MaterialSurfaceSchema *schema =
-      LX_core::findMaterialSurfaceSchema(material->getBsdfType());
-  if (schema == nullptr) {
-    return;
-  }
-  const auto schemaIt =
-      std::find_if(schema->parameters.begin(), schema->parameters.end(),
-                   [parameterName](const MaterialParameterSchema &parameter) {
-                     return parameter.name == parameterName &&
-                            std::find(parameter.allowedKinds.begin(),
-                                      parameter.allowedKinds.end(),
-                                      MaterialEnvelopeKind::Texture) !=
-                                parameter.allowedKinds.end();
-                   });
-  if (schemaIt == schema->parameters.end()) {
+  if (!gltfMaterialAllowsTextureParameter(*material, parameterName)) {
     return;
   }
 
@@ -245,6 +228,23 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
 }
 
 } // namespace
+
+bool gltfMaterialAllowsTextureParameter(
+    const LX_core::MaterialInstance &material, const char *parameterName) {
+  const auto contract = material.getMaterialContractReflection();
+  if (!contract.has_value()) {
+    throw std::runtime_error(
+        "glTF material binding requires reflected material contract");
+  }
+  const auto parameter = contract->get().findParameter(parameterName);
+  if (!parameter.has_value()) {
+    return false;
+  }
+  return std::find(parameter->get().allowedKinds.begin(),
+                   parameter->get().allowedKinds.end(),
+                   LX_core::MaterialContractParameterKind::Texture) !=
+         parameter->get().allowedKinds.end();
+}
 
 GltfMeshAssetLoadResult
 loadGltfMeshAsset(const std::filesystem::path &gltfPath) {
