@@ -39,17 +39,17 @@ The following work is not deferred vaguely; each item has an owning follow-up re
 
 ## Current Implementation Pressure
 
-After Task 5, the code has moved past the initial scaffolding:
+After Task 7, the code has moved past the initial scaffolding:
 
 - `SceneResourceTableUploadView` exposes `sourceMaterialRecords`, `sourceMaterialStorages`, and `materialRefs`.
 - Source-contract material draws use `materialIndex == u32_max` plus a valid `materialRefIndex`; the legacy `materialIndex` field only remains for old-path materials until `REQ-073-e`.
 - `MaterialInstance` carries source URI, reflection hash, source signature, contract reflection, and table-owned texture handles for material parameters when registration converts pending textures.
 - `MaterialContractPackResult` packs source-reflected bytes and default/direct/canonical texture slots.
 - `SceneResourceTable` owns builtin `white`, `black`, and `flatNormal` texture resources.
+- `VulkanGpuResourceTable::uploadSceneBindlessTables()` consumes the upload view into texture bindless slots, per-source material buffers, object/draw/mesh buffers, and position/index/primitive/attribute geometry buffers.
 
-The remaining pressure for `REQ-073-b` is now narrower:
+The remaining pressure for `REQ-073-b` is now final verification:
 
-- backend/GPU resource table consumption of the new material/object/draw tables is not yet the validation target;
 - old `SceneGpuMaterialRecord` still exists only for legacy/default realtime paths and must not become positive Material v3 truth again.
 
 The implementation plan should therefore extend the existing scaffolding rather than start over.

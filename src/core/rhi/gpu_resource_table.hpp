@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/platform/types.hpp"
+#include "core/utils/string_table.hpp"
 
 #include <span>
 #include <optional>
@@ -8,6 +9,8 @@
 #include <vector>
 
 namespace LX_core {
+
+struct SceneResourceTableUploadView;
 
 struct GpuBufferHandle final {
   u64 id = 0;
@@ -56,6 +59,42 @@ struct GpuPipelineDesc final {
   std::string key;
 };
 
+struct SceneBindlessTextureSlot final {
+  u32 textureTableIndex = u32_max;
+  GpuImageHandle image;
+  GpuSamplerHandle sampler;
+  GpuBindlessSlot slot;
+};
+
+struct SceneBindlessMaterialStorage final {
+  u32 sourceStorageIndex = u32_max;
+  StringID sourceSignature;
+  std::string storageAbiHash;
+  u32 recordOffset = 0;
+  u32 recordCount = 0;
+  GpuBufferHandle buffer;
+  u64 byteSize = 0;
+};
+
+struct SceneBindlessStagedBuffer final {
+  GpuBufferHandle buffer;
+  u64 byteSize = 0;
+};
+
+struct SceneBindlessUploadReport final {
+  std::vector<SceneBindlessTextureSlot> textureSlots;
+  std::vector<SceneBindlessMaterialStorage> materialStorageBuffers;
+  SceneBindlessStagedBuffer objectBuffer;
+  SceneBindlessStagedBuffer drawBuffer;
+  SceneBindlessStagedBuffer meshBuffer;
+  SceneBindlessStagedBuffer positionBuffer;
+  SceneBindlessStagedBuffer indexBuffer;
+  SceneBindlessStagedBuffer primitiveBuffer;
+  SceneBindlessStagedBuffer attributeStreamBuffer;
+  SceneBindlessStagedBuffer attributeValueBuffer;
+  std::vector<std::string> diagnostics;
+};
+
 class IGpuResourceTable {
 public:
   virtual ~IGpuResourceTable() = default;
@@ -80,6 +119,8 @@ public:
   getOrCreatePipeline(const GpuPipelineDesc &desc) = 0;
   virtual void importPipelineCache(std::span<const u8> bytes) = 0;
   [[nodiscard]] virtual std::vector<u8> exportPipelineCache() const = 0;
+  [[nodiscard]] virtual SceneBindlessUploadReport
+  uploadSceneBindlessTables(const SceneResourceTableUploadView &view) = 0;
   [[nodiscard]] virtual GpuProgress queryProgress() const = 0;
 };
 

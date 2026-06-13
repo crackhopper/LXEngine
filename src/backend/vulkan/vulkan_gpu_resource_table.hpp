@@ -46,6 +46,8 @@ public:
   getOrCreatePipeline(const GpuPipelineDesc &desc) override;
   void importPipelineCache(std::span<const u8> bytes) override;
   [[nodiscard]] std::vector<u8> exportPipelineCache() const override;
+  [[nodiscard]] SceneBindlessUploadReport
+  uploadSceneBindlessTables(const SceneResourceTableUploadView &view) override;
   [[nodiscard]] GpuProgress queryProgress() const override;
 
 private:

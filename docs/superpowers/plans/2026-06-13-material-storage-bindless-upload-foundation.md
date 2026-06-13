@@ -4,7 +4,7 @@
 
 **Goal:** Implement `REQ-073-b` so Material v3 source-reflected records flow from `SceneResourceTableUploadView` into backend-consumable bindless-ready table/staging data without using old `SceneGpuMaterialRecord` as material truth.
 
-**Architecture:** Extend material contract reflection with explicit storage fields, pack each material instance into source-reflected bytes, group records by source storage, and expose draw/object references through a `materialRef` table that resolves to `sourceStorageIndex + sourceLocalMaterialIndex`. Register builtin default textures as SceneResourceTable resources and add a backend staging API that consumes upload view tables without requiring the realtime renderer default path to bind them yet.
+**Architecture:** Extend material contract reflection with explicit storage fields, pack each material instance into source-reflected bytes, group records by source storage, and expose draw/object references through a `materialRef` table that resolves to `sourceStorageIndex + sourceLocalMaterialIndex`. `sourceStorageIndex` selects the source storage/layout row; `sourceLocalMaterialIndex` selects one material instance inside that row. Register builtin default textures as SceneResourceTable resources and add a backend staging API that consumes upload view tables without requiring the realtime renderer default path to bind them yet.
 
 Texture slot resolution is intentionally strict: source material packing first uses a table-owned texture handle already attached to the material parameter, then parser-recorded canonical dependency URI lookup. If an explicit texture parameter cannot resolve through either path, packing fails; only absent texture parameters use the storage field's default texture semantic.
 
@@ -36,9 +36,9 @@ Texture slot resolution is intentionally strict: source material packing first u
 - [x] Task 2: Declared storage fields in supported built-in contract sources (`cda59adb`).
 - [x] Task 3: Packed source-reflected material bytes (`34ae2f8b`).
 - [x] Task 4: Registered builtin default material textures (`f3e8bd3b`).
-- [x] Task 5: Built source storages/material refs in upload view; current in-progress commit also updates `test_scene_resource_table` for hard-cut source-contract behavior.
+- [x] Task 5: Built source storages/material refs in upload view and updated `test_scene_resource_table` for hard-cut source-contract behavior.
 - [x] Task 6: Added negative upload diagnostics for source signature mismatch, source storage layout conflict, and unresolved explicit texture slots.
-- [ ] Task 7: Backend scene bindless staging API.
+- [x] Task 7: Backend scene bindless staging API, including texture slots, per-source material buffers, object/draw/mesh buffers, and geometry stream buffers.
 - [ ] Task 8: Final verification and requirement closeout.
 
 ## Task 1: Reflect Explicit Storage Fields
@@ -581,11 +581,22 @@ Add to `gpu_resource_table.hpp`:
 ```cpp
 struct SceneBindlessTextureSlot final {
   u32 textureTableIndex = u32_max;
+  GpuImageHandle image;
+  GpuSamplerHandle sampler;
   GpuBindlessSlot slot;
 };
 
 struct SceneBindlessMaterialStorage final {
   u32 sourceStorageIndex = u32_max;
+  StringID sourceSignature;
+  std::string storageAbiHash;
+  u32 recordOffset = 0;
+  u32 recordCount = 0;
+  GpuBufferHandle buffer;
+  u64 byteSize = 0;
+};
+
+struct SceneBindlessStagedBuffer final {
   GpuBufferHandle buffer;
   u64 byteSize = 0;
 };
@@ -593,9 +604,14 @@ struct SceneBindlessMaterialStorage final {
 struct SceneBindlessUploadReport final {
   std::vector<SceneBindlessTextureSlot> textureSlots;
   std::vector<SceneBindlessMaterialStorage> materialStorageBuffers;
-  GpuBufferHandle objectBuffer;
-  GpuBufferHandle drawBuffer;
-  GpuBufferHandle meshBuffer;
+  SceneBindlessStagedBuffer objectBuffer;
+  SceneBindlessStagedBuffer drawBuffer;
+  SceneBindlessStagedBuffer meshBuffer;
+  SceneBindlessStagedBuffer positionBuffer;
+  SceneBindlessStagedBuffer indexBuffer;
+  SceneBindlessStagedBuffer primitiveBuffer;
+  SceneBindlessStagedBuffer attributeStreamBuffer;
+  SceneBindlessStagedBuffer attributeValueBuffer;
   std::vector<std::string> diagnostics;
 };
 ```
@@ -614,7 +630,7 @@ In `VulkanGpuResourceTable`:
 - create one descriptor table;
 - create image/sampler handles for every `view.textures` entry and update bindless slots;
 - create buffers for each source storage bytes range;
-- create buffers for objects/draws/meshes/indices/positions;
+- create buffers for objects, draws, meshes, positions, indices, primitives, attribute streams, and attribute values;
 - record diagnostics for invalid storage ranges or invalid material refs.
 
 - [ ] **Step 5: Run test**
