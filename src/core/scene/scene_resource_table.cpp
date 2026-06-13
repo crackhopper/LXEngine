@@ -92,6 +92,29 @@ shaderMetadataState(const ShaderResourceMetadata &shader) {
          "payload";
 }
 
+[[nodiscard]] const ResourceUri &defaultWhiteTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/white");
+  return uri;
+}
+
+[[nodiscard]] const ResourceUri &defaultBlackTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/black");
+  return uri;
+}
+
+[[nodiscard]] const ResourceUri &defaultFlatNormalTextureUri() {
+  static const ResourceUri uri("builtin://textures/default/flat-normal");
+  return uri;
+}
+
+[[nodiscard]] CombinedTextureSamplerUniquePtr
+makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a) {
+  auto texture = std::make_shared<Texture>(
+      TextureDesc{1, 1, TextureFormat::RGBA8},
+      std::vector<u8>{r, g, b, a});
+  return std::make_unique<CombinedTextureSampler>(std::move(texture));
+}
+
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
   switch (type) {
   case SceneResourceType::Mesh:
@@ -304,7 +327,14 @@ void appendMeshGeometryRecords(const MeshBuffer &mesh,
 
 } // namespace
 
-SceneResourceTable::SceneResourceTable() = default;
+SceneResourceTable::SceneResourceTable() {
+  (void)registerTexture(defaultWhiteTextureUri(),
+                        makeSolidDefaultTexture(255, 255, 255, 255));
+  (void)registerTexture(defaultBlackTextureUri(),
+                        makeSolidDefaultTexture(0, 0, 0, 255));
+  (void)registerTexture(defaultFlatNormalTextureUri(),
+                        makeSolidDefaultTexture(128, 128, 255, 255));
+}
 SceneResourceTable::~SceneResourceTable() = default;
 SceneResourceTable::SceneResourceTable(SceneResourceTable &&) noexcept =
     default;
@@ -1929,6 +1959,19 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuRenderPathGraphIndexByHandle.clear();
   m_gpuRenderFeatureIndexByHandle.clear();
   m_gpuShaderIndexByHandle.clear();
+
+  const auto registerBuiltinUploadTexture =
+      [this](const ResourceUri &uri) -> void {
+    const auto texture = findTexture(uri);
+    if (!texture.has_value()) {
+      throw std::logic_error("missing builtin default texture resource '" +
+                             uri.string() + "'");
+    }
+    (void)registerUploadTexture(*texture);
+  };
+  registerBuiltinUploadTexture(defaultWhiteTextureUri());
+  registerBuiltinUploadTexture(defaultBlackTextureUri());
+  registerBuiltinUploadTexture(defaultFlatNormalTextureUri());
 
   m_gpuCameras.reserve(aliveCount(m_cameras));
   for (u32 i = 0; i < m_cameras.size(); ++i) {

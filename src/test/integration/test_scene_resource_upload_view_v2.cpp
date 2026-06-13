@@ -122,6 +122,36 @@ std::vector<ResourceUri> shaderSourceFixture() {
   };
 }
 
+void testBuiltinDefaultTexturesAreStableSceneResources() {
+  SceneResourceTable table;
+  const ResourceUri white("builtin://textures/default/white");
+  const ResourceUri black("builtin://textures/default/black");
+  const ResourceUri flatNormal("builtin://textures/default/flat-normal");
+
+  const auto whiteHandle = table.findTexture(white);
+  const auto blackHandle = table.findTexture(black);
+  const auto flatNormalHandle = table.findTexture(flatNormal);
+  EXPECT(whiteHandle.has_value(),
+         "white default texture should have stable resource identity");
+  EXPECT(blackHandle.has_value(),
+         "black default texture should have stable resource identity");
+  EXPECT(flatNormalHandle.has_value(),
+         "flat normal default texture should have stable resource identity");
+  EXPECT(table.textureCount() == 3,
+         "new table should register exactly the three builtin default "
+         "textures");
+
+  const SceneResourceTableUploadView firstView = table.buildUploadView();
+  EXPECT(firstView.textures.size() == 3,
+         "default textures should enter upload texture table");
+
+  const SceneResourceTableUploadView secondView = table.buildUploadView();
+  EXPECT(secondView.textures.size() == 3,
+         "rebuilding upload view should not duplicate default texture slots");
+  EXPECT(table.textureCount() == 3,
+         "rebuilding upload view should not duplicate default resources");
+}
+
 class TestShader final : public IShader {
 public:
   TestShader() {
@@ -194,7 +224,8 @@ void testPackageReadyGraphExport() {
   const auto textureHandle = table.internResourceMetadata(texture);
 
   const auto graph = table.exportResourceGraph();
-  EXPECT(graph.resources.size() == 2, "graph should export two resources");
+  EXPECT(graph.resources.size() >= 2,
+         "graph should export material and texture resources");
   EXPECT(graph.handleToIndex(materialHandle) != u32_max,
          "graph should map material handle to index");
   EXPECT(graph.handleToIndex(textureHandle) != u32_max,
@@ -863,6 +894,7 @@ int main() {
   testOverrideIdentityUsesStableHash();
   testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies();
   testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices();
+  testBuiltinDefaultTexturesAreStableSceneResources();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();
