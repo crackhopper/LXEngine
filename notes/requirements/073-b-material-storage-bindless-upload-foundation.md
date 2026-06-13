@@ -93,6 +93,7 @@ material record SHALL 只保存 shader 需要的结构化数据。
 
 - material payload 不保存 material URI 字符串、backend object pointer、source signature 或旧 `MaterialUBO` bytes。
 - texture 是否存在、texture id、material URI、material handle 和参数值不能改变 source signature。
+- 显式 texture 参数的 slot 解析顺序必须保持干净：优先使用材质实例在 `SceneResourceTable` 注册后持有的 `TextureHandle`，其次使用 parser 记录的 canonical dependency URI 查找已加载 texture；如果二者都不能解析，必须 fail-fast。只有参数缺省时，才使用 source storage field 声明的默认纹理语义。
 - source 不支持的参数必须在 parser/contract 阶段失败，upload 阶段不能补隐式语义。
 - `SourceLocalMaterialRecord` SHALL 使用 source-reflected bytes payload。C++ 类型只承担 envelope/metadata 职责，例如 local index 和 byte range；不得定义一套固定 PBR record 作为 Material v3 layout 真相，也不得从旧 `SceneGpuMaterialRecord` 反向推导。
 
@@ -112,6 +113,7 @@ Resource table / upload path SHALL 注册稳定的默认纹理资源。
 
 - 默认纹理有稳定 resource identity。
 - 默认纹理只注册/上传一次。
+- `SceneResourceTable` 构造后默认拥有这三张 builtin texture；`buildUploadView()` 即使在没有材质贴图时也会导出它们作为全局默认 table slot。
 - 缺失贴图指向默认 texture table slot，不创建材质本地 placeholder。
 - backend/GPU resource table 能为默认纹理建立稳定 bindless/table slot。
 - shader 后续仍走同一采样路径，不需要 `hasSceneTexture` 分支判断缺失贴图。
@@ -127,8 +129,9 @@ upload view SHALL 提供 backend 可直接消费的 table 数据。
 | texture table | imported textures + default textures |
 | sampler table | sampler state |
 | material storage table | per-source material records |
-| object table | transform、mesh、sourceStorageIndex/sourceLocalMaterialIndex、visibility |
-| draw table | object、sourceStorageIndex/sourceLocalMaterialIndex、mesh/draw offsets |
+| material ref table | `sourceStorageIndex` + `sourceLocalMaterialIndex` |
+| object table | transform、mesh、visibility；Material v3 引用通过 draw/material ref table 追踪 |
+| draw table | object、material ref、mesh/draw offsets；旧 `materialIndex` 只为 legacy path 保留 |
 | mesh/geometry table | global position/index/attribute stream ranges |
 
 要求：
@@ -187,7 +190,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 构造常量材质、贴图材质、packed metallic-roughness 材质，断言：
 
 - factor 值进入 material record。
-- texture URI 转为 texture table slot。
+- 已注册材质 texture handle 和 parser canonical texture URI 都能转为 texture table slot；显式贴图无法解析时 fail-fast，不静默落到默认纹理。
 - packed channel selector 被记录。
 - 常量-only 和 texture-backed material 使用同一 source storage layout。
 
@@ -257,4 +260,19 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 
 ## 实施状态
 
-未实施。
+进行中。
+
+已完成：
+
+- source contract storage field 反射和 layout 校验。
+- supported built-in contract source 的 storage field 声明。
+- `SourceLocalMaterialRecord` source-reflected bytes 打包。
+- `white`、`black`、`flatNormal` builtin 默认纹理 resource identity 与 upload slot。
+- source-contract material 在 upload view 中硬切到 `materialRefs + sourceMaterialRecords`；正向测试不再把 `SceneGpuMaterialRecord` 当作 Material v3 真相。
+- source texture slot 解析支持 table-owned parameter `TextureHandle` 和 parser canonical dependency URI；显式贴图缺资源时保持 fail-fast。
+
+仍需完成：
+
+- 负向 upload diagnostics 覆盖。
+- backend/GPU resource table 消费 bindless-ready tables 并输出 staging diagnostics。
+- 最终 073-b 验证和状态收口。

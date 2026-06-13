@@ -37,21 +37,21 @@ The following work is not deferred vaguely; each item has an owning follow-up re
 | Removal of old `SceneGpuMaterialRecord` / `MaterialUBO` realtime truth, per-material descriptor fallback, hidden debug/default-material fallback, and Helmet/BMW realtime smoke | `REQ-073-e` |
 | OfflineRT RenderPathGraph compute path and offline config hard cut | `REQ-073-f` / `REQ-073-g` |
 
-## Current Code Pressure
+## Current Implementation Pressure
 
-The code already has a partial source-local storage shape:
+After Task 5, the code has moved past the initial scaffolding:
 
-- `SceneResourceTableUploadView` exposes `sourceMaterialRecords` and `sourceMaterialStorages`.
-- `MaterialInstance` carries source URI, reflection hash, source signature, and contract reflection.
-- `MaterialContractPackResult` can carry default texture slots and diagnostics.
+- `SceneResourceTableUploadView` exposes `sourceMaterialRecords`, `sourceMaterialStorages`, and `materialRefs`.
+- Source-contract material draws use `materialIndex == u32_max` plus a valid `materialRefIndex`; the legacy `materialIndex` field only remains for old-path materials until `REQ-073-e`.
+- `MaterialInstance` carries source URI, reflection hash, source signature, contract reflection, and table-owned texture handles for material parameters when registration converts pending textures.
+- `MaterialContractPackResult` packs source-reflected bytes and default/direct/canonical texture slots.
+- `SceneResourceTable` owns builtin `white`, `black`, and `flatNormal` texture resources.
 
-But the current shape is not enough for `REQ-073-b` completion:
+The remaining pressure for `REQ-073-b` is now narrower:
 
-- source-local records are still mostly empty;
-- draw/object upload records primarily point at legacy material indices;
-- old `SceneGpuMaterialRecord` remains the concrete PBR upload record;
-- default texture resources are not yet proven as stable resource identities/table slots in this path;
-- backend/GPU resource table consumption of the new material/object/draw tables is not yet the validation target.
+- negative upload diagnostics still need focused coverage;
+- backend/GPU resource table consumption of the new material/object/draw tables is not yet the validation target;
+- old `SceneGpuMaterialRecord` still exists only for legacy/default realtime paths and must not become positive Material v3 truth again.
 
 The implementation plan should therefore extend the existing scaffolding rather than start over.
 

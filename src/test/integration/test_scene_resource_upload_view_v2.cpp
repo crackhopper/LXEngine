@@ -400,8 +400,10 @@ void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
   registerObject(table, secondMesh, secondMaterial);
 
   const SceneResourceTableUploadView view = table.buildUploadView();
-  EXPECT(view.materials.size() == 2,
-         "legacy material upload span should still contain both materials");
+  EXPECT(view.materials.empty(),
+         "source-contract materials should not create legacy material records");
+  EXPECT(view.materialRefs.size() == 2,
+         "draws should reference source-local material refs");
   EXPECT(view.sourceMaterialStorages.size() == 1,
          "same source signature should produce one source-local storage");
   const SceneSourceLocalMaterialStorageView *storage =
@@ -414,6 +416,20 @@ void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
          "same source storage should cover both material records");
   EXPECT(view.sourceMaterialRecords.size() == 2,
          "source-local record span should contain both material records");
+  EXPECT(view.draws.size() == 2 &&
+             view.draws[0].materialIndex == u32_max &&
+             view.draws[1].materialIndex == u32_max,
+         "source-contract draws should not point at legacy material records");
+  EXPECT(view.draws.size() == 2 &&
+             view.materialRefs[view.draws[0].materialRefIndex]
+                     .sourceStorageIndex == 0 &&
+             view.materialRefs[view.draws[0].materialRefIndex]
+                     .sourceLocalMaterialIndex == 0 &&
+             view.materialRefs[view.draws[1].materialRefIndex]
+                     .sourceStorageIndex == 0 &&
+             view.materialRefs[view.draws[1].materialRefIndex]
+                     .sourceLocalMaterialIndex == 1,
+         "draw material refs should resolve to source storage and local index");
   EXPECT(storage != nullptr &&
              sourceRecordRangeHasContiguousLocalIndices(view, *storage),
          "same source storage range should contain contiguous source-local "
@@ -438,8 +454,10 @@ void testUploadViewSplitsSourceLocalMaterialsBySignature() {
   registerObject(table, secondMesh, secondMaterial);
 
   const SceneResourceTableUploadView view = table.buildUploadView();
-  EXPECT(view.materials.size() == 2,
-         "legacy material upload span should still contain both materials");
+  EXPECT(view.materials.empty(),
+         "source-contract materials should not create legacy material records");
+  EXPECT(view.materialRefs.size() == 2,
+         "source-contract materials should create material refs");
   EXPECT(view.sourceMaterialStorages.size() == 2,
          "different source signatures should produce separate storages");
 
@@ -459,6 +477,12 @@ void testUploadViewSplitsSourceLocalMaterialsBySignature() {
          "second source storage should cover the second material record");
   EXPECT(view.sourceMaterialRecords.size() == 2,
          "source-local record span should contain both source records");
+  EXPECT(view.draws.size() == 2 &&
+             view.materialRefs[view.draws[0].materialRefIndex]
+                     .sourceStorageIndex !=
+                 view.materialRefs[view.draws[1].materialRefIndex]
+                     .sourceStorageIndex,
+         "draw material refs should split different source storages");
   EXPECT(matteStorage != nullptr &&
              sourceRecordRangeHasContiguousLocalIndices(view, *matteStorage),
          "matte storage range should contain contiguous source-local indices");
@@ -489,19 +513,29 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
   registerObject(table, thirdMesh, thirdMaterial);
 
   const SceneResourceTableUploadView view = table.buildUploadView();
-  EXPECT(view.materials.size() == 3,
-         "legacy material upload span should preserve interleaved materials");
+  EXPECT(view.materials.empty(),
+         "source-contract materials should not create legacy material records");
+  EXPECT(view.materialRefs.size() == 3,
+         "source-contract draws should preserve one material ref per draw");
   EXPECT(view.draws.size() == 3,
          "legacy draw span should preserve all draws");
-  EXPECT(view.draws.size() == 3 && view.draws[0].materialIndex == 0 &&
-             view.draws[1].materialIndex == 1 &&
-             view.draws[2].materialIndex == 2,
-         "legacy draw material indices should remain in upload order");
+  EXPECT(view.draws.size() == 3 && view.draws[0].materialIndex == u32_max &&
+             view.draws[1].materialIndex == u32_max &&
+             view.draws[2].materialIndex == u32_max,
+         "source-contract draw material indices should not use legacy path");
   EXPECT(view.sourceMaterialStorages.size() == 2,
          "source-local storages should still group by source signature");
   EXPECT(view.sourceMaterialRecords.size() == 3,
          "source-local record span should contain one record per uploaded "
          "material");
+  EXPECT(view.draws.size() == 3 &&
+             view.materialRefs[view.draws[0].materialRefIndex]
+                     .sourceLocalMaterialIndex == 0 &&
+             view.materialRefs[view.draws[1].materialRefIndex]
+                     .sourceLocalMaterialIndex == 0 &&
+             view.materialRefs[view.draws[2].materialRefIndex]
+                     .sourceLocalMaterialIndex == 1,
+         "source-local indices should be assigned inside each source storage");
 
   const SceneSourceLocalMaterialStorageView *matteStorage =
       findSourceStorage(view, matteSignature);

@@ -13,6 +13,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -1905,6 +1906,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .draws = m_gpuDraws,
         .objects = m_gpuObjects,
         .materials = m_gpuMaterials,
+        .materialRefs = m_gpuMaterialRefs,
         .sourceMaterialRecords = m_gpuSourceMaterialRecords,
         .sourceMaterialStorages = m_gpuSourceMaterialStorages,
         .textures = m_gpuTextures,
@@ -1938,6 +1940,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuDraws.clear();
   m_gpuObjects.clear();
   m_gpuMaterials.clear();
+  m_gpuMaterialRefs.clear();
   m_gpuSourceMaterialRecords.clear();
   m_gpuSourceMaterialStorages.clear();
   m_gpuTextures.clear();
@@ -1961,17 +1964,19 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuShaderIndexByHandle.clear();
 
   const auto registerBuiltinUploadTexture =
-      [this](const ResourceUri &uri) -> void {
+      [this](const ResourceUri &uri) -> u32 {
     const auto texture = findTexture(uri);
     if (!texture.has_value()) {
       throw std::logic_error("missing builtin default texture resource '" +
                              uri.string() + "'");
     }
-    (void)registerUploadTexture(*texture);
+    return registerUploadTexture(*texture);
   };
-  registerBuiltinUploadTexture(defaultWhiteTextureUri());
-  registerBuiltinUploadTexture(defaultBlackTextureUri());
-  registerBuiltinUploadTexture(defaultFlatNormalTextureUri());
+  const MaterialContractDefaultTextureSlots defaultTextureSlots{
+      .white = registerBuiltinUploadTexture(defaultWhiteTextureUri()),
+      .black = registerBuiltinUploadTexture(defaultBlackTextureUri()),
+      .flatNormal = registerBuiltinUploadTexture(defaultFlatNormalTextureUri()),
+  };
 
   m_gpuCameras.reserve(aliveCount(m_cameras));
   for (u32 i = 0; i < m_cameras.size(); ++i) {
@@ -2205,72 +2210,148 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     m_gpuMeshes.push_back(record);
   }
 
-  std::vector<CompactRecordIndex> materialIndexToGpuRecord(m_materials.size());
-  std::vector<StringID> materialSourceSignatures;
+  struct MaterialUploadRecordIndex final {
+    u32 generation = 0;
+    u32 materialIndex = u32_max;
+    u32 materialRefIndex = u32_max;
+  };
+
+  std::vector<MaterialUploadRecordIndex> materialIndexToGpuRecord(
+      m_materials.size());
+  std::vector<std::vector<SourceLocalMaterialRecord>>
+      sourceMaterialRecordsByStorage;
   m_gpuMaterials.reserve(aliveCount(m_objects));
+  m_gpuMaterialRefs.reserve(aliveCount(m_objects));
   m_gpuTextures.reserve(aliveCount(m_objects) * 5u);
-  materialSourceSignatures.reserve(aliveCount(m_objects));
-  const auto ensureMaterialRecord =
-      [this, &materialIndexToGpuRecord,
-       &materialSourceSignatures](MaterialHandle handle) -> u32 {
-    if (!isAlive(handle)) {
+  sourceMaterialRecordsByStorage.reserve(aliveCount(m_objects));
+
+  const auto textureSlotForUri = [this](const ResourceUri &uri) -> u32 {
+    const auto texture = findTexture(uri);
+    if (!texture.has_value()) {
       return u32_max;
+    }
+    return registerUploadTexture(*texture);
+  };
+
+  const auto textureHandleForMaterialParameter =
+      [this](const MaterialInstance &material,
+             std::string_view parameterName) -> TextureHandle {
+    const std::string parameterKey(parameterName);
+    const StringID parameterId(parameterKey);
+    const auto envelope = material.getMaterialEnvelope(parameterId);
+    if (!envelope.has_value() ||
+        envelope->get().kind != MaterialEnvelopeKind::Texture) {
+      return {};
+    }
+    const TextureHandle directHandle = material.getTextureHandle(parameterId);
+    if (directHandle.isValid()) {
+      return directHandle;
+    }
+    for (const auto &dependency : material.getMaterialDependencies()) {
+      if (dependency.kind != MaterialEnvelopeKind::Texture ||
+          dependency.parameterName != parameterKey) {
+        continue;
+      }
+      if (const auto texture = findTexture(dependency.uri)) {
+        return *texture;
+      }
+    }
+    return {};
+  };
+
+  const auto ensureSourceStorage =
+      [this, &sourceMaterialRecordsByStorage](
+          const MaterialContractReflection &contract) -> u32 {
+    const StringID sourceSignature = contract.sourceSignature();
+    for (u32 i = 0; i < m_gpuSourceMaterialStorages.size(); ++i) {
+      if (m_gpuSourceMaterialStorages[i].sourceSignature == sourceSignature) {
+        return i;
+      }
+    }
+
+    m_gpuSourceMaterialStorages.push_back(SceneSourceLocalMaterialStorageView{
+        .sourceSignature = sourceSignature,
+        .sourceUri = contract.sourceUri,
+        .reflectionHash = contract.reflectionHash,
+        .storageAbiHash = contract.storageAbiHash,
+    });
+    sourceMaterialRecordsByStorage.emplace_back();
+    return static_cast<u32>(m_gpuSourceMaterialStorages.size() - 1u);
+  };
+
+  const auto ensureMaterialRecord =
+      [this, &materialIndexToGpuRecord, &defaultTextureSlots,
+       &textureSlotForUri, &textureHandleForMaterialParameter,
+       &ensureSourceStorage,
+       &sourceMaterialRecordsByStorage](
+          MaterialHandle handle) -> MaterialUploadRecordIndex {
+    if (!isAlive(handle)) {
+      return {};
     }
     auto &compact = materialIndexToGpuRecord[handle.index];
     if (compact.generation == handle.generation) {
-      return compact.uploadIndex;
+      return compact;
     }
     const auto &entry = m_materials[handle.index];
     if (entry.state != SceneResourceEntryState::Alive || !entry.resource ||
         entry.generation != handle.generation) {
-      return u32_max;
-    }
-    const auto textureHandleForV2Parameter =
-        [this](const MaterialInstance &material,
-               const char *parameterName) -> TextureHandle {
-      const auto envelope =
-          material.getMaterialEnvelope(StringID(parameterName));
-      if (!envelope.has_value() ||
-          envelope->get().kind != MaterialEnvelopeKind::Texture) {
-        return {};
-      }
-      const TextureHandle directHandle =
-          material.getTextureHandle(StringID(parameterName));
-      if (directHandle.isValid()) {
-        return directHandle;
-      }
-      for (const auto &dependency : material.getMaterialDependencies()) {
-        if (dependency.kind != MaterialEnvelopeKind::Texture ||
-            dependency.parameterName != parameterName) {
-          continue;
-        }
-        if (const auto texture = findTexture(dependency.uri)) {
-          return *texture;
-        }
-      }
       return {};
-    };
+    }
+
+    if (const auto contract = entry.resource->getMaterialContractReflection()) {
+      const u32 sourceStorageIndex = ensureSourceStorage(contract->get());
+      auto &records = sourceMaterialRecordsByStorage[sourceStorageIndex];
+      const u32 sourceLocalMaterialIndex = static_cast<u32>(records.size());
+
+      MaterialContractPackInput packInput;
+      packInput.material = entry.resource.get();
+      packInput.contract = contract->get();
+      packInput.defaultTextureSlots = defaultTextureSlots;
+      packInput.sourceLocalMaterialIndex = sourceLocalMaterialIndex;
+      packInput.textureSlotForParameter =
+          [this, &entry, &textureHandleForMaterialParameter](
+              std::string_view parameterName) -> u32 {
+        return registerUploadTexture(textureHandleForMaterialParameter(
+            *entry.resource, parameterName));
+      };
+      packInput.textureSlotForUri = textureSlotForUri;
+      MaterialContractPackResult packed =
+          packMaterialContractRecord(packInput);
+      if (!packed.diagnostics.empty()) {
+        throw std::logic_error("failed to pack source material record for '" +
+                               contract->get().sourceUri.string() + "': " +
+                               packed.diagnostics.front());
+      }
+
+      records.push_back(std::move(packed.record));
+      compact = MaterialUploadRecordIndex{
+          .generation = entry.generation,
+          .materialIndex = u32_max,
+          .materialRefIndex = static_cast<u32>(m_gpuMaterialRefs.size()),
+      };
+      m_gpuMaterialRefs.push_back(SceneGpuMaterialRefRecord{
+          .sourceStorageIndex = sourceStorageIndex,
+          .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
+      });
+      return compact;
+    }
+
     auto record = toGpuMaterialRecord(*entry.resource);
     record.baseColorTexture = registerUploadTexture(
-        textureHandleForV2Parameter(*entry.resource, "Kd"));
+        textureHandleForMaterialParameter(*entry.resource, "Kd"));
     record.normalTexture = registerUploadTexture(
-        textureHandleForV2Parameter(*entry.resource, "normalmap"));
-    compact = CompactRecordIndex{
+        textureHandleForMaterialParameter(*entry.resource, "normalmap"));
+    compact = MaterialUploadRecordIndex{
         .generation = entry.generation,
-        .uploadIndex = static_cast<u32>(m_gpuMaterials.size()),
+        .materialIndex = static_cast<u32>(m_gpuMaterials.size()),
+        .materialRefIndex = u32_max,
     };
     m_gpuMaterialIndexByHandle.push_back(SceneResourceMaterialUploadIndex{
         .handle = handle,
-        .typedIndex = compact.uploadIndex,
+        .typedIndex = compact.materialIndex,
     });
     m_gpuMaterials.push_back(record);
-    if (const auto contract = entry.resource->getMaterialContractReflection()) {
-      materialSourceSignatures.push_back(contract->get().sourceSignature());
-    } else {
-      materialSourceSignatures.push_back(
-          entry.resource->getMaterialSourceSignature());
-    }
-    return compact.uploadIndex;
+    return compact;
   };
 
   m_gpuObjects.reserve(aliveCount(m_objects));
@@ -2287,8 +2368,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     if (meshRecordIndex == u32_max) {
       continue;
     }
-    const u32 materialRecordIndex = ensureMaterialRecord(object.material);
-    if (materialRecordIndex == u32_max) {
+    const MaterialUploadRecordIndex materialRecord =
+        ensureMaterialRecord(object.material);
+    if (materialRecord.materialIndex == u32_max &&
+        materialRecord.materialRefIndex == u32_max) {
       continue;
     }
     const u32 objectRecordIndex = static_cast<u32>(m_gpuObjects.size());
@@ -2305,8 +2388,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     m_gpuObjects.push_back(objectRecord);
     m_gpuDraws.push_back(SceneGpuDrawRecord{
         .objectIndex = objectRecordIndex,
-        .materialIndex = materialRecordIndex,
+        .materialIndex = materialRecord.materialIndex,
         .meshIndex = meshRecordIndex,
+        .materialRefIndex = materialRecord.materialRefIndex,
     });
     m_gpuObjectIndexByHandle.push_back(SceneResourceObjectUploadIndex{
         .handle = ObjectHandle{i, entry.generation},
@@ -2321,41 +2405,21 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       primitiveRecord.indexOffset =
           meshRecord.indexOffset + triangleIndexOffset;
       primitiveRecord.meshIndex = meshRecordIndex;
-      primitiveRecord.materialIndex = materialRecordIndex;
+      primitiveRecord.materialIndex = materialRecord.materialIndex;
       primitiveRecord.objectIndex = objectRecordIndex;
       m_gpuPrimitives.push_back(primitiveRecord);
     }
   }
 
-  for (const StringID sourceSignature : materialSourceSignatures) {
-    if (sourceSignature.id == 0) {
-      continue;
-    }
-    auto storageIt = std::find_if(
-        m_gpuSourceMaterialStorages.begin(), m_gpuSourceMaterialStorages.end(),
-        [sourceSignature](const SceneSourceLocalMaterialStorageView &storage) {
-          return storage.sourceSignature == sourceSignature;
-        });
-    if (storageIt == m_gpuSourceMaterialStorages.end()) {
-      m_gpuSourceMaterialStorages.push_back(
-          SceneSourceLocalMaterialStorageView{.sourceSignature =
-                                                 sourceSignature});
-      storageIt = m_gpuSourceMaterialStorages.end() - 1;
-    }
-    ++storageIt->recordCount;
-  }
-
-  for (SceneSourceLocalMaterialStorageView &storage :
-       m_gpuSourceMaterialStorages) {
+  for (u32 storageIndex = 0; storageIndex < m_gpuSourceMaterialStorages.size();
+       ++storageIndex) {
+    SceneSourceLocalMaterialStorageView &storage =
+        m_gpuSourceMaterialStorages[storageIndex];
+    const auto &records = sourceMaterialRecordsByStorage[storageIndex];
     storage.recordOffset = static_cast<u32>(m_gpuSourceMaterialRecords.size());
-    u32 sourceLocalMaterialIndex = 0;
-    for (const StringID sourceSignature : materialSourceSignatures) {
-      if (sourceSignature == storage.sourceSignature) {
-        m_gpuSourceMaterialRecords.push_back(
-            SourceLocalMaterialRecord{
-                .sourceLocalMaterialIndex = sourceLocalMaterialIndex++});
-      }
-    }
+    storage.recordCount = static_cast<u32>(records.size());
+    m_gpuSourceMaterialRecords.insert(m_gpuSourceMaterialRecords.end(),
+                                      records.begin(), records.end());
   }
 
   return makeView();

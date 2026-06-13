@@ -46,6 +46,7 @@ struct MaterialContractPackInput final {
   MaterialContractReflection contract;
   MaterialContractDefaultTextureSlots defaultTextureSlots;
   u32 sourceLocalMaterialIndex = u32_max;
+  std::function<u32(std::string_view)> textureSlotForParameter;
   std::function<u32(const ResourceUri &)> textureSlotForUri;
 };
 

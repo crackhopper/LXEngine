@@ -6,6 +6,8 @@
 
 **Architecture:** Extend material contract reflection with explicit storage fields, pack each material instance into source-reflected bytes, group records by source storage, and expose draw/object references through a `materialRef` table that resolves to `sourceStorageIndex + sourceLocalMaterialIndex`. Register builtin default textures as SceneResourceTable resources and add a backend staging API that consumes upload view tables without requiring the realtime renderer default path to bind them yet.
 
+Texture slot resolution is intentionally strict: source material packing first uses a table-owned texture handle already attached to the material parameter, then parser-recorded canonical dependency URI lookup. If an explicit texture parameter cannot resolve through either path, packing fails; only absent texture parameters use the storage field's default texture semantic.
+
 **Tech Stack:** C++20, CMake/Ninja, LXEngine `core` scene/material types, `infra` material contract reflector, Vulkan shell GPU resource table, integration tests under `src/test/integration`.
 
 ---
@@ -24,8 +26,20 @@
 - Modify tests:
   - `src/test/integration/test_material_source_contract.cpp`
   - `src/test/integration/test_scene_resource_upload_view_v2.cpp`
+  - `src/test/integration/test_scene_resource_table.cpp`
   - `src/test/integration/test_bindless_indirect_contract.cpp`
   - `src/test/CMakeLists.txt` if a new focused test binary is added.
+
+## Progress
+
+- [x] Task 1: Reflected explicit storage fields (`6db72c40` plan baseline, `ee4a7091` implementation).
+- [x] Task 2: Declared storage fields in supported built-in contract sources (`cda59adb`).
+- [x] Task 3: Packed source-reflected material bytes (`34ae2f8b`).
+- [x] Task 4: Registered builtin default material textures (`f3e8bd3b`).
+- [x] Task 5: Built source storages/material refs in upload view; current in-progress commit also updates `test_scene_resource_table` for hard-cut source-contract behavior.
+- [ ] Task 6: Add remaining negative upload diagnostics.
+- [ ] Task 7: Backend scene bindless staging API.
+- [ ] Task 8: Final verification and requirement closeout.
 
 ## Task 1: Reflect Explicit Storage Fields
 
@@ -258,6 +272,7 @@ struct MaterialContractPackInput final {
   MaterialContractReflection contract;
   MaterialContractDefaultTextureSlots defaultTextureSlots;
   u32 sourceLocalMaterialIndex = u32_max;
+  std::function<u32(std::string_view)> textureSlotForParameter;
   std::function<u32(const ResourceUri &)> textureSlotForUri;
 };
 ```
@@ -373,8 +388,11 @@ git commit -m "Register default material textures in scene table"
 **Files:**
 - Modify: `src/core/scene/scene_resource_table_upload_view.hpp`
 - Modify: `src/core/scene/scene_gpu_records.hpp`
+- Modify: `src/core/asset/material_contract_packer.hpp`
+- Modify: `src/core/asset/material_contract_packer.cpp`
 - Modify: `src/core/scene/scene_resource_table.cpp`
 - Test: `src/test/integration/test_scene_resource_upload_view_v2.cpp`
+- Test: `src/test/integration/test_scene_resource_table.cpp`
 
 - [ ] **Step 1: Add failing tests for sourceStorageIndex/materialRef**
 
@@ -424,13 +442,15 @@ struct alignas(16) SceneGpuMaterialRefRecord final {
 
 struct alignas(16) SceneGpuDrawRecord final {
   u32 objectIndex = 0;
-  u32 materialRefIndex = 0;
+  u32 materialIndex = u32_max;
   u32 meshIndex = 0;
-  u32 reserved0 = 0;
+  u32 materialRefIndex = u32_max;
 };
 ```
 
 Expose `std::span<const SceneGpuMaterialRefRecord> materialRefs;` in `SceneResourceTableUploadView`.
+
+The legacy `materialIndex` field stays in the draw record until `REQ-073-e`; source-contract draws must write `materialIndex == u32_max` and a valid `materialRefIndex`.
 
 - [ ] **Step 4: Rewrite material upload grouping**
 
@@ -442,6 +462,7 @@ During `buildUploadView()`:
 4. Assign a `sourceLocalMaterialIndex` in that storage.
 5. Pack the bytes record through `packMaterialContractRecord()`.
 6. Create a material ref and set `draw.materialRefIndex`.
+7. Resolve texture fields through table-owned parameter texture handles or parser canonical dependency URIs; do not fall back to defaults for explicit unresolved textures.
 
 Do not create new positive-path `SceneGpuMaterialRecord` entries for source-contract materials.
 
@@ -458,7 +479,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/core/scene/scene_resource_table_upload_view.hpp src/core/scene/scene_gpu_records.hpp src/core/scene/scene_resource_table.cpp src/test/integration/test_scene_resource_upload_view_v2.cpp
+git add src/core/asset/material_contract_packer.hpp src/core/asset/material_contract_packer.cpp src/core/scene/scene_resource_table_upload_view.hpp src/core/scene/scene_gpu_records.hpp src/core/scene/scene_resource_table.cpp src/test/integration/test_scene_resource_upload_view_v2.cpp src/test/integration/test_scene_resource_table.cpp
 git commit -m "Build source local material refs in upload view"
 ```
 

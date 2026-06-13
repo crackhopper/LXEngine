@@ -9,6 +9,7 @@
 
 #include <functional>
 #include <span>
+#include <string>
 
 namespace LX_core {
 
@@ -64,6 +65,9 @@ struct SceneResourceShaderUploadIndex final {
 
 struct SceneSourceLocalMaterialStorageView final {
   StringID sourceSignature;
+  ResourceUri sourceUri;
+  std::string reflectionHash;
+  std::string storageAbiHash;
   u32 recordOffset = 0;
   u32 recordCount = 0;
 };
@@ -89,6 +93,7 @@ struct SceneResourceTableUploadView final {
   std::span<const SceneGpuDrawRecord> draws;
   std::span<const SceneGpuObjectRecord> objects;
   std::span<const SceneGpuMaterialRecord> materials;
+  std::span<const SceneGpuMaterialRefRecord> materialRefs;
   std::span<const SourceLocalMaterialRecord> sourceMaterialRecords;
   std::span<const SceneSourceLocalMaterialStorageView> sourceMaterialStorages;
   std::span<const std::reference_wrapper<const CombinedTextureSampler>>

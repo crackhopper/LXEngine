@@ -126,7 +126,21 @@ textureSlotForField(const MaterialContractPackInput &input,
                     const MaterialContractStorageField &field,
                     std::vector<std::string> &diagnostics) {
   const auto envelope = findEnvelope(input, field);
-  if (envelope.has_value() && envelope->get().uri.has_value()) {
+  if (envelope.has_value() &&
+      envelope->get().kind == MaterialEnvelopeKind::Texture) {
+    if (input.textureSlotForParameter && !field.parameterName.empty()) {
+      const u32 slot = input.textureSlotForParameter(field.parameterName);
+      if (slot != u32_max) {
+        return slot;
+      }
+    }
+
+    if (!envelope->get().uri.has_value()) {
+      diagnostics.push_back("missing texture resource for material field '" +
+                            field.name + "'");
+      return u32_max;
+    }
+
     if (!input.textureSlotForUri) {
       diagnostics.push_back("texture slot resolver is required for material "
                             "texture field '" +
