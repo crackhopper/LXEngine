@@ -1,6 +1,7 @@
 #include "core/frame_graph/render_queue.hpp"
 
 #include "core/asset/mesh.hpp"
+#include "core/asset/render_effect.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/offline/offline_scene_storage_resources.hpp"
@@ -41,7 +42,22 @@ makeItemFromValidatedData(const ValidatedRenderablePassData &data) {
   item.pass = data.pass;
   item.objectSignature = data.objectSignature;
   item.materialSignature = data.materialSignature;
+  item.materialTypeVariant = data.materialTypeVariant;
+  item.renderPathNodeSignature = data.renderPathNodeSignature;
   return item;
+}
+
+[[nodiscard]] StringID makeNamedMaterialTypeVariant(std::string_view name,
+                                                    StringID shaderSignature) {
+  auto &tbl = GlobalStringTable::get();
+  StringID fields[] = {
+      tbl.Intern(name),
+      tbl.Intern("<non-bsdf-source-uri>"),
+      tbl.Intern("<non-bsdf-reflection-hash>"),
+      tbl.Intern("<non-bsdf-source-signature>"),
+      shaderSignature,
+  };
+  return tbl.compose(TypeTag::MaterialTypeVariant, fields);
 }
 
 [[nodiscard]] bool sameResourceRef(const DescriptorResourceRef &a,
@@ -145,6 +161,69 @@ tryResolveGpuObjectIndex(const SceneResourceTableUploadView &uploadView,
   return std::nullopt;
 }
 
+[[nodiscard]] bool layoutHasAttribute(const VertexLayout &layout, u32 location,
+                                      DataType type) {
+  for (const VertexLayoutItem &item : layout.getItems()) {
+    if (item.location == location && item.type == type) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool layoutMatchesVertexContract(
+    const VertexLayout &layout, RenderPathGeometryVertexContract contract) {
+  if (!layoutHasAttribute(layout, 0, DataType::Float3)) {
+    return false;
+  }
+  if (contract == RenderPathGeometryVertexContract::PositionOnly) {
+    return true;
+  }
+  return layoutHasAttribute(layout, 1, DataType::Float3) &&
+         layoutHasAttribute(layout, 2, DataType::Float2) &&
+         layoutHasAttribute(layout, 3, DataType::Float4);
+}
+
+void validateGeometryContract(const RenderWorkItem &item,
+                              const RenderPathGeometryContract &contract) {
+  if (item.kind != RenderWorkKind::RasterDraw) {
+    return;
+  }
+  if (!item.raster.vertexBuffer.isValid()) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry contract requires a vertex buffer");
+  }
+  if (!item.raster.indexBuffer.isValid()) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry contract requires an index buffer");
+  }
+
+  const auto *vertexBuffer =
+      dynamic_cast<const IVertexBuffer *>(&item.raster.vertexBuffer.get());
+  if (vertexBuffer == nullptr) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry contract received non-vertex resource");
+  }
+  if (!layoutMatchesVertexContract(vertexBuffer->getLayout(),
+                                   contract.vertex)) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry vertex contract mismatch for item " +
+        GlobalStringTable::get().toDebugString(item.debugId));
+  }
+
+  const auto *indexBuffer =
+      dynamic_cast<const IndexBuffer *>(&item.raster.indexBuffer.get());
+  if (indexBuffer == nullptr) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry contract received non-index resource");
+  }
+  if (indexBuffer->getTopology() != contract.topology) {
+    throw std::logic_error(
+        "RenderWorkQueue geometry topology contract mismatch for item " +
+        GlobalStringTable::get().toDebugString(item.debugId));
+  }
+}
+
 [[nodiscard]] bool canAppendToBatch(const RenderIndirectBatch &batch,
                                     const RenderWorkItem &item) {
   return batch.pipelineKey == item.pipelineKey && batch.pass == item.pass &&
@@ -215,7 +294,8 @@ void RenderWorkQueue::sort(const std::optional<Vec3f> &cameraEye) {
 
 RenderWorkItem makeOfflineComputeItem(offline::OfflineRenderJob &job,
                                       StringID pass, const RenderTarget &target,
-                                      IShaderSharedPtr shader) {
+                                      IShaderSharedPtr shader,
+                                      StringID renderPathNodeSignature) {
   offline::OfflineSceneStorageResources storageResources =
       offline::buildOfflineSceneStorageResources(job);
   RenderWorkItem item;
@@ -231,9 +311,11 @@ RenderWorkItem makeOfflineComputeItem(offline::OfflineRenderJob &job,
   item.debugId = StringID("OfflineRayTraceDispatch");
   item.objectSignature = StringID("OfflineSceneGpuData");
   item.materialSignature = StringID("OfflinePrimaryRayCompute");
+  item.materialTypeVariant = makeNamedMaterialTypeVariant(
+      "offline-primary-ray", item.shaderProgram.getPipelineSignature());
+  item.renderPathNodeSignature = renderPathNodeSignature;
   item.pipelineKey =
-      PipelineKey::build(item.objectSignature, item.materialSignature,
-                         item.target.getPipelineSignature());
+      PipelineKey::build(item.materialTypeVariant, item.renderPathNodeSignature);
   return item;
 }
 
@@ -281,13 +363,17 @@ RenderWorkQueue::compileIndirectBatches() const {
 }
 
 void RenderWorkQueue::build(const RenderWorkBuildContext &context,
-                            StringID pass, const RenderTarget &target) {
+                            StringID pass, const RenderTarget &target,
+                            StringID renderPathNodeSignature,
+                            std::optional<RenderPathGeometryContract>
+                                geometryContract) {
   if (context.domain() == RenderDomain::Offline) {
     clearItems();
     if (pass == Pass_OfflineRayTrace) {
       m_items.push_back(
           makeOfflineComputeItem(context.offlineJob(), pass, target,
-                                 context.offlineJob().offlineShader));
+                                 context.offlineJob().offlineShader,
+                                 renderPathNodeSignature));
     }
     return;
   }
@@ -315,12 +401,16 @@ void RenderWorkQueue::build(const RenderWorkBuildContext &context,
 
   const std::optional<Vec3f> cameraEye =
       resolveSortCameraEye(scene, options, target);
-  buildRealtime(scene, pass, target, std::move(sceneResources), visibleMask,
+  buildRealtime(scene, pass, target, renderPathNodeSignature,
+                geometryContract, std::move(sceneResources), visibleMask,
                 cameraEye);
 }
 
 void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
                                     const RenderTarget &target,
+                                    StringID renderPathNodeSignature,
+                                    std::optional<RenderPathGeometryContract>
+                                        geometryContract,
                                     DescriptorResourceList sceneResources,
                                     VisibilityLayerMask visibleMask,
                                     std::optional<Vec3f> cameraEye) {
@@ -379,9 +469,13 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     }
     item.target = target.toDesc();
     item.debugId = renderable->getDebugId();
+    item.renderPathNodeSignature = renderPathNodeSignature;
     item.pipelineKey =
-        PipelineKey::build(item.objectSignature, item.materialSignature,
-                           item.target.getPipelineSignature());
+        PipelineKey::build(item.materialTypeVariant,
+                           item.renderPathNodeSignature);
+    if (geometryContract.has_value()) {
+      validateGeometryContract(item, *geometryContract);
+    }
 
     item.descriptorResources =
         buildSceneDescriptorResources(SceneDescriptorResourceContext{

@@ -80,8 +80,12 @@ public:
   MaterialInstance &operator=(MaterialInstance &&) = delete;
 
   IShaderSharedPtr getPassShader(StringID pass) const;
+  [[nodiscard]] std::optional<std::reference_wrapper<const ShaderProgramSet>>
+  getPassShaderProgram(StringID pass) const;
   RenderState getPassRenderState(StringID pass) const;
   StringID getPipelineSignature(StringID pass) const;
+  [[nodiscard]] StringID
+  getMaterialTypeVariantSignature(const ShaderProgramSet &resolvedShader) const;
 
   // Non-surface helper API for shader-owned buffer bindings such as
   // post-process/procedural materials. Material v2 surface truth uses

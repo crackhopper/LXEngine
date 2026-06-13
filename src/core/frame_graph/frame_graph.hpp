@@ -72,8 +72,15 @@ struct FramePass {
   RenderPassStage stage = RenderPassStage::Raster;
   RenderPassDispatch dispatch = RenderPassDispatch::Draw;
   RenderPassNodeFilters filters;
+  std::optional<RenderPathNodeRenderingMode> renderingMode;
+  std::optional<RenderPathGeometryContract> geometry;
+  std::vector<RenderPathAttachmentContract> attachments;
   RenderState renderState;
+  StringID renderPathNodeSignature;
 };
+
+[[nodiscard]] StringID
+getFramePassRenderPathNodeSignature(const FramePass &pass);
 
 struct CompiledFrameGraphPass {
   StringID name;
@@ -186,9 +193,9 @@ FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不�
 让它去做全局判定会破坏单 pass 收口的封装。两层各自只看自己的视角，
 FrameGraph 这一层只看到"队列已去重的输出"再做最少整理。
 
-REQ-042 R5 落地后，`PipelineKey` 变三级 compose（含 targetSig）；本函数代码
-不需要变，但跨 pass 重复 PipelineKey 的概率会进一步降低 — 不同 target
-的 pass 在 PipelineKey 上自动不重叠。
+REQ-073-c 之后，`PipelineKey` 只由 MaterialTypeVariant 和 RenderPathNode
+signature 组成；不同 target 是否分裂 pipeline 由 RenderPathNode 的 attachment /
+target contract 决定，而不是额外的 TargetRender 轴。
 */
 
 } // namespace LX_core

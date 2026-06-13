@@ -271,8 +271,8 @@ void testQueueCompilesStableIndirectBatches() {
   TestGpuResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"),
                          64);
   const PipelineKey key =
-      PipelineKey::build(StringID("mesh"), StringID("mat"),
-                         StringID("swapchain.bgra8.d32"));
+      PipelineKey::build(StringID("bindless.indirect.materialTypeVariant"),
+                         StringID("bindless.indirect.renderPathNode"));
 
   RenderWorkQueue queue;
   queue.addItem(makeDrawItem(vertex, index, camera, key, 0));
@@ -300,8 +300,8 @@ void testDescriptorChangeSplitsIndirectBatches() {
   TestGpuResource cameraB(ResourceType::UniformBuffer, StringID("CameraUBO"),
                           64);
   const PipelineKey key =
-      PipelineKey::build(StringID("mesh"), StringID("mat"),
-                         StringID("swapchain.bgra8.d32"));
+      PipelineKey::build(StringID("bindless.indirect.materialTypeVariant"),
+                         StringID("bindless.indirect.renderPathNode"));
 
   RenderWorkQueue queue;
   queue.addItem(makeDrawItem(vertex, index, cameraA, key, 0));

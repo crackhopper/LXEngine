@@ -10,6 +10,7 @@
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/frame_graph/pass.hpp"
@@ -21,11 +22,21 @@
 
 #include <cassert>
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace LX_test {
+
+inline LX_core::StringID
+testRenderPathNodeSignature(LX_core::StringID pass,
+                            const LX_core::RenderTarget &target) {
+  LX_core::FramePass framePass;
+  framePass.name = pass;
+  framePass.target = target.toDesc();
+  return LX_core::getFramePassRenderPathNodeSignature(framePass);
+}
 
 /// Build a local RenderWorkQueue from `scene` for `pass` + `target` and return
 /// the first RenderWorkItem. Asserts the queue is non-empty. Default
@@ -33,7 +44,8 @@ inline LX_core::RenderWorkItem
 firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
                    const LX_core::RenderTarget &target = {}) {
   LX_core::RenderWorkQueue q;
-  q.build(LX_core::RenderWorkBuildContext::realtime(scene), pass, target);
+  q.build(LX_core::RenderWorkBuildContext::realtime(scene), pass, target,
+          testRenderPathNodeSignature(pass, target), std::nullopt);
   assert(!q.getItems().empty() &&
          "scene produced no items for pass/target");
   return q.getItems().front();

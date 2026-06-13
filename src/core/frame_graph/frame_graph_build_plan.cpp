@@ -70,7 +70,11 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.stage = node.stage;
   pass.dispatch = node.dispatch;
   pass.filters = node.filters;
+  pass.renderingMode = node.renderingMode;
+  pass.geometry = node.geometry;
+  pass.attachments = node.attachments;
   pass.renderState = node.renderState;
+  pass.renderPathNodeSignature = getRenderPathNodeSignature(node);
   return pass;
 }
 

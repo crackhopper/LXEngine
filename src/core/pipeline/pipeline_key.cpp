@@ -2,18 +2,9 @@
 
 namespace LX_core {
 
-PipelineKey PipelineKey::build(StringID objectSig, StringID materialSig) {
-  StringID fields[] = {objectSig, materialSig};
-  return PipelineKey{
-      GlobalStringTable::get().compose(TypeTag::PipelineKey, fields)};
-}
-
-PipelineKey PipelineKey::build(StringID objectSig, StringID materialSig,
-                               StringID targetSig) {
-  StringID targetFields[] = {targetSig};
-  const StringID targetRender =
-      GlobalStringTable::get().compose(TypeTag::TargetRender, targetFields);
-  StringID fields[] = {objectSig, materialSig, targetRender};
+PipelineKey PipelineKey::build(StringID materialTypeVariant,
+                               StringID renderPathNodeSignature) {
+  StringID fields[] = {materialTypeVariant, renderPathNodeSignature};
   return PipelineKey{
       GlobalStringTable::get().compose(TypeTag::PipelineKey, fields)};
 }

@@ -37,6 +37,8 @@ struct ValidatedRenderablePassData {
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
   StringID objectSignature;
   StringID materialSignature;
+  StringID materialTypeVariant;
+  StringID renderPathNodeSignature;
 };
 
 class IRenderable {

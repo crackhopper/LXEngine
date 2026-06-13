@@ -51,9 +51,11 @@ RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
   item.debugId = StringID("071.audit.draw");
   item.objectSignature = StringID("071.audit.mesh");
   item.materialSignature = StringID("071.audit.material");
+  item.materialTypeVariant = StringID("071.audit.materialTypeVariant");
+  item.renderPathNodeSignature = StringID("071.audit.renderPathNode");
   item.pipelineKey =
-      PipelineKey::build(item.objectSignature, item.materialSignature,
-                         item.target.getPipelineSignature());
+      PipelineKey::build(item.materialTypeVariant,
+                         item.renderPathNodeSignature);
   item.raster.vertexBuffer = GpuResourceRef{vertex};
   item.raster.indexBuffer = GpuResourceRef{index};
   item.raster.indexCount = 3;

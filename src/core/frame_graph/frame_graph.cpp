@@ -10,6 +10,46 @@
 #include <vector>
 
 namespace LX_core {
+namespace {
+
+[[nodiscard]] StringID framePassRenderingModeSignature(
+    RenderPathNodeRenderingMode mode) {
+  return StringID(mode == RenderPathNodeRenderingMode::Dynamic
+                      ? "rendering=dynamic"
+                      : "rendering=traditional");
+}
+
+[[nodiscard]] StringID framePassGeometryVertexSignature(
+    RenderPathGeometryVertexContract vertex) {
+  switch (vertex) {
+  case RenderPathGeometryVertexContract::PositionOnly:
+    return StringID("vertex=position-only");
+  case RenderPathGeometryVertexContract::PositionNormalUvTangent:
+    return StringID("vertex=position-normal-uv-tangent");
+  }
+  return StringID("vertex=unknown");
+}
+
+[[nodiscard]] StringID
+framePassGeometrySignature(const RenderPathGeometryContract &geometry) {
+  StringID fields[] = {
+      framePassGeometryVertexSignature(geometry.vertex),
+      topologyPipelineSignature(geometry.topology),
+  };
+  return GlobalStringTable::get().compose(TypeTag::RenderPathGeometry, fields);
+}
+
+[[nodiscard]] StringID
+framePassAttachmentSignature(const RenderPathAttachmentContract &attachment) {
+  return StringID("attachment:target=" + attachment.target +
+                  ";format=" +
+                  std::to_string(static_cast<u32>(attachment.format)) +
+                  ";samples=" + std::to_string(attachment.samples) +
+                  ";layers=" + std::to_string(attachment.layers) +
+                  ";depth=" + (attachment.depth ? "true" : "false"));
+}
+
+} // namespace
 
 FrameGraphResourceRef FrameGraphResourceRef::colorAttachment(StringID name) {
   return FrameGraphResourceRef{name, FrameGraphAttachmentKind::Color};
@@ -46,6 +86,50 @@ CompiledFrameGraph::getPasses() const {
   return m_passes;
 }
 
+StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
+  if (pass.renderPathNodeSignature.id != 0) {
+    return pass.renderPathNodeSignature;
+  }
+
+  std::vector<StringID> fields;
+  fields.reserve(10 + pass.reads.size() + pass.writes.size() +
+                 pass.attachments.size());
+  fields.push_back(StringID("pass=" +
+                            GlobalStringTable::get().toDebugString(pass.name)));
+  fields.push_back(StringID("shader=" + pass.shaderUri.string()));
+  fields.push_back(StringID(pass.stage == RenderPassStage::Raster
+                                ? "stage=raster"
+                                : "stage=compute"));
+  fields.push_back(StringID(pass.dispatch == RenderPassDispatch::Draw
+                                ? "dispatch=draw"
+                                : pass.dispatch ==
+                                          RenderPassDispatch::Fullscreen
+                                      ? "dispatch=fullscreen"
+                                      : "dispatch=compute"));
+  fields.push_back(pass.renderState.getPipelineSignature());
+  fields.push_back(pass.target.getPipelineSignature());
+  if (pass.renderingMode.has_value()) {
+    fields.push_back(framePassRenderingModeSignature(*pass.renderingMode));
+  }
+  if (pass.geometry.has_value()) {
+    fields.push_back(framePassGeometrySignature(*pass.geometry));
+  }
+  for (const FrameGraphRead &read : pass.reads) {
+    fields.push_back(StringID(
+        "source=" + GlobalStringTable::get().toDebugString(read.resource)));
+  }
+  for (const FrameGraphWrite &write : pass.writes) {
+    fields.push_back(StringID(
+        "target=" +
+        GlobalStringTable::get().toDebugString(write.resource.name)));
+  }
+  for (const RenderPathAttachmentContract &attachment : pass.attachments) {
+    fields.push_back(framePassAttachmentSignature(attachment));
+  }
+
+  return GlobalStringTable::get().compose(TypeTag::RenderPathNode, fields);
+}
+
 void FrameGraph::addPass(FramePass pass) {
   m_passes.push_back(std::move(pass));
 }
@@ -55,7 +139,9 @@ void FrameGraph::build(const RenderWorkBuildContext &context) {
   // can apply per-target camera filtering. Each FramePass already carries its
   // own target; FrameGraph simply threads it through.
   for (auto &pass : m_passes) {
-    pass.queue.build(context, pass.name, RenderTarget{pass.target});
+    pass.queue.build(context, pass.name, RenderTarget{pass.target},
+                     getFramePassRenderPathNodeSignature(pass),
+                     pass.geometry);
   }
 }
 

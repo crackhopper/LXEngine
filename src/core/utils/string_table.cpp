@@ -28,10 +28,16 @@ std::string_view tagName(TypeTag tag) {
     return "MaterialPassDefinition";
   case TypeTag::MaterialRender:
     return "MaterialRender";
+  case TypeTag::MaterialTypeVariant:
+    return "MaterialTypeVariant";
   case TypeTag::ObjectRender:
     return "ObjectRender";
   case TypeTag::TargetRender:
     return "TargetRender";
+  case TypeTag::RenderPathGeometry:
+    return "RenderPathGeometry";
+  case TypeTag::RenderPathNode:
+    return "RenderPathNode";
   case TypeTag::PipelineKey:
     return "PipelineKey";
   }

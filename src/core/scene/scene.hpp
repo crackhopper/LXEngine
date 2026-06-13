@@ -112,6 +112,8 @@ struct RenderWorkItem final {
   StringID debugId;
   StringID objectSignature;
   StringID materialSignature;
+  StringID materialTypeVariant;
+  StringID renderPathNodeSignature;
   PipelineKey pipelineKey;
 };
 

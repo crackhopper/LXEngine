@@ -664,6 +664,8 @@ void SceneNode::rebuildValidatedCache() {
             : Transform::fromMat4(getWorldTransform()).translation;
     data.objectSignature = getPipelineSignature(pass);
     data.materialSignature = material->getPipelineSignature(pass);
+    data.materialTypeVariant =
+        material->getMaterialTypeVariantSignature(shaderProgram);
 
     if (entry.meshOverlay.enabled) {
       if (geometryStorage.getIndexBuffer().getTopology() !=

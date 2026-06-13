@@ -1,6 +1,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
+#include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -26,6 +27,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <type_traits>
 
@@ -59,6 +61,14 @@ static_assert(!std::is_invocable_r_v<
                   SceneResourceTable *, LightBaseSharedPtr>,
               "SceneResourceTable must not accept shared_ptr light "
               "registration; the table is the unique owner.");
+
+StringID testRenderPathNodeSignature(StringID passName,
+                                     const RenderTarget &target) {
+  FramePass pass;
+  pass.name = passName;
+  pass.target = target.toDesc();
+  return getFramePassRenderPathNodeSignature(pass);
+}
 static_assert(
     !std::is_invocable_r_v<SkeletonHandle,
                            decltype(&SceneResourceTable::registerSkeleton),
@@ -1276,12 +1286,14 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
   RenderTargetDesc targetDesc;
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
+  const RenderTarget renderTarget{targetDesc};
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, RenderTarget{targetDesc});
+      Pass_Forward, renderTarget,
+      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
   EXPECT(queue.getItems().size() == 2,
          "queue should contain both material-index test draws");
@@ -1317,12 +1329,14 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
   RenderTargetDesc targetDesc;
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
+  const RenderTarget renderTarget{targetDesc};
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, RenderTarget{targetDesc});
+      Pass_Forward, renderTarget,
+      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
   const auto uploadView = scene->resources().buildUploadView();
   EXPECT(uploadView.objects.size() == 2,
@@ -1362,12 +1376,14 @@ void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
   RenderTargetDesc targetDesc;
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
+  const RenderTarget renderTarget{targetDesc};
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, RenderTarget{targetDesc});
+      Pass_Forward, renderTarget,
+      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
   EXPECT(queue.getItems().size() == 1,
          "queue should contain the shader-independent typed-index draw");

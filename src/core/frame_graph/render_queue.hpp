@@ -1,8 +1,10 @@
 #pragma once
 
+#include "core/asset/render_effect.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/scene/scene.hpp"
+#include <optional>
 #include <vector>
 
 namespace LX_core {
@@ -51,11 +53,14 @@ public:
   std::vector<RenderIndirectBatch> compileIndirectBatches() const;
 
   void build(const RenderWorkBuildContext &context, StringID pass,
-             const RenderTarget &target);
+             const RenderTarget &target, StringID renderPathNodeSignature,
+             std::optional<RenderPathGeometryContract> geometryContract);
 
 private:
   void buildRealtime(const Scene &scene, StringID pass,
                      const RenderTarget &target,
+                     StringID renderPathNodeSignature,
+                     std::optional<RenderPathGeometryContract> geometryContract,
                      DescriptorResourceList sceneResources,
                      VisibilityLayerMask visibleMask,
                      std::optional<Vec3f> cameraEye);

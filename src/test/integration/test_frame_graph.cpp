@@ -27,6 +27,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -283,6 +284,14 @@ RenderPassNode makeRenderPassNode(std::string id,
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
   return pass;
+}
+
+StringID testRenderPathNodeSignature(StringID passName,
+                                     const RenderTarget &target) {
+  FramePass pass;
+  pass.name = passName;
+  pass.target = target.toDesc();
+  return getFramePassRenderPathNodeSignature(pass);
 }
 
 bool throwsInvalidArgument(const std::function<void()> &fn,
@@ -1650,7 +1659,9 @@ void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront(
 
   RenderWorkQueue queue;
   queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
-              RenderTarget{});
+              RenderTarget{},
+              testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+              std::nullopt);
 
   const auto &items = queue.getItems();
   EXPECT(items.size() == 3, "opaque and both transparent items should render");
@@ -1947,7 +1958,9 @@ void testUnconfiguredIblResourcesAreNotInjected() {
 
   RenderWorkQueue queue;
   queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
-              RenderTarget{});
+              RenderTarget{},
+              testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+              std::nullopt);
 
   bool sawRegular = false;
   bool sawIbl = false;
@@ -2029,7 +2042,9 @@ void testPartialIblResourcesAreNotCompletedWithDefaults() {
 
   RenderWorkQueue queue;
   queue.build(LX_core::RenderWorkBuildContext::realtime(*scene), Pass_Forward,
-              RenderTarget{});
+              RenderTarget{},
+              testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+              std::nullopt);
   EXPECT(queue.getItems().size() == 1,
          "partial IBL scene should still render the IBL item");
   if (queue.getItems().empty()) {
@@ -2076,7 +2091,11 @@ void testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask() 
               .visibleMask = Layer_All & ~Layer_EditorOverlay,
           }),
       Pass_Forward,
-      RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)});
+      RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)},
+      testRenderPathNodeSignature(
+          Pass_Forward,
+          RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)}),
+      std::nullopt);
 
   EXPECT(queue.getItems().size() == 1,
          "debug render target should render only layers allowed by override");
@@ -2108,13 +2127,19 @@ void testDebugOnlyRenderableIsOverlayOnly() {
 
   RenderWorkQueue forwardQueue;
   forwardQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene),
-                     Pass_Forward, RenderTarget{});
+                     Pass_Forward, RenderTarget{},
+                     testRenderPathNodeSignature(Pass_Forward,
+                                                 RenderTarget{}),
+                     std::nullopt);
   EXPECT(forwardQueue.getItems().size() == 1,
          "debug-only renderables must be excluded from normal passes");
 
   RenderWorkQueue overlayQueue;
   overlayQueue.build(LX_core::RenderWorkBuildContext::realtime(*scene),
-                     Pass_DebugOverlay, RenderTarget{});
+                     Pass_DebugOverlay, RenderTarget{},
+                     testRenderPathNodeSignature(Pass_DebugOverlay,
+                                                 RenderTarget{}),
+                     std::nullopt);
   EXPECT(overlayQueue.getItems().empty(),
          "debug-only flag should not force unsupported overlay materials into "
          "DebugOverlay");

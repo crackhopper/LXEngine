@@ -43,14 +43,17 @@ RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
   item.debugId = StringID("bindless.validation.draw");
   item.objectSignature = StringID("bindless.validation.mesh");
   item.materialSignature = StringID("bindless.validation.material");
+  item.materialTypeVariant = StringID("bindless.validation.materialTypeVariant");
+  item.renderPathNodeSignature =
+      StringID("bindless.validation.renderPathNode");
   RenderTargetDesc target;
   target.role = RenderTargetRole::Swapchain;
   target.colorFormat = ImageFormat::BGRA8;
   target.depthFormat = ImageFormat::D32Float;
   item.target = target;
   item.pipelineKey =
-      PipelineKey::build(item.objectSignature, item.materialSignature,
-                         target.getPipelineSignature());
+      PipelineKey::build(item.materialTypeVariant,
+                         item.renderPathNodeSignature);
   item.raster.vertexBuffer = GpuResourceRef{vertex};
   item.raster.indexBuffer = GpuResourceRef{index};
   item.raster.indexCount = 3;

@@ -766,6 +766,14 @@ LX_core::StringID passIdFromDebugName(std::string_view passName) {
                            std::string(passName));
 }
 
+LX_core::StringID transientRenderPathNodeSignature(
+    LX_core::StringID passName, const LX_core::RenderTarget &target) {
+  LX_core::FramePass pass;
+  pass.name = passName;
+  pass.target = target.toDesc();
+  return LX_core::getFramePassRenderPathNodeSignature(pass);
+}
+
 void writeLe16(std::ostream &out, u16 value) {
   out.put(static_cast<char>(value & 0xffu));
   out.put(static_cast<char>((value >> 8u) & 0xffu));
@@ -1698,7 +1706,8 @@ public:
                         .visibleMask = cameraComponent.getCullingMask() &
                                        ~LX_core::Layer_EditorOverlay,
                     }),
-                pass, target);
+                pass, target, transientRenderPathNodeSignature(pass, target),
+                std::nullopt);
     if (queue.getItems().empty()) {
       throw std::runtime_error("debug render target produced no draw items");
     }
@@ -1890,7 +1899,10 @@ public:
                         .visibleMask =
                             outputCullingMask & ~LX_core::Layer_EditorOverlay,
                     }),
-                LX_core::Pass_Forward, target);
+                LX_core::Pass_Forward, target,
+                transientRenderPathNodeSignature(LX_core::Pass_Forward,
+                                                 target),
+                std::nullopt);
     if (queue.getItems().empty()) {
       throw std::runtime_error(
           "realtime profile output produced no draw items");
@@ -2201,8 +2213,16 @@ private:
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(pass);
     item.renderState = material->getPassRenderState(pass);
+    const auto shaderProgram = material->getPassShaderProgram(pass);
+    if (!shaderProgram.has_value()) {
+      throw std::logic_error(
+          "fullscreen material item missing shader program for pass " +
+          LX_core::GlobalStringTable::get().toDebugString(pass));
+    }
     const LX_core::StringID materialSignature =
         material->getPipelineSignature(pass);
+    const LX_core::StringID materialTypeVariant =
+        material->getMaterialTypeVariantSignature(shaderProgram->get());
     auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
@@ -2219,14 +2239,16 @@ private:
     item.target = target;
     item.objectSignature = LX_core::StringID(objectSignature);
     item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
+    item.materialTypeVariant = materialTypeVariant;
 
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == item.pass) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
+    for (auto &graphPass : m_frameGraph.getPasses()) {
+      if (graphPass.name == item.pass) {
+        item.renderPathNodeSignature =
+            LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.pipelineKey = LX_core::PipelineKey::build(
+            item.materialTypeVariant, item.renderPathNodeSignature);
+        graphPass.queue.addItem(std::move(item));
+        graphPass.queue.sort();
         return;
       }
     }
@@ -2269,8 +2291,16 @@ private:
     item.shaderInfo = material->getPassShader(LX_core::Pass_DeferredLighting);
     item.renderState =
         material->getPassRenderState(LX_core::Pass_DeferredLighting);
+    const auto shaderProgram =
+        material->getPassShaderProgram(LX_core::Pass_DeferredLighting);
+    if (!shaderProgram.has_value()) {
+      throw std::logic_error(
+          "deferred lighting material item missing shader program");
+    }
     const LX_core::StringID materialSignature =
         material->getPipelineSignature(LX_core::Pass_DeferredLighting);
+    const LX_core::StringID materialTypeVariant =
+        material->getMaterialTypeVariantSignature(shaderProgram->get());
     auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
@@ -2296,14 +2326,16 @@ private:
     item.objectSignature =
         LX_core::StringID("DeferredLightingFullscreenTriangle");
     item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
+    item.materialTypeVariant = materialTypeVariant;
 
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_DeferredLighting) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
+    for (auto &graphPass : m_frameGraph.getPasses()) {
+      if (graphPass.name == LX_core::Pass_DeferredLighting) {
+        item.renderPathNodeSignature =
+            LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.pipelineKey = LX_core::PipelineKey::build(
+            item.materialTypeVariant, item.renderPathNodeSignature);
+        graphPass.queue.addItem(std::move(item));
+        graphPass.queue.sort();
         return;
       }
     }
@@ -2336,8 +2368,15 @@ private:
     LX_core::RenderWorkItem item;
     item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
     item.renderState = material->getPassRenderState(LX_core::Pass_Forward);
+    const auto shaderProgram =
+        material->getPassShaderProgram(LX_core::Pass_Forward);
+    if (!shaderProgram.has_value()) {
+      throw std::logic_error("skybox material item missing shader program");
+    }
     const LX_core::StringID materialSignature =
         material->getPipelineSignature(LX_core::Pass_Forward);
+    const LX_core::StringID materialTypeVariant =
+        material->getMaterialTypeVariantSignature(shaderProgram->get());
     auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
@@ -2362,14 +2401,16 @@ private:
     item.target = target;
     item.objectSignature = LX_core::StringID("SkyboxFullscreenTriangle");
     item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
+    item.materialTypeVariant = materialTypeVariant;
 
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_Forward) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
+    for (auto &graphPass : m_frameGraph.getPasses()) {
+      if (graphPass.name == LX_core::Pass_Forward) {
+        item.renderPathNodeSignature =
+            LX_core::getFramePassRenderPathNodeSignature(graphPass);
+        item.pipelineKey = LX_core::PipelineKey::build(
+            item.materialTypeVariant, item.renderPathNodeSignature);
+        graphPass.queue.addItem(std::move(item));
+        graphPass.queue.sort();
         return;
       }
     }
@@ -2389,7 +2430,9 @@ private:
                              LX_core::RenderWorkBuildContext::RealtimeOptions{
                                  .sceneResourceTarget = defaultCameraTarget,
                              }),
-                         passName, renderTarget);
+                         passName, renderTarget,
+                         LX_core::getFramePassRenderPathNodeSignature(pass),
+                         pass.geometry);
         return;
       }
     }
@@ -2409,7 +2452,9 @@ private:
                              LX_core::RenderWorkBuildContext::RealtimeOptions{
                                  .sceneResourceTarget = defaultCameraTarget,
                              }),
-                         LX_core::Pass_DebugOverlay, debugRenderTarget);
+                         LX_core::Pass_DebugOverlay, debugRenderTarget,
+                         LX_core::getFramePassRenderPathNodeSignature(pass),
+                         pass.geometry);
         return;
       }
     }

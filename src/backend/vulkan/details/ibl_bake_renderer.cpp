@@ -43,6 +43,23 @@ usize cubemapLayoutKey(StringID resourceName, u32 mipLevel, u32 faceLayer) {
   return hash;
 }
 
+StringID makeBakeRenderPathNodeSignature(const std::string &shaderName,
+                                         const RenderState &renderState,
+                                         const RenderTargetDesc &target,
+                                         u32 indexCount) {
+  auto &tbl = GlobalStringTable::get();
+  StringID fields[] = {
+      StringID("pass=PostProcess"),
+      StringID("shader=" + shaderName),
+      StringID("stage=raster"),
+      StringID(indexCount == 36u ? "dispatch=cube-bake"
+                                 : "dispatch=fullscreen-bake"),
+      renderState.getPipelineSignature(),
+      target.getPipelineSignature(),
+  };
+  return tbl.compose(TypeTag::RenderPathNode, fields);
+}
+
 void transitionSubresource(VkCommandBuffer cmd, VkImage image,
                            VkImageLayout oldLayout, VkImageLayout newLayout,
                            VkAccessFlags srcAccessMask,
@@ -353,9 +370,16 @@ BakeWorkItem makeBakeItem(const std::string &shaderName,
   item.objectSignature =
       StringID(indexCount == 36u ? "IblBakeCube" : "IblBakeFullscreen");
   item.materialSignature = material->getPipelineSignature(item.pass);
+  const auto resolvedShaderProgram = material->getPassShaderProgram(item.pass);
+  if (!resolvedShaderProgram.has_value()) {
+    throw std::logic_error("IBL bake material missing shader program");
+  }
+  item.materialTypeVariant =
+      material->getMaterialTypeVariantSignature(resolvedShaderProgram->get());
+  item.renderPathNodeSignature = makeBakeRenderPathNodeSignature(
+      shaderName, item.renderState, item.target, indexCount);
   item.pipelineKey =
-      PipelineKey::build(item.objectSignature, item.materialSignature,
-                         item.target.getPipelineSignature());
+      PipelineKey::build(item.materialTypeVariant, item.renderPathNodeSignature);
   return work;
 }
 

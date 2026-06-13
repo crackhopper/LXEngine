@@ -38,12 +38,12 @@ Do not let subagents implement compatibility fallbacks. If a package cannot comp
 
 ## Progress
 
-- [ ] Task 0: Add characterization tests for the 073-c contract.
-- [ ] Task 1: Add `standard-pbr` material contract and glTF metallic-roughness data model.
-- [ ] Task 2: Add shader-side BSDF ABI and update material contract sources.
-- [ ] Task 3: Make shader build targets variant-aware.
-- [ ] Task 4: Add RenderPathNode contract, built-in resource vocabulary, and node signature.
-- [ ] Task 5: Hard-cut `PipelineKey` to `MaterialTypeVariant + RenderPathNodeSignature`.
+- [x] Task 0: Add characterization tests for the 073-c contract.
+- [x] Task 1: Add `standard-pbr` material contract and glTF metallic-roughness data model.
+- [x] Task 2: Add shader-side BSDF ABI and update material contract sources.
+- [x] Task 3: Make shader build targets variant-aware.
+- [x] Task 4: Add RenderPathNode contract, built-in resource vocabulary, and node signature.
+- [x] Task 5: Hard-cut `PipelineKey` to `MaterialTypeVariant + RenderPathNodeSignature`.
 - [ ] Task 6: Implement material type variant resolver and final shader reflection.
 - [ ] Task 7: Add dynamic/traditional rendering mode plumbing to pipeline build.
 - [ ] Task 8: Implement Helmet material conversion tool and generated scene.

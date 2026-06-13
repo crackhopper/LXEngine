@@ -17,7 +17,7 @@ struct StringID;
 @source_analysis.section TypeTag：让 StringID 不只是“压缩字符串”
 `StringID` 最初只是把字符串压成整数，方便比较和做 map key。Pipeline identity
 需要的不是单个名字，而是一棵可追踪的结构树：比如
-`PipelineKey(ObjectRender(...), MaterialRender(...), TargetRender(...))`。
+`PipelineKey(MaterialTypeVariant(...), RenderPathNode(...))`。
 
 `TypeTag` 就是这棵树每个节点的类别标签。叶子字符串走 `TypeTag::String`；
 `compose(...)` 生成的结构化 ID 会记录自己的 tag 和子字段。这样我们既能保留
@@ -34,8 +34,11 @@ enum class TypeTag : u8 {
   Skeleton,
   MaterialPassDefinition,
   MaterialRender,
+  MaterialTypeVariant,
   ObjectRender,
   TargetRender,
+  RenderPathGeometry,
+  RenderPathNode,
   PipelineKey,
 };
 
@@ -44,7 +47,7 @@ enum class TypeTag : u8 {
 `GlobalStringTable` 同时服务两种需求：
 
 - 叶子名字：`StringID("Forward")`、`StringID("SceneMaterials")`
-- 结构身份：`compose(TypeTag::PipelineKey, {objectSig, materialSig, targetRender})`
+- 结构身份：`compose(TypeTag::PipelineKey, {materialTypeVariant, renderPathNode})`
 
 这两类 ID 共用同一套整数空间和线程保护，因此上层不需要区分“普通字符串 ID”
 和“结构化 ID”的存储方式。区别只存在于可选的 `m_composedEntries` 元数据里：

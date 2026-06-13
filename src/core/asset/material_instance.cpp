@@ -481,6 +481,18 @@ IShaderSharedPtr MaterialInstance::getPassShader(StringID pass) const {
   return passDefinition->get().shaderProgram.getShader();
 }
 
+std::optional<std::reference_wrapper<const ShaderProgramSet>>
+MaterialInstance::getPassShaderProgram(StringID pass) const {
+  if (!m_template) {
+    return std::nullopt;
+  }
+  auto passDefinition = m_template->getPassDefinition(pass);
+  if (!passDefinition) {
+    return std::nullopt;
+  }
+  return std::cref(passDefinition->get().shaderProgram);
+}
+
 RenderState MaterialInstance::getPassRenderState(StringID pass) const {
   if (!m_template)
     return RenderState{};
@@ -498,6 +510,26 @@ StringID MaterialInstance::getPipelineSignature(StringID pass) const {
   }
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
+}
+
+StringID MaterialInstance::getMaterialTypeVariantSignature(
+    const ShaderProgramSet &resolvedShader) const {
+  auto &tbl = GlobalStringTable::get();
+  std::vector<StringID> fields;
+  fields.reserve(5);
+  fields.push_back(tbl.Intern(m_bsdfType.empty() ? "<unspecified>"
+                                                 : m_bsdfType));
+  fields.push_back(tbl.Intern(m_materialSourceUri.empty()
+                                  ? "<no-source-uri>"
+                                  : m_materialSourceUri.string()));
+  fields.push_back(tbl.Intern(m_materialSourceReflectionHash.empty()
+                                  ? "<no-reflection-hash>"
+                                  : m_materialSourceReflectionHash));
+  fields.push_back(m_materialSourceSignature.id == 0
+                       ? tbl.Intern("<no-source-signature>")
+                       : m_materialSourceSignature);
+  fields.push_back(resolvedShader.getPipelineSignature());
+  return tbl.compose(TypeTag::MaterialTypeVariant, fields);
 }
 
 bool MaterialInstance::isPassEnabled(StringID pass) const {

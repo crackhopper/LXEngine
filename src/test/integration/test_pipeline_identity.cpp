@@ -1,12 +1,15 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
+#include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/skeleton.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
+#include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
 #include "core/scene/object.hpp"
@@ -17,6 +20,7 @@
 
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <vector>
 
 using namespace LX_core;
@@ -100,16 +104,35 @@ struct Fixture {
 };
 
 PipelineKey buildKey(const Fixture &f, StringID pass,
-                     const SkeletonSharedPtr &skel = nullptr) {
+                     const SkeletonSharedPtr &skel = nullptr,
+                     const RenderTargetDesc &target =
+                         RenderTargetDesc::swapchain(ImageFormat::BGRA8,
+                                                     ImageFormat::D32Float),
+                     std::optional<RenderPathGeometryContract> geometry =
+                         RenderPathGeometryContract{}) {
   auto node = SceneNode::create("pipeline_identity_node");
   node->addComponent<MeshComponent>(f.mesh);
   if (skel) {
     node->addComponent<SkeletonComponent>(skel);
   }
   node->addComponent<MaterialComponent>(f.material);
-  StringID objSig = node->getPipelineSignature(pass);
-  StringID matSig = f.material->getPipelineSignature(pass);
-  return PipelineKey::build(objSig, matSig);
+  const auto shaderProgram = f.material->getPassShaderProgram(pass);
+  EXPECT(shaderProgram.has_value(), "fixture material must expose pass shader");
+
+  FramePass renderPathPass;
+  renderPathPass.name = pass;
+  renderPathPass.target = target;
+  renderPathPass.shaderUri = ResourceUri("test://pipeline_identity/" +
+                                         shaderProgram->get().shaderName);
+  renderPathPass.renderState = f.material->getPassRenderState(pass);
+  renderPathPass.renderingMode = RenderPathNodeRenderingMode::Dynamic;
+  renderPathPass.geometry = geometry;
+
+  const StringID materialTypeVariant =
+      f.material->getMaterialTypeVariantSignature(shaderProgram->get());
+  const StringID renderPathNodeSignature =
+      getFramePassRenderPathNodeSignature(renderPathPass);
+  return PipelineKey::build(materialTypeVariant, renderPathNodeSignature);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,14 +156,77 @@ void testVariantChangeProducesDifferentKey() {
   EXPECT(k1 != k2, "enabling a variant must change the pipeline key");
 }
 
-void testTopologyChangeProducesDifferentKey() {
+void testObjectTopologyChangeDoesNotProduceDifferentKey() {
   auto f1 = Fixture::make("pbr", {}, RenderState{},
                           PrimitiveTopology::TriangleList);
   auto f2 = Fixture::make("pbr", {}, RenderState{},
                           PrimitiveTopology::LineList);
   PipelineKey k1 = buildKey(f1, Pass_Forward);
   PipelineKey k2 = buildKey(f2, Pass_Forward);
-  EXPECT(k1 != k2, "topology change must change the pipeline key");
+  EXPECT(k1 == k2,
+         "object topology alone must not be a PipelineKey axis");
+}
+
+void testRenderPathTopologyContractChangeProducesDifferentKey() {
+  auto f = Fixture::make("pbr", {}, RenderState{},
+                         PrimitiveTopology::TriangleList);
+  RenderPathGeometryContract triangle;
+  triangle.topology = PrimitiveTopology::TriangleList;
+  RenderPathGeometryContract line;
+  line.topology = PrimitiveTopology::LineList;
+  PipelineKey kTriangle = buildKey(f, Pass_Forward, nullptr,
+                                   RenderTargetDesc::swapchain(
+                                       ImageFormat::BGRA8,
+                                       ImageFormat::D32Float),
+                                   triangle);
+  PipelineKey kLine = buildKey(f, Pass_Forward, nullptr,
+                               RenderTargetDesc::swapchain(
+                                   ImageFormat::BGRA8,
+                                   ImageFormat::D32Float),
+                               line);
+  EXPECT(kTriangle != kLine,
+         "RenderPathNode topology contract must change the pipeline key");
+}
+
+void testRenderPathGeometryMismatchFailsQueueBuild() {
+  auto f = Fixture::make("pbr", {}, RenderState{},
+                         PrimitiveTopology::TriangleList);
+  auto node = SceneNode::create("geometry_mismatch_node");
+  node->addComponent<MeshComponent>(f.mesh);
+  node->addComponent<MaterialComponent>(f.material);
+
+  auto scene = Scene::create("geometry_mismatch_scene");
+  scene->addRenderable(node);
+  auto cameraNode = SceneNode::create("geometry_mismatch_camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach");
+  camera->get().setTarget(RenderTarget{});
+  camera->get().updateMatrices();
+  scene->addCamera(cameraNode);
+
+  RenderPathGeometryContract lineGeometry;
+  lineGeometry.topology = PrimitiveTopology::LineList;
+
+  FramePass renderPathPass;
+  renderPathPass.name = Pass_Forward;
+  renderPathPass.target = RenderTargetDesc::swapchain(ImageFormat::BGRA8,
+                                                      ImageFormat::D32Float);
+  renderPathPass.geometry = lineGeometry;
+
+  RenderWorkQueue queue;
+  bool threw = false;
+  try {
+    queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+                RenderTarget{}, getFramePassRenderPathNodeSignature(renderPathPass),
+                renderPathPass.geometry);
+  } catch (const std::logic_error &e) {
+    threw =
+        std::string(e.what()).find("topology contract mismatch") !=
+        std::string::npos;
+  }
+  EXPECT(threw,
+         "RenderWorkQueue must reject object topology incompatible with "
+         "RenderPathNode geometry");
 }
 
 void testSkeletonPresenceDoesNotProduceDifferentKey() {
@@ -171,11 +257,8 @@ void testDifferentPassProducesDifferentKey() {
   auto node = SceneNode::create("pipeline_identity_pass_node");
   node->addComponent<MeshComponent>(f.mesh);
   node->addComponent<MaterialComponent>(f.material);
-  StringID objSig = node->getPipelineSignature(Pass_Forward);
-  StringID fwdMat = f.material->getPipelineSignature(Pass_Forward);
-  StringID shMat = f.material->getPipelineSignature(Pass_Shadow);
-  PipelineKey kFwd = PipelineKey::build(objSig, fwdMat);
-  PipelineKey kSh = PipelineKey::build(objSig, shMat);
+  PipelineKey kFwd = buildKey(f, Pass_Forward);
+  PipelineKey kSh = buildKey(f, Pass_Shadow);
 
   EXPECT(kFwd != kSh, "different passes yield different pipeline keys");
 }
@@ -187,10 +270,14 @@ void testToDebugStringSmoke() {
   std::string s = GlobalStringTable::get().toDebugString(k.id);
   EXPECT(s.rfind("PipelineKey(", 0) == 0,
          "debug string must start with 'PipelineKey(', got: " + s);
-  EXPECT(s.find("ObjectRender(") != std::string::npos,
-         "debug string must contain ObjectRender(, got: " + s);
-  EXPECT(s.find("MaterialRender(") != std::string::npos,
-         "debug string must contain MaterialRender(, got: " + s);
+  EXPECT(s.find("MaterialTypeVariant(") != std::string::npos,
+         "debug string must contain MaterialTypeVariant(, got: " + s);
+  EXPECT(s.find("RenderPathNode(") != std::string::npos,
+         "debug string must contain RenderPathNode(, got: " + s);
+  EXPECT(s.find("ObjectRender(") == std::string::npos,
+         "debug string must not contain ObjectRender(, got: " + s);
+  EXPECT(s.find("TargetRender(") == std::string::npos,
+         "debug string must not contain TargetRender(, got: " + s);
   std::cout << "  debug: " << s << "\n";
 }
 
@@ -207,42 +294,36 @@ void testPipelineKeyIncludesMaterialSourceSignature() {
          "different material source signatures must change pipeline key");
 
   const std::string debug = GlobalStringTable::get().toDebugString(k1.id);
-  EXPECT(debug.find("MaterialRender(") != std::string::npos,
-         "debug string must contain MaterialRender(, got: " + debug);
+  EXPECT(debug.find("MaterialTypeVariant(") != std::string::npos,
+         "debug string must contain MaterialTypeVariant(, got: " + debug);
   EXPECT(debug.find("source-a") != std::string::npos,
          "debug string must include material source signature, got: " + debug);
 }
 
 void testPipelineKeyIncludesTargetSignature() {
   auto f = Fixture::make();
-  auto node = SceneNode::create("pipeline_identity_target_node");
-  node->addComponent<MeshComponent>(f.mesh);
-  node->addComponent<MaterialComponent>(f.material);
-
-  const StringID objectSig = node->getPipelineSignature(Pass_Forward);
-  const StringID materialSig = f.material->getPipelineSignature(Pass_Forward);
 
   const auto swapchain =
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
   const auto offscreen = RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
   const auto depthOnly = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
 
-  const PipelineKey kSwap =
-      PipelineKey::build(objectSig, materialSig, swapchain.getPipelineSignature());
-  const PipelineKey kOff =
-      PipelineKey::build(objectSig, materialSig, offscreen.getPipelineSignature());
-  const PipelineKey kDepth =
-      PipelineKey::build(objectSig, materialSig, depthOnly.getPipelineSignature());
+  const PipelineKey kSwap = buildKey(f, Pass_Forward, nullptr, swapchain);
+  const PipelineKey kOff = buildKey(f, Pass_Forward, nullptr, offscreen);
+  const PipelineKey kDepth = buildKey(f, Pass_Forward, nullptr, depthOnly);
 
   EXPECT(kSwap != kOff, "swapchain and offscreen targets must not collide");
   EXPECT(kSwap != kDepth, "swapchain and depth-only targets must not collide");
   EXPECT(kOff != kDepth, "offscreen color and depth-only targets must not collide");
 
   const std::string debug = GlobalStringTable::get().toDebugString(kSwap.id);
-  EXPECT(debug.find("TargetRender(") != std::string::npos,
-         "debug string must contain TargetRender(, got: " + debug);
+  EXPECT(debug.find("TargetRender(") == std::string::npos,
+         "debug string must not contain TargetRender(, got: " + debug);
+  EXPECT(debug.find("RenderPathNode(") != std::string::npos,
+         "debug string must contain RenderPathNode(, got: " + debug);
   EXPECT(debug.find("RenderTarget:role=swapchain") != std::string::npos,
-         "debug string must include render target signature, got: " + debug);
+         "RenderPathNode debug string must include render target contract, got: " +
+             debug);
 }
 
 } // namespace
@@ -252,7 +333,9 @@ int main() {
 
   testEqualConfigsProduceSameKey();
   testVariantChangeProducesDifferentKey();
-  testTopologyChangeProducesDifferentKey();
+  testObjectTopologyChangeDoesNotProduceDifferentKey();
+  testRenderPathTopologyContractChangeProducesDifferentKey();
+  testRenderPathGeometryMismatchFailsQueueBuild();
   testSkeletonPresenceDoesNotProduceDifferentKey();
   testDifferentPassProducesDifferentKey();
   testToDebugStringSmoke();

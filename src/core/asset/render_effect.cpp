@@ -25,7 +25,7 @@ geometryVertexSignature(RenderPathGeometryVertexContract vertex) {
       geometryVertexSignature(g.vertex),
       topologyPipelineSignature(g.topology),
   };
-  return GlobalStringTable::get().compose(TypeTag::ObjectRender, fields);
+  return GlobalStringTable::get().compose(TypeTag::RenderPathGeometry, fields);
 }
 
 [[nodiscard]] StringID
@@ -70,7 +70,7 @@ StringID getRenderPathNodeSignature(const RenderPassNode &node) {
   for (const RenderPathAttachmentContract &attachment : node.attachments) {
     fields.push_back(attachmentSignature(attachment));
   }
-  return GlobalStringTable::get().compose(TypeTag::PipelineKey, fields);
+  return GlobalStringTable::get().compose(TypeTag::RenderPathNode, fields);
 }
 
 } // namespace LX_core
