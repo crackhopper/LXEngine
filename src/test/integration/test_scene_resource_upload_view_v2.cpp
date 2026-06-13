@@ -67,6 +67,28 @@ MaterialContractReflection makeMaterialContract(const char *uri,
   return contract;
 }
 
+MaterialContractStorageField makeStorageField(const char *name,
+                                              const char *parameterName) {
+  MaterialContractStorageField field;
+  field.name = name;
+  field.type = MaterialContractStorageFieldType::Vec4;
+  field.inputKind = MaterialContractStorageInputKind::ParameterValue;
+  field.parameterName = parameterName;
+  field.defaultValue = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+  return field;
+}
+
+MaterialContractStorageField makeTextureSlotField(const char *name,
+                                                  const char *parameterName) {
+  MaterialContractStorageField field;
+  field.name = name;
+  field.type = MaterialContractStorageFieldType::TextureSlot;
+  field.inputKind = MaterialContractStorageInputKind::ParameterTexture;
+  field.parameterName = parameterName;
+  field.defaultTextureSemantic = "white";
+  return field;
+}
+
 MaterialInstanceUniquePtr
 makeSourceMaterial(MaterialContractReflection contract) {
   auto material = MaterialInstance::createUnique(
@@ -86,6 +108,16 @@ void registerObject(SceneResourceTable &table, MeshHandle mesh,
   object.material = material;
   object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
   (void)table.registerObject(object);
+}
+
+bool buildUploadThrows(SceneResourceTable &table,
+                       const std::string &expectedText) {
+  try {
+    (void)table.buildUploadView();
+  } catch (const std::logic_error &error) {
+    return std::string(error.what()).find(expectedText) != std::string::npos;
+  }
+  return false;
 }
 
 const SceneSourceLocalMaterialStorageView *
@@ -561,6 +593,78 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
          "metal source-local range should contain contiguous local indices");
 }
 
+void testUploadViewRejectsSourceSignatureStorageLayoutConflict() {
+  SceneResourceTable table;
+  const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
+
+  MaterialContractReflection first = makeMaterialContract(
+      "memory://materials/conflict.contract.glsl", "matte",
+      "shared-reflect-v1");
+  first.storageFields.push_back(makeStorageField("baseColor", "Kd"));
+
+  MaterialContractReflection second = first;
+  second.storageFields.clear();
+  second.storageFields.push_back(makeStorageField("albedo", "Kd"));
+
+  const MaterialHandle firstMaterial =
+      table.registerMaterial(makeSourceMaterial(first));
+  const MaterialHandle secondMaterial =
+      table.registerMaterial(makeSourceMaterial(second));
+  registerObject(table, firstMesh, firstMaterial);
+  registerObject(table, secondMesh, secondMaterial);
+
+  EXPECT(buildUploadThrows(table, "source signature conflict"),
+         "same source signature with different storage layout should fail "
+         "before upload records are produced");
+}
+
+void testUploadViewRejectsMaterialSourceSignatureMismatch() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
+  MaterialContractReflection contract = makeMaterialContract(
+      "memory://materials/signature.contract.glsl", "matte",
+      "signature-reflect-v1");
+  contract.storageFields.push_back(makeStorageField("baseColor", "Kd"));
+
+  auto material = makeSourceMaterial(contract);
+  material->setMaterialSourceSignature(StringID("corrupt-source-signature"));
+  const MaterialHandle materialHandle =
+      table.registerMaterial(std::move(material));
+  registerObject(table, mesh, materialHandle);
+
+  EXPECT(buildUploadThrows(table, "source signature mismatch"),
+         "source-contract material with mismatched instance signature should "
+         "fail as an invariant violation");
+}
+
+void testUploadViewRejectsUnresolvedExplicitTextureSlot() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
+  MaterialContractReflection contract = makeMaterialContract(
+      "memory://materials/textured.contract.glsl", "matte",
+      "textured-reflect-v1");
+  contract.parameters.push_back(MaterialContractParameter{
+      "Kd", true, {MaterialContractParameterKind::Texture}});
+  contract.storageFields.push_back(makeTextureSlotField("baseColorTexture",
+                                                        "Kd"));
+
+  auto material = makeSourceMaterial(contract);
+  MaterialParameterEnvelope kdTexture;
+  kdTexture.kind = MaterialEnvelopeKind::Texture;
+  kdTexture.valueType = MaterialEnvelopeValueType::Rgb;
+  kdTexture.uri = "memory://textures/missing-kd.png";
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kdTexture));
+
+  const MaterialHandle materialHandle =
+      table.registerMaterial(std::move(material));
+  registerObject(table, mesh, materialHandle);
+
+  EXPECT(buildUploadThrows(table, "unresolved texture slot"),
+         "explicit texture parameters must fail if no table texture slot can "
+         "be resolved");
+}
+
 void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
   SceneResourceTable table;
   const ShaderHandle shaderHandle = table.registerShaderResource(
@@ -932,6 +1036,9 @@ int main() {
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();
+  testUploadViewRejectsSourceSignatureStorageLayoutConflict();
+  testUploadViewRejectsMaterialSourceSignatureMismatch();
+  testUploadViewRejectsUnresolvedExplicitTextureSlot();
   testRenderPathGraphRegistrationRejectsMissingFeatureResource();
   testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency();
   testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency();

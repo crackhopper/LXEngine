@@ -37,7 +37,7 @@ Texture slot resolution is intentionally strict: source material packing first u
 - [x] Task 3: Packed source-reflected material bytes (`34ae2f8b`).
 - [x] Task 4: Registered builtin default material textures (`f3e8bd3b`).
 - [x] Task 5: Built source storages/material refs in upload view; current in-progress commit also updates `test_scene_resource_table` for hard-cut source-contract behavior.
-- [ ] Task 6: Add remaining negative upload diagnostics.
+- [x] Task 6: Added negative upload diagnostics for source signature mismatch, source storage layout conflict, and unresolved explicit texture slots.
 - [ ] Task 7: Backend scene bindless staging API.
 - [ ] Task 8: Final verification and requirement closeout.
 

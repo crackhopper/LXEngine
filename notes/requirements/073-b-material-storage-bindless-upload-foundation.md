@@ -270,9 +270,9 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 - `white`、`black`、`flatNormal` builtin 默认纹理 resource identity 与 upload slot。
 - source-contract material 在 upload view 中硬切到 `materialRefs + sourceMaterialRecords`；正向测试不再把 `SceneGpuMaterialRecord` 当作 Material v3 真相。
 - source texture slot 解析支持 table-owned parameter `TextureHandle` 和 parser canonical dependency URI；显式贴图缺资源时保持 fail-fast。
+- source signature mismatch、同 source signature storage layout 冲突、显式 texture slot 无法解析时会在 upload 阶段抛出可审计 diagnostics。
 
 仍需完成：
 
-- 负向 upload diagnostics 覆盖。
 - backend/GPU resource table 消费 bindless-ready tables 并输出 staging diagnostics。
 - 最终 073-b 验证和状态收口。

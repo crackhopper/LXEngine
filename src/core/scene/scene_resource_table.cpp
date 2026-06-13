@@ -30,6 +30,35 @@ namespace {
   return next == 0 ? 1 : next;
 }
 
+[[nodiscard]] bool sameVec4(const Vec4f &lhs, const Vec4f &rhs) {
+  return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
+}
+
+[[nodiscard]] bool
+sameStorageFieldLayout(const MaterialContractStorageField &lhs,
+                       const MaterialContractStorageField &rhs) {
+  return lhs.name == rhs.name && lhs.type == rhs.type &&
+         lhs.inputKind == rhs.inputKind &&
+         lhs.parameterName == rhs.parameterName &&
+         lhs.defaultTextureSemantic == rhs.defaultTextureSemantic &&
+         sameVec4(lhs.defaultValue, rhs.defaultValue) &&
+         lhs.defaultChannel == rhs.defaultChannel;
+}
+
+[[nodiscard]] bool sameSourceStorageLayout(
+    const MaterialContractReflection &lhs,
+    const MaterialContractReflection &rhs) {
+  if (lhs.storageFields.size() != rhs.storageFields.size()) {
+    return false;
+  }
+  for (usize i = 0; i < lhs.storageFields.size(); ++i) {
+    if (!sameStorageFieldLayout(lhs.storageFields[i], rhs.storageFields[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 struct CompactRecordIndex final {
   u32 generation = 0;
   u32 uploadIndex = u32_max;
@@ -2220,10 +2249,12 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       m_materials.size());
   std::vector<std::vector<SourceLocalMaterialRecord>>
       sourceMaterialRecordsByStorage;
+  std::vector<const MaterialContractReflection *> sourceContractsByStorage;
   m_gpuMaterials.reserve(aliveCount(m_objects));
   m_gpuMaterialRefs.reserve(aliveCount(m_objects));
   m_gpuTextures.reserve(aliveCount(m_objects) * 5u);
   sourceMaterialRecordsByStorage.reserve(aliveCount(m_objects));
+  sourceContractsByStorage.reserve(aliveCount(m_objects));
 
   const auto textureSlotForUri = [this](const ResourceUri &uri) -> u32 {
     const auto texture = findTexture(uri);
@@ -2260,11 +2291,17 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   };
 
   const auto ensureSourceStorage =
-      [this, &sourceMaterialRecordsByStorage](
+      [this, &sourceMaterialRecordsByStorage, &sourceContractsByStorage](
           const MaterialContractReflection &contract) -> u32 {
     const StringID sourceSignature = contract.sourceSignature();
     for (u32 i = 0; i < m_gpuSourceMaterialStorages.size(); ++i) {
       if (m_gpuSourceMaterialStorages[i].sourceSignature == sourceSignature) {
+        if (!sameSourceStorageLayout(*sourceContractsByStorage[i], contract)) {
+          throw std::logic_error(
+              "material source signature conflict for '" +
+              contract.sourceUri.string() +
+              "': inconsistent source storage layout");
+        }
         return i;
       }
     }
@@ -2276,6 +2313,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .storageAbiHash = contract.storageAbiHash,
     });
     sourceMaterialRecordsByStorage.emplace_back();
+    sourceContractsByStorage.push_back(&contract);
     return static_cast<u32>(m_gpuSourceMaterialStorages.size() - 1u);
   };
 
@@ -2299,6 +2337,18 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     }
 
     if (const auto contract = entry.resource->getMaterialContractReflection()) {
+      const StringID expectedSourceSignature = contract->get().sourceSignature();
+      const StringID materialSourceSignature =
+          entry.resource->getMaterialSourceSignature();
+      if (materialSourceSignature.id == 0) {
+        throw std::logic_error("missing material source signature for '" +
+                               contract->get().sourceUri.string() + "'");
+      }
+      if (materialSourceSignature != expectedSourceSignature) {
+        throw std::logic_error("material source signature mismatch for '" +
+                               contract->get().sourceUri.string() + "'");
+      }
+
       const u32 sourceStorageIndex = ensureSourceStorage(contract->get());
       auto &records = sourceMaterialRecordsByStorage[sourceStorageIndex];
       const u32 sourceLocalMaterialIndex = static_cast<u32>(records.size());

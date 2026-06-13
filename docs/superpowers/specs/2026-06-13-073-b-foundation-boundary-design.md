@@ -49,7 +49,6 @@ After Task 5, the code has moved past the initial scaffolding:
 
 The remaining pressure for `REQ-073-b` is now narrower:
 
-- negative upload diagnostics still need focused coverage;
 - backend/GPU resource table consumption of the new material/object/draw tables is not yet the validation target;
 - old `SceneGpuMaterialRecord` still exists only for legacy/default realtime paths and must not become positive Material v3 truth again.
 
