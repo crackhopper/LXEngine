@@ -551,7 +551,7 @@ passes:
     geometry:
       vertex: position-only
       topology: triangle-list
-    sources: [scene.camera]
+    sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [hdr.color]
     renderState:
       cullMode: Back
@@ -572,7 +572,7 @@ passes:
     geometry:
       vertex: position-only
       topology: triangle-list
-    sources: [scene.camera]
+    sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [gbuffer.albedo]
     renderState:
       cullMode: Back

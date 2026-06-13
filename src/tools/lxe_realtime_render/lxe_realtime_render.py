@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import struct
 import http.client
 import json
 import os
@@ -14,6 +15,7 @@ import socket
 import subprocess
 import sys
 import time
+import zlib
 
 
 def repo_root_from_script() -> Path:
@@ -136,6 +138,31 @@ def wait_until_profile_visible(
     raise RuntimeError(f"output profile did not become visible: {profile}")
 
 
+def wait_until_scene_loaded(
+    host: str, port: int, token: str, timeout_sec: float
+) -> None:
+    deadline = time.monotonic() + timeout_sec
+    last_status = ""
+    while time.monotonic() < deadline:
+        try:
+            response = editor_command(
+                host, port, token, "scene status", timeout=5.0
+            )
+            structured = response.get("structuredJson", "")
+            if isinstance(structured, str):
+                last_status = structured
+                payload = json.loads(structured)
+                if (
+                    payload.get("activeSceneLoaded") is True
+                    and payload.get("sceneOpenPending") is False
+                ):
+                    return
+        except Exception as exc:
+            last_status = str(exc)
+        time.sleep(0.2)
+    raise RuntimeError(f"scene did not finish loading: {last_status}")
+
+
 def terminate_process(process: subprocess.Popen[object], timeout_sec: float) -> None:
     if process.poll() is not None:
         return
@@ -174,7 +201,137 @@ def resolved_result_path(root: Path, value: str) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def require_output_files(root: Path, structured: str) -> None:
+def paeth_predictor(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def png_luminance_stats(path: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError(f"not a PNG file: {path}")
+
+    pos = 8
+    width = 0
+    height = 0
+    bit_depth = 0
+    color_type = 0
+    idat = bytearray()
+    while pos + 8 <= len(data):
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        chunk_type = data[pos + 4 : pos + 8]
+        chunk_data = data[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(
+                ">IIBBBBB", chunk_data
+            )
+        elif chunk_type == b"IDAT":
+            idat.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"PNG missing valid IHDR: {path}")
+    if bit_depth != 8 or color_type not in (2, 6):
+        raise RuntimeError(
+            f"PNG stats only support 8-bit RGB/RGBA, got bitDepth={bit_depth} "
+            f"colorType={color_type}: {path}"
+        )
+
+    bytes_per_pixel = 4 if color_type == 6 else 3
+    row_size = width * bytes_per_pixel
+    raw = zlib.decompress(bytes(idat))
+    expected = (row_size + 1) * height
+    if len(raw) != expected:
+        raise RuntimeError(
+            f"PNG decompressed size mismatch: expected={expected} got={len(raw)}"
+        )
+
+    previous = bytearray(row_size)
+    lit_pixels = 0
+    luminance_sum = 0.0
+    offset = 0
+    for _ in range(height):
+        filter_type = raw[offset]
+        scanline = bytearray(raw[offset + 1 : offset + 1 + row_size])
+        offset += row_size + 1
+        for i in range(row_size):
+            left = scanline[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
+            up = previous[i]
+            up_left = previous[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
+            if filter_type == 0:
+                recon = scanline[i]
+            elif filter_type == 1:
+                recon = (scanline[i] + left) & 0xFF
+            elif filter_type == 2:
+                recon = (scanline[i] + up) & 0xFF
+            elif filter_type == 3:
+                recon = (scanline[i] + ((left + up) // 2)) & 0xFF
+            elif filter_type == 4:
+                recon = (scanline[i] + paeth_predictor(left, up, up_left)) & 0xFF
+            else:
+                raise RuntimeError(f"unsupported PNG filter {filter_type}: {path}")
+            scanline[i] = recon
+
+        for x in range(0, row_size, bytes_per_pixel):
+            r = scanline[x]
+            g = scanline[x + 1]
+            b = scanline[x + 2]
+            luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            luminance_sum += luminance / 255.0
+            if luminance > 2.0:
+                lit_pixels += 1
+        previous = scanline
+
+    pixel_count = width * height
+    return {
+        "width": width,
+        "height": height,
+        "pixelCount": pixel_count,
+        "litPixelCount": lit_pixels,
+        "averageLuminance": luminance_sum / max(pixel_count, 1),
+    }
+
+
+def require_pipeline_metadata(metadata_path: Path) -> None:
+    metadata_text = metadata_path.read_text(encoding="utf-8")
+    for token in [
+        "standard-pbr",
+        "standard_pbr.contract.glsl",
+        "RenderPathNodeSignature",
+        "PipelineKey",
+        "final shader reflection",
+    ]:
+        if token not in metadata_text:
+            raise RuntimeError(f"realtime metadata missing required token: {token}")
+    for token in [
+        "assets/materials/pbr.material",
+        "source: gltf",
+        "legacy material fallback",
+        "debug material fallback",
+        "empty source",
+        "MaterialUBO as positive path",
+    ]:
+        if token in metadata_text:
+            raise RuntimeError(f"realtime metadata contains forbidden token: {token}")
+
+
+def require_output_files(
+    root: Path,
+    structured: str,
+    require_nonblack: bool,
+    min_lit_pixels: int,
+    min_average_luminance: float,
+    require_pipeline_metadata_check: bool,
+) -> dict[str, object]:
     payload = json.loads(structured)
     required_paths = [
         ("linearExrPath", "linear EXR"),
@@ -201,6 +358,27 @@ def require_output_files(root: Path, structured: str) -> None:
             raise RuntimeError(
                 f"metadata {dimension} does not match render result: {metadata_path}"
             )
+    if require_pipeline_metadata_check:
+        require_pipeline_metadata(metadata_path)
+
+    png_value = payload.get("cpuSrgbPngPath", "")
+    if require_nonblack:
+        png_path = resolved_result_path(root, png_value)
+        stats = png_luminance_stats(png_path)
+        if int(stats["litPixelCount"]) < min_lit_pixels:
+            raise RuntimeError(
+                "realtime render output is too dark: "
+                f"litPixelCount={stats['litPixelCount']} "
+                f"minLitPixels={min_lit_pixels} png={png_path}"
+            )
+        if float(stats["averageLuminance"]) < min_average_luminance:
+            raise RuntimeError(
+                "realtime render output average luminance is too low: "
+                f"averageLuminance={stats['averageLuminance']} "
+                f"minAverageLuminance={min_average_luminance} png={png_path}"
+            )
+        payload["imageStats"] = stats
+    return payload
 
 
 def prepare_smoke_project(
@@ -259,6 +437,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Launch editor through xvfb-run -a.",
     )
+    parser.add_argument(
+        "--require-nonblack",
+        action="store_true",
+        help="Fail if the CPU sRGB PNG has too few lit pixels.",
+    )
+    parser.add_argument("--min-lit-pixels", type=int, default=64)
+    parser.add_argument("--min-average-luminance", type=float, default=0.001)
+    parser.add_argument(
+        "--require-pipeline-metadata",
+        action="store_true",
+        help="Fail unless realtime metadata proves the clean source path.",
+    )
     return parser.parse_args(argv)
 
 
@@ -314,7 +504,9 @@ def main(argv: list[str]) -> int:
             f"project open {quote_command_token(str(project_root))}",
             args.timeout_sec,
         )
-        time.sleep(0.5)
+        wait_until_scene_loaded(
+            args.api_host, api_port, token, args.timeout_sec
+        )
         wait_until_profile_visible(
             args.api_host, api_port, token, args.profile, args.timeout_sec
         )
@@ -328,8 +520,15 @@ def main(argv: list[str]) -> int:
         structured = response.get("structuredJson", "")
         if not isinstance(structured, str) or not structured:
             raise RuntimeError("realtime-render run did not return structured output")
-        require_output_files(root, structured)
-        print(structured)
+        payload = require_output_files(
+            root,
+            structured,
+            args.require_nonblack,
+            args.min_lit_pixels,
+            args.min_average_luminance,
+            args.require_pipeline_metadata,
+        )
+        print(json.dumps(payload, sort_keys=True))
         return 0
     finally:
         stop_editor(process, args.api_host, api_port, token, timeout_sec=5.0)

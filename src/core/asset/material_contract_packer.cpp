@@ -102,6 +102,41 @@ findEnvelope(const MaterialContractPackInput &input,
   return input.material->getMaterialEnvelope(StringID(field.parameterName));
 }
 
+[[nodiscard]] u32 flagsForField(const MaterialContractPackInput &input,
+                                const MaterialContractStorageField &field,
+                                std::vector<std::string> &diagnostics) {
+  u32 flags = static_cast<u32>(field.defaultValue.x);
+  const auto envelope = findEnvelope(input, field);
+  if (!envelope.has_value()) {
+    return flags;
+  }
+
+  const MaterialParameterEnvelope &parameter = envelope->get();
+  if (parameter.integerValue.has_value()) {
+    return static_cast<u32>(*parameter.integerValue);
+  }
+  if (parameter.boolValue.has_value()) {
+    return *parameter.boolValue ? 1u : 0u;
+  }
+  if (parameter.stringValue.has_value()) {
+    const std::string &value = *parameter.stringValue;
+    if (field.parameterName == "alphaMode") {
+      if (value == "OPAQUE") {
+        return 0u;
+      }
+      if (value == "MASK") {
+        return 1u;
+      }
+      if (value == "BLEND") {
+        return 2u;
+      }
+    }
+    diagnostics.push_back("unknown flags value for material field '" +
+                          field.name + "': " + value);
+  }
+  return flags;
+}
+
 [[nodiscard]] Vec4f
 valueForField(const MaterialContractPackInput &input,
               const MaterialContractStorageField &field) {
@@ -235,7 +270,7 @@ packMaterialContractRecord(const MaterialContractPackInput &input) {
       break;
     }
     case MaterialContractStorageFieldType::Flags: {
-      const u32 flags = 0;
+      const u32 flags = flagsForField(input, field, result.diagnostics);
       writeBytes(result.record.bytes, offset, &flags, sizeof(flags));
       break;
     }

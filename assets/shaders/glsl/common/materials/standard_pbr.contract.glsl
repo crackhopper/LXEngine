@@ -33,17 +33,78 @@
 #include "../material_surface.glsl"
 #include "../material_bsdf.glsl"
 
+#ifndef LX_STANDARD_PBR_SOURCE_RECORDS_DECLARED
+#define LX_STANDARD_PBR_SOURCE_RECORDS_DECLARED
+struct LxSceneMaterialRefRecord {
+  uint sourceStorageIndex;
+  uint sourceLocalMaterialIndex;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct LxStandardPbrSourceRecord {
+  vec4 baseColor;
+  uint baseColorTexture;
+  float metallic;
+  uint metallicRoughnessTexture;
+  float roughness;
+  uint normalTexture;
+  uint occlusionTexture;
+  uint padding0;
+  uint padding1;
+  vec4 emissive;
+  uint emissiveTexture;
+  uint alphaMode;
+  float alphaCutoff;
+  uint padding2;
+};
+
+layout(std430, set = 0, binding = 12) readonly buffer SceneMaterialRefs {
+  LxSceneMaterialRefRecord materialRefs[];
+};
+
+layout(std430, set = 0, binding = 13) readonly buffer SceneSourceMaterialRecords {
+  LxStandardPbrSourceRecord sourceMaterials[];
+};
+#endif
+
+#ifndef LX_SCENE_TEXTURES_DECLARED
+#define LX_SCENE_TEXTURES_DECLARED
+layout(set = 0, binding = 14) uniform sampler2D SceneTextures[256];
+#endif
+
+vec4 lxSampleSceneTexture(uint textureSlot, vec2 uv) {
+  return texture(SceneTextures[nonuniformEXT(textureSlot)], uv);
+}
+
+vec3 lxLoadStandardPbrNormal(uint textureSlot, vec2 uv, vec3 geometricNormal,
+                             mat3 tangentFrame) {
+  vec3 tangentNormal = lxSampleSceneTexture(textureSlot, uv).xyz * 2.0 - 1.0;
+  vec3 mapped = normalize(tangentFrame * tangentNormal);
+  return dot(mapped, mapped) > 0.0 ? mapped : normalize(geometricNormal);
+}
+
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  uint materialRefIndex = materialIndex;
+  LxSceneMaterialRefRecord materialRef = materialRefs[materialRefIndex];
+  LxStandardPbrSourceRecord material =
+      sourceMaterials[materialRef.sourceLocalMaterialIndex];
+
+  vec4 baseColorTex = lxSampleSceneTexture(material.baseColorTexture, uv);
+  vec4 metallicRoughnessTex =
+      lxSampleSceneTexture(material.metallicRoughnessTexture, uv);
+  vec4 occlusionTex = lxSampleSceneTexture(material.occlusionTexture, uv);
+  vec4 emissiveTex = lxSampleSceneTexture(material.emissiveTexture, uv);
+
   LxMaterialSurface surface;
-  surface.baseColor = vec3(1.0);
-  surface.alpha = 1.0;
-  surface.metallic = 1.0;
-  surface.roughness = 1.0;
-  surface.normal = dot(geometricNormal, geometricNormal) > 0.0
-                       ? normalize(geometricNormal)
-                       : vec3(0.0, 0.0, 1.0);
-  surface.ao = 1.0;
-  surface.emissive = vec3(0.0);
+  surface.baseColor = material.baseColor.rgb * baseColorTex.rgb;
+  surface.alpha = material.baseColor.a * baseColorTex.a;
+  surface.metallic = material.metallic * metallicRoughnessTex.b;
+  surface.roughness = material.roughness * metallicRoughnessTex.g;
+  surface.normal = lxLoadStandardPbrNormal(material.normalTexture, uv,
+                                           geometricNormal, tangentFrame);
+  surface.ao = occlusionTex.r;
+  surface.emissive = material.emissive.rgb * emissiveTex.rgb;
   return surface;
 }
 

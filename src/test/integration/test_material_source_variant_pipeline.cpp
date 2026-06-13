@@ -8,9 +8,12 @@
 #include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/resource_parsers/material_source_variant_resolver.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
+#include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
+#include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -71,6 +74,15 @@ LX_infra::ParsedRenderPathGraphResource parseRenderPath(std::string yamlText) {
   LX_infra::RenderPathGraphResourceParser parser;
   return parser.parse(LX_core::ResourceUri("memory://073-c-test.render-path"),
                       yamlText);
+}
+
+LX_core::ResourceUri writeTempRenderPathGraph(const std::string &fileName,
+                                              const std::string &contents) {
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() / fileName;
+  std::ofstream file(path);
+  file << contents;
+  return LX_core::ResourceUri("file://" + path.generic_string());
 }
 
 LX_core::MaterialInstanceUniquePtr makeStandardPbrSourceMaterial(
@@ -378,6 +390,144 @@ void testResolverAttachesFinalShaderVariantToSourceMaterialPass() {
          "variant metadata");
 }
 
+void testResolverNoOpsBeforeMaterialsAreLoaded() {
+  LX_core::SceneResourceTable table;
+  LX_core::RenderPathGraph graph = makeForwardStandardPbrGraph();
+  const auto resolved = LX_infra::resolveMaterialSourceVariants(
+      table, graph, LX_core::ResourceUri("memory://forward-empty.render-path"));
+
+  EXPECT(resolved.success,
+         "resolver should allow graph setup before scene materials load");
+  EXPECT(resolved.resolvedVariantCount == 0,
+         "empty scenes should not create unresolved material source variants");
+  try {
+    (void)table.buildUploadView();
+  } catch (const std::exception &error) {
+    EXPECT(false, std::string("empty scene upload view should not fail: ") +
+                      error.what());
+  }
+}
+
+void testResolverKeepsNonContractShadowShaderPlain() {
+  constexpr std::string_view graphYaml = R"yaml(
+schema: lxe.render-path-graph.v1
+name: ShadowAndForwardStandardPbr
+renderPath: Forward
+passes:
+  - id: Shadow
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/shadow_depth_only
+    filters:
+      bsdf: [standard-pbr]
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: shadow.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
+    sources: [geometry.vertex, geometry.index, scene.camera, scene.lights]
+    targets: [shadow.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+  - id: ForwardOpaque
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/pbr
+    filters:
+      bsdf: [standard-pbr]
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16F
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
+    sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera, scene.lights]
+    targets: [hdr.color, depth.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+)yaml";
+
+  LX_core::SceneResourceTable table;
+  const LX_core::MaterialHandle materialHandle = table.registerMaterialInstance(
+      LX_core::ResourceUri("memory://standard-pbr-shadow-test.material"),
+      makeStandardPbrSourceMaterial("standard-pbr-shadow-test-material"));
+  EXPECT(materialHandle.isValid(), "source material should register");
+
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_shadow_plain_forward_variant.render-path.yaml",
+      std::string(graphYaml));
+  const auto parsedResource = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
+  EXPECT(parsedResource.diagnostics.empty(),
+         "shadow + forward test graph should parse without diagnostics");
+  EXPECT(parsedResource.identity.isValid(),
+         "shadow + forward test graph should register");
+
+  LX_infra::RenderPathGraphResourceParser graphParser;
+  const auto parsedGraph = graphParser.parse(graphUri, std::string(graphYaml));
+  EXPECT(parsedGraph.renderPathGraph.has_value(),
+         "shadow + forward graph should parse for resolver");
+  if (!parsedGraph.renderPathGraph.has_value()) {
+    return;
+  }
+
+  const auto resolved = LX_infra::resolveMaterialSourceVariants(
+      table, *parsedGraph.renderPathGraph, graphUri);
+  EXPECT(resolved.success, "resolver should succeed");
+  EXPECT(resolved.resolvedVariantCount == 1,
+         "only the contract shader should create a material source variant");
+
+  const LX_core::SceneResourceTableUploadView uploadView =
+      table.buildUploadView();
+  bool foundPlainShadow = false;
+  bool foundForwardVariant = false;
+  for (const auto &shaderRef : uploadView.shaderResources) {
+    const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
+    if (shader.uri ==
+        LX_core::ResourceUri("techniques/Forward/shadow_depth_only")) {
+      foundPlainShadow =
+          !shader.requiresMaterialSourceVariant &&
+          shader.materialSourceVariants.empty() && shader.payload != nullptr &&
+          !shader.payload->getAllStages().empty();
+    }
+    if (shader.uri == LX_core::ResourceUri("techniques/Forward/pbr")) {
+      foundForwardVariant =
+          shader.requiresMaterialSourceVariant &&
+          shader.materialSourceVariants.size() == 1 &&
+          shader.materialSourceVariants.front().shaderProgram.getShader() !=
+              nullptr;
+    }
+  }
+  EXPECT(foundPlainShadow,
+         "Shadow depth-only shader must remain a plain compiled payload");
+  EXPECT(foundForwardVariant,
+         "Forward PBR shader must expose one final material source variant");
+}
+
 void testResolverFailsSameTypeDifferentSceneSources() {
   LX_core::SceneResourceTable table;
   const LX_core::MaterialHandle first = table.registerMaterialInstance(
@@ -413,6 +563,9 @@ void testResolverFailsSameTypeDifferentSceneSources() {
 
 int main() {
   expSetEnvVK();
+  if (std::filesystem::path sourceRoot{LXE_SOURCE_DIR}; !sourceRoot.empty()) {
+    std::filesystem::current_path(sourceRoot);
+  }
 
   testPipelineKeyIgnoresObjectAndTargetAxes();
   testRenderPassNodeRequiresRenderingAndGeometry();
@@ -421,6 +574,8 @@ int main() {
   testStandardPbrContractReflectsRequiredFields();
   testVariantOnlyShaderNakedCompileFailsWithDiagnostic();
   testResolverAttachesFinalShaderVariantToSourceMaterialPass();
+  testResolverNoOpsBeforeMaterialsAreLoaded();
+  testResolverKeepsNonContractShadowShaderPlain();
   testResolverFailsSameTypeDifferentSceneSources();
 
   if (g_failures > 0) {

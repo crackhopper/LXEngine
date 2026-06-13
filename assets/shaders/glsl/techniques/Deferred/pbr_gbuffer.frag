@@ -16,7 +16,7 @@ layout(location = 2) in vec2 vUV;
 #ifdef HAS_NORMAL_MAP
 layout(location = 3) in mat3 vTBN;
 #endif
-layout(location = 6) flat in uint vMaterialIndex;
+layout(location = 6) flat in uint vMaterialRefIndex;
 
 layout(location = 0) out vec4 outAlbedoAlpha;
 layout(location = 1) out vec4 outNormalRoughness;
@@ -37,7 +37,7 @@ void main() {
     tangentFrame = vTBN;
 #endif
     LxMaterialSurface surface =
-        lxLoadMaterialSurface(vMaterialIndex, vUV, geometricNormal,
+        lxLoadMaterialSurface(vMaterialRefIndex, vUV, geometricNormal,
                               tangentFrame);
 
     vec4 albedo =

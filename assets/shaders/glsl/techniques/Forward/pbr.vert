@@ -20,7 +20,7 @@ layout(location = 2) out vec2 vUV;
 #ifdef HAS_NORMAL_MAP
 layout(location = 3) out mat3 vTBN;
 #endif
-layout(location = 6) flat out uint vMaterialIndex;
+layout(location = 6) flat out uint vMaterialRefIndex;
 
 struct lxSceneObjectRecord {
     mat4 objectToWorld;
@@ -37,7 +37,7 @@ struct lxSceneDrawRecord {
     uint objectIndex;
     uint materialIndex;
     uint meshIndex;
-    uint reserved0;
+    uint materialRefIndex;
 };
 
 layout(std430, set = 0, binding = 8) readonly buffer SceneObjects {
@@ -56,7 +56,7 @@ void main() {
 
     vWorldPos = worldPos.xyz;
     vUV = inUV;
-    vMaterialIndex = draw.materialIndex;
+    vMaterialRefIndex = draw.materialRefIndex;
 
     mat3 normalMatrix = mat3(transpose(inverse(model)));
     vNormal = normalize(normalMatrix * inNormal);

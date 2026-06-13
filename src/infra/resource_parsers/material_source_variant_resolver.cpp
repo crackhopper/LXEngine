@@ -131,6 +131,29 @@ struct TypeSourceFacts final {
          pass.sources.end();
 }
 
+[[nodiscard]] std::optional<bool> shaderRequiresMaterialSourceVariant(
+    const LX_core::ResourceUri &graphUri, const LX_core::RenderPassNode &pass,
+    const std::vector<LX_core::ResourceUri> &sourceUris,
+    std::vector<std::string> &diagnostics) {
+  for (const LX_core::ResourceUri &sourceUri : sourceUris) {
+    std::ifstream file(pathFromUri(sourceUri));
+    if (!file) {
+      diagnostics.push_back(
+          "MaterialSourceVariantResolver graph=" + graphUri.string() +
+          " pass=" + pass.id + " shader=" + pass.shaderUri.string() +
+          " failed to inspect source=" + sourceUri.string());
+      return std::nullopt;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    if (buffer.str().find("LX_MATERIAL_CONTRACT_SOURCE") !=
+        std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool passAllowsType(const LX_core::RenderPassNode &pass,
                                   const std::string &type) {
   if (pass.filters.bsdfTypes.empty()) {
@@ -303,12 +326,12 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
   if (!result.diagnostics.empty()) {
     return result;
   }
+  if (typeFactsByType.empty()) {
+    result.success = true;
+    return result;
+  }
 
   for (const LX_core::RenderPassNode &pass : graph.passes) {
-    if (!passRequiresMaterialBsdf(pass)) {
-      continue;
-    }
-
     const auto sourceUris = resolveShaderSourceUris(pass.shaderUri);
     if (!sourceUris.has_value()) {
       result.diagnostics.push_back(
@@ -316,6 +339,33 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
           " pass=" + pass.id + " failed to resolve Shader '" +
           pass.shaderUri.string() + "'");
       return result;
+    }
+
+    const std::optional<bool> requiresMaterialSourceVariant =
+        shaderRequiresMaterialSourceVariant(graphUri, pass, *sourceUris,
+                                            result.diagnostics);
+    if (!requiresMaterialSourceVariant.has_value()) {
+      return result;
+    }
+    const bool declaresMaterialBsdf = passRequiresMaterialBsdf(pass);
+    if (*requiresMaterialSourceVariant && !declaresMaterialBsdf) {
+      result.diagnostics.push_back(
+          "MaterialSourceVariantResolver graph=" + graphUri.string() +
+          " pass=" + pass.id + " shader=" + pass.shaderUri.string() +
+          " requires LX_MATERIAL_CONTRACT_SOURCE but the pass does not declare "
+          "material.bsdf in sources");
+      return result;
+    }
+    if (!*requiresMaterialSourceVariant && declaresMaterialBsdf) {
+      result.diagnostics.push_back(
+          "MaterialSourceVariantResolver graph=" + graphUri.string() +
+          " pass=" + pass.id + " declares material.bsdf but shader=" +
+          pass.shaderUri.string() +
+          " does not include LX_MATERIAL_CONTRACT_SOURCE");
+      return result;
+    }
+    if (!*requiresMaterialSourceVariant) {
+      continue;
     }
 
     (void)table.registerShaderResource(pass.shaderUri, *sourceUris, nullptr,

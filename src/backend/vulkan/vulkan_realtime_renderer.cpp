@@ -436,6 +436,14 @@ struct ProjectedBoundsDebug final {
   float maxY = 0.0f;
 };
 
+struct PipelineIdentityDebug final {
+  std::string materialTypeVariant;
+  std::string renderPathNodeSignature;
+  std::string pipelineKey;
+  std::string shaderName;
+  std::vector<std::string> finalShaderReflection;
+};
+
 struct RealtimeProfileDebugInfo final {
   float profileAspect = 0.0f;
   float cameraAspect = 0.0f;
@@ -446,6 +454,7 @@ struct RealtimeProfileDebugInfo final {
   LX_core::Vec4f lightDirection{};
   LX_core::Mat4f cameraView = LX_core::Mat4f::identity();
   LX_core::Mat4f cameraProj = LX_core::Mat4f::identity();
+  std::vector<PipelineIdentityDebug> pipelineIdentity;
   std::vector<ProjectedBoundsDebug> projectedBounds;
 };
 
@@ -465,6 +474,42 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
     out << "]";
   }
   out << "]";
+}
+
+[[nodiscard]] std::string jsonEscape(std::string_view text);
+
+[[nodiscard]] std::string debugString(LX_core::StringID id) {
+  if (id.id == 0) {
+    return "<empty>";
+  }
+  return LX_core::GlobalStringTable::get().toDebugString(id);
+}
+
+void writeStringArrayJson(std::ostream &out,
+                          const std::vector<std::string> &values) {
+  out << "[";
+  for (usize i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      out << ", ";
+    }
+    out << "\"" << jsonEscape(values[i]) << "\"";
+  }
+  out << "]";
+}
+
+[[nodiscard]] PipelineIdentityDebug
+makePipelineIdentityDebug(const LX_core::RenderWorkItem &item) {
+  PipelineIdentityDebug out;
+  out.materialTypeVariant = debugString(item.materialTypeVariant);
+  out.renderPathNodeSignature = debugString(item.renderPathNodeSignature);
+  out.pipelineKey = debugString(item.pipelineKey.id);
+  if (item.shaderInfo) {
+    out.shaderName = item.shaderInfo->getShaderName();
+    for (const auto &binding : item.shaderInfo->getReflectionBindings()) {
+      out.finalShaderReflection.push_back(binding.name);
+    }
+  }
+  return out;
 }
 
 [[nodiscard]] u32
@@ -675,6 +720,24 @@ void writeRealtimeProfileMetadata(
       << "    \"cameraProj\": ";
   writeMat4Json(out, debugInfo.cameraProj);
   out << ",\n"
+      << "    \"pipelineIdentity\": [\n";
+  for (usize i = 0; i < debugInfo.pipelineIdentity.size(); ++i) {
+    const auto &pipeline = debugInfo.pipelineIdentity[i];
+    out << "      {\"MaterialTypeVariant\": \""
+        << jsonEscape(pipeline.materialTypeVariant)
+        << "\", \"RenderPathNodeSignature\": \""
+        << jsonEscape(pipeline.renderPathNodeSignature)
+        << "\", \"PipelineKey\": \"" << jsonEscape(pipeline.pipelineKey)
+        << "\", \"final shader reflection\": {\"shaderName\": \""
+        << jsonEscape(pipeline.shaderName) << "\", \"bindings\": ";
+    writeStringArrayJson(out, pipeline.finalShaderReflection);
+    out << "}}";
+    if (i + 1 < debugInfo.pipelineIdentity.size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << "    ],\n"
       << "    \"projectedBounds\": [\n";
   for (usize i = 0; i < debugInfo.projectedBounds.size(); ++i) {
     const auto &bounds = debugInfo.projectedBounds[i];
@@ -1892,6 +1955,10 @@ public:
     bindProfileCameraUbo(queue, *profileCameraUbo);
     debugInfo.cameraResourceCount = 1;
     debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
+    debugInfo.pipelineIdentity.reserve(queue.getItems().size());
+    for (const auto &item : queue.getItems()) {
+      debugInfo.pipelineIdentity.push_back(makePipelineIdentityDebug(item));
+    }
     const LX_core::Mat4f viewProj = outputCameraProj * outputCameraView;
     for (const auto &renderable : m_scene->getRenderables()) {
       if (!renderable) {

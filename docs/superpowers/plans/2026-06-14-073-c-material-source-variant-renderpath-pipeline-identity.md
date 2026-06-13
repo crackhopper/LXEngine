@@ -6,7 +6,7 @@
 
 **Architecture:** Add `standard-pbr` as a first-class material type and require every material source shader to expose a common BSDF ABI. Parse RenderPathNode pipeline contracts explicitly, including `rendering`, geometry/topology requirements, sources/targets, and attachment formats. Compile material-source shader variants after scene resources are known, reflect only the final variant shader, and build pipeline identity from the material type variant plus RenderPathNode signature. Helmet validation uses generated `standard-pbr` material assets and must fail during preparation if the new path cannot render.
 
-**Current facts from code:**
+**Initial facts from code when this plan was written:**
 
 - `PipelineKey` currently composes `objectSig + materialSig + targetSig` in `src/core/pipeline/pipeline_key.cpp`.
 - `PipelineBuildDesc` still stores `RenderTargetDesc target` and filters vertex layout from the concrete mesh buffer in `src/core/pipeline/pipeline_build_desc.cpp`.
@@ -46,9 +46,9 @@ Do not let subagents implement compatibility fallbacks. If a package cannot comp
 - [x] Task 5: Hard-cut `PipelineKey` to `MaterialTypeVariant + RenderPathNodeSignature`.
 - [x] Task 6: Implement material type variant resolver and final shader reflection.
 - [x] Task 7: Add dynamic/traditional rendering mode plumbing to pipeline build.
-- [ ] Task 8: Implement Helmet material conversion tool and generated scene.
-- [ ] Task 9: Add Helmet realtime smoke and diagnostics.
-- [ ] Task 10: Close requirement status and notes site verification.
+- [x] Task 8: Implement Helmet material conversion tool and generated scene.
+- [x] Task 9: Add Helmet realtime smoke and diagnostics.
+- [x] Task 10: Close requirement status and notes site verification.
 
 ---
 
@@ -542,16 +542,16 @@ xvfb-run -a ./build/src/test/test_vulkan_pipeline
 
 ### Step 8.1: Build converter
 
-- [ ] The converter reads glTF JSON with Python stdlib.
-- [ ] The converter is a required `073-c` deliverable; do not move it to later smoke/hard-cut requirements.
-- [ ] It emits:
+- [x] The converter reads glTF JSON with Python stdlib.
+- [x] The converter is a required `073-c` deliverable; do not move it to later smoke/hard-cut requirements.
+- [x] It emits:
 
 ```text
 <out>/materials/damaged_helmet_standard_pbr.material
 <out>/helmet_standard_pbr.scene.yaml
 ```
 
-- [ ] The material file must contain:
+- [x] The material file must contain:
 
 ```yaml
 schema: lxe.material.v2
@@ -560,24 +560,24 @@ bsdf:
   source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
 ```
 
-- [ ] Parameters must preserve base color factor, metallic factor, roughness factor, base color texture, metallic-roughness texture, normal texture, occlusion texture, emissive factor/texture, alpha mode, and alpha cutoff.
+- [x] Parameters must preserve base color factor, metallic factor, roughness factor, base color texture, metallic-roughness texture, normal texture, occlusion texture, emissive factor/texture, alpha mode, and alpha cutoff.
 
 ### Step 8.2: Generated scene rules
 
-- [ ] The generated scene can reference `assets/models/damaged_helmet/DamagedHelmet.gltf` for mesh.
-- [ ] It must reference the generated `standard-pbr` material.
-- [ ] It must not use `source: gltf`.
-- [ ] It must not reference `assets/materials/pbr.material`.
+- [x] The generated scene can reference `assets/models/damaged_helmet/DamagedHelmet.gltf` for mesh.
+- [x] It must reference the generated `standard-pbr` material.
+- [x] It must not use `source: gltf`.
+- [x] It must not reference `assets/materials/pbr.material`.
 
 ### Step 8.3: Add converter test
 
-- [ ] Assert output files exist.
-- [ ] Assert material and scene contain the clean path fields.
-- [ ] Assert no old path strings are present.
+- [x] Assert output files exist.
+- [x] Assert material and scene contain the clean path fields.
+- [x] Assert no old path strings are present.
 
 ### Step 8.4: Run converter test
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 python3 src/test/integration/test_lxe_gltf_material_convert.py --source-dir .
@@ -596,19 +596,19 @@ python3 src/test/integration/test_lxe_gltf_material_convert.py --source-dir .
 
 ### Step 9.1: Add image statistics check
 
-- [ ] Extend `lxe_realtime_render.py` or add a helper to read the output PNG/EXR metadata and compute a simple non-black statistic.
-- [ ] Require non-zero lit pixel count and average luminance above a small threshold.
-- [ ] Keep the threshold low and deterministic for 192x192 Helmet.
+- [x] Extend `lxe_realtime_render.py` or add a helper to read the output PNG/EXR metadata and compute a simple non-black statistic.
+- [x] Require non-zero lit pixel count and average luminance above a small threshold.
+- [x] Keep the threshold low and deterministic for 192x192 Helmet.
 
 ### Step 9.2: Add smoke test
 
-- [ ] Build editor and required shader targets:
+- [x] Build editor and required shader targets:
 
 ```bash
 cmake --build build --target lxe_editor CompileMaterialSourceShaderVariants
 ```
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 xvfb-run -a python3 src/tools/lxe_realtime_render/lxe_realtime_render.py \
@@ -619,7 +619,7 @@ xvfb-run -a python3 src/tools/lxe_realtime_render/lxe_realtime_render.py \
 
 ### Step 9.3: Prove no old path was used
 
-- [ ] Smoke metadata or logs must include:
+- [x] Smoke metadata or logs must include:
 
 ```text
 type=standard-pbr
@@ -629,7 +629,7 @@ PipelineKey
 final shader reflection
 ```
 
-- [ ] Smoke metadata/logs must not include:
+- [x] Smoke metadata/logs must not include:
 
 ```text
 assets/materials/pbr.material
@@ -642,9 +642,9 @@ MaterialUBO as positive path
 
 ### Step 9.4: If smoke cannot render, stop
 
-- [ ] Do not relax tests.
-- [ ] Record the exact failing preparation diagnostic in `REQ-073-c` implementation status.
-- [ ] Fix the missing contract if it is in scope; otherwise split it to a named later REQ only if it is genuinely outside 073-c.
+- [x] Do not relax tests.
+- [x] Record the exact failing preparation diagnostic in `REQ-073-c` implementation status.
+- [x] Fix the missing contract if it is in scope; otherwise split it to a named later REQ only if it is genuinely outside 073-c.
 
 ---
 
@@ -658,7 +658,7 @@ MaterialUBO as positive path
 
 ### Step 10.1: Run required verification
 
-- [ ] Run focused CPU tests:
+- [x] Run focused CPU tests:
 
 ```bash
 cmake --build build --target \
@@ -679,19 +679,19 @@ cmake --build build --target \
 ./build/src/test/test_shader_compiler
 ```
 
-- [ ] Run shader targets:
+- [x] Run shader targets:
 
 ```bash
 cmake --build build --target CompileShaders CompileMaterialSourceShaderVariants
 ```
 
-- [ ] Run notes build:
+- [x] Run notes build:
 
 ```bash
 scripts/notes/serve_site.sh --build
 ```
 
-- [ ] Run Helmet smoke when Vulkan/Xvfb is available:
+- [x] Run Helmet smoke when Vulkan/Xvfb is available:
 
 ```bash
 xvfb-run -a python3 src/tools/lxe_realtime_render/lxe_realtime_render.py \
@@ -702,13 +702,13 @@ xvfb-run -a python3 src/tools/lxe_realtime_render/lxe_realtime_render.py \
 
 ### Step 10.2: Update requirement status
 
-- [ ] Mark completed items in `REQ-073-c`.
-- [ ] List exact verification commands and results.
-- [ ] If any lower-confidence item remains, it must have a named owning follow-up REQ and a reason tied to dependency order.
+- [x] Mark completed items in `REQ-073-c`.
+- [x] List exact verification commands and results.
+- [x] If any lower-confidence item remains, it must have a named owning follow-up REQ and a reason tied to dependency order.
 
 ### Step 10.3: Commit
 
-- [ ] Commit implementation and docs:
+- [x] Commit implementation and docs:
 
 ```bash
 git status --short

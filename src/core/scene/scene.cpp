@@ -51,6 +51,25 @@ std::vector<std::byte> copyBytes(std::span<const T> values) {
   return bytes;
 }
 
+std::vector<std::byte> copySourceMaterialRecordBytes(
+    std::span<const SourceLocalMaterialRecord> records) {
+  usize byteCount = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    byteCount += record.bytes.size();
+  }
+  std::vector<std::byte> bytes(byteCount);
+  usize cursor = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    if (record.bytes.empty()) {
+      continue;
+    }
+    std::memcpy(bytes.data() + cursor, record.bytes.data(),
+                record.bytes.size());
+    cursor += record.bytes.size();
+  }
+  return bytes;
+}
+
 void appendRenderStorageDescriptor(DescriptorResourceList &out,
                                    const SceneResourceTable &resources,
                                    StringID bindingName,
@@ -111,7 +130,8 @@ void appendRealtimeSceneGpuMaterialResources(
                                 copyBytes(uploadView.materialRefs));
   appendRenderStorageDescriptor(out, resources,
                                 StringID("SceneSourceMaterialRecords"),
-                                copyBytes(uploadView.sourceMaterialRecords));
+                                copySourceMaterialRecordBytes(
+                                    uploadView.sourceMaterialRecords));
   appendRenderStorageDescriptor(out, resources, StringID("SceneDraws"),
                                 copyBytes(uploadView.draws));
   out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));

@@ -6,6 +6,7 @@
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -190,6 +191,12 @@ resolveShaderSourceUris(const LX_core::ResourceUri &shaderUri) {
   return false;
 }
 
+[[nodiscard]] bool passDeclaresMaterialBsdf(
+    const LX_core::RenderPassNode &pass) {
+  return std::find(pass.sources.begin(), pass.sources.end(), "material.bsdf") !=
+         pass.sources.end();
+}
+
 [[nodiscard]] LX_core::ResourceUri
 resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
                           const LX_core::ResourceUri &dependencyUri) {
@@ -366,6 +373,25 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
             table, LX_core::SceneResourceType::RenderPathGraph,
             context.ownerUri, canonicalUri, kRenderPathGraphParserName,
             shaderDiagnostics);
+      }
+      const bool declaresMaterialBsdf = passDeclaresMaterialBsdf(pass);
+      if (*requiresMaterialSourceVariant && !declaresMaterialBsdf) {
+        return makeFailedParse(
+            table, LX_core::SceneResourceType::RenderPathGraph,
+            context.ownerUri, canonicalUri, kRenderPathGraphParserName,
+            {"RenderPathGraph '" + canonicalUri.string() + "' pass '" +
+             pass.id + "' shader '" + pass.shaderUri.string() +
+             "' requires LX_MATERIAL_CONTRACT_SOURCE but the pass does not "
+             "declare material.bsdf in sources"});
+      }
+      if (!*requiresMaterialSourceVariant && declaresMaterialBsdf) {
+        return makeFailedParse(
+            table, LX_core::SceneResourceType::RenderPathGraph,
+            context.ownerUri, canonicalUri, kRenderPathGraphParserName,
+            {"RenderPathGraph '" + canonicalUri.string() + "' pass '" +
+             pass.id + "' declares material.bsdf but shader '" +
+             pass.shaderUri.string() +
+             "' does not include LX_MATERIAL_CONTRACT_SOURCE"});
       }
       std::optional<LX_core::IShaderSharedPtr> shaderPayload;
       if (!*requiresMaterialSourceVariant) {

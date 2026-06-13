@@ -116,6 +116,8 @@ variant key 至少包含：
 - 不同 material type variant 可以产生不同 shader module、reflection payload 和 pipeline key。
 - 同 type / 同 RenderPathNode / 不同 material 参数值 SHALL 共享 final shader variant。
 - 缺 source、source 不支持当前 pass、source 未实现 accessor/BSDF ABI 时必须 fail-fast。
+- RenderPathNode 声明 `material.bsdf` 与 base shader 是否包含 `LX_MATERIAL_CONTRACT_SOURCE` 必须一致：声明了 material source 但 shader 没有 include，或 shader 需要 source 但 node 没声明，都 SHALL fail-fast。
+- 场景材质尚未加载完成时，resolver 可以 no-op，但不得注册 unresolved variant shader；场景加载完成后再统一解析、编译和反射。
 
 ### R5: PipelineKey Algorithm
 
@@ -186,6 +188,7 @@ Forward、Deferred 和 OfflineRT pass shader SHALL 不写 material type/source r
 - 在 pass shader 中解析多个 material storage layout。
 - 按材质 type 写大段 `#if/#elif` BRDF 实现。
 - 因缺少 source variant 而落回旧共享 `MaterialUBO`、debug material、空 source 或 legacy per-material descriptor。
+- DebugOverlay 等工具 pass 必须使用自己的专用 shader/material contract，不能继续借用通用 `assets/materials/pbr.material` 作为正向路径。
 
 ### R9: Shader Build Target Boundary
 
@@ -214,6 +217,8 @@ shader build / test target SHALL 明确表达 source-variant shader 的编译时
 - realtime smoke 使用转换后的 scene，输出低分辨率非黑图。
 - smoke diagnostics 必须证明使用了 material type variant resolver、final shader reflection 和 RenderPathNode pipeline contract。
 - 如果无法渲染，准备阶段必须停止并报告缺失字段/路径，不能隐藏问题。
+- SceneRuntime 加载 Material v2 后必须显式解析 material texture dependencies 并写入 source material texture slot；缺失 texture/resource path 必须让场景加载失败，不能静默变成黑材质。
+- realtime smoke 必须等 active scene 加载完成后才能发起 render profile；无项目、无 active scene、scene open pending 或 active scene 未加载完成时，profile 命令必须 fail-fast。
 
 ### R11: Diagnostics
 
@@ -388,4 +393,44 @@ rg/audit Forward / Deferred / OfflineRT pass shader，断言没有：
 
 ## 实施状态
 
-未实施。
+已完成。
+
+本 REQ 的实现落地为：
+
+- `standard-pbr` contract source、BSDF evaluate/sample ABI、Forward/Deferred/OfflineRT source variant shader 编译边界。
+- RenderPathNode 显式 `rendering`、geometry/topology、source/target/attachment contract 和 node signature。
+- `PipelineKey = MaterialTypeVariant + RenderPathNodeSignature`，不再把完整 ObjectRender vertex layout 或独立 RenderTarget 作为 key 轴。
+- material type/source uniqueness validation、场景加载后 source variant resolver、final shader reflection metadata。
+- glTF Helmet material converter、生成的 `standard-pbr` material/scene，以及 CTest smoke 入口。
+- SceneRuntime 的 Material v2 texture dependency 显式加载和 DebugOverlay 专用 material，避免 Helmet smoke 走旧 `assets/materials/pbr.material` 或隐式 glTF bridge。
+
+验证命令：
+
+```bash
+cmake --build build --target lxe_editor test_render_resource_parsers test_material_source_variant_pipeline test_shader_compiler test_scene_resource_upload_view_v2 test_realtime_render_profile_commands test_lxe_editor_api_service test_lxe_editor_interaction test_viewport_overlay test_vulkan_frame_graph
+./build/src/test/test_render_resource_parsers
+./build/src/test/test_material_source_variant_pipeline
+./build/src/test/test_shader_compiler
+./build/src/test/test_scene_resource_upload_view_v2
+./build/src/test/test_realtime_render_profile_commands
+./build/src/test/test_lxe_editor_api_service
+./build/src/test/test_lxe_editor_interaction
+./build/src/test/test_viewport_overlay
+python3 src/test/integration/test_lxe_gltf_material_convert.py --source-dir .
+cmake --build build --target CompileMaterialSourceShaderVariants test_material_source_contract test_bindless_indirect_contract test_vulkan_resource_manager
+./build/src/test/test_material_source_contract
+./build/src/test/test_bindless_indirect_contract
+xvfb-run -a ./build/src/test/test_vulkan_frame_graph
+xvfb-run -a ./build/src/test/test_vulkan_resource_manager
+cmake --build build --target CompileShaders test_gltf_scene_asset_loader test_pipeline_identity test_pipeline_build_info
+./build/src/test/test_gltf_scene_asset_loader
+./build/src/test/test_pipeline_identity
+./build/src/test/test_pipeline_build_info
+python3 src/tools/lxe_realtime_render/lxe_realtime_render.py --scene assets/scenes/generated/helmet_standard_pbr.scene.yaml --profile preview --xvfb --require-nonblack --require-pipeline-metadata
+python3 src/test/integration/test_helmet_standard_pbr_realtime_smoke.py --source-dir . --editor build/src/demos/lxe_editor/lxe_editor
+ctest --test-dir build --output-on-failure -R test_helmet_standard_pbr_realtime_smoke
+```
+
+Helmet smoke 输出了 192x192 非黑图，`litPixelCount=12349`、`averageLuminance=0.16042135793249698`，metadata 检查确认包含 `standard-pbr`、`standard_pbr.contract.glsl`、`RenderPathNodeSignature`、`PipelineKey` 和 final shader reflection，且不包含旧 `assets/materials/pbr.material`、`source: gltf` 或 fallback token。
+
+剩余的旧路径清理不属于本 REQ 的完成条件，继续由已列出的 `REQ-073-d` 到 `REQ-073-g` 承接；本 REQ 的 Helmet smoke 不依赖这些旧路径。

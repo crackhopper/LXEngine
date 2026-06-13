@@ -28,7 +28,6 @@ passes:
     sources:
       - geometry.vertex
       - geometry.index
-      - material.bsdf
       - scene.camera
       - scene.lights
     targets: [shadow.main]

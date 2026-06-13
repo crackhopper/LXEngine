@@ -530,6 +530,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
       m_consolePanel->appendSystemLine(std::string("scene open failed: ") +
                                        error.what());
     }
+    std::cerr << "[lxe_editor] scene open failed: " << error.what() << '\n';
     return;
   }
 
@@ -660,6 +661,23 @@ LX_core::CommandResult
 LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
   if (!m_realtimeRenderProfileHooks.generate) {
     return makeCommandError("realtime render output hook unavailable");
+  }
+  if (!m_projectSession.hasProject()) {
+    return makeCommandError("no project is open; use project open first");
+  }
+  const auto activePath = m_projectSession.activeScenePath();
+  if (!activePath.has_value()) {
+    return makeCommandError("project has no active scene");
+  }
+  if (hasPendingSceneOpen()) {
+    return makeCommandError(
+        "active scene open is pending; wait for the next update tick");
+  }
+  const auto runtimePath = m_runtime.documentPath();
+  if (!runtimePath.has_value() ||
+      normalizedAbsolutePath(*runtimePath) != normalizedAbsolutePath(*activePath)) {
+    return makeCommandError(
+        "active project scene is not loaded; wait for scene open to finish");
   }
 
   try {
@@ -922,13 +940,28 @@ std::string LxeEditorSession::projectSummaryJson() const {
   if (!project.has_value() || !projectRoot.has_value()) {
     return "null";
   }
+  const auto activePath = m_projectSession.activeScenePath();
+  const auto runtimePath = m_runtime.documentPath();
+  const bool sceneOpenPending = hasPendingSceneOpen();
+  const bool activeSceneLoaded =
+      activePath.has_value() && runtimePath.has_value() &&
+      normalizedAbsolutePath(*runtimePath) ==
+          normalizedAbsolutePath(*activePath) &&
+      !sceneOpenPending;
   std::ostringstream oss;
   oss << "{\"id\":\"" << jsonEscape(project->id) << "\",\"displayName\":\""
       << jsonEscape(project->displayName) << "\",\"path\":\""
       << jsonEscape(projectRoot->string())
       << "\",\"dirty\":" << (m_projectSession.dirty() ? "true" : "false")
       << ",\"activeScene\":\""
-      << jsonEscape(project->activeScene.generic_string()) << "\"}";
+      << jsonEscape(project->activeScene.generic_string()) << "\""
+      << ",\"loadedScene\":\""
+      << jsonEscape(runtimePath.has_value() ? runtimePath->string()
+                                            : std::string{})
+      << "\",\"activeSceneLoaded\":"
+      << (activeSceneLoaded ? "true" : "false")
+      << ",\"sceneOpenPending\":"
+      << (sceneOpenPending ? "true" : "false") << "}";
   return oss.str();
 }
 
