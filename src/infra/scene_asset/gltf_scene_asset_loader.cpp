@@ -4,6 +4,7 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
@@ -26,7 +27,9 @@ using LX_core::MaterialEnvelopeKind;
 using LX_core::MaterialEnvelopeValueType;
 using LX_core::MaterialInstanceSharedPtr;
 using LX_core::MaterialParameterEnvelope;
+using LX_core::MaterialTemplate;
 using LX_core::MeshSharedPtr;
+using LX_core::ResourceUri;
 using LX_core::StringID;
 using LX_core::Texture;
 using LX_core::TextureDesc;
@@ -37,6 +40,10 @@ using LX_core::Vec4f;
 using LX_core::Vec4i;
 using LX_core::VertexBuffer;
 using LX_core::VertexPosNormalUvBone;
+
+constexpr const char *kStandardPbrType = "standard-pbr";
+constexpr const char *kStandardPbrSourceUri =
+    "assets://shaders/glsl/common/materials/standard_pbr.contract.glsl";
 
 [[nodiscard]] std::filesystem::path
 resolveGltfPath(const std::filesystem::path &gltfPath) {
@@ -205,6 +212,106 @@ void bindV2TextureEnvelopeIfPresent(MaterialInstanceSharedPtr &material,
                        loadCombinedTexture(gltfDir / uri));
 }
 
+void setRgbEnvelope(MaterialInstanceSharedPtr &material,
+                    const char *parameterName, Vec3f value) {
+  MaterialParameterEnvelope envelope;
+  envelope.kind = MaterialEnvelopeKind::Rgb;
+  envelope.rgbValue = value;
+  material->setMaterialEnvelope(StringID(parameterName), std::move(envelope));
+}
+
+void setFloatEnvelope(MaterialInstanceSharedPtr &material,
+                      const char *parameterName, float value) {
+  MaterialParameterEnvelope envelope;
+  envelope.kind = MaterialEnvelopeKind::Float;
+  envelope.floatValue = value;
+  material->setMaterialEnvelope(StringID(parameterName), std::move(envelope));
+}
+
+void setStringEnvelope(MaterialInstanceSharedPtr &material,
+                       const char *parameterName, std::string value) {
+  MaterialParameterEnvelope envelope;
+  envelope.kind = MaterialEnvelopeKind::String;
+  envelope.stringValue = std::move(value);
+  material->setMaterialEnvelope(StringID(parameterName), std::move(envelope));
+}
+
+void setTextureEnvelope(MaterialInstanceSharedPtr &material,
+                        const std::filesystem::path &gltfDir,
+                        const std::string &uri, const char *parameterName,
+                        bool loadTexture) {
+  if (uri.empty()) {
+    return;
+  }
+  if (!gltfMaterialAllowsTextureParameter(*material, parameterName)) {
+    throw std::runtime_error(std::string("standard-pbr contract does not allow "
+                                         "texture parameter: ") +
+                             parameterName);
+  }
+
+  MaterialParameterEnvelope envelope;
+  envelope.kind = MaterialEnvelopeKind::Texture;
+  envelope.valueType = MaterialEnvelopeValueType::Rgb;
+  envelope.uri = uri;
+  material->setMaterialEnvelope(StringID(parameterName), std::move(envelope));
+  if (loadTexture) {
+    material->setTexture(StringID(parameterName),
+                         loadCombinedTexture(gltfDir / uri));
+  }
+}
+
+[[nodiscard]] MaterialInstanceSharedPtr buildStandardPbrMaterialFromGltf(
+    const infra::GLTFPbrMaterial &pbr, const std::filesystem::path &gltfDir,
+    const bool normalMapEnabled) {
+  auto material = LX_core::MaterialInstance::create(
+      MaterialTemplate::create(kStandardPbrType));
+  material->setBsdfType(kStandardPbrType);
+
+  const ResourceUri sourceUri(kStandardPbrSourceUri);
+  const auto reflected = LX_infra::loadAndReflectMaterialContractSource(sourceUri);
+  if (!reflected.diagnostics.empty() || !reflected.reflection.has_value()) {
+    std::string message = "failed to reflect standard-pbr material contract";
+    for (const std::string &diagnostic : reflected.diagnostics) {
+      message += "\n  " + diagnostic;
+    }
+    throw std::runtime_error(message);
+  }
+
+  const auto &reflection = *reflected.reflection;
+  if (reflection.declaredType != kStandardPbrType) {
+    throw std::runtime_error("standard-pbr contract declared unexpected type: " +
+                             reflection.declaredType);
+  }
+
+  material->setMaterialSourceUri(sourceUri);
+  material->setMaterialSourceReflectionHash(reflection.reflectionHash);
+  material->setMaterialSourceSignature(reflection.sourceSignature());
+  material->setMaterialContractReflection(reflection);
+
+  setRgbEnvelope(material, "baseColor",
+                 Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
+                       pbr.baseColorFactor.z});
+  setFloatEnvelope(material, "metallic", pbr.metallicFactor);
+  setFloatEnvelope(material, "roughness", pbr.roughnessFactor);
+  setRgbEnvelope(material, "emissive", pbr.emissiveFactor);
+  setStringEnvelope(material, "alphaMode", pbr.alphaMode);
+  setFloatEnvelope(material, "alphaCutoff", pbr.alphaCutoff);
+
+  setTextureEnvelope(material, gltfDir, pbr.baseColorTexture,
+                     "baseColorTexture", true);
+  setTextureEnvelope(material, gltfDir, pbr.metallicRoughnessTexture,
+                     "metallicRoughnessTexture", true);
+  setTextureEnvelope(material, gltfDir, pbr.normalTexture, "normalTexture",
+                     normalMapEnabled);
+  setTextureEnvelope(material, gltfDir, pbr.occlusionTexture,
+                     "occlusionTexture", true);
+  setTextureEnvelope(material, gltfDir, pbr.emissiveTexture,
+                     "emissiveTexture", true);
+
+  material->syncGpuData();
+  return material;
+}
+
 [[nodiscard]] MaterialInstanceSharedPtr buildMaterialFromGltf(
     const infra::GLTFPbrMaterial &pbr, const std::filesystem::path &gltfDir,
     const std::filesystem::path &materialUri, const bool normalMapEnabled) {
@@ -282,6 +389,34 @@ loadGltfSceneAsset(const std::filesystem::path &gltfPath,
   result.material =
       buildMaterialFromGltf(loader.getMaterial(), resolved.parent_path(),
                             pbrMaterialUri, result.normalMapEnabled);
+  return result;
+}
+
+GltfSceneAssetLoadResult
+loadStandardPbrGltfSceneAsset(const std::filesystem::path &gltfPath) {
+  const std::filesystem::path resolved = resolveGltfPath(gltfPath);
+
+  infra::GLTFLoader loader;
+  loader.load(resolved.string());
+
+  const GltfMeshAssetLoadResult meshResult = buildMeshFromGltf(loader);
+
+  GltfSceneAssetLoadResult result;
+  result.mesh = meshResult.mesh;
+  result.generatedTangents = meshResult.generatedTangents;
+  result.warnings = meshResult.warnings;
+
+  const bool hasTangentBasis =
+      !loader.getTangents().empty() || result.generatedTangents;
+  result.normalMapEnabled =
+      hasTangentBasis && !loader.getMaterial().normalTexture.empty();
+  if (!result.normalMapEnabled && !loader.getMaterial().normalTexture.empty()) {
+    result.warnings.push_back(
+        "normal map disabled because tangent basis is unavailable");
+  }
+
+  result.material = buildStandardPbrMaterialFromGltf(
+      loader.getMaterial(), resolved.parent_path(), result.normalMapEnabled);
   return result;
 }
 

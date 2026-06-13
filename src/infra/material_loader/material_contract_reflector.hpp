@@ -10,8 +10,20 @@
 
 namespace LX_infra {
 
+enum class MaterialContractBsdfFunctionKind {
+  Evaluate,
+  Sample,
+};
+
+struct MaterialContractBsdfFunction final {
+  MaterialContractBsdfFunctionKind kind =
+      MaterialContractBsdfFunctionKind::Evaluate;
+  std::string entryPoint;
+};
+
 struct MaterialContractReflectionResult final {
   std::optional<LX_core::MaterialContractReflection> reflection;
+  std::vector<MaterialContractBsdfFunction> bsdfFunctions;
   std::vector<std::string> diagnostics;
 };
 

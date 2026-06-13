@@ -239,6 +239,19 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
   return false;
 }
 
+bool hasBsdfFunction(
+    const LX_infra::MaterialContractReflectionResult &result,
+    LX_infra::MaterialContractBsdfFunctionKind kind,
+    std::string_view entryPoint) {
+  for (const LX_infra::MaterialContractBsdfFunction &function :
+       result.bsdfFunctions) {
+    if (function.kind == kind && function.entryPoint == entryPoint) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string_view
 kindName(LX_core::MaterialContractParameterKind kind) {
   switch (kind) {
@@ -411,6 +424,28 @@ bool storageFieldReferencesKnownInput(
     return true;
   }
   return reflection.findParameter(field.parameterName).has_value();
+}
+
+bool hasStorageField(const LX_core::MaterialContractReflection &reflection,
+                     std::string_view name) {
+  for (const LX_core::MaterialContractStorageField &field :
+       reflection.storageFields) {
+    if (field.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void expectStorageFields(
+    const LX_core::MaterialContractReflection &reflection,
+    std::string_view path,
+    std::initializer_list<std::string_view> requiredFields) {
+  for (std::string_view field : requiredFields) {
+    EXPECT(hasStorageField(reflection, field),
+           std::string(path) + " should declare storage field " +
+               std::string(field));
+  }
 }
 
 void expectSupportedContractStorageFields(
@@ -782,6 +817,9 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
       {"assets://shaders/glsl/common/materials/substrate.contract.glsl",
        "substrate", "pbrt-envelope-storage-v1",
        LX_core::MaterialContractSupportStatus::Supported},
+      {"assets://shaders/glsl/common/materials/standard_pbr.contract.glsl",
+       "standard-pbr", "standard-pbr-storage-v1",
+       LX_core::MaterialContractSupportStatus::Supported},
       {"assets://shaders/glsl/common/materials/fourier.contract.glsl",
        "fourier", "pbrt-envelope-storage-v1",
        LX_core::MaterialContractSupportStatus::Unsupported},
@@ -816,6 +854,21 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
            path + " should declare expected accessor ABI hash");
     EXPECT(reflection.accessorAbi.entryPoint == "lxLoadMaterialSurface",
            path + " should declare Material Accessor ABI entry point");
+    if (reflection.supportStatus ==
+        LX_core::MaterialContractSupportStatus::Supported) {
+      EXPECT(hasBsdfFunction(
+                 reflected,
+                 LX_infra::MaterialContractBsdfFunctionKind::Evaluate,
+                 "lxEvaluateBsdf"),
+             path + " supported contract should declare evaluate BSDF "
+                    "function metadata");
+      EXPECT(hasBsdfFunction(
+                 reflected,
+                 LX_infra::MaterialContractBsdfFunctionKind::Sample,
+                 "lxSampleBsdf"),
+             path + " supported contract should declare sample BSDF function "
+                    "metadata");
+    }
 
     if (reflection.declaredType == "matte") {
       expectContractParameters(
@@ -860,6 +913,25 @@ void testBuiltInContractSourcesReflectActiveSchemas() {
            {"uroughness", true, {Kind::Float, Kind::Texture}},
            {"vroughness", true, {Kind::Float, Kind::Texture}},
            {"normalmap", false, {Kind::Texture}}});
+    } else if (reflection.declaredType == "standard-pbr") {
+      expectContractParameters(
+          reflection, path,
+          {{"baseColor", false, {Kind::Rgb}},
+           {"baseColorTexture", false, {Kind::Texture}},
+           {"metallic", false, {Kind::Float}},
+           {"metallicRoughnessTexture", false, {Kind::Texture}},
+           {"roughness", false, {Kind::Float}},
+           {"normalTexture", false, {Kind::Texture}},
+           {"occlusionTexture", false, {Kind::Texture}},
+           {"emissive", false, {Kind::Rgb}},
+           {"emissiveTexture", false, {Kind::Texture}},
+           {"alphaMode", false, {Kind::String}},
+           {"alphaCutoff", false, {Kind::Float}}});
+      expectStorageFields(reflection, path,
+                          {"baseColor", "baseColorTexture", "metallic",
+                           "metallicRoughnessTexture", "roughness",
+                           "normalTexture", "occlusionTexture", "emissive",
+                           "emissiveTexture", "alphaMode", "alphaCutoff"});
     } else if (reflection.declaredType == "fourier") {
       expectContractParameters(
           reflection, path,
@@ -1223,6 +1295,80 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geomet
              metallic->get().allowedKinds[1] ==
                  LX_core::MaterialContractParameterKind::Texture,
          "contract should reflect metallic allowed kind order");
+}
+
+void testReflectsBsdfFunctionMetadata() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  return surface;
+}
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput) {
+  LxBsdfEvaluateOutput output;
+  output.value = bsdfInput.baseColor;
+  return output;
+}
+LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput) {
+  LxBsdfSampleOutput output;
+  output.wi = bsdfInput.normal;
+  output.value = vec3(1.0);
+  output.pdf = 1.0;
+  return output;
+}
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/bsdf.contract.glsl"), source);
+
+  EXPECT(result.diagnostics.empty(),
+         "valid BSDF function metadata should not emit diagnostics");
+  EXPECT(result.reflection.has_value(),
+         "valid BSDF function metadata should reflect a contract");
+  EXPECT(hasBsdfFunction(result,
+                         LX_infra::MaterialContractBsdfFunctionKind::Evaluate,
+                         "lxEvaluateBsdf"),
+         "contract should record evaluate BSDF function");
+  EXPECT(hasBsdfFunction(result,
+                         LX_infra::MaterialContractBsdfFunctionKind::Sample,
+                         "lxSampleBsdf"),
+         "contract should record sample BSDF function");
+}
+
+void testReflectRejectsBsdfFunctionWithoutAbiDefinition() {
+  const std::string source = R"glsl(
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: matte
+// status: supported
+// reflectionHash: matte-reflect-v1
+// storageAbiHash: matte-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: Kd required rgb texture
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
+// LX_MATERIAL_CONTRACT_END
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  return surface;
+}
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput);
+)glsl";
+  const auto result = LX_infra::reflectMaterialContractSource(
+      LX_core::ResourceUri("memory://materials/missing-bsdf.contract.glsl"),
+      source);
+
+  EXPECT(diagnosticsContain(result.diagnostics, "lxSampleBsdf"),
+         "missing sample BSDF ABI definition should be diagnostic");
+  EXPECT(!result.reflection.has_value(),
+         "missing BSDF ABI definition should reject reflection");
 }
 
 void testReflectsMaterialStorageFields() {
@@ -2405,6 +2551,8 @@ int main() {
   testSourceSignatureIncludesStorageAndAccessorAbi();
   testMaterialSignatureIncludesPassAndRenderState();
   testReflectsContractMetadataBlock();
+  testReflectsBsdfFunctionMetadata();
+  testReflectRejectsBsdfFunctionWithoutAbiDefinition();
   testReflectsMaterialStorageFields();
   testReflectRejectsDuplicateStorageFieldMetadata();
   testReflectRejectsUnknownStorageFieldType();

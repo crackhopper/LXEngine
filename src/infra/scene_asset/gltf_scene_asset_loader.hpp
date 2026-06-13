@@ -30,6 +30,9 @@ loadGltfMeshAsset(const std::filesystem::path &gltfPath);
 loadGltfSceneAsset(const std::filesystem::path &gltfPath,
                    const std::filesystem::path &pbrMaterialUri);
 
+[[nodiscard]] GltfSceneAssetLoadResult
+loadStandardPbrGltfSceneAsset(const std::filesystem::path &gltfPath);
+
 [[nodiscard]] bool
 gltfMaterialAllowsTextureParameter(const LX_core::MaterialInstance &material,
                                    const char *parameterName);

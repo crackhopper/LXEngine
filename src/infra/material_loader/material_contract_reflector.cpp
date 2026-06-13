@@ -307,7 +307,8 @@ preprocessorIsActive(const std::vector<ConditionalFrame> &conditionalStack) {
 }
 
 [[nodiscard]] std::optional<std::size_t>
-expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
+expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos,
+                        std::string_view expectedReturnType) {
   std::size_t end = entryPointPos;
   while (end > 0 &&
          std::isspace(static_cast<unsigned char>(code[end - 1])) != 0) {
@@ -318,7 +319,7 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
   while (begin > 0 && isIdentifierChar(code[begin - 1])) {
     --begin;
   }
-  if (code.substr(begin, end - begin) != "LxMaterialSurface") {
+  if (code.substr(begin, end - begin) != expectedReturnType) {
     return std::nullopt;
   }
 
@@ -368,21 +369,25 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
   return declarator == expectedName;
 }
 
-[[nodiscard]] bool hasExpectedParameterTypes(std::string_view parameters) {
-  constexpr std::array expectedTypes{"uint", "vec2", "vec3", "mat3"};
-  constexpr std::array expectedNames{"materialIndex", "uv", "geometricNormal",
-                                     "tangentFrame"};
+struct ExpectedFunctionParameter final {
+  std::string_view type;
+  std::string_view name;
+};
 
+[[nodiscard]] bool hasExpectedParameterTypes(
+    std::string_view parameters,
+    const std::vector<ExpectedFunctionParameter> &expectedParameters) {
   std::size_t begin = 0;
-  for (std::size_t index = 0; index < expectedTypes.size(); ++index) {
+  for (std::size_t index = 0; index < expectedParameters.size(); ++index) {
     const std::size_t comma = parameters.find(',', begin);
     const std::size_t end =
         comma == std::string_view::npos ? parameters.size() : comma;
     if (!hasExpectedParameter(parameters.substr(begin, end - begin),
-                              expectedTypes[index], expectedNames[index])) {
+                              expectedParameters[index].type,
+                              expectedParameters[index].name)) {
       return false;
     }
-    if (index + 1 < expectedTypes.size()) {
+    if (index + 1 < expectedParameters.size()) {
       if (comma == std::string_view::npos) {
         return false;
       }
@@ -395,7 +400,11 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
 }
 
 [[nodiscard]] bool hasEntryPointDefinition(std::string_view sourceText,
-                                           std::string_view entryPoint) {
+                                           std::string_view expectedReturnType,
+                                           std::string_view entryPoint,
+                                           const std::vector<
+                                               ExpectedFunctionParameter>
+                                               &expectedParameters) {
   std::string code;
   code.reserve(sourceText.size());
   std::string commentMask;
@@ -535,7 +544,7 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
     const bool tokenEnd =
         afterToken >= code.size() || !isIdentifierChar(code[afterToken]);
     const std::optional<std::size_t> returnBegin =
-        expectedReturnTypeBegin(code, pos);
+        expectedReturnTypeBegin(code, pos, expectedReturnType);
     if (tokenStart && tokenEnd && returnBegin.has_value()) {
       std::size_t next = afterToken;
       while (next < code.size() &&
@@ -557,8 +566,10 @@ expectedReturnTypeBegin(const std::string &code, std::size_t entryPointPos) {
         if (depth == 0) {
           const std::size_t parameterEnd = next - 1;
           const std::size_t firstComment = commentMask.find('1', *returnBegin);
-          if (!hasExpectedParameterTypes(std::string_view(code).substr(
-                  parameterBegin, parameterEnd - parameterBegin))) {
+          if (!hasExpectedParameterTypes(
+                  std::string_view(code).substr(parameterBegin,
+                                                parameterEnd - parameterBegin),
+                  expectedParameters)) {
             pos = code.find(entryPoint, pos + 1);
             continue;
           }
@@ -631,6 +642,99 @@ sameContractLayout(const LX_core::MaterialContractReflection &lhs,
     }
   }
   return true;
+}
+
+[[nodiscard]] const std::vector<ExpectedFunctionParameter> &
+materialAccessorParameters() {
+  static const std::vector<ExpectedFunctionParameter> parameters{
+      {"uint", "materialIndex"},
+      {"vec2", "uv"},
+      {"vec3", "geometricNormal"},
+      {"mat3", "tangentFrame"},
+  };
+  return parameters;
+}
+
+[[nodiscard]] const std::vector<ExpectedFunctionParameter> &
+bsdfEvaluateParameters() {
+  static const std::vector<ExpectedFunctionParameter> parameters{
+      {"LxBsdfEvaluateInput", "bsdfInput"},
+  };
+  return parameters;
+}
+
+[[nodiscard]] const std::vector<ExpectedFunctionParameter> &
+bsdfSampleParameters() {
+  static const std::vector<ExpectedFunctionParameter> parameters{
+      {"LxBsdfSampleInput", "bsdfInput"},
+  };
+  return parameters;
+}
+
+[[nodiscard]] std::optional<MaterialContractBsdfFunctionKind>
+bsdfFunctionKindFromToken(const std::string &token) {
+  if (token == "evaluate") {
+    return MaterialContractBsdfFunctionKind::Evaluate;
+  }
+  if (token == "sample") {
+    return MaterialContractBsdfFunctionKind::Sample;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::string_view
+bsdfFunctionKindName(MaterialContractBsdfFunctionKind kind) {
+  switch (kind) {
+  case MaterialContractBsdfFunctionKind::Evaluate:
+    return "evaluate";
+  case MaterialContractBsdfFunctionKind::Sample:
+    return "sample";
+  }
+  return "<unknown>";
+}
+
+[[nodiscard]] std::string_view expectedBsdfEntryPoint(
+    MaterialContractBsdfFunctionKind kind) {
+  switch (kind) {
+  case MaterialContractBsdfFunctionKind::Evaluate:
+    return "lxEvaluateBsdf";
+  case MaterialContractBsdfFunctionKind::Sample:
+    return "lxSampleBsdf";
+  }
+  return "";
+}
+
+[[nodiscard]] std::string_view expectedBsdfReturnType(
+    MaterialContractBsdfFunctionKind kind) {
+  switch (kind) {
+  case MaterialContractBsdfFunctionKind::Evaluate:
+    return "LxBsdfEvaluateOutput";
+  case MaterialContractBsdfFunctionKind::Sample:
+    return "LxBsdfSampleOutput";
+  }
+  return "";
+}
+
+[[nodiscard]] const std::vector<ExpectedFunctionParameter> &
+expectedBsdfParameters(MaterialContractBsdfFunctionKind kind) {
+  switch (kind) {
+  case MaterialContractBsdfFunctionKind::Evaluate:
+    return bsdfEvaluateParameters();
+  case MaterialContractBsdfFunctionKind::Sample:
+    return bsdfSampleParameters();
+  }
+  return bsdfEvaluateParameters();
+}
+
+[[nodiscard]] bool hasBsdfFunctionKind(
+    const std::vector<MaterialContractBsdfFunction> &functions,
+    MaterialContractBsdfFunctionKind kind) {
+  for (const MaterialContractBsdfFunction &function : functions) {
+    if (function.kind == kind) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -714,6 +818,45 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
       }
       sawAccessorAbiHash = true;
       reflection.accessorAbiHash = trim(std::string_view(stripped).substr(16));
+    } else if (stripped.rfind("bsdfFunction:", 0) == 0) {
+      std::istringstream tokens{trim(std::string_view(stripped).substr(13))};
+      std::string kindToken;
+      MaterialContractBsdfFunction function;
+      tokens >> kindToken >> function.entryPoint;
+      const auto kind = bsdfFunctionKindFromToken(kindToken);
+      if (!kind.has_value()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": unknown BSDF function kind '" +
+                                     kindToken + "'");
+        continue;
+      }
+      function.kind = *kind;
+      if (function.entryPoint.empty()) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": BSDF function '" + kindToken +
+                                     "' is missing entry point");
+        continue;
+      }
+      if (function.entryPoint != expectedBsdfEntryPoint(function.kind)) {
+        result.diagnostics.push_back(
+            sourceUri.string() + ": BSDF function '" + kindToken +
+            "' must use entry point '" +
+            std::string(expectedBsdfEntryPoint(function.kind)) + "'");
+      }
+      if (hasBsdfFunctionKind(result.bsdfFunctions, function.kind)) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": duplicate BSDF function kind '" +
+                                     kindToken + "'");
+      }
+
+      std::string extraToken;
+      if (tokens >> extraToken) {
+        result.diagnostics.push_back(sourceUri.string() +
+                                     ": BSDF function '" + kindToken +
+                                     "' has unexpected token '" + extraToken +
+                                     "'");
+      }
+      result.bsdfFunctions.push_back(std::move(function));
     } else if (stripped.rfind("parameter:", 0) == 0) {
       std::istringstream tokens{trim(std::string_view(stripped).substr(10))};
       LX_core::MaterialContractParameter parameter;
@@ -883,9 +1026,22 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
     result.diagnostics.push_back(sourceUri.string() +
                                  ": missing reflection/storage/accessor hash");
   }
-  if (!hasEntryPointDefinition(sourceText, reflection.accessorAbi.entryPoint)) {
+  if (!hasEntryPointDefinition(sourceText, "LxMaterialSurface",
+                               reflection.accessorAbi.entryPoint,
+                               materialAccessorParameters())) {
     result.diagnostics.push_back(sourceUri.string() +
                                  ": missing Material Accessor ABI entry");
+  }
+  for (const MaterialContractBsdfFunction &function : result.bsdfFunctions) {
+    if (!hasEntryPointDefinition(sourceText,
+                                 expectedBsdfReturnType(function.kind),
+                                 function.entryPoint,
+                                 expectedBsdfParameters(function.kind))) {
+      result.diagnostics.push_back(
+          sourceUri.string() + ": missing BSDF " +
+          std::string(bsdfFunctionKindName(function.kind)) + " ABI entry '" +
+          function.entryPoint + "'");
+    }
   }
   if (reflection.parameters.empty()) {
     result.diagnostics.push_back(sourceUri.string() +
@@ -905,6 +1061,8 @@ reflectMaterialContractSource(const LX_core::ResourceUri &sourceUri,
 
   if (result.diagnostics.empty()) {
     result.reflection = std::move(reflection);
+  } else {
+    result.bsdfFunctions.clear();
   }
   return result;
 }
@@ -962,6 +1120,7 @@ MaterialContractReflectionResult loadAndReflectMaterialContractSource(
   MaterialContractReflectionResult reflected =
       reflector(sourceUri, *loaded.sourceText);
   result.reflection = std::move(reflected.reflection);
+  result.bsdfFunctions = std::move(reflected.bsdfFunctions);
   result.diagnostics.insert(result.diagnostics.end(),
                             std::make_move_iterator(
                                 reflected.diagnostics.begin()),
@@ -977,6 +1136,14 @@ validateMaterialContractReflectionSet(
 
   for (std::size_t i = 0; i < reflections.size(); ++i) {
     for (std::size_t j = i + 1; j < reflections.size(); ++j) {
+      if (reflections[i].declaredType == reflections[j].declaredType &&
+          reflections[i].sourceSignature() != reflections[j].sourceSignature()) {
+        result.diagnostics.push_back(
+            "material type '" + reflections[i].declaredType +
+            "' maps to multiple material contract sources: " +
+            reflections[i].sourceUri.string() + " and " +
+            reflections[j].sourceUri.string());
+      }
       if (reflections[i].sourceSignature() ==
               reflections[j].sourceSignature() &&
           !sameContractLayout(reflections[i], reflections[j])) {

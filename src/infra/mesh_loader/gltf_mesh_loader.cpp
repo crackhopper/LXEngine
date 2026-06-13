@@ -93,6 +93,20 @@ std::string extractTextureUri(const std::string &file,
   return uri;
 }
 
+std::string alphaModeName(cgltf_alpha_mode mode) {
+  switch (mode) {
+  case cgltf_alpha_mode_opaque:
+    return "OPAQUE";
+  case cgltf_alpha_mode_mask:
+    return "MASK";
+  case cgltf_alpha_mode_blend:
+    return "BLEND";
+  case cgltf_alpha_mode_max_enum:
+    break;
+  }
+  return "OPAQUE";
+}
+
 const cgltf_attribute *findAttribute(const cgltf_primitive &prim,
                                      cgltf_attribute_type type, int setIndex) {
   for (cgltf_size i = 0; i < prim.attributes_count; ++i) {
@@ -166,12 +180,19 @@ void extractMaterial(const std::string &file, const cgltf_material *m,
 
   if (m->has_pbr_metallic_roughness) {
     const cgltf_pbr_metallic_roughness &pbr = m->pbr_metallic_roughness;
+    out.baseColorFactor = LX_core::Vec4f(
+        pbr.base_color_factor[0], pbr.base_color_factor[1],
+        pbr.base_color_factor[2], pbr.base_color_factor[3]);
+    out.metallicFactor = pbr.metallic_factor;
+    out.roughnessFactor = pbr.roughness_factor;
     out.baseColorTexture =
         extractTextureUri(file, pbr.base_color_texture, "baseColorTexture");
     out.metallicRoughnessTexture = extractTextureUri(
         file, pbr.metallic_roughness_texture, "metallicRoughnessTexture");
   }
 
+  out.alphaMode = alphaModeName(m->alpha_mode);
+  out.alphaCutoff = m->alpha_cutoff;
   out.emissiveFactor = LX_core::Vec3f(m->emissive_factor[0],
                                       m->emissive_factor[1],
                                       m->emissive_factor[2]);

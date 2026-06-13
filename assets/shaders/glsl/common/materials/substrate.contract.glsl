@@ -4,6 +4,8 @@
 // reflectionHash: substrate-source-contract-v1
 // storageAbiHash: pbrt-envelope-storage-v1
 // accessorAbiHash: material-surface-v1
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
 // parameter: Kd required rgb texture spectrum
 // parameter: Ks required rgb texture spectrum
 // parameter: uroughness required float texture
@@ -25,6 +27,7 @@
 // LX_MATERIAL_CONTRACT_END
 
 #include "../material_surface.glsl"
+#include "../material_bsdf.glsl"
 
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
   LxMaterialSurface surface;
@@ -38,4 +41,12 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geomet
   surface.ao = 1.0;
   surface.emissive = vec3(0.0);
   return surface;
+}
+
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput) {
+  return lxEvaluateLambertLikeBsdf(bsdfInput);
+}
+
+LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput) {
+  return lxSampleCosineHemisphereBsdf(bsdfInput);
 }
