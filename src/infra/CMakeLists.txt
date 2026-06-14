@@ -339,6 +339,7 @@ set(INFRA_SOURCES
     resource_parsers/render_feature_resource_parser.cpp
     resource_parsers/render_pass_node_parser.cpp
     resource_parsers/render_path_graph_resource_parser.cpp
+    resource_parsers/render_path_shader_resolver.cpp
     resource_parsers/render_resource_scene_parser_adapters.cpp
     resource_parsers/scene_resource_parser_registry.cpp
     resource_parsers/texture_resource_parser.cpp

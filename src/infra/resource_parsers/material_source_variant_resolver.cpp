@@ -1,5 +1,6 @@
 #include "infra/resource_parsers/material_source_variant_resolver.hpp"
 
+#include "infra/resource_parsers/render_path_shader_resolver.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -34,62 +35,6 @@ pathFromUri(const LX_core::ResourceUri &uri) {
     return std::filesystem::path(text.substr(filePrefix.size()));
   }
   return std::filesystem::path(text);
-}
-
-[[nodiscard]] bool resourceFileExists(const LX_core::ResourceUri &uri) {
-  return std::filesystem::exists(pathFromUri(uri));
-}
-
-[[nodiscard]] std::optional<std::vector<LX_core::ResourceUri>>
-resolveShaderSourceUris(const LX_core::ResourceUri &shaderUri) {
-  const std::string &shader = shaderUri.string();
-  const auto exists = [](const LX_core::ResourceUri &uri) {
-    return resourceFileExists(uri);
-  };
-  const auto makeShaderUri = [](const std::string &path) {
-    return LX_core::ResourceUri("assets/shaders/glsl/" + path);
-  };
-  const auto stagePair = [&](const std::string &base)
-      -> std::optional<std::vector<LX_core::ResourceUri>> {
-    std::vector<LX_core::ResourceUri> sources{
-        makeShaderUri(base + ".vert"),
-        makeShaderUri(base + ".frag"),
-    };
-    if (exists(sources[0]) && exists(sources[1])) {
-      return sources;
-    }
-    return std::nullopt;
-  };
-  const auto computeStage = [&](const std::string &base)
-      -> std::optional<std::vector<LX_core::ResourceUri>> {
-    std::vector<LX_core::ResourceUri> sources{makeShaderUri(base + ".comp")};
-    if (exists(sources[0])) {
-      return sources;
-    }
-    return std::nullopt;
-  };
-
-  if (shader == "techniques/Deferred/gbuffer") {
-    return stagePair("techniques/Deferred/pbr_gbuffer");
-  }
-  if (shader == "deferred_lighting") {
-    return stagePair("techniques/Deferred/deferred_lighting");
-  }
-  if (auto pairSources = stagePair(shader); pairSources.has_value()) {
-    return pairSources;
-  }
-  if (auto computeSources = computeStage(shader); computeSources.has_value()) {
-    return computeSources;
-  }
-
-  const LX_core::ResourceUri directUri =
-      shader.rfind("assets/shaders/glsl/", 0) == 0
-          ? LX_core::ResourceUri(shader)
-          : makeShaderUri(shader);
-  if (exists(directUri)) {
-    return std::vector<LX_core::ResourceUri>{directUri};
-  }
-  return std::nullopt;
 }
 
 [[nodiscard]] std::string signatureDebug(LX_core::StringID signature) {
@@ -332,17 +277,18 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
   }
 
   for (const LX_core::RenderPassNode &pass : graph.passes) {
-    const auto sourceUris = resolveShaderSourceUris(pass.shaderUri);
-    if (!sourceUris.has_value()) {
-      result.diagnostics.push_back(
-          "MaterialSourceVariantResolver graph=" + graphUri.string() +
-          " pass=" + pass.id + " failed to resolve Shader '" +
-          pass.shaderUri.string() + "'");
+    const auto sourceUris =
+        resolveRenderPathShaderSourceUris(graphUri, pass.id, pass.shaderUri);
+    if (!sourceUris.success()) {
+      result.diagnostics.insert(result.diagnostics.end(),
+                                sourceUris.diagnostics.begin(),
+                                sourceUris.diagnostics.end());
       return result;
     }
 
     const std::optional<bool> requiresMaterialSourceVariant =
-        shaderRequiresMaterialSourceVariant(graphUri, pass, *sourceUris,
+        shaderRequiresMaterialSourceVariant(graphUri, pass,
+                                            sourceUris.sourceUris,
                                             result.diagnostics);
     if (!requiresMaterialSourceVariant.has_value()) {
       return result;
@@ -368,8 +314,8 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
       continue;
     }
 
-    (void)table.registerShaderResource(pass.shaderUri, *sourceUris, nullptr,
-                                       true);
+    (void)table.registerShaderResource(pass.shaderUri, sourceUris.sourceUris,
+                                       nullptr, true);
 
     for (auto &[type, typeFacts] : typeFactsByType) {
       if (!passAllowsType(pass, type)) {
@@ -377,7 +323,8 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
       }
 
       std::optional<LX_core::ShaderProgramSet> program =
-          compileVariantShader(graphUri, pass, typeFacts, *sourceUris,
+          compileVariantShader(graphUri, pass, typeFacts,
+                               sourceUris.sourceUris,
                                result.diagnostics);
       if (!program.has_value()) {
         return result;

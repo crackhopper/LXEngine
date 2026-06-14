@@ -2,6 +2,7 @@
 
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
+#include "infra/resource_parsers/render_path_shader_resolver.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -65,59 +66,6 @@ readTextFile(const LX_core::ResourceUri &uri, std::string &diagnostic) {
 
 [[nodiscard]] bool resourceFileExists(const LX_core::ResourceUri &uri) {
   return std::filesystem::exists(pathFromUri(uri));
-}
-
-[[nodiscard]] std::optional<std::vector<LX_core::ResourceUri>>
-resolveShaderSourceUris(const LX_core::ResourceUri &shaderUri) {
-  const std::string &shader = shaderUri.string();
-  const auto exists = [](const LX_core::ResourceUri &uri) {
-    return resourceFileExists(uri);
-  };
-  const auto makeShaderUri = [](const std::string &path) {
-    return LX_core::ResourceUri("assets/shaders/glsl/" + path);
-  };
-  const auto stagePair = [&](const std::string &base)
-      -> std::optional<std::vector<LX_core::ResourceUri>> {
-    std::vector<LX_core::ResourceUri> sources{
-        makeShaderUri(base + ".vert"),
-        makeShaderUri(base + ".frag"),
-    };
-    if (exists(sources[0]) && exists(sources[1])) {
-      return sources;
-    }
-    return std::nullopt;
-  };
-  const auto computeStage = [&](const std::string &base)
-      -> std::optional<std::vector<LX_core::ResourceUri>> {
-    std::vector<LX_core::ResourceUri> sources{makeShaderUri(base + ".comp")};
-    if (exists(sources[0])) {
-      return sources;
-    }
-    return std::nullopt;
-  };
-
-  if (shader == "techniques/Deferred/gbuffer") {
-    return stagePair("techniques/Deferred/pbr_gbuffer");
-  }
-  if (shader == "deferred_lighting") {
-    return stagePair("techniques/Deferred/deferred_lighting");
-  }
-
-  if (auto pairSources = stagePair(shader); pairSources.has_value()) {
-    return pairSources;
-  }
-  if (auto computeSources = computeStage(shader); computeSources.has_value()) {
-    return computeSources;
-  }
-
-  const LX_core::ResourceUri directUri =
-      shader.rfind("assets/shaders/glsl/", 0) == 0
-          ? LX_core::ResourceUri(shader)
-          : makeShaderUri(shader);
-  if (exists(directUri)) {
-    return std::vector<LX_core::ResourceUri>{directUri};
-  }
-  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<LX_core::IShaderSharedPtr> compileShaderPayload(
@@ -326,32 +274,33 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
 
   for (const auto &pass : graph.passes) {
     if (!pass.shaderUri.empty()) {
-      const auto shaderSourceUris = resolveShaderSourceUris(pass.shaderUri);
-      if (!shaderSourceUris.has_value()) {
+      const auto shaderSourceUris = resolveRenderPathShaderSourceUris(
+          canonicalUri, pass.id, pass.shaderUri);
+      if (!shaderSourceUris.success()) {
         LX_core::ResourceMetadata failedShader;
         failedShader.type = LX_core::SceneResourceType::Shader;
         failedShader.uri = pass.shaderUri;
         failedShader.state = LX_core::ResourceState::Failed;
-        failedShader.diagnostics.push_back(LX_core::ResourceDiagnostic{
-            .ownerUri = canonicalUri,
-            .resourceUri = pass.shaderUri,
-            .parserName = kRenderPathGraphParserName,
-            .message = "failed to resolve shader source descriptors",
-        });
+        for (const std::string &diagnostic : shaderSourceUris.diagnostics) {
+          failedShader.diagnostics.push_back(LX_core::ResourceDiagnostic{
+              .ownerUri = canonicalUri,
+              .resourceUri = pass.shaderUri,
+              .parserName = kRenderPathGraphParserName,
+              .message = diagnostic,
+          });
+        }
         const LX_core::ResourceIdentityHandle failedShaderIdentity =
             table.internResourceMetadata(std::move(failedShader));
         (void)failedShaderIdentity;
         return makeFailedParse(
             table, LX_core::SceneResourceType::RenderPathGraph,
             context.ownerUri, canonicalUri, kRenderPathGraphParserName,
-            {"failed to resolve Shader dependency '" +
-             pass.shaderUri.string() + "' for RenderPathGraph '" +
-             canonicalUri.string() + "'"});
+            shaderSourceUris.diagnostics);
       }
       std::vector<std::string> shaderDiagnostics;
       const std::optional<bool> requiresMaterialSourceVariant =
           shaderRequiresMaterialSourceVariant(canonicalUri, pass.shaderUri,
-                                              *shaderSourceUris,
+                                              shaderSourceUris.sourceUris,
                                               shaderDiagnostics);
       if (!requiresMaterialSourceVariant.has_value()) {
         LX_core::ResourceMetadata failedShader;
@@ -396,7 +345,7 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
       std::optional<LX_core::IShaderSharedPtr> shaderPayload;
       if (!*requiresMaterialSourceVariant) {
         shaderPayload = compileShaderPayload(canonicalUri, pass.shaderUri,
-                                             *shaderSourceUris,
+                                             shaderSourceUris.sourceUris,
                                              shaderDiagnostics);
         if (!shaderPayload.has_value()) {
           LX_core::ResourceMetadata failedShader;
@@ -422,7 +371,7 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
       }
       const LX_core::ShaderHandle shaderHandle =
           table.registerShaderResource(
-              pass.shaderUri, *shaderSourceUris,
+              pass.shaderUri, shaderSourceUris.sourceUris,
               shaderPayload.has_value() ? std::move(*shaderPayload) : nullptr,
               *requiresMaterialSourceVariant);
       if (!shaderHandle.isValid()) {
