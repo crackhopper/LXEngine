@@ -1,7 +1,6 @@
 #include "demos/lxe_editor/scene_runtime.hpp"
 
 #include "core/asset/audio_spectrum_texture.hpp"
-#include "core/asset/material_pass_definition.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -14,9 +13,6 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/scene_asset/scene_material_loader.hpp"
 #include "infra/scene_asset/scene_mesh_loader.hpp"
-#include "infra/shader_compiler/compiled_shader.hpp"
-#include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/shader_reflector.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 #include "demos/lxe_editor/builtin_asset_catalog.hpp"
 #include "demos/lxe_editor/editor_camera_state.hpp"
@@ -79,9 +75,6 @@ thread_local SceneLoadMaterialCache *g_sceneLoadMaterialCache = nullptr;
 thread_local std::optional<
     std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
     g_sceneRealtimeRenderSettings;
-
-std::unordered_map<std::string, LX_core::IShaderSharedPtr>
-    g_realtimeSurfaceShaders;
 
 void accumulateLoadedMeshStats(const LX_core::MeshSharedPtr &mesh) {
   if (g_sceneLoadTimingStats == nullptr || !mesh) {
@@ -154,29 +147,8 @@ currentGenericMaterialLoadOptions() {
     const auto &settings = g_sceneRealtimeRenderSettings->get();
     options.forceIbl = settings.ibl;
     options.alphaTransparency = settings.alphaTransparency;
-    options.technique =
-        settings.mode == LX_core::SceneRealtimeRenderMode::Deferred
-            ? std::optional<std::string>("Deferred")
-            : std::optional<std::string>("Forward");
   }
   return options;
-}
-
-[[nodiscard]] std::vector<LX_core::ShaderVariant>
-realtimeSurfaceShaderVariants(
-    const LX_infra::GenericMaterialLoadOptions &options) {
-  std::vector<LX_core::ShaderVariant> variants;
-  if (options.forceIbl.value_or(false)) {
-    variants.push_back(LX_core::ShaderVariant{.macroName = "HAS_IBL",
-                                              .enabled = true});
-  }
-  return variants;
-}
-
-[[nodiscard]] std::string realtimeSurfaceShaderCacheKey(
-    const LX_infra::GenericMaterialLoadOptions &options) {
-  return options.forceIbl.value_or(false) ? "Forward/pbr|HAS_IBL"
-                                         : "Forward/pbr";
 }
 
 void resolveMaterialTextureDependencies(
@@ -214,57 +186,6 @@ void resolveMaterialTextureDependencies(
   }
 }
 
-[[nodiscard]] LX_core::IShaderSharedPtr loadRealtimeForwardSurfaceShader(
-    const LX_infra::GenericMaterialLoadOptions &options) {
-  const std::string key = realtimeSurfaceShaderCacheKey(options);
-  if (const auto found = g_realtimeSurfaceShaders.find(key);
-      found != g_realtimeSurfaceShaders.end()) {
-    return found->second;
-  }
-
-  const auto variants = realtimeSurfaceShaderVariants(options);
-  const auto compileResult = LX_infra::ShaderCompiler::compileProgram(
-      resolveRuntimePath("assets/shaders/glsl/techniques/Forward/pbr.vert"),
-      resolveRuntimePath("assets/shaders/glsl/techniques/Forward/pbr.frag"),
-      variants);
-  if (!compileResult.success) {
-    throw std::runtime_error("failed to compile realtime Material v2 shader: " +
-                             compileResult.errorMessage);
-  }
-
-  auto shader = std::make_shared<LX_infra::CompiledShader>(
-      compileResult.stages, LX_infra::ShaderReflector::reflect(compileResult.stages),
-      LX_infra::ShaderReflector::reflectVertexInputs(compileResult.stages),
-      "Forward/pbr");
-  g_realtimeSurfaceShaders.emplace(key, shader);
-  return shader;
-}
-
-void ensureRealtimeForwardSurfacePass(
-    const LX_core::MaterialInstanceSharedPtr &material,
-    const LX_infra::GenericMaterialLoadOptions &options) {
-  if (!material || material->isPassEnabled(LX_core::Pass_Forward)) {
-    return;
-  }
-  if (!material->getMaterialSourceUri().empty() ||
-      material->getMaterialSourceSignature().id != 0) {
-    return;
-  }
-  auto shader = loadRealtimeForwardSurfaceShader(options);
-
-  LX_core::MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram.shaderName = "Forward/pbr";
-  passDefinition.shaderProgram.variants =
-      realtimeSurfaceShaderVariants(options);
-  passDefinition.shaderProgram.shader = shader;
-  passDefinition.renderState = LX_core::RenderState{};
-
-  material->getTemplate()->setPassDefinition(LX_core::Pass_Forward,
-                                             std::move(passDefinition));
-  material->getTemplate()->rebuildMaterialInterface();
-  material->setPassEnabled(LX_core::Pass_Forward, true);
-}
-
 [[nodiscard]] std::string
 materialCacheKey(const std::filesystem::path &path,
                  const LX_infra::GenericMaterialLoadOptions &options) {
@@ -277,9 +198,6 @@ materialCacheKey(const std::filesystem::path &path,
   }
   if (options.alphaTransparency.has_value()) {
     key += *options.alphaTransparency ? "|alpha=1" : "|alpha=0";
-  }
-  if (options.technique.has_value()) {
-    key += "|technique=" + *options.technique;
   }
   return key;
 }
@@ -295,7 +213,6 @@ loadCachedGenericMaterial(const std::filesystem::path &path,
     }
     auto material = LX_infra::loadGenericMaterial(path, resourceTable, options);
     resolveMaterialTextureDependencies(*material, resourceTable);
-    ensureRealtimeForwardSurfacePass(material, options);
     return material;
   }
 
@@ -317,7 +234,6 @@ loadCachedGenericMaterial(const std::filesystem::path &path,
     return nullptr;
   }
   resolveMaterialTextureDependencies(*prototype, resourceTable);
-  ensureRealtimeForwardSurfacePass(prototype, options);
   auto instance = prototype->cloneInstanceData();
   prototypes.emplace(key, std::move(prototype));
   return instance;
