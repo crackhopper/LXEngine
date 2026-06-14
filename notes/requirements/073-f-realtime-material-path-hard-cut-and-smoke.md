@@ -1,25 +1,29 @@
 # REQ-073-f: Transparent BMW Material Path And Smoke
 
-> 2026-06-14 重新收束：旧 realtime material fallback hard cut 已前移到 `REQ-073-d` 和 `REQ-073-e`。本 REQ 不再清理 073a/b/c 的旧兼容路径；它只在 073e 的 node-level batching / indirect submission 模型上扩展 transparent sorting/batching、glass material、BMW converter/shader 覆盖和 BMW realtime smoke。
+> 2026-06-14 重新收束：旧 realtime material fallback hard cut 已前移到 `REQ-073-d` 和 `REQ-073-e`。本 REQ 不再清理 073a/b/c 的旧兼容路径；它只在 Task 8/9 后的 `RenderPathGraph input -> FramePass input contract -> RenderWorkCompiler -> typed RenderInput[] -> RenderInputDesc[] facts -> backend execution` 模型上扩展 transparent sorting policy、glass material、BMW converter/shader 覆盖和 BMW realtime smoke。
 
 ## 背景
 
-`REQ-073-e` 会让 realtime geometry 默认路径使用：
+`REQ-073-e` / `REQ-073-e2` 已把 realtime geometry 默认路径收束为：
 
-- `RenderPathNodeContext` / `RenderPathNodeData`
-- `RenderDrawCandidate`
-- `RenderBatchCompiler`
-- `RenderBatchAnalysis`
-- object data signature + material pipeline signature
-- Vulkan indirect draw submission
+```text
+RenderPathGraph input
+  -> FramePass input contract
+  -> RenderWorkCompiler
+  -> typed RenderInput[]
+  -> RenderInputDesc[] validation / pipeline / binding / resource / diagnostic / stats facts
+  -> backend execution
+```
 
-BMW M6 相比 Helmet 多出透明/玻璃相关材质。透明物体不能简单按 batch locality 任意重排；它们需要先满足 back-to-front depth ordering，再在相邻 compatible candidates 间合批。因此 transparent batching 应该是 073e 通用 compiler 的 policy 扩展，而不是 BMW-only shortcut 或第二套 renderer。
+draw / dispatch execution data 留在 typed `RenderInput` 侧；`RenderInputDesc` 只用 `inputIndex` 指回对应 input，并保存 validation、pipeline、binding、resource dependency、diagnostic 和 stats facts。
+
+BMW M6 相比 Helmet 多出透明/玻璃相关材质。透明物体不能简单按 locality 任意重排；它们需要先满足 back-to-front depth ordering，再在相邻 compatible typed raster inputs 间做内部聚合。因此 transparent sorting / aggregation 应该是 `RenderWorkCompiler` raster policy 的扩展，而不是 BMW-only shortcut、第二套 renderer 或 public parallel compiler。
 
 ## 目标
 
 1. 增加 transparent RenderPathGraph pass / RenderPathNode contract。
-2. 在 073e 的 `RenderBatchCompiler` 模型上实现 transparent sort policy。
-3. transparent candidates 先按 depth back-to-front 排序，再只合并相邻且 batch signature 相同的 candidates。
+2. 在 `RenderWorkCompiler` raster policy 上实现 transparent sort policy。
+3. transparent typed raster inputs 先按 depth back-to-front 排序，再只对相邻且 compatible 的 inputs 做内部聚合。
 4. 支持 BMW 中需要的 glass material contract、converter 参数、source-local material storage 和 shader variant。
 5. BMW converter 遇到目前未建模但 BMW 存在的材质时，要么显式支持，要么 fail-fast diagnostic；不能回退 debug/default/opaque approximation。
 6. BMW realtime smoke 输出非全黑，或对明确未支持 feature 输出可解释 diagnostic；不得使用旧 fallback。
@@ -47,24 +51,25 @@ RenderPathGraph SHALL 显式声明 transparent pass。
 
 ### R2: Transparent Sort Policy
 
-transparent node SHALL 使用 073e 的 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler`。
+transparent pass SHALL 使用当前单轨 compiler 模型：RenderPathGraph `input` 声明 transparent scene renderables，FramePass 保存 pass/input contract，`RenderWorkCompiler` 生成 transparent `RenderDrawInput[]` 或等价 typed raster input，再输出 `RenderInputDesc[]` facts。
 
-排序/合批规则：
+排序/内部聚合规则：
 
 ```text
 transparent:
-  collect RenderDrawCandidate[]
+  build typed raster RenderInput[]
   sort back-to-front by camera depth
-  merge only adjacent candidates with the same batch signature
+  aggregate only adjacent compatible inputs inside the raster policy
+  emit RenderInputDesc[] facts with inputIndex, pipeline/binding/dependency facts, diagnostics and stats
 ```
 
-batch signature 仍是：
+compatibility 仍来自结构性事实，例如：
 
 ```text
-object data signature + material pipeline signature
+object data signature + material type / pipeline signature
 ```
 
-不得引入 `TransparentBatchCompiler`、`OpaqueBatchCompiler` 或其它与 `RenderBatchCompiler` 并行的 public compiler。
+不得引入 transparent-only / opaque-only public compiler，也不得恢复旧 public batch result。aggregation 可以是 `RenderWorkCompiler` raster policy 的内部行为，但 public output 仍是 typed `RenderInput[]` 加 `RenderInputDesc[]` facts。
 
 ### R3: Glass Material Contract
 
@@ -106,10 +111,10 @@ BMW converter SHALL 处理 BMW 中实际出现的材质类别。
 BMW realtime smoke SHALL 验证：
 
 - converted BMW scene loads。
-- opaque pass 继续走 073e indirect batching。
+- opaque pass 继续走 `RenderWorkCompiler` / `RenderInputDesc` path。
 - transparent pass 显式存在并执行。
-- transparent candidates depth sorted。
-- adjacent compatible transparent candidates may batch。
+- transparent typed inputs depth sorted。
+- adjacent compatible transparent inputs may be internally aggregated by the raster policy。
 - glass material shader/source storage 被实际使用。
 - output non-black，或明确 unsupported diagnostic。
 - fallback-observed count 为 0。
@@ -122,11 +127,11 @@ BMW realtime smoke SHALL 验证：
 
 ### T2: Transparent Sorting
 
-构造多个透明对象，断言排序为 back-to-front。相同 batch signature 但排序后不相邻的对象不得跨越中间对象合批。
+构造多个透明对象，断言 typed raster inputs 排序为 back-to-front。相同 compatibility signature 但排序后不相邻的对象不得跨越中间对象聚合。
 
-### T3: Transparent Adjacent Batching
+### T3: Transparent Adjacent Aggregation
 
-构造 depth order 中相邻且 batch signature 相同的透明对象，断言它们可以进入同一 indirect batch。
+构造 depth order 中相邻且 compatibility signature 相同的透明对象，断言它们可以被 `RenderWorkCompiler` raster policy 内部聚合，同时 public output 仍通过 typed input 和 `RenderInputDesc` facts 表达。
 
 ### T4: Glass Material Conversion
 
@@ -138,7 +143,7 @@ BMW realtime smoke SHALL 验证：
 
 ### T6: BMW Realtime Smoke
 
-运行低分辨率 BMW realtime smoke，断言非黑图或明确 unsupported diagnostic，并校验 opaque/transparent batch stats、glass usage、`fallback-observed == 0`。
+运行低分辨率 BMW realtime smoke，断言非黑图或明确 unsupported diagnostic，并校验 `renderInputStats`、submitted draw coverage、glass usage、`fallback-observed == 0`。
 
 ### T7: rg Concept Drift Audit
 
@@ -157,8 +162,8 @@ ordinary positive tests 和 production path 不得保留这些 token 作为成�
 - `assets/render_paths/*.render-path.yaml`
 - transparent/glass shaders under `assets/shaders/glsl/render_paths/`
 - BMW converter and material mapping code
-- `RenderWorkQueue` transparent node sort policy usage
-- `RenderBatchCompiler` transparent policy tests
+- `RenderWorkCompiler` transparent node sort policy usage
+- `RenderWorkCompiler` transparent policy tests
 - SceneResourceTable material/source storage coverage
 - BMW realtime smoke and diagnostics
 

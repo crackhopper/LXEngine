@@ -4,7 +4,7 @@
 
 ## 背景
 
-SceneResourceTable package restore 只能避免 CPU source parsing。首次渲染仍可能因为 shader reflection、pipeline build desc collection、Vulkan pipeline creation 和 driver cache miss 卡顿。Vulkan 提供 pipeline cache blob 能力，本 REQ 将其作为 optional backend cache section 接入 package。由于 `REQ-073-g` / `REQ-073-h` 已经让 OfflineRT compute pass 也走 RenderPathGraph / FrameGraph / RenderWorkItem，pipeline cache metadata 需要同时覆盖 realtime raster pipeline 和 OfflineRT compute pipeline。
+SceneResourceTable package restore 只能避免 CPU source parsing。首次渲染仍可能因为 shader reflection、pipeline build desc collection、Vulkan pipeline creation 和 driver cache miss 卡顿。Vulkan 提供 pipeline cache blob 能力，本 REQ 将其作为 optional backend cache section 接入 package。Task 8/9 hard cut 后，realtime raster 和当前 offline compute 都从 RenderPathGraph / FrameGraph pass input contract 进入 `RenderWorkCompiler`，再生成 typed `RenderInput[]` 与 `RenderInputDesc[]`；pipeline cache metadata 需要覆盖这两类 desc-backed pipeline。
 
 ## 目标
 
@@ -57,7 +57,8 @@ Rules:
 - use RenderPathGraph / RenderPath terms。
 - pipeline key includes structural facts only。
 - material parameter values do not create pipeline identity。
-- OfflineRT compute pipeline descs come from the same graph/pass/work-item path as realtime descs, not from `offlineShader` or hardcoded pass names。
+- pipeline preload descs come from deterministic extraction over `RenderInputDesc[].pipelineBuildDesc` after `RenderWorkCompiler` prepares typed inputs。
+- OfflineRT compute pipeline descs follow the same graph/pass input contract -> typed `RenderInput[]` -> `RenderInputDesc[]` path as realtime descs, not from `offlineShader`, hardcoded pass names, or old item routing。
 
 ### R5: Cache Observability
 

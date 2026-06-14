@@ -2,7 +2,7 @@
 
 Shadow pass 可以想成从灯光方向拍一张黑白深度底片。它不关心物体颜色，只记录“从光源看过去，哪个表面更近”。Forward pass 之后用这张底片判断当前像素是否被挡住。
 
-当前内置 lit 材质同时声明 `Forward` 和 `Shadow` pass。同一个 renderable 因此会进入不同 pass 的 `RenderWorkQueue`，分别用不同 shader、target 和 render state 提交。
+当前 RenderPathGraph 同时声明 Forward 和 Shadow pass。同一个 renderable 因此会在不同 `FramePass` 的 `input` 合同下进入 `RenderWorkCompiler`，分别生成对应 shader、target 和 render state 的 `RenderInputDesc`。
 
 ## 材质文件把 shadow pass 声明出来
 
@@ -38,7 +38,7 @@ Shadow vertex shader 使用 model matrix 和 `LightUBO.shadowViewProj` 把 mesh 
 |---|---|---|
 | Shadow vertex shader | model matrix、`LightUBO.shadowViewProj`、mesh position | light clip space position |
 | Shadow fragment shader | 无颜色需求 | depth attachment |
-| Vulkan pass | `Pass_Shadow` queue items | `shadow.cascade*` depth resource |
+| Vulkan pass | Shadow pass 的 accepted `RenderInputDesc` | `shadow.cascade*` depth resource |
 
 `LightUBO.shadowViewProj` 在单个 shadow pass 录制前会被设置为当前 cascade 的矩阵。这样同一个 shader 可以服务四个 cascade pass，只是每次 pass 的 light matrix 不同。
 

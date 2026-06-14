@@ -1,272 +1,224 @@
-# REQ-073-e: RenderPathNode Indirect Batching And Diagnostics
+# REQ-073-e: Realtime RenderInput Batching And Diagnostics
 
-> 2026-06-14 现状校准：`REQ-073-d` 已完成 `techniques/...` 到 `render_paths/...` 的 URI / 术语硬切。本 REQ 的正向路径 SHALL 以完成后的 RenderPathGraph shader URI、RenderPathNodeSignature、final source-variant shader reflection 和 legacy URI rejection 作为输入前提；不得继续依赖 `assets/shaders/glsl/techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧兼容测试 fixture。
->
-> 2026-06-14 074-d 校准：`REQ-074-d` 的 package serialization / restore 完成不改变 073e 范围。073e 只消费当前 scene/resource table 暴露的 `SceneResourceTableUploadView`；不读取 package section，不引入 package restore 分支，也不处理 BC7 或 pipeline cache serialization。
->
-> 2026-06-14 设计收束：本 REQ 负责把 realtime geometry 默认路径切到 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler` / `RenderBatchAnalysis` 模型，并删除旧双轨。后续非 opaque 材质/pass 支持不属于本 REQ。
+> 2026-06-15 Task 8/9 校准：`REQ-073-e2` hard cut 后已实现。旧 queue/item/batch public work 模型已经从 `src` / `assets` 删除；本文只保留 realtime opaque batching、diagnostics 和 Helmet smoke 的需求背景。当前正向实现必须按 `RenderWorkCompiler`、typed `RenderInput` 和 `RenderInputDesc` 说明，不再把旧模型写成 active owner 或 backend input。
 
 ## 背景
 
-`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 已把 material source variant 和 RenderPathNode pipeline identity 建立起来；`REQ-073-d` 已把 shader URI 与术语硬切到 RenderPathGraph。此时 realtime geometry 可以从 object + mesh + bound material 生成 handle/ref-level draw input，再由 preparation 解析为 prepared candidate，最后按 batch signature 走 indirect submission。
+`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 已建立 material source variant 和 RenderPathNode pipeline identity；`REQ-073-d` 已把 shader URI 与术语硬切到 RenderPathGraph。073e 的原始目标是让 realtime geometry 从 scene renderables 进入统一 preparation/diagnostics，再由 Vulkan 提交 indirect draw。
 
-当前代码已有过渡形态，但它还不是 073e 目标模型：
+当前完成态不再经过旧 public queue/batch 类型。我们现在按这一条主线理解代码：
 
-- `src/core/frame_graph/render_queue.hpp` 仍以 `std::vector<RenderWorkItem> m_items` 作为 realtime geometry 的正向数据。
-- `RenderWorkQueue::compileIndirectBatches()` 仍返回 `std::vector<RenderIndirectBatch>`，不是带 diagnostics/stats 的 `RenderBatchAnalysis`。
-- `compileIndirectBatches()` 仍以 `RenderWorkKind::RasterDraw` 过滤，遇到缺 buffer、zero index/instance count 会静默 `continue`。
-- 当前 batch split 仍比较 `PipelineKey`、pass、target、vertex/index buffer identity 和 `DescriptorResourceList` equality。
-- Vulkan `submitBindlessQueue()` 虽然调用 `compileIndirectBatches()`，但仍用 `items[batch.sourceItemIndices[0]]` 拼回旧 `RenderWorkItem`，再走 `cmd.executeWorkItem(batchItem)`。
-- `test_bindless_indirect_contract.cpp` 仍有 descriptor identity change splits batches 的正向期望。
-- Helmet smoke 已存在，但目前只验证非黑输出和 metadata，不验证 compiler-produced batch analysis 被 backend 消费。
+```text
+RenderPathGraph input
+  -> FramePass input contract
+  -> RenderWorkCompiler
+  -> RenderInput[] payloads
+  -> RenderInputDesc[] validation/pipeline/binding facts
+  -> Vulkan pipeline/upload/execute
+```
 
-这些现状是本 REQ 的 implementation gap，不是可延续的需求概念。
+旧设计词表，例如旧 work owner、旧 work item、旧 batch analysis/result、旧 node-local context/data DTO，只能作为 073e 立项期历史或 073e2 删除对象出现；它们不是当前目标，也不是后续需求的扩展点。
+
+## 当前完成态
+
+| 环节 | 当前事实 |
+|---|---|
+| 图输入 | RenderPathGraph pass 的 `input` block 描述 scene renderables、fullscreen triangle、material requirement、geometry contract 和可选 object render class filter |
+| pass contract | `FramePass` 持有 `RenderPassInputContract input`，同时保存 shader URI、stage、dispatch、sources/targets、render state 等 pass metadata |
+| compiler | `RenderWorkCompiler::buildInputs()` 从 compiled FrameGraph 和 scene/resource facts 生成 `RenderDrawInput` / `RenderComputeInput` |
+| prepared desc | `RenderWorkCompiler::prepare()` 生成 `RenderInputDesc[]`，包含 accepted/rejected 状态、pipeline build desc、binding plan、resource dependencies、diagnostics 和 stats |
+| validation | `validatePreparedRenderInputs()` 校验 desc，而不是校验旧 batch/result 类型 |
+| Vulkan | realtime submission 消费 accepted desc 的 pipeline/upload/execute facts；metadata 暴露 `renderInputStats` |
+
+典型 realtime opaque input：
+
+```yaml
+input:
+  kind: scene-renderables
+  material:
+    type: [matte, uber, metal, substrate, standard-pbr]
+    required: true
+  geometry:
+    vertex: position-only
+    topology: triangle-list
+```
+
+fullscreen/debug pass 使用单独输入：
+
+```yaml
+input:
+  kind: fullscreen-triangle
+```
+
+当 pass 只接收特定对象类型时，graph 可以通过 `input.object.renderClass` 过滤。debug mesh 这类不要求材质的路径可以显式写 `material.required: false`，但仍要进入 typed `RenderInput` / `RenderInputDesc`，不能恢复旧 per-item fallback。
 
 ## 目标
 
-1. `RenderWorkQueue` 成为 RenderPathNode 级 work owner，内部数据模型收敛为 `RenderPathNodeContext` + `RenderPathNodeData`。
-2. `RenderPathNodeData` 携带 handle/ref-level `RenderDrawInput[]`，不预填 typed GPU table indices。
-3. `RenderBatchPreparation` 从 `SceneResourceTableUploadView` 解析 `RenderDrawInput`，输出 `PreparedRenderDrawCandidate[]`。
-4. `RenderBatchCompiler` 作为通用 compiler，按 context 的 sort policy 排序，再合并相邻 compatible prepared candidates。
-5. geometry batch signature 只由 object data signature + material type signature 决定；073e 的当前输入是 opaque material types。
-6. backend realtime geometry 默认提交走 Vulkan indirect draw；旧 direct/per-item geometry 成功路径删除或命名隔离，不能作为 fallback。
-7. diagnostics 和 stats 覆盖每个 input draw / prepared candidate：成功 batch、明确 split、明确 rejection，不能静默跳过。
-8. Helmet realtime smoke 只验证 073e 的 opaque indirect path。
+1. RenderPathGraph input 是 realtime geometry 工作的结构来源，旧 top-level `filters` / `geometry` 不再作为新的正向 schema。
+2. `FramePass` 是 per-pass pass/input contract record，内部持有 `RenderPassInputContract input`，不持有旧 queue。
+3. `RenderWorkCompiler::buildInputs()` 为 `scene-renderables` 产生 `RenderDrawInput[]`，为 fullscreen/debug/compute 路径产生对应 typed input。
+4. `RenderWorkCompiler::prepare()` 输出 `RenderInputDesc[]`，每个 desc 携带 validation、pipeline、binding 和 resource dependency facts。
+5. Vulkan backend 默认从 accepted desc 提交 indirect-capable realtime draw；不能旁路 desc 回到旧 per-item geometry path。
+6. diagnostics 和 stats 覆盖 input、accepted/rejected desc、submitted draw/dispatch、fallback observation，不能静默跳过。
+7. Helmet realtime smoke 验证 opaque RenderPathGraph input、compiler-produced desc、Vulkan submission、非黑输出和 `fallbackObservedCount == 0`。
 
 ## 非目标
 
 - 不实现 material storage / backend table upload foundation；由 `REQ-073-b` 处理。
 - 不实现 shader source variant；由 `REQ-073-c` 处理。
 - 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
-- 不处理非 opaque material/pass 支持。
-- 不处理 OfflineRT compute path。
+- 不处理非 opaque material/pass 扩展。
+- 不实现 OfflineRT graph asset；由 `REQ-073-g` 继续处理。
 - 不实现 package、BC7、pipeline cache serialization 或 offline/realtime equivalence。
-- 不新增 Helmet 以外的 realtime smoke 场景。
 
 ## 需求
 
-### R1: RenderPathNode Queue Data Model
+### R1: RenderPathGraph Input Contract
 
-`RenderWorkQueue` SHALL 保持为 per-node/per-pass work owner，但不得继续把 realtime geometry 表达成 old union-like `RenderWorkItem`。
+Realtime geometry SHALL 从 RenderPathGraph pass 的 `input` block 进入当前工作模型。`scene-renderables` 输入至少表达：
 
-目标数据模型：
-
-| 概念 | 说明 |
+| 字段 | 说明 |
 |---|---|
-| `RenderPathNodeContext` | pass identity、rendering mode、sort policy、render state defaults、target/attachment contract、geometry contract、material type filters、object data ABI resolver、material signature resolver、global geometry table view、backend indirect capability |
-| `RenderPathNodeData` | 当前 node 的 handle/ref-level `RenderDrawInput[]` |
-| `RenderDrawInput` | object handle/ref、mesh handle/ref、material handle/ref、local primitive/submesh ref、debug identity、sort source data |
-| `RenderBatchPreparation` | queue-owned stage/helper；使用 `SceneResourceTableUploadView` 把 input references 解析成 GPU table indices/ranges 和 indirect command payload，不是新的 public hierarchy |
-| `PreparedRenderDrawCandidate` | typed object/draw indices、typed mesh table range、typed material ref/source-local material indices、object data signature、material type signature、final shader reflection identity used for readiness、indirect draw counts/offsets、sort key |
-| `RenderBatchCompiler` | 通用 batch compiler，不带 `Opaque` 前缀 |
-| `RenderBatchAnalysis` | batches、diagnostics、stats，是 backend geometry submission 的正向输入 |
+| `kind` | `scene-renderables`、`fullscreen-triangle` 等输入族 |
+| `material.type` | 当前 pass 接收的 material type 列表 |
+| `material.required` | 是否要求 scene renderable 绑定材质；debug mesh 可为 `false` |
+| `geometry.vertex` | pass 需要的 vertex contract，例如 `position-only` |
+| `geometry.topology` | pass 需要的 primitive topology，例如 `triangle-list` |
+| `object.renderClass` | 可选对象 render class 过滤，用于只接收特定 renderable class |
 
-`target`、attachments、render-state defaults 和 pass identity 是 node context，不复制到每个 input/candidate 上参与 batch 比较。typed GPU table index 不允许由上游手写或从旧 `RenderWorkItem` 字段搬运；它必须由 preparation 阶段从 upload view 生成。
+parser 接受的字段必须进入 `RenderPassInputContract` 并被 compiler 消费。未知字段必须 fail-fast；不得接受后忽略。
 
-来源/去向约束：
+### R2: FramePass Owns The Input Contract
 
-| 数据 | 来源 | 去向 |
-|---|---|---|
-| `RenderPathNodeContext` | 当前 RenderPathGraph node + renderer/backend pass state | preparation、compiler、backend submission 的 node scope |
-| `RenderDrawInput` | scene/renderable traversal 中的 object、mesh/submesh、bound material reference | 只给 preparation |
-| `SceneResourceTableUploadView` | 当前 `SceneResourceTable` upload build | 只给 preparation 做 index/range 解析 |
-| final shader reflection | 对当前 node 内 input material/source 的 material-source variant resolution | material signature resolver 与 readiness validation |
-| object data signature | 当前 bindless object/draw table ABI resolver | prepared candidate 与 backend pipeline lookup |
-| material type signature | 当前 node 内对 input material 的 material signature resolver | prepared candidate 与 backend pipeline lookup |
-| typed object/draw/material/mesh index/range | preparation 通过 `SceneResourceTableUploadView` 解析 `RenderDrawInput` 生成 | prepared candidate validation 与 indirect command generation |
-| `PreparedRenderDrawCandidate` | preparation output | sort policy 与 batch merge |
-| `RenderBatchAnalysis` | batch compiler output | Vulkan geometry submission 的唯一正向输入，以及 diagnostics/tests |
-
-任何字段如果不是当前阶段能产出的事实，就不能被放进该阶段的输入结构。
-
-### R2: Prepared Draw Candidate Readiness
-
-接受 opaque material types 的 RenderPathNode 内，prepared draw candidate 只有在以下事实由 preparation 阶段显式解析后才 indirect-ready：
-
-- valid mesh / geometry table range。
-- non-zero index count 和 instance count。
-- object data signature 已解析；当前 bindless 阶段为单一稳定值，例如 `BindlessObjectData.v1`。
-- material type signature 已解析。
-- shader 消费 `SceneDraws` / `SceneObjects` 时，preparation 已由 input object reference 解析出 typed draw/object index。
-- shader 消费 source-local material data 时，preparation 已由 input material reference 解析出 typed material ref 和 source-local material index。
-- material storage 存在且 index/range 合法。
-- final shader reflection 来自 material-source variant。
-
-typed draw/object/material/mesh indices 是 preparation 输出，不是 `RenderDrawInput` 输入。缺失数据 SHALL 形成 preparation error 或 batch diagnostic，不得回退 direct/per-item draw。
-
-### R3: Batch Compatibility
-
-batch compatibility SHALL 在一个 `RenderPathNodeContext` 内判断。两个 prepared draw candidate 可合批，当且仅当：
-
-```text
-object data signature == object data signature
-material type signature == material type signature
-```
-
-`RenderPathNode` 是普通 node/pass context；它通过 filters 声明支持哪些 material types。073e 的当前输入是 opaque material types。若某 surface 需要另一套 shader/material 行为，应表达为不同 material type identity；本 REQ 不实现该后续扩展。
-
-material type signature 是 material-side batching identity。需求层面它是标准化 material type identity，例如 `standard-pbr-opaque`。如果 source ABI 或 contract 差异确实选择不同的 material shader contract，这些差异属于 material type signature。pass/node identity 不属于 material type signature。
-
-不得作为 batch split key：
-
-- `PipelineKey` 独立比较结果。
-- `RenderPathNodeSignature` per-draw 拷贝。
-- old mesh-derived `objectSignature`；它必须从 production batching path 删除，不能改名保留成兼容 key。
-- material instance identity，例如 URI/name。
-- per-instance material data，例如参数值、texture/resource handle。
-- `DescriptorResourceList` equality。
-- vertex layout、object topology、target/attachment、geometry buffer identity。
-- old `MaterialUBO` / `SceneGpuMaterialRecord` PBR payload identity。
-- `techniques/...` shader URI。
-
-不同材质参数值、texture slot 或 resource handle 在 object data signature 和 material type signature 相同时 SHALL 进入同一 batch。draw command/table index 负责选择实际 object/material/mesh 数据，batch compatibility 不比较每个材质实例的存储值。
-
-### R4: Generic Batch Pipeline Flow
-
-`RenderWorkQueue` 的 batch pipeline SHALL 使用同一流程支持当前 opaque material types：
-
-```text
-RenderPathNodeData
-  -> resolve RenderDrawInput through SceneResourceTableUploadView
-  -> emit PreparedRenderDrawCandidate or preparation diagnostic
-  -> validate prepared candidate readiness
-  -> apply RenderPathNodeContext sort policy
-  -> merge contiguous prepared candidates with the same batch signature
-  -> return RenderBatchAnalysis
-```
-
-073e 的 node policy 可以为了 batch locality 排序/聚合，因为 opaque material types 不以 per-draw depth order 作为语义约束。
-
-### R5: Diagnostics And Stats
-
-`RenderBatchAnalysis` SHALL 保证：
-
-- 每个 input draw 要么被 preparation 拒绝并带 diagnostic，要么生成 prepared candidate；每个 prepared candidate 要么被一个 batch 覆盖，要么有一个 diagnostic。
-- 没有 draw 被静默跳过。
-- diagnostics 至少包含 input draw index、pass/node context、object data signature、material type signature、material/source identity、prepared mesh/draw/material index/range when available、derived PipelineKey when available、split/rejection reason。
-- stats 至少包含 input draw count、prepared candidate count、batch count、draw count、indirect-capable draw count、unsupported draw count、legacy-rejected draw count、fallback-observed count。
-- positive validation 中 `fallback-observed == 0`。
-
-合法 split/rejection reason 词表：
-
-- `object-data-signature-mismatch`
-- `material-type-signature-mismatch`
-- `source-material-ref-unresolved`
-- `object-draw-record-unresolved`
-- `invalid-source-material-ref`
-- `invalid-draw-record`
-- `missing-mesh-range`
-- `invalid-mesh-range`
-- `zero-index-count`
-- `zero-instance-count`
-- `global-geometry-table-missing`
-- `backend-indirect-unsupported`
-- `legacy-input-rejected`
-
-不得把 `descriptor-resource-mismatch`、`vertex-layout-mismatch`、`topology-mismatch`、`target-mismatch`、`geometry-buffer-mismatch` 作为 realtime geometry 的永久 split reason。`DescriptorResourceList` equality 是旧实现审计项，不是需求模型。
-
-### R6: Backend Batch Consumption Hard Cut
-
-Vulkan realtime geometry 默认路径 SHALL 消费 `RenderBatchAnalysis.batches` 并提交 indirect draw。backend 不能只旁路生成 analysis 做 diagnostics，然后渲染时继续走旧 draw payload。
+`FramePass` SHALL 保存 RenderPathGraph pass metadata 和 `RenderPassInputContract input`。FrameGraph compile 负责 pass ordering/resource vocabulary；work generation 发生在 `RenderWorkCompiler` 中。
 
 要求：
 
-- empty queue 正常返回。
-- rejected analysis 输出首个 diagnostic，并保留完整 stats。
-- successful analysis 只从 accepted batches 记录 indirect draw commands。
-- backend command recording 不得重新读取 `RenderDrawInput`、旧 `RenderWorkItem` 或 per-item raster payload 来提交 material-source geometry。
-- backend command recording 不得重新做一套可能与 `RenderBatchCompiler` 漂移的 compatibility grouping。
-- old direct/per-item geometry submission 不得作为 material-source geometry 的 fallback success path。
-- 如果低层 direct draw helper 因 debug/fullscreen/test-only 保留，必须命名为非默认路径，且 rg audit 中列出 allowlist。
-- submission observability 至少暴露 compiler batch count consumed、submitted indirect batch count、submitted indirect draw count，以及 first/last indirect command range 或等价 batch coverage identity。
+- pass identity、stage、dispatch、shader URI、sources/targets、render state 和 input contract 保持在 `FramePass`。
+- graph builder 不创建旧 queue owner，不按 pass name 或 shader path 注入 work。
+- `FramePass` 只描述 contract；typed GPU table index 由 compiler/preparation 从 scene/resource facts 派生。
+
+### R3: Typed RenderInput Payloads
+
+`RenderWorkCompiler::buildInputs()` SHALL 从 compiled FrameGraph、scene renderables、resource table upload view 和 pass input contract 生成 typed payload：
+
+- `RenderDrawInput` 表示 object/mesh/material/submesh/render class 等 handle/ref-level draw facts。
+- `RenderComputeInput` 表示 compute pass 的 shader/dispatch/domain payload facts。
+- fullscreen/debug 输入也必须通过 typed `RenderInput` family 表达。
+
+上游不得手写 typed GPU table index，也不得把旧 work item 字段搬运成新输入。
+
+### R4: RenderInputDesc Preparation
+
+`RenderWorkCompiler::prepare()` SHALL 把 typed inputs 解析为 `RenderInputDesc[]`：
+
+```text
+RenderPathGraph input
+  -> FramePass input contract
+  -> RenderWorkCompiler::buildInputs()
+  -> RenderInput[] payloads
+  -> RenderWorkCompiler::prepare()
+  -> RenderInputDesc[] validation/pipeline/binding facts
+```
+
+每个 desc 至少表达：
+
+- accepted / rejected status。
+- `inputIndex`、input identity 和 pass identity。
+- pipeline build desc 或 rejection diagnostic。
+- binding plan 和 resource dependencies。
+- validation / pipeline / binding / dependency / diagnostic / stats facts。
+- `RenderInputStats` 聚合字段，包括 `compilerInputCount`、`acceptedInputCount`、`rejectedInputCount`、`submittedDrawCount`、`submittedDispatchCount`、`fallbackObservedCount`。
+
+draw / dispatch execution data stays on the typed `RenderInput` (`RenderDrawInput` or `RenderComputeInput`); `RenderInputDesc` points back to it by `inputIndex`.
+
+### R5: Diagnostics And Stats
+
+`RenderInputDesc` SHALL 保证每个 input 有明确结果：要么 accepted 并进入 backend coverage，要么 rejected 并有 diagnostic。不得把缺 mesh、缺 material、zero count、unsupported resource 或 legacy input 当作成功。
+
+diagnostics 至少包含 pass id、input index、input kind、material/source/object identity、可用的 table/range facts、pipeline key when available、split/rejection reason。
+
+positive validation 中 `fallbackObservedCount == 0`。
+
+### R6: Backend Consumption Hard Cut
+
+Vulkan realtime geometry 默认路径 SHALL 消费 accepted `RenderInputDesc` 中的 pipeline/upload/execute facts。
+
+要求：
+
+- empty input 正常返回。
+- rejected desc 输出 diagnostic，并保留 stats。
+- successful desc 记录 submitted draw/dispatch coverage。
+- backend command recording 不从 raw draw inputs 重新做一套 compatibility grouping。
+- backend command recording 不恢复旧 per-item geometry fallback。
+- submission observability 至少暴露 compiler input count、accepted/rejected count、submitted draw/dispatch count 和 fallback observation。
 
 ### R7: Duplicate Concept Hard Cut
 
-本 REQ 完成时 SHALL 不存在第二套可成功提交 realtime geometry 的 batch/submission 概念。
-
-必须删除或命名隔离：
-
-- old union-like `RenderWorkItem` geometry routing。
-- `RenderWorkKind` / `.kind` / `RasterDraw` / `RasterBatch` 作为 geometry batch 概念。
-- `OpaqueBatch*`、`OpaqueGeometry*`、`OpaqueIndirect*` 等 opaque-only 并行类。
-- `DescriptorResourceList` equality 作为 batch compatibility。
-- target/attachment/topology/vertex layout/geometry buffer identity 作为 per-draw split key。
-- direct/per-item geometry submission fallback。
+本 REQ 完成后，production code 不得保留第二套可成功提交 realtime geometry 的旧 work 模型。旧 queue/item/batch public 类型、旧 direct/per-item material-source geometry fallback、queue-derived pipeline preload 和旧 batch stats 都已由 `REQ-073-e2` 删除；后续扩展必须直接扩展 `RenderWorkCompiler` / `RenderInputDesc`。
 
 ### R8: Helmet Opaque Smoke
 
 Helmet realtime smoke SHALL 验证：
 
 - converted Helmet scene loads through Material v3 source contract。
-- opaque RenderPathGraph path is used。
+- opaque RenderPathGraph input path is used。
 - final source-variant shader reflection is used。
-- prepared draw candidates enter `RenderBatchCompiler`。
-- Vulkan backend records indirect draw submission from the compiler-produced batch analysis。
+- `RenderWorkCompiler` produces accepted desc for the scene-renderable path。
+- Vulkan backend records submission from compiler-produced `RenderInputDesc`。
 - output non-black。
-- `fallback-observed == 0`。
-- no skipped draw is treated as success。
+- `fallbackObservedCount == 0`。
+- no skipped input is treated as success。
 
 ## 测试
 
-### T1: Batch Compiler Characterization
+### T1: Input Contract Tests
 
-新增 failing tests：
+测试覆盖：
 
-- current descriptor-resource equality split 被证明为旧行为。
-- `RenderWorkKind` / `.kind` / `RasterDraw` / `RasterBatch` 不属于 geometry batch contract。
-- current bindless object data signature 是单一稳定值，参与 batch signature。
-- old mesh-derived `objectSignature` 从 production batching path 删除；如需保留，只能出现在 named negative audit。
-- 不同 vertex buffer、topology、target/attachment 或 geometry buffer identity 不能成为永久 split key。
-- zero index/instance、unresolved source material ref、unresolved draw record、invalid prepared material/draw/mesh index/range 输出 diagnostic。
-- 每个 input draw 要么 preparation diagnostic，要么生成 prepared candidate；每个 prepared candidate 都 covered or diagnosed。
+- `scene-renderables` input schema 被解析进 `RenderPassInputContract`。
+- `fullscreen-triangle` input 不要求 scene material/geometry。
+- `input.object.renderClass` 过滤只接收匹配对象。
+- `material.required: false` debug mesh path 不恢复旧 fallback。
+- legacy top-level `filters` / `geometry` 在 strict profile 下失败。
 
-### T2: Same Signature Batching
+### T2: RenderWorkCompiler Tests
 
-构造同 object data signature、同 material type signature、不同材质参数值和 texture slot 的多个 draw，断言进入同一 batch。
+构造同 object/material type contract 的多个 draw，断言进入 accepted `RenderInputDesc`，并记录 pipeline/build/binding facts。
 
-### T3: Split Diagnostics
+### T3: Rejection Diagnostics
 
-构造 object data signature mismatch、material type signature mismatch 和 invalid table/range data，断言 exact reason 和 input/prepared identity。
+构造 unresolved material、unresolved draw record、invalid mesh/range、zero count 和 unsupported input，断言 exact reason、input identity 和 rejected count。
 
-### T4: Backend Indirect Submission
+### T4: Backend Submission Tests
 
-运行 Vulkan focused test 或 smoke harness，断言 realtime geometry 使用 compiler-produced `RenderBatchAnalysis.batches` 提交 indirect draw，而不是 direct/per-item draw submission。测试必须在 backend 忽略 `RenderBatchAnalysis.batches`、提交旧 per-item raster payload，或从 raw draw inputs 重新分组时失败。
+运行 Vulkan focused test 或 smoke harness，断言 realtime geometry 使用 compiler-produced `RenderInputDesc` 提交，而不是从 raw draw inputs 或旧 per-item submission path 重新提交。
 
 ### T5: Helmet Smoke
 
-运行低分辨率 Helmet realtime smoke，断言非黑图、batch/draw/pipeline stats、backend consumed batch count、submitted indirect batch/draw count、indirect-capable draw count、`fallback-observed == 0`。
+运行低分辨率 Helmet realtime smoke，断言非黑图、`renderInputStats`、submitted draw/pipeline stats、`fallbackObservedCount == 0`。
 
-### T6: rg Hard Cut Audit
+### T6: Hard Cut Audit
 
-实现完成报告必须包含以下 rg 审计。命令可以按文件范围拆分，但普通 production / positive test hit 必须为 0；任何剩余 hit 必须是 named negative audit 或非 geometry debug/compute allowlist。
-
-```bash
-rg -n "OpaqueBatch|OpaqueGeometry|OpaqueIndirect" src/core src/backend src/test
-rg -n "RenderWorkKind|RasterDraw|RasterBatch|\\.kind\\b" src/core src/backend src/test
-rg -n "DescriptorResourceList|sameDescriptorResources|descriptor-resource-mismatch" src/core src/backend src/test
-rg -n "vertex-layout-mismatch|topology-mismatch|target-mismatch|geometry-buffer-mismatch" src/core src/backend src/test
-rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
-```
+完成报告必须包含旧 production token zero-hit 审计。旧 token 只能在明确历史文档中出现，不能在 `src` / `assets` 中作为 active path 出现。
 
 ## 修改范围
 
-- `src/core/frame_graph/render_queue.*`
-- `src/core/frame_graph/render_validation_contract.*`
-- new or renamed queue-owned node data / batch analysis types
-- `src/core/pipeline/pipeline_build_desc.*`
-- `src/core/scene/scene_resource_table*`
-- `src/core/scene/scene_gpu_records.*`
-- Vulkan realtime submission / descriptor binding path consuming `REQ-073-b` tables
-- validation diagnostics and tests
-- Helmet realtime smoke harness
-- legacy input rejection audit from `REQ-073-d` handoff
+- RenderPathGraph input parser / pass schema tests。
+- `src/core/frame_graph/render_work_compiler.*`。
+- `src/core/frame_graph/render_validation_contract.*`。
+- `src/core/pipeline/pipeline_build_desc.*`。
+- scene resource table upload view consumption。
+- Vulkan realtime submission / descriptor binding path。
+- validation diagnostics and tests。
+- Helmet realtime smoke harness。
 
 ## 边界与约束
 
-- 不写按 material source/type 的 shader runtime branch。
+- 不写按 material source/type 的 runtime shader branch。
 - 不直接比较 material instance identity 或 per-instance material data 来拆 pipeline 或 batch；draw/material table index 负责选择具体参数和资源。
-- 不用旧 `MaterialUBO`、`SceneGpuMaterialRecord` PBR truth 或 per-material descriptor 证明 indirect path 成功。
-- 不使用 `techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧 shader source tree 作为正向 batching 输入。
+- 不用旧 `MaterialUBO`、旧 PBR payload 或 per-material descriptor 证明 RenderInput path 成功。
+- 不使用 `techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧 shader source tree 作为正向输入。
 - 不保留两个可通过的 realtime geometry 默认入口。
 - 不用 path/name substring 选择 strictness；strictness 来自 validation profile/property。
 
@@ -275,13 +227,21 @@ rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
 - `REQ-073-b`: bindless-ready material/object/draw/mesh tables and backend table/staging foundation。
 - `REQ-073-c`: material source shader variant 和 final shader reflection。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
-- `REQ-074-d`: package serialization / restore may produce an equivalent resource table, but 073e only consumes the resulting `SceneResourceTableUploadView` and does not branch on package origin。
+- `REQ-073-e2`: `FramePass` / `RenderWorkCompiler` / `RenderInput` / `RenderInputDesc` 单轨模型。
 
 ## 后续工作
 
-- OfflineRT RenderPathGraph compute path。
-- Additional non-opaque material/pass batching policies on the same generic compiler model。
+- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- Additional non-opaque material/pass policies on the same compiler model。
 
 ## 实施状态
 
-未实施。当前代码仍是 `RenderWorkItem` / `RenderIndirectBatch` / `compileIndirectBatches()` 过渡路径，backend 仍从 compiler 输出反向拼回旧 work item 后提交；这些都是本 REQ 的待硬切内容。
+已由 `REQ-073-e2` 单轨 hard cut 承接底层实现；Task 9 文档复审修正后，本文只作为 realtime opaque batching 和 diagnostics 的需求背景保留。
+
+当前代码事实：
+
+- realtime geometry、fullscreen pass 和 offline compute 都通过 `RenderWorkCompiler::buildInputs()` / `prepare()` 产出 typed input 与 `RenderInputDesc`。
+- Vulkan realtime metadata 使用 `renderInputStats`，Helmet smoke 验证 `fallbackObservedCount == 0`。
+- 旧 public queue/item/batch 类型、旧 batch stats 和 queue-derived pipeline preload 不再是当前代码路径。
+
+若后续继续扩展非 opaque policy，应直接扩展 `RenderWorkCompiler` / `RenderInputDesc` 字段与 diagnostics，而不是恢复旧 public work 或 batch/result 层。

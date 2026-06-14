@@ -4,7 +4,7 @@
 
 ## 背景
 
-当前代码已经具备 RenderPathGraph / RenderFeature 解析、SceneResourceTable、typed handle、upload view、source-local material record 等基础。实时渲染路径仍主要围绕 mesh、surface material、draw item 和图形 pass 组织。
+当前代码已经具备 RenderPathGraph / RenderFeature 解析、SceneResourceTable、typed handle、upload view、source-local material record，以及 `FramePass` input contract -> `RenderWorkCompiler` -> typed `RenderInput[]` / `RenderInputDesc[]` 的主线。实时渲染路径目前仍主要覆盖 mesh、surface material 和图形 pass；非 mesh renderable 还缺少自己的 input contract、typed input family 和 backend dispatch 事实。
 
 3DGS 这类结构不是 triangle mesh，也不是基于 BSDF 的 surface material。它需要独立的资源类型、上传视图、pass 声明、backend dispatch 和诊断规则；同时又应该继续复用 RenderPathGraph 的 pass 依赖、effect/feature 管理、material source contract 和 frame graph 边界。
 
@@ -15,7 +15,7 @@
 1. 定义非 mesh renderable 在 RenderPathGraph 中的声明方式。
 2. 让 SceneResourceTable 能表达 Gaussian splat / point-cloud-like 资源，而不是伪装成 Mesh。
 3. 明确 SurfaceMaterial 与 Effect / RenderFeature 的职责边界。
-4. 让 RenderWorkQueue / backend dispatch 能路由非 mesh work item。
+4. 让 RenderPathGraph input contract / FramePass pass contract / `RenderWorkCompiler` / backend dispatch 能路由非 mesh typed input。
 5. 给 `REQ-077-a` 到 `REQ-077-e` 提供可执行的前置契约和验证点。
 
 ## 需求
@@ -66,13 +66,15 @@ SurfaceMaterial 继续表达 BSDF、surface shading 和 material instance。非 
 - effect-owned 参数需要可序列化、可验证，并能被 pass 编译阶段读取。
 - `MaterialShaderSource` 仍只服务 material source contract；非 mesh shader source 使用显式 effect/source contract。
 
-### R5: RenderWorkQueue and backend dispatch
+### R5: RenderInput Compiler And Backend Dispatch
 
-RenderWorkQueue 支持非 mesh work item。
+非 mesh renderable SHALL 通过 RenderPathGraph input contract 和 FramePass pass contract 进入 `RenderWorkCompiler`，再生成 typed `RenderInput` 与 `RenderInputDesc` facts。首版可以新增 non-mesh typed input，也可以使用 compute/draw domain input；不能恢复旧 queue/item 概念。
 
 要求：
 
-- work item 显式携带 primitive type、resource handle、effect/pass identity 和 dispatch mode。
+- typed input 显式携带 primitive type、resource handle、effect/pass identity 和 dispatch mode。
+- `RenderInputDesc` 只保存 validation、pipeline、binding、resource dependency、diagnostic 和 stats facts，并通过 `inputIndex` 指向 typed input。
+- backend dispatch 消费 typed input + desc facts；它不能从 desc 反推出非 mesh execution payload。
 - backend 可以选择 graphics、compute 或 future ray tracing dispatch。
 - 不通过创建 fake mesh、fake material instance 或 dummy vertex buffer 来复用 mesh path。
 - Vulkan backend 的未实现路径必须 fail fast，并返回可定位诊断。
@@ -109,7 +111,7 @@ RenderWorkQueue 支持非 mesh work item。
 - `src/backend/vulkan/`
 - RenderPathGraph / RenderFeature parser
 - SceneResourceTable / upload view
-- RenderWorkQueue / FrameGraph bridge
+- RenderPathGraph input contract / FramePass pass contract / RenderWorkCompiler bridge
 - tests / diagnostics
 
 ## 边界与约束
@@ -125,7 +127,7 @@ RenderWorkQueue 支持非 mesh work item。
 - RenderPathGraph parser 能接受一个 mock non-mesh pass。
 - 资源类型不匹配时返回明确诊断。
 - SceneResourceTable 能注册 mock non-mesh resource 并生成 upload view。
-- RenderWorkQueue 能生成 non-mesh work item。
+- RenderWorkCompiler 能从 non-mesh input contract 生成 typed input 和 desc facts。
 - backend unsupported dispatch 能 fail fast。
 - mesh_surface path 回归测试不变。
 
@@ -149,4 +151,4 @@ RenderWorkQueue 支持非 mesh work item。
 
 ## 实施状态
 
-2026-06-14 重排后状态：保留 active，作为 `REQ-077-*` 的架构前置。当前代码已有 RenderPathGraph、RenderFeature、SceneResourceTable 和 material/effect 基础，但非 mesh primitive contract、resource taxonomy、work item routing 和 backend dispatch 边界尚未完成。
+2026-06-14 重排后状态：保留 active，作为 `REQ-077-*` 的架构前置。当前代码已有 RenderPathGraph、RenderFeature、SceneResourceTable、material/effect 基础和 RenderWorkCompiler 单轨模型，但非 mesh primitive contract、resource taxonomy、typed input routing 和 backend dispatch 边界尚未完成。

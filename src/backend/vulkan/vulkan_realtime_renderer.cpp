@@ -1483,7 +1483,7 @@ public:
     resourceManager().collectGarbage();
 
     // Explicit pipeline preparation happens only after scene resources,
-    // material source variants, render work queues, upload resources, and final
+    // material source variants, render inputs, upload resources, and final
     // shader reflection are ready. Future pipeline cache package loading
     // belongs inside this phase and must validate the same PipelineBuildDesc
     // identities.

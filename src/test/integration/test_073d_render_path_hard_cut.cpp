@@ -395,7 +395,8 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
         body.find("attachFrameGraphSampledResources()");
     const auto staleUploadSyncPos =
         body.find("syncRenderUploadPlan(pass.queue)");
-    const auto uploadSyncPos = body.find("syncRenderUploadPlan(queue)");
+    const auto uploadSyncPos =
+        body.find("syncCompiledFramePassUploadPlans()");
     const auto collectGarbagePos =
         body.find("resourceManager().collectGarbage();");
     const auto prepareCallPos = body.find("preparePipelinesForLoadedScene();");
@@ -410,7 +411,7 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
                "queues");
     EXPECT(uploadSyncPos != std::string_view::npos,
            rendererLabel +
-               " initScene must sync external render work queues before "
+               " initScene must sync compiled pass upload plans before "
                "preparation");
     EXPECT(collectGarbagePos != std::string_view::npos,
            rendererLabel +
@@ -441,30 +442,39 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
     const std::string_view body = *prepareFunctionBody;
     const auto staleCollectDescsPos =
         body.find("m_frameGraph.collectAllPipelineBuildDescs()");
-    const auto queueCollectDescsPos =
+    const auto staleQueueCollectDescsPos =
         body.find("queue.collectUniquePipelineBuildDescs()");
-    const auto queueStoragePos = body.find("m_framePassQueues");
+    const auto staleQueueStoragePos = body.find("m_framePassQueues");
+    const auto prepareInputsPos = body.find("prepareRenderPassInputs(");
+    const auto descCollectPos =
+        body.find("appendPipelineDesc(desc.pipelineBuildDesc)");
     const auto preloadPipelinesPos =
         body.find("resourceManager().preloadPipelines(pipelineDescs)");
     EXPECT(staleCollectDescsPos == std::string_view::npos,
            rendererLabel +
                " preparePipelinesForLoadedScene() must not collect pipeline "
                "descs from FrameGraph");
-    EXPECT(queueStoragePos != std::string_view::npos &&
-               queueCollectDescsPos != std::string_view::npos,
+    EXPECT(staleQueueStoragePos == std::string_view::npos &&
+               staleQueueCollectDescsPos == std::string_view::npos,
+           rendererLabel +
+               " preparePipelinesForLoadedScene() must not collect pipeline "
+               "descs from render work queues");
+    EXPECT(prepareInputsPos != std::string_view::npos &&
+               descCollectPos != std::string_view::npos,
            rendererLabel +
                " preparePipelinesForLoadedScene() must collect "
-               "PipelineBuildDesc values from external render work queues");
+               "PipelineBuildDesc values from RenderInputDesc preparation");
     EXPECT(preloadPipelinesPos != std::string_view::npos,
            rendererLabel +
                " preparePipelinesForLoadedScene() must preload collected "
                "pipeline descriptions");
-    if (queueCollectDescsPos != std::string_view::npos &&
+    if (descCollectPos != std::string_view::npos &&
         preloadPipelinesPos != std::string_view::npos) {
-      EXPECT(queueCollectDescsPos < preloadPipelinesPos,
+      EXPECT(descCollectPos < preloadPipelinesPos,
              rendererLabel +
-                 " preparePipelinesForLoadedScene() must collect external "
-                 "queue PipelineBuildDesc values before preloading pipelines");
+                 " preparePipelinesForLoadedScene() must collect "
+                 "RenderInputDesc PipelineBuildDesc values before preloading "
+                 "pipelines");
     }
   }
 }

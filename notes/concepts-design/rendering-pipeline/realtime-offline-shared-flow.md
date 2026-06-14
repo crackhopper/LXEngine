@@ -1,134 +1,95 @@
-# Realtime 与 Offline：同一条 RenderWork 流水线
+# Realtime 与 Offline：共享同一条 compiler 主线
 
-Realtime viewport 和 offline renderer 可以先想成同一座工厂里的两种工位：实时工位接着窗口和 swapchain，追求每帧快速交付；离线工位接着 headless device 和 readback buffer，追求可复现输出。两者加工的工单格式一致，都是 `FrameGraph` 里的 `RenderWorkQueue` 和 `RenderWorkItem`。
-
-这页描述当前代码已经收敛后的共同路径。我们不把 offline 当成绕过 realtime 的轻薄封装，也不让 realtime 独占 FrameGraph；两者都先把场景事实变成 pass 内的 work item，再交给 Vulkan backend 的统一 pipeline / descriptor / command buffer 路径执行。
-
-## 共同的工单从 RenderWorkBuildContext 开始
-
-`RenderWorkBuildContext` 是这条流水线的入口参数。它像一张工单封面：告诉 `FrameGraph` 这次构建属于哪个 domain，并携带该 domain 需要的源数据。
-
-| 对象 | 当前职责 | 工厂类比 |
-|---|---|---|
-| `RenderWorkBuildContext` | 区分 `Realtime` / `Offline`，携带 scene 或 offline job | 工单封面 |
-| `FrameGraph` | 按 `FramePass` 顺序调用每个 queue 的 `build`，并校验 read/write | 排程表 |
-| `RenderWorkQueue` | 在单个 pass 内生成、排序、去重 `RenderWorkItem` | 工位任务箱 |
-| `RenderWorkItem` | 一次 pipeline work 的最小稳定记录 | 可执行工单 |
-| `PipelineBuildDesc` | 从 work item 派生 backend 创建 pipeline 所需输入 | 机器配置单 |
-| `RenderUploadPlan` | 从 queue 收集本 pass 需要同步的 `IGpuResource` | 备料清单 |
-
-当前共同调用形状是：
+Realtime viewport 和 offline renderer 可以先想成同一座工厂里的两种工位：实时工位接着窗口和 swapchain，追求每帧快速交付；离线工位接着 headless device 和 readback buffer，追求可复现输出。当前代码让两者共享同一条 post-FramePass 主线：`RenderWorkCompiler` 生成 typed input，再由 `RenderInputDesc` 驱动 pipeline、upload 和 command recording。
 
 ```text
-FrameGraph graph = ...;
-graph.build(RenderWorkBuildContext::realtime(scene));
-graph.compile();
-resourceManager.preloadPipelines(graph.collectAllPipelineBuildDescs());
-
-// offline 使用同一组调用，只是 context 换成 offline job + compute shader
-graph.build(RenderWorkBuildContext::offline(job, createOfflinePrimaryRayShader()));
-graph.compile();
-resourceManager.preloadPipelines(graph.collectAllPipelineBuildDescs());
+FramePass input contract
+  -> RenderWorkCompiler::buildInputs()
+  -> RenderInput[] payloads
+  -> RenderWorkCompiler::prepare()
+  -> RenderInputDesc[] facts
+  -> validatePreparedRenderInputs(descs)
+  -> buildRenderUploadPlan(inputs, descs)
+  -> VulkanResourceManager::getOrCreatePipeline(desc)
+  -> command buffer executes typed input with desc facts
 ```
 
-这个形状让我们读代码时先看共同主干，再看 domain 特化。新增 pass、target-aware pipeline identity、pipeline preload 这些能力只要接在 `FrameGraph` / `RenderWorkQueue` / `PipelineBuildDesc` 上，就会同时被两个入口看见。
+这条主线不再区分“realtime queue”和“offline queue”。差异保留在 domain context 和 typed payload 里。
 
-## RenderWorkItem 表达一次 pipeline work
+## Realtime 从 RenderPathGraph 进入 FramePass
 
-`RenderWorkItem` 不限定为“一个物体的一次 draw”。它表达的是“一次 pipeline 执行所需的上下文”。在传统实时路径里，当前实现通常还是一个 renderable 产出一个 raster item；在 offline compute 路径里，一个 item 可以代表整个离线场景的一次 compute dispatch。
-
-| 字段组 | Realtime raster | Offline compute |
-|---|---|---|
-| `domain` | `RenderDomain::Realtime` | `RenderDomain::Offline` |
-| `kind` | `RasterDraw` 或 `RasterBatch` | `ComputeDispatch` |
-| `shaderInfo` | 材质 pass 的 graphics shader | `offline_primary_ray.comp` 包装成的 `IShader` |
-| `descriptorResources` | material resources + scene-level resources + IBL resources | `SceneResourceTable` 上传视图导出的 SSBO + output buffer |
-| `pipelineKey` | object signature + material signature + target signature | offline scene GPU data + offline compute shader + target signature |
-| 特化 payload | `raster.vertexBuffer`、`indexBuffer`、`drawData` | `compute.groupCountX/Y/Z` |
-
-这也是 `PipelineBuildDesc::fromRenderWorkItem(item)` 能同时处理 graphics 和 compute 的原因：它先看 `item.kind`，再填充 `PipelineBuildType::Graphics` 或 `PipelineBuildType::Compute`。
-
-## Realtime 在 queue 内筛选可见对象
-
-实时路径的 `RenderWorkBuildContext::realtime(scene)` 让 `RenderWorkQueue::build` 从 `Scene` 取数据。每个 pass 都按同一套规则收口：
-
-| 步骤 | 当前代码事实 |
-|---|---|
-| 取 scene-level resources | `Scene::getSceneLevelResources(pass, target)` 按 pass 和 target 过滤 camera/light |
-| 取可见性掩码 | `Scene::getCombinedCameraCullingMask(target)`，shadow pass 空掩码时使用全可见兜底 |
-| 过滤 renderable | `supportsPass(pass)`、visibility mask、`getValidatedPassData(pass)` |
-| 生成 work item | 从 `ValidatedRenderablePassData` 拷贝 shader、材质资源、几何资源和结构签名 |
-| 拼接资源 | material resources 在前，scene-level resources 和 IBL resources 追加在后 |
-| 排序 | 按 `pipelineKey` stable sort，减少同 pass 内 pipeline 切换 |
-
-FrameGraph 不重新理解材质，也不替 SceneNode 做 validation。进入 queue 的 realtime 数据已经是 pass-level validation 之后的结构事实。
-
-## Offline 也走 FrameGraph，只是产出 compute work
-
-离线路径使用 `RenderWorkBuildContext::offline(job, shader)`。当 pass 是 `Pass_OfflineRayTrace` 时，`RenderWorkQueue` 会创建一个 `ComputeDispatch` item：
-
-| 输入 | 如何进入 work item |
-|---|---|
-| `OfflineRenderJob` | 提供输出尺寸、scene resource table 上传视图、软件 BVH 等离线任务数据 |
-| `createOfflinePrimaryRayShader()` | 把 `offline_primary_ray.comp` 包装成 `IShader`，并校验 SSBO descriptor 合同 |
-| `offline::buildOfflineSceneStorageResources(job)` | 生成 `SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams`、`OutputPixels` |
-| output size | 转成 8x8 local size 对应的 dispatch group count |
-
-这里的 BVH 仍然是当前 software-compute integrator 使用的自建 BVH。它不是重复数据路径，而是从统一 scene GPU 数据派生出的加速结构；后续硬件 RT 可以复用 scene GPU 记录，再在 backend 内构建 BLAS/TLAS/SBT。
-
-## Backend 用同一套 pipeline 和命令入口执行
-
-Vulkan backend 收到 work item 后，不再分成两套 pipeline cache。共同路径是：
+实时路径的结构入口是 `assets/render_paths/*.render-path.yaml`：
 
 ```text
-PipelineBuildDesc::fromRenderWorkItem(item)
-  -> VulkanResourceManager::preloadPipelines(descs)
-  -> PipelineCache::getOrCreatePipeline(desc, renderPass)
-  -> VulkanPipelineRef
-  -> VulkanCommandBuffer::bindPipeline(ref)
-  -> VulkanCommandBuffer::bindResources(resourceManager, ref, item)
-  -> VulkanCommandBuffer::executeWorkItem(item)
+RenderPathGraph input
+  -> RenderPassNode
+  -> FramePass input contract
+  -> RenderWorkCompiler
 ```
 
-| Vulkan 类型 | 当前职责 |
-|---|---|
-| `VulkanGraphicsPipeline` | graphics pipeline 的 Vulkan 对象和 layout |
-| `VulkanComputePipeline` | compute pipeline 的 Vulkan 对象和 layout |
-| `VulkanPipelineRef` | graphics / compute pipeline 的统一非拥有引用 |
-| `PipelineCache` | 按 `PipelineKey` 分别缓存 graphics 和 compute pipeline |
-| `VulkanResourceManager::getOrCreatePipeline(item)` | 从 work item 派生 build desc，并返回 `VulkanPipelineRef` |
-| `VulkanCommandBuffer` | 按 ref 的实际类型选择 bind point，再按 binding name 绑定 descriptor |
+Forward / Deferred graph 的 draw pass 使用 `input.kind: scene-renderables`。Compiler 会从 scene 里筛选 renderables，检查 material type、object render class、geometry contract 和 scene-level resources，然后生成 `RenderDrawInput[]`。
 
-`VulkanPipelineRef` 只是一层类型安全的引用并集。它不拥有 pipeline，也不隐藏 graphics/compute 的底层差异；它让执行层可以先共享流程，再在 `std::visit` 内做必要特化。
+PostProcess / Bloom / DeferredLighting 这类 fullscreen pass 使用 `input.kind: fullscreen-triangle`。Compiler 不遍历 scene，只生成一个内置 fullscreen draw input。
 
-## 两条入口的特化边界
+Vulkan realtime metadata 当前暴露 `renderInputStats`。关键字段包括 `compilerInputCount`、`acceptedInputCount`、`rejectedInputCount`、`submittedDrawCount`、`submittedDispatchCount` 和 `fallbackObservedCount`。
 
-共享主干不意味着两条入口完全相同。差异保留在真正有差异的地方：
+## Offline 当前使用 file-local OfflineCompute pass
 
-| 维度 | Realtime | Offline |
+当前 offline software-compute 还没有默认 OfflineRT RenderPathGraph asset。它使用 `src/core/offline/offline_render_work_graph.cpp` 里的 file-local `OfflineCompute` pass：
+
+```text
+OfflineRenderJob
+  -> createOfflineRenderFrameGraph()
+  -> FramePass { name = OfflineCompute, stage = compute, dispatch = compute,
+                 input.kind = compute-dispatch }
+  -> RenderWorkCompiler
+  -> RenderComputeInput
+  -> RenderInputDesc
+```
+
+`RenderWorkCompiler::buildInputs()` 在 offline domain 下根据 output width/height 生成 compute group count，并把 readback resource 设为 `OutputPixels`。`prepare()` 再通过 `OfflineRenderJob::offlineShader` 和 `offline::buildOfflineSceneStorageResources(job)` 准备 shader facts、descriptor resources、pipeline build desc 和 resource dependencies。
+
+这说明当前 offline 已经不走旧的 queue/item 路径，也不再通过 `Pass_OfflineRayTrace` token 选择 work。它仍然保留 `OfflineRenderJob::offlineShader` / provider 作为 shader side channel；把 shader URI、compute block、profile/output resource 完全迁到 OfflineRT graph asset，是 [REQ-073-g](../../requirements/073-g-offlinert-render-path-graph-compute-path.md) 的后续工作。
+
+## 共享的 backend 顺序
+
+Realtime raster、fullscreen raster 和 offline compute 进入 Vulkan backend 后，正向事实都来自 desc：
+
+| 阶段 | 当前输入 | 作用 |
 |---|---|---|
-| 输出 | swapchain / frame graph attachment / post process | storage buffer readback |
-| pass 内容 | shadow、forward、post、debug overlay 等 raster pass | 当前 `Pass_OfflineRayTrace` compute pass |
-| 上传节奏 | 每帧从 pass queue 构建 upload plan，并结合 dirty resource 同步 | 每个 offline pass 显式同步 queue 的 upload plan |
-| 命令范围 | render pass / framebuffer / viewport / scissor / draw indexed | compute dispatch，最后增加 shader-write 到 host-read barrier |
-| 资源形态 | UBO、texture、frame graph sampled attachment、vertex/index buffer | SSBO scene tables、software BVH、output pixel buffer |
-| 交付 | queue submit 后 present | queue submit 后 host readback |
+| validation | `RenderInputDesc[]` | `validatePreparedRenderInputs()` 校验 accepted desc、pipeline facts、binding/resource facts |
+| upload planning | `RenderInput[]` + `RenderInputDesc[]` | `buildRenderUploadPlan()` 从 accepted desc 和 typed input 收集资源 |
+| pipeline lookup | `RenderInputDesc` | `VulkanResourceManager::getOrCreatePipeline(desc)` 使用 `desc.pipelineBuildDesc` |
+| command recording | typed `RenderInput` + `RenderInputDesc` | draw input 记录 draw；compute input 记录 dispatch；desc 提供 pipeline/binding facts |
 
-这个边界让我们可以同时保持两点：共同概念一致，底层实现不假装相同。
+这样做的好处是，pipeline 创建不再从 raw input 反推，也不需要 queue-derived preload。一个 input 如果失败，会留下 rejected desc 和 diagnostic；它不会被当成“没有 work”悄悄跳过。
+
+## 两个入口仍保留的差异
+
+| 维度 | Realtime | Offline software-compute |
+|---|---|---|
+| 结构入口 | RenderPathGraph asset | file-local `OfflineCompute` FramePass |
+| domain context | `RenderWorkBuildContext::realtime(scene, options)` | `RenderWorkBuildContext::offline(job)` |
+| typed payload | `RenderDrawInput` 为主，fullscreen 也是 draw input | `RenderComputeInput` |
+| shader 来源 | pass shader URI + source variant / reflection facts | 当前 `OfflineRenderJob::offlineShader` / provider |
+| resource 来源 | scene renderables、material resources、scene camera/lights、frame graph sampled resources | `SceneResourceTable` upload view 派生的 offline storage resources 和 `OutputPixels` |
+| 输出 | swapchain / offscreen attachment | storage buffer readback |
+
+这些差异是 domain payload 的差异，不是第二套 work pipeline。后续 OfflineRT graph hard cut 应继续复用 `FramePass`、`RenderWorkCompiler`、`RenderComputeInput` 和 `RenderInputDesc`，而不是重新引入 offline-only compiler 或 queue。
 
 ## 当前边界
 
-| 已实现 | 当前边界 |
+| 已实现 | 后续边界 |
 |---|---|
-| Realtime/offline 都通过 `FrameGraph::build(context)` 生成 work queue | FrameGraph 仍按显式 pass 顺序，不做自动拓扑排序 |
-| `RenderWorkItem` 支持 raster / compute / 后续 RT work kind | 硬件 ray tracing pipeline 还没有实现 |
-| `PipelineCache` 同时缓存 graphics 和 compute pipeline | pipeline eviction / LRU 没有实现 |
-| Offline software-compute 使用统一 scene GPU 数据和自建 BVH | offline 多 pass 的更多材质/lighting pass 还需要继续扩展 |
-| backend 统一用 `VulkanPipelineRef` 绑定 pipeline 和 descriptor | realtime render pass / framebuffer 生命周期仍是 graphics 特化 |
+| Realtime RenderPathGraph pass 的 `input` 合同进入 `FramePass` | 更多非 opaque / transparent policy 仍由后续 REQ 扩展 |
+| `RenderWorkCompiler` 生成 scene-renderable draw、fullscreen draw 和 compute dispatch input | OfflineRT graph asset、compute block 和 shader URI hard cut 属于 `REQ-073-g` |
+| `RenderInputDesc` 驱动 validation、pipeline lookup、upload planning 和 command recording | async multi-queue / automatic barrier 属于 `REQ-078-a` |
+| realtime metadata 使用 `renderInputStats` | 更复杂的 package readiness / Helmet-BMW smoke 属于 `REQ-073-h` |
 
 ## 继续阅读
 
 - [FrameGraph：一帧的 Pass 排程表](framegraph.md)
-- [RenderWorkQueue：把 Scene 收敛成 Work 列表](render-queue.md)
-- [什么是 Pipeline](../../concepts/material/what-is-pipeline.md)
+- [RenderPathGraph：渲染路线说明书](render-path-graph.md)
+- [RenderWorkCompiler：FramePass 之后的唯一工单编译器](render-work-compiler.md)
+- [Render Target：Pass 的输出形状](render-target.md)
 - [Vulkan Backend](../../subsystems/vulkan-backend.md)

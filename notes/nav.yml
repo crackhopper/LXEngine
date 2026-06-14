@@ -99,13 +99,14 @@ nav:
           - concepts/engine-loop.md
       - 渲染管线:
           - 总览: concepts-design/rendering-pipeline/index.md
+          - RenderPathGraph: concepts-design/rendering-pipeline/render-path-graph.md
           - FrameGraph: concepts-design/rendering-pipeline/framegraph.md
+          - RenderWorkCompiler: concepts-design/rendering-pipeline/render-work-compiler.md
           - Realtime / Offline: concepts-design/rendering-pipeline/realtime-offline-shared-flow.md
           - Render Target: concepts-design/rendering-pipeline/render-target.md
           - Shadow Pass: concepts-design/rendering-pipeline/shadow-pass.md
           - Plane 与薄盒阴影: concepts-design/rendering-pipeline/plane-vs-thin-box-shadow.md
           - CSM: concepts-design/rendering-pipeline/cascaded-shadow-maps.md
-          - RenderWorkQueue: concepts-design/rendering-pipeline/render-queue.md
           - 3DGS PLY: concepts-design/rendering-pipeline/3dgs-ply-rendering.md
       - 编辑器系统:
           - 总览: design/editor-system/index.md

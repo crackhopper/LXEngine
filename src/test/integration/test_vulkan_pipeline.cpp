@@ -41,9 +41,6 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
-        *vertexBufferPtr, *indexBufferPtr);
-
     auto pipelineDesc =
         LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
             *vertexBufferPtr, *indexBufferPtr);

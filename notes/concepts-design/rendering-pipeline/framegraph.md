@@ -33,7 +33,10 @@ flowchart TD
 | `FramePass::target` | 这道 pass 的输出 attachment 形状 | 工位规格 |
 | `FramePass::reads` | 这道 pass 需要采样的前序 resource | 领用半成品 |
 | `FramePass::writes` | 这道 pass 写出的 resource | 产出半成品 |
-| `FramePass::queue` | 这道 pass 内的 draw item 列表 | 工序任务箱 |
+| `FramePass::input` | RenderPathGraph 给这道 pass 的输入合同，例如 scene renderables 或 fullscreen triangle | 来料规则 |
+| `RenderWorkCompiler` | 在 `FrameGraph::compile()` 之后，把 `FramePass` 合同编译成 `RenderInput[]` 和 `RenderInputDesc[]` | 工序派工员 |
+
+`FramePass` 当前不持有准备好的 draw / dispatch 工作列表。它只保存 pass contract 和 input contract；真正的 typed inputs 由 `RenderWorkCompiler::buildInputs()` 生成。validation / pipeline / binding facts 由 `RenderWorkCompiler::prepare()` 写入 `RenderInputDesc[]`。
 
 ## read/write 是 pass 之间的合同
 
@@ -80,6 +83,6 @@ graph.addPass(FramePass{Pass_Forward,
 ## 继续阅读
 
 - [Render Target：Pass 的输出形状](render-target.md)
-- [RenderWorkQueue：把 Scene 收敛成 Work 列表](render-queue.md)
+- [RenderWorkCompiler：FramePass 之后的唯一工单编译器](render-work-compiler.md)
 - [FrameGraph 源码分析](../../source_analysis/src/core/frame_graph/frame_graph.md)
 - [REQ-042-a](../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md)
