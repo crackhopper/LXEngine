@@ -55,6 +55,198 @@ This spec supersedes the older
 `docs/superpowers/specs/2026-06-03-unified-render-work-flow-design.md` model
 where `RenderWorkQueue` / `RenderWorkItem` were the intended shared flow.
 
+## Target Data Model
+
+The implementation must introduce the clean model below before replacing
+backend call sites. These are the target types for this requirement; old
+queue/item/batch diagnostic, analysis, and payload types are not part of the
+target model.
+
+```cpp
+enum class RenderPassInputKind {
+  SceneRenderables,
+  FullscreenTriangle,
+  ComputeDispatch,
+};
+
+struct RenderPassObjectInputFilter {
+  std::vector<std::string> renderClasses;
+};
+
+struct RenderPassMaterialInputFilter {
+  std::vector<std::string> types;
+  bool required = true;
+};
+
+struct RenderPassInputContract {
+  RenderPassInputKind kind = RenderPassInputKind::SceneRenderables;
+  RenderPassObjectInputFilter object;
+  RenderPassMaterialInputFilter material;
+  std::optional<RenderPathGeometryContract> geometry;
+};
+
+enum class RenderInputKind {
+  Draw,
+  Compute,
+};
+
+enum class RenderInputStatus {
+  Accepted,
+  Rejected,
+};
+
+enum class RenderDrawInputSource {
+  SceneRenderable,
+  FullscreenTriangle,
+};
+
+enum class RenderInputDiagnosticCode {
+  UnsupportedInputContract,
+  ObjectClassRejected,
+  MaterialRequired,
+  MaterialTypeRejected,
+  MissingMesh,
+  GeometryContractMismatch,
+  MissingShaderReflection,
+  MissingPipelineFacts,
+  MissingBinding,
+  MissingResource,
+  ZeroDrawCount,
+  BackendUnsupported,
+};
+
+struct RenderInputDiagnostic {
+  RenderInputDiagnosticCode code;
+  StringID pass;
+  StringID debugId;
+  std::string message;
+};
+
+struct RenderDrawCommand {
+  u32 indexCount = 0;
+  u32 instanceCount = 1;
+  u32 firstIndex = 0;
+  i32 vertexOffset = 0;
+  u32 firstInstance = 0;
+};
+
+struct RenderInput {
+  virtual ~RenderInput() = default;
+  [[nodiscard]] virtual RenderInputKind kind() const = 0;
+
+  StringID pass;
+  StringID debugId;
+  usize inputIndex = 0;
+};
+
+struct RenderDrawInput : RenderInput {
+  [[nodiscard]] RenderInputKind kind() const override {
+    return RenderInputKind::Draw;
+  }
+
+  RenderDrawInputSource source = RenderDrawInputSource::SceneRenderable;
+  ObjectHandle object;
+  MeshHandle mesh;
+  MaterialHandle material;
+  u32 primitiveIndex = u32_max;
+  Vec3f sortCenter{};
+  StringID objectDataSignature;
+  StringID materialTypeSignature;
+  std::vector<RenderDrawCommand> drawCommands;
+};
+
+struct RenderComputeInput : RenderInput {
+  [[nodiscard]] RenderInputKind kind() const override {
+    return RenderInputKind::Compute;
+  }
+
+  u32 groupCountX = 1;
+  u32 groupCountY = 1;
+  u32 groupCountZ = 1;
+  std::optional<StringID> readbackResource;
+};
+
+struct RenderInputBindingPlan {
+  std::vector<DescriptorResourceRef> descriptors;
+};
+
+struct RenderInputStats {
+  usize inputCount = 0;
+  usize acceptedInputCount = 0;
+  usize rejectedInputCount = 0;
+  usize submittedDrawCount = 0;
+  usize submittedDispatchCount = 0;
+  usize fallbackObservedCount = 0;
+};
+
+struct RenderInputDesc {
+  RenderInputStatus status = RenderInputStatus::Rejected;
+  usize inputIndex = 0;
+  StringID pass;
+  StringID debugId;
+  PipelineKey pipelineKey;
+  PipelineBuildDesc pipelineBuildDesc;
+  StringID shaderUri;
+  StringID shaderVariantKey;
+  StringID reflectionIdentity;
+  RenderInputBindingPlan bindingPlan;
+  std::vector<GpuResourceRef> resourceDependencies;
+  std::vector<RenderInputDiagnostic> diagnostics;
+  RenderInputStats stats;
+};
+```
+
+Allowed reused types include `ObjectHandle`, `MeshHandle`, `MaterialHandle`,
+`RenderPathGeometryContract`, `PipelineKey`, `PipelineBuildDesc`,
+`DescriptorResourceRef`, `GpuResourceRef`, and `RenderState`. They remain
+domain facts, not old work payloads.
+
+`RenderInput` owns execution payload. `RenderInputDesc` owns only validation,
+pipeline, binding, dependency, diagnostic, and stats facts. If a field is
+needed for command recording, it belongs on the typed input. If a field is
+needed for pipeline creation or descriptor binding, it belongs on the desc.
+
+### Explicit Hard-Cut Type List
+
+The following existing or transitional names are not allowed in production code
+after completion. They must be deleted, not renamed, wrapped, aliased, or kept
+as compiler internals:
+
+```text
+RenderWorkQueue
+RenderWorkItem
+RenderWorkKind
+DirectRasterWorkPayload
+ComputeDispatchWorkPayload
+DirectRasterPassPurpose
+RenderBatch
+RenderBatchAnalysis
+RenderBatchDiagnosticReason
+RenderBatchDiagnostic
+RenderBatchStats
+RenderBatchPipelineFacts
+RenderBatchGeometryResources
+RenderIndirectBatch
+PreparedRenderDrawCandidate
+RenderPathNodeContext
+RenderPathNodeData
+RenderInputAnalysis
+ComputeAnalysis
+OpaqueBatch
+OpaqueGeometry
+OpaqueIndirect
+OfflineCompiler
+OfflineWork
+VulkanRealtimeRenderBatchStats
+VulkanRenderBatchSubmissionStats
+```
+
+The behavior currently carried by these types must move into the target model:
+draw commands and dispatch payload live on typed `RenderInput`; validation
+diagnostics and stats live on `RenderInputDesc`; pipeline facts live on
+`RenderInputDesc.pipelineBuildDesc`; binding plans live on
+`RenderInputDesc.bindingPlan`.
+
 ## RenderPathGraph Input Schema
 
 Every raster `RenderPassNode` must declare `input`. Old top-level `filters` and
@@ -185,15 +377,16 @@ The hard cut removes old types, not working behavior.
 |---|---|
 | Scene traversal, visibility filtering, pass-local context assembly | `RenderWorkCompiler` scene-renderables input builder |
 | Current `RenderDrawInput` handle/ref data | `RenderDrawInput` under the `RenderInput` family |
-| Prepared draw candidate construction | raster compiler internals |
-| Batch sorting, merge policy, indirect command coverage, diagnostics, stats | raster compiler and accepted/rejected `RenderInputDesc` stats |
+| Prepared draw candidate construction | direct fields on `RenderDrawInput`; no named candidate type |
+| Sorting, merge policy, indirect command coverage, diagnostics, stats | `RenderWorkCompiler` logic, typed input payload, and accepted/rejected `RenderInputDesc` stats |
 | Direct helper fullscreen/post/debug/IBL work | typed raster inputs; fullscreen uses `input.kind: fullscreen-triangle` |
 | Compute dispatch group/readback/resource mapping | `RenderComputeInput` and compute desc preparation |
 | Pipeline derivation from work item or batch | desc preparation writes `RenderInputDesc.pipelineBuildDesc` |
 | Queue-derived upload collection | upload plan consumes desc binding/resource facts plus input payload resources |
 
-Internal helper structs may exist when file-local or parser-local, but no new
-public `RenderInputAnalysis`, `RenderBatchResult`, `FramePassCompiler`,
+Internal helper structs may exist when file-local or parser-local only if their
+names are not old work/batch names from the hard-cut list. No new public
+`RenderInputAnalysis`, `RenderBatchResult`, `FramePassCompiler`,
 `RenderSubmissionDesc`, `OpaqueBatch`, `OfflineCompiler`, or equivalent
 second-path concepts are allowed.
 
@@ -289,7 +482,7 @@ Implementation checkpoints remain inside one hard-cut spec:
 Final source/assets audit:
 
 ```bash
-rg -n "RenderWorkItem|RenderWorkKind|DirectRasterWorkPayload|ComputeDispatchWorkPayload|DirectRasterPassPurpose|RenderWorkQueue|RenderBatch\\b|RenderBatchAnalysis|RenderBatchDiagnostic|RenderBatchStats|RenderBatchPipelineFacts|RenderBatchGeometryResources|RenderIndirectBatch|compileIndirectBatches|executeRenderBatch|fromRenderBatch|getOrCreatePipeline\\(.*RenderWorkItem|getOrCreatePipeline\\(.*RenderBatch|fromRenderWorkItem|Pass_OfflineRayTrace|OfflinePrimaryRayCompute" src assets
+rg -n "RenderWorkItem|RenderWorkKind|DirectRasterWorkPayload|ComputeDispatchWorkPayload|DirectRasterPassPurpose|RenderWorkQueue|RenderBatch\\b|RenderBatchAnalysis|RenderBatchDiagnosticReason|RenderBatchDiagnostic|RenderBatchStats|RenderBatchPipelineFacts|RenderBatchGeometryResources|RenderIndirectBatch|PreparedRenderDrawCandidate|RenderPathNodeContext|RenderPathNodeData|compileIndirectBatches|executeRenderBatch|fromRenderBatch|getOrCreatePipeline\\(.*RenderWorkItem|getOrCreatePipeline\\(.*RenderBatch|fromRenderWorkItem|Pass_OfflineRayTrace|OfflinePrimaryRayCompute" src assets
 
 rg -n "RenderInputAnalysis|ComputeAnalysis|OpaqueBatch|OpaqueGeometry|OpaqueIndirect|Offline.*Compiler|Offline.*Work|compilerBatch|renderBatchStats|VulkanRealtimeRenderBatchStats|VulkanRenderBatchSubmissionStats" src assets
 ```
@@ -312,4 +505,3 @@ python3 src/test/integration/test_helmet_standard_pbr_realtime_smoke.py
 The completion report for implementation must include the negative tests or
 audits added, final old-token audit output, exact build/test/smoke commands run,
 and any explicitly named unsupported path with the owning follow-up REQ.
-
