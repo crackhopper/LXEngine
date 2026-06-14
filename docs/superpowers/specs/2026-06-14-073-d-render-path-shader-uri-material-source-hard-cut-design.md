@@ -19,6 +19,9 @@ migration to be meaningful:
   `techniques/Forward/pbr` material passes;
 - material-source passes must enter rendering through final source variant
   reflection, RenderPathNode signatures, and typed SceneResourceTable indices;
+- legacy implementation code, old shader source directories, old compatibility
+  aliases, and old positive tests are deleted instead of preserved as alternate
+  paths;
 - the pipeline preparation phase happens explicitly after scene resources and
   material source variants are complete.
 
@@ -67,6 +70,8 @@ This design includes:
   URI, and unsupported stage/shape;
 - removal or explicit rejection of runtime material-source pass injection that
   relies on old `techniques/Forward/pbr` shaders;
+- deletion of old shader source directories, resolver aliases, runtime helper
+  branches, and positive tests that existed only to support `techniques/...`;
 - strict preparation gates for default/migrated material-source passes;
 - an explicit post-load pipeline preparation phase;
 - tests and audits that keep ordinary positive fixtures off old technique
@@ -81,6 +86,10 @@ This design excludes:
   the 073-a/b/c material-source positive path;
 - OfflineRT RenderPathGraph compute entry migration;
 - pipeline cache package serialization or BC7 packaging.
+
+This exclusion does not permit keeping old realtime material-source code around
+as a named compatibility path. If a legacy branch, shader tree, alias, or test
+exists only for the old `techniques/...` route, this requirement deletes it.
 
 ## Architecture
 
@@ -103,9 +112,37 @@ The resolver must reject:
 - legacy aliases such as `techniques/Deferred/gbuffer`;
 - silent redirects from old URIs to new URIs.
 
+The old resolver code path is removed. Rejection is implemented as a current
+schema validation/error branch, not as a preserved compatibility resolver that
+first understands the old route and then redirects or adapts it.
+
 Root-level utility shaders may remain only when they are explicitly treated as
 non-material fullscreen/debug utility shaders. They must not be used as a
 material-source draw pass escape hatch.
+
+### Legacy Deletion Policy
+
+Old-path code and fixtures are not retained after migration. This applies to:
+
+- shader source directories under `assets/shaders/glsl/techniques/Forward/` and
+  `assets/shaders/glsl/techniques/Deferred/`;
+- generated or checked-in default realtime SPIR-V outputs under the same old
+  directories;
+- resolver aliases and helper branches that accept `techniques/...` as a
+  positive route;
+- runtime material helpers that compile or attach old `techniques/Forward/pbr`
+  passes;
+- tests whose purpose was to prove the old route worked.
+
+The only allowed mentions of old tokens after this requirement are:
+
+- the active requirement/design text;
+- narrowly named negative/audit tests that construct the old token inline and
+  assert rejection;
+- diagnostic message assertions for that rejection.
+
+Those negative tests must not preserve old shader files, old directories, old
+material assets, or reusable compatibility helpers.
 
 ### RenderPathGraph Assets
 
@@ -175,8 +212,10 @@ loaded scene preparation
   -> render submission
 ```
 
-`techniques/...` does not enter this flow. It may appear only in legacy negative
-fixtures, historical documents, or rejection diagnostics.
+`techniques/...` does not enter this flow. It may appear only in the active
+requirement/design text, narrowly named inline rejection/audit tests, or
+diagnostic assertions. No production code, default asset, shader source file, or
+ordinary positive test keeps the old route.
 
 ## Pipeline Preparation
 
@@ -302,8 +341,19 @@ Ordinary positive tests, default assets, and runtime default paths must not use:
 - material-local `techniques`;
 - old material pass-contract terminology as success fixtures.
 
-Only named legacy negative audits and historical requirement/design docs may
-mention old tokens.
+Delete old positive tests instead of converting them into compatibility tests.
+When old-token rejection still needs coverage, add a new narrow negative test
+with an inline fixture that asserts rejection.
+
+Run `rg` audits as part of the acceptance gate:
+
+- production/runtime roots must have zero old-token hits for
+  `techniques/Forward`, `techniques/Deferred`, `defaultTechnique`, and
+  material-local technique types;
+- `src/test` must have zero old-token hits except the named rejection/audit
+  tests;
+- any remaining hit outside historical docs and the active 073-d spec is either
+  deleted or explicitly justified as a new rejection diagnostic assertion.
 
 ### Build Gate
 
@@ -326,7 +376,11 @@ compiled through the material source variant route.
   reflection;
 - material-source passes fail on unresolved variants, missing typed indices, or
   legacy material bindings;
-- ordinary positive fixtures are migrated off old technique terminology.
+- old implementation code, old shader directories, old resolver aliases, and
+  old positive tests are deleted rather than preserved;
+- ordinary positive fixtures are migrated off old technique terminology;
+- `rg` audits show old tokens are absent from production code and ordinary
+  tests, with only the named negative/audit tests and documentation remaining.
 
 This leaves `REQ-073-f` with a cleaner job: prove the complete realtime default
 path with Helmet/BMW smoke and finish broad fallback cleanup without also
