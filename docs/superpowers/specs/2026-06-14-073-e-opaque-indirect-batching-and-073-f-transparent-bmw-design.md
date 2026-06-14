@@ -110,6 +110,35 @@ RenderPathGraph opaque node
   -> Vulkan indirect draw submission
 ```
 
+`OpaqueBatchCompiler` must not consume the old `RenderWorkItem` shape directly.
+Its input model is:
+
+```text
+OpaqueBatchContext
+  render path node/pass context
+  material signature resolver
+  global geometry table view
+  backend indirect capability
+
+OpaqueGeometryDrawCandidate[]
+  object/draw indices
+  mesh table range
+  material ref/source-local material indices
+  material pipeline signature
+  indirect draw counts and offsets
+```
+
+`target`, attachments, render-state defaults, and pass identity are context for
+the node that is currently being compiled. They are not fields copied onto each
+candidate for comparison. If a candidate builder only has object, mesh, and
+bound material facts, that is sufficient for batching once the material
+pipeline signature and mesh table range are resolved.
+
+If the current implementation only has per-mesh `GpuResourceRef` vertex/index
+buffers at this point, `073-e` must first register/resolve them into the global
+geometry table or reject the candidate with `global-geometry-table-missing`. It
+must not compare those resource identities to decide batch compatibility.
+
 ### Work Item Readiness
 
 An opaque geometry draw candidate is indirect-ready only when all facts needed
