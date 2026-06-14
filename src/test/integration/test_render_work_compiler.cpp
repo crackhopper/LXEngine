@@ -5,10 +5,13 @@
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/scene.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 using namespace LX_core;
 
@@ -36,6 +39,37 @@ concept HasGroupCounts = requires(T value) {
 
 template <typename T>
 concept HasReadbackResource = requires(T value) { value.readbackResource; };
+
+template <typename T>
+concept HasShaderProgram = requires(T value) { value.shaderProgram; };
+
+template <typename T>
+concept HasShaderInfo = requires(T value) { value.shaderInfo; };
+
+template <typename T>
+concept HasVertexLayout = requires(T value) { value.vertexLayout; };
+
+template <typename T>
+concept HasRenderState = requires(T value) { value.renderState; };
+
+template <typename T>
+concept HasTopology = requires(T value) { value.topology; };
+
+template <typename T>
+concept HasDescriptorResources = requires(T value) { value.descriptorResources; };
+
+ShaderResourceBinding makeUniformBinding(std::string name,
+                                         u32 binding = 0) {
+  return ShaderResourceBinding{std::move(name),
+                               0,
+                               binding,
+                               ShaderPropertyType::UniformBuffer,
+                               1,
+                               192,
+                               0,
+                               ShaderStage::Vertex,
+                               {}};
+}
 
 class MateriallessRenderable final : public IRenderable {
 public:
@@ -89,6 +123,199 @@ private:
   VertexBufferSharedPtr m_vertexBuffer;
   IndexBufferSharedPtr m_indexBuffer;
 };
+
+class FakeShader final : public IShader {
+public:
+  FakeShader(std::vector<ShaderResourceBinding> bindings,
+             std::vector<ShaderStageCode> stages,
+             std::vector<VertexInputAttribute> vertexInputs = {})
+      : m_bindings(std::move(bindings)), m_stages(std::move(stages)),
+        m_vertexInputs(std::move(vertexInputs)) {}
+
+  const std::vector<ShaderStageCode> &getAllStages() const override {
+    return m_stages;
+  }
+  const std::vector<ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return m_bindings;
+  }
+  const std::vector<VertexInputAttribute> &getVertexInputs() const override {
+    return m_vertexInputs;
+  }
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(u32, u32) const override {
+    return std::nullopt;
+  }
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(const std::string &) const override {
+    return std::nullopt;
+  }
+  usize getProgramHash() const override { return 0x1234u; }
+  std::string getShaderName() const override { return "validated_fake_shader"; }
+
+private:
+  std::vector<ShaderResourceBinding> m_bindings;
+  std::vector<ShaderStageCode> m_stages;
+  std::vector<VertexInputAttribute> m_vertexInputs;
+};
+
+class ValidatedRenderable final : public IRenderable {
+public:
+  explicit ValidatedRenderable(
+      StringID pass, std::string variantValue = "1",
+      std::string materialTypeSignatureName =
+          "validated.renderable.material.type",
+      std::string nodeName = "validated_renderable",
+      std::vector<ShaderResourceBinding> bindings = {})
+      : m_pass(pass), m_nodeName(std::move(nodeName)),
+        m_debugId(StringID("debug." + m_nodeName)) {
+    m_vertexBuffer = VertexBuffer<VertexPos>::create(
+        std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
+    m_indexBuffer =
+        IndexBuffer::create({0, 1, 2}, PrimitiveTopology::TriangleList);
+
+    m_bindings = std::move(bindings);
+    m_stages = {
+        ShaderStageCode{ShaderStage::Vertex,
+                        std::vector<u32>{0x07230203, 11}},
+        ShaderStageCode{ShaderStage::Fragment,
+                        std::vector<u32>{0x07230203, 12}},
+    };
+    m_shader = std::make_shared<FakeShader>(m_bindings, m_stages);
+    m_shaderProgram.shaderName = "validated_fake_shader";
+    m_shaderProgram.shader = m_shader;
+    m_shaderProgram.variants.push_back(ShaderVariant{
+        .macroName = "LX_TEST_VARIANT",
+        .enabled = true,
+        .macroValue = std::move(variantValue),
+    });
+
+    m_data.pass = m_pass;
+    m_data.shaderProgram = m_shaderProgram;
+    m_data.shaderInfo = m_shader;
+    m_data.vertexBuffer = GpuResourceRef{*m_vertexBuffer};
+    m_data.indexBuffer = GpuResourceRef{*m_indexBuffer};
+    m_data.renderState.cullMode = CullMode::Front;
+    m_data.renderState.depthTestEnable = false;
+    m_data.materialTypeSignature = StringID(std::move(materialTypeSignatureName));
+    m_data.materialTypeVariant = m_shaderProgram.getPipelineSignature();
+  }
+
+  const std::vector<ShaderStageCode> &stages() const { return m_stages; }
+  const std::vector<ShaderResourceBinding> &bindings() const {
+    return m_bindings;
+  }
+  const ShaderProgramSet &shaderProgram() const { return m_shaderProgram; }
+  const IShaderSharedPtr &shaderInfo() const { return m_shader; }
+  const VertexLayout &vertexLayout() const {
+    return m_vertexBuffer->getLayout();
+  }
+
+  GpuResourceRef getVertexBuffer() const override {
+    return GpuResourceRef{*m_vertexBuffer};
+  }
+  GpuResourceRef getIndexBuffer() const override {
+    return GpuResourceRef{*m_indexBuffer};
+  }
+  IShaderSharedPtr getShaderInfo() const override { return m_shader; }
+  StringID getPipelineSignature(StringID) const override {
+    return m_shaderProgram.getPipelineSignature();
+  }
+  bool supportsPass(StringID pass) const override { return pass == m_pass; }
+  VisibilityLayerMask getVisibilityLayerMask() const override {
+    return VisibilityMask_All;
+  }
+  std::string getNodeName() const override { return m_nodeName; }
+  StringID getDebugId() const override { return m_debugId; }
+
+  std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
+  getValidatedPassData(StringID pass) const override {
+    if (pass == m_pass) {
+      return std::cref(m_data);
+    }
+    return std::nullopt;
+  }
+
+private:
+  StringID m_pass;
+  std::string m_nodeName;
+  StringID m_debugId;
+  VertexBufferSharedPtr m_vertexBuffer;
+  IndexBufferSharedPtr m_indexBuffer;
+  std::vector<ShaderResourceBinding> m_bindings;
+  std::vector<ShaderStageCode> m_stages;
+  IShaderSharedPtr m_shader;
+  ShaderProgramSet m_shaderProgram;
+  ValidatedRenderablePassData m_data;
+};
+
+bool hasDiagnosticCode(const RenderInputDesc &desc,
+                       RenderInputDiagnosticCode code) {
+  return std::any_of(desc.diagnostics.begin(), desc.diagnostics.end(),
+                     [code](const RenderInputDiagnostic &diagnostic) {
+                       return diagnostic.code == code;
+                     });
+}
+
+bool hasFatalPipelineDiagnostic(const RenderInputDesc &desc) {
+  return hasDiagnosticCode(desc,
+                           RenderInputDiagnosticCode::MissingShaderReflection) ||
+         hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts);
+}
+
+bool hasDescriptorBindingName(const RenderInputDesc &desc,
+                              StringID bindingName) {
+  return std::any_of(desc.bindingPlan.descriptors.begin(),
+                     desc.bindingPlan.descriptors.end(),
+                     [bindingName](const DescriptorResourceRef &descriptor) {
+                       return descriptor.getBindingName() == bindingName;
+                     });
+}
+
+bool hasResourceDependencyBindingName(const RenderInputDesc &desc,
+                                      StringID bindingName) {
+  return std::any_of(desc.resourceDependencies.begin(),
+                     desc.resourceDependencies.end(),
+                     [bindingName](const GpuResourceRef &resource) {
+                       return resource.isValid() &&
+                              resource.getBindingName() == bindingName;
+                     });
+}
+
+void expectAcceptedDescHasBackendPipelineFacts(const RenderInputDesc &desc,
+                                               const char *context) {
+  EXPECT(desc.accepted(), context);
+  EXPECT(!hasFatalPipelineDiagnostic(desc),
+         "accepted desc must not carry fatal pipeline diagnostics");
+  EXPECT(desc.pipelineBuildDesc.key == desc.pipelineKey,
+         "accepted desc pipeline build key should match desc key");
+  EXPECT(desc.pipelineBuildDesc.key.id.id != 0,
+         "accepted desc should carry non-empty pipeline build key");
+  EXPECT(!desc.pipelineBuildDesc.stages.empty(),
+         "accepted desc should carry shader stages for backend build");
+}
+
+void testRenderInputPayloadDoesNotExposePipelineFacts() {
+  EXPECT(!HasShaderProgram<RenderDrawInput>,
+         "draw input should not expose shader program facts");
+  EXPECT(!HasShaderInfo<RenderDrawInput>,
+         "draw input should not expose shader reflection facts");
+  EXPECT(!HasVertexLayout<RenderDrawInput>,
+         "draw input should not expose pipeline vertex layout facts");
+  EXPECT(!HasRenderState<RenderDrawInput>,
+         "draw input should not expose render state pipeline facts");
+  EXPECT(!HasTopology<RenderDrawInput>,
+         "draw input should not expose topology pipeline facts");
+  EXPECT(!HasDescriptorResources<RenderDrawInput>,
+         "draw input should not expose descriptor binding facts");
+
+  EXPECT(!HasShaderProgram<RenderComputeInput>,
+         "compute input should not expose shader program facts");
+  EXPECT(!HasShaderInfo<RenderComputeInput>,
+         "compute input should not expose shader reflection facts");
+  EXPECT(!HasDescriptorResources<RenderComputeInput>,
+         "compute input should not expose descriptor binding facts");
+}
 
 void testDescReferencesInputWithoutOwningPayload() {
   RenderDrawInput input;
@@ -217,8 +444,17 @@ void testFullscreenTriangleBuildsOneInputAndDesc() {
   EXPECT(draw != nullptr, "fullscreen input should be a draw input");
   EXPECT(draw->source == RenderDrawInputSource::FullscreenTriangle,
          "draw input should identify fullscreen triangle source");
-  EXPECT(descs.size() == 1 && descs.front().accepted(),
-         "fullscreen input should prepare one accepted desc");
+  EXPECT(descs.size() == 1, "fullscreen input should prepare one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "fullscreen input without shader facts should be rejected");
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MissingShaderReflection),
+           "fullscreen rejection should report missing shader reflection");
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MissingPipelineFacts),
+           "fullscreen rejection should report missing pipeline facts");
+  }
 }
 
 void testPrepareReferencesInputWithoutCopyingDrawCommands() {
@@ -251,7 +487,7 @@ void testPrepareReferencesInputWithoutCopyingDrawCommands() {
          "prepared desc should not copy draw commands");
 }
 
-void testFullscreenDescStatsPipelineAndShaderFactsArePopulated() {
+void testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected() {
   FramePass pass;
   pass.name = StringID("PostProcess");
   pass.stage = RenderPassStage::Raster;
@@ -278,14 +514,261 @@ void testFullscreenDescStatsPipelineAndShaderFactsArePopulated() {
   EXPECT(desc.shaderUri == StringID("post_process"),
          "fullscreen desc should carry shader uri");
   EXPECT(desc.stats.inputCount == 1, "stats should count one input");
-  EXPECT(desc.stats.acceptedInputCount == 1,
-         "stats should count one accepted input");
-  EXPECT(desc.stats.rejectedInputCount == 0,
-         "stats should count no rejected inputs");
-  EXPECT(desc.stats.submittedDrawCount == 1,
-         "stats should count submitted draw commands");
+  EXPECT(!desc.accepted(),
+         "fullscreen desc with skeleton shader facts should be rejected");
+  EXPECT(hasFatalPipelineDiagnostic(desc),
+         "fullscreen rejected desc should carry fatal pipeline diagnostic");
+  EXPECT(desc.stats.acceptedInputCount == 0,
+         "stats should count no accepted inputs");
+  EXPECT(desc.stats.rejectedInputCount == 1,
+         "stats should count one rejected input");
+  EXPECT(desc.stats.submittedDrawCount == 0,
+         "stats should not count rejected draw commands as submitted");
   EXPECT(desc.stats.submittedDispatchCount == 0,
          "stats should count no compute dispatches");
+}
+
+void testComputeInputWithoutShaderFactsIsRejected() {
+  FramePass pass;
+  pass.name = StringID("ComputeProbe");
+  pass.stage = RenderPassStage::Compute;
+  pass.dispatch = RenderPassDispatch::Compute;
+  pass.input.kind = RenderPassInputKind::ComputeDispatch;
+  pass.shaderUri = ResourceUri("compute_probe");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtimeEmpty(), inputs);
+  const auto descs =
+      compiler.prepare(pass, RenderWorkBuildContext::realtimeEmpty(), inputs);
+
+  EXPECT(inputs.size() == 1, "compute pass should build one input");
+  EXPECT(descs.size() == 1, "compute pass should prepare one desc");
+  if (descs.empty()) {
+    return;
+  }
+  const auto &desc = descs.front();
+  EXPECT(!desc.accepted(),
+         "compute input without shader facts should be rejected");
+  EXPECT(hasDiagnosticCode(desc,
+                           RenderInputDiagnosticCode::MissingShaderReflection),
+         "compute rejection should report missing shader reflection");
+  EXPECT(hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts),
+         "compute rejection should report missing pipeline facts");
+  EXPECT(desc.stats.acceptedInputCount == 0,
+         "stats should count no accepted compute input");
+  EXPECT(desc.stats.rejectedInputCount == 1,
+         "stats should count rejected compute input");
+  EXPECT(desc.stats.submittedDispatchCount == 0,
+         "stats should not count rejected compute input as submitted");
+}
+
+void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
+  auto renderable = std::make_shared<ValidatedRenderable>(Pass_Forward);
+  Scene scene("CompilerScene");
+  scene.addRenderable(renderable);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.visibleMask = VisibilityMask_All;
+
+  FramePass pass;
+  pass.name = Pass_Forward;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.kind = RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.shaderUri = ResourceUri("validated_forward");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
+                       inputs);
+  const auto descs = compiler.prepare(
+      pass, RenderWorkBuildContext::realtime(scene, options), inputs);
+
+  EXPECT(inputs.size() == 1,
+         "validated renderable should produce one draw input");
+  EXPECT(descs.size() == 1,
+         "validated renderable should produce one prepared desc");
+  if (inputs.empty() || descs.empty()) {
+    return;
+  }
+
+  const auto *draw = dynamic_cast<const RenderDrawInput *>(inputs.front().get());
+  EXPECT(draw != nullptr, "validated renderable input should be draw input");
+  if (draw == nullptr) {
+    return;
+  }
+
+  const auto &desc = descs.front();
+  expectAcceptedDescHasBackendPipelineFacts(
+      desc, "validated renderable desc should be accepted");
+  EXPECT(desc.pipelineKey.id.id != 0,
+         "accepted scene desc should carry pipeline key");
+  EXPECT(desc.pipelineBuildDesc.key == desc.pipelineKey,
+         "pipeline build desc key should match desc key");
+  EXPECT(desc.shaderUri == StringID("validated_forward"),
+         "desc should carry shader uri");
+  EXPECT(desc.shaderVariantKey ==
+             renderable->shaderProgram().getPipelineSignature(),
+         "desc should carry shader program variant key");
+  EXPECT(desc.reflectionIdentity.id != 0,
+         "desc should carry shader reflection identity");
+  EXPECT(desc.pipelineBuildDesc.stages.size() == renderable->stages().size(),
+         "pipeline build desc should carry shader stages");
+  EXPECT(desc.pipelineBuildDesc.bindings == renderable->bindings(),
+         "pipeline build desc should carry reflection bindings");
+  EXPECT(desc.pipelineBuildDesc.vertexLayout == renderable->vertexLayout(),
+         "pipeline build desc should carry vertex layout");
+  EXPECT(desc.pipelineBuildDesc.renderState.cullMode == CullMode::Front,
+         "pipeline build desc should carry render state");
+  EXPECT(desc.pipelineBuildDesc.topology == PrimitiveTopology::TriangleList,
+         "pipeline build desc should carry topology");
+  EXPECT(desc.resourceDependencies.size() == 2,
+         "desc should carry vertex and index resource dependencies");
+}
+
+void testSceneRenderableIncludesCameraSceneResourceBinding() {
+  auto renderable = std::make_shared<ValidatedRenderable>(
+      Pass_Forward, "1", "validated.renderable.material.type",
+      "camera_ubo_renderable",
+      std::vector<ShaderResourceBinding>{makeUniformBinding("CameraUBO")});
+  Scene scene("CompilerScene");
+  scene.addRenderable(renderable);
+  auto cameraNode = SceneNode::create("compiler_camera");
+  cameraNode->addComponent<CameraComponent>();
+  scene.addCamera(cameraNode);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.visibleMask = VisibilityMask_All;
+
+  FramePass pass;
+  pass.name = Pass_Forward;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.kind = RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.shaderUri = ResourceUri("validated_forward");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
+                       inputs);
+  const auto descs = compiler.prepare(
+      pass, RenderWorkBuildContext::realtime(scene, options), inputs);
+
+  EXPECT(!inputs.empty(),
+         "active camera scene should still produce draw inputs");
+  EXPECT(!descs.empty(), "active camera scene should prepare descs");
+  auto descIt = std::find_if(
+      descs.begin(), descs.end(), [](const RenderInputDesc &candidate) {
+        return candidate.debugId == StringID("debug.camera_ubo_renderable");
+      });
+  EXPECT(descIt != descs.end(),
+         "active camera scene should prepare the target renderable desc");
+  if (descIt == descs.end()) {
+    return;
+  }
+
+  const auto &desc = *descIt;
+  expectAcceptedDescHasBackendPipelineFacts(
+      desc, "CameraUBO renderable desc should be accepted");
+  EXPECT(hasDescriptorBindingName(desc, StringID("CameraUBO")),
+         "accepted desc binding plan should include CameraUBO");
+  EXPECT(hasResourceDependencyBindingName(desc, StringID("CameraUBO")),
+         "accepted desc dependencies should include CameraUBO");
+}
+
+void testSceneRenderableRejectsUnresolvedRequiredBinding() {
+  auto renderable = std::make_shared<ValidatedRenderable>(
+      Pass_Forward, "1", "validated.renderable.material.type",
+      "unresolved_binding_renderable",
+      std::vector<ShaderResourceBinding>{
+          makeUniformBinding("UnresolvedRequiredBinding")});
+  Scene scene("CompilerScene");
+  scene.addRenderable(renderable);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.visibleMask = VisibilityMask_All;
+
+  FramePass pass;
+  pass.name = Pass_Forward;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.kind = RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.shaderUri = ResourceUri("validated_forward");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
+                       inputs);
+  const auto descs = compiler.prepare(
+      pass, RenderWorkBuildContext::realtime(scene, options), inputs);
+
+  EXPECT(inputs.size() == 1,
+         "unresolved binding renderable should produce one input");
+  EXPECT(descs.size() == 1,
+         "unresolved binding renderable should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+
+  const auto &desc = descs.front();
+  EXPECT(!desc.accepted(),
+         "desc with unresolved reflected binding should be rejected");
+  EXPECT(hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingBinding) ||
+             hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingResource),
+         "unresolved binding rejection should report binding/resource diagnostic");
+}
+
+void testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature() {
+  const std::string sharedMaterialType = "shared.validated.material.type";
+  auto first = std::make_shared<ValidatedRenderable>(
+      Pass_Forward, "variant-a", sharedMaterialType, "variant_a_renderable");
+  auto second = std::make_shared<ValidatedRenderable>(
+      Pass_Forward, "variant-b", sharedMaterialType, "variant_b_renderable");
+
+  Scene scene("CompilerScene");
+  scene.addRenderable(first);
+  scene.addRenderable(second);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.visibleMask = VisibilityMask_All;
+
+  FramePass pass;
+  pass.name = Pass_Forward;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.kind = RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.input.material.types = {sharedMaterialType};
+  pass.shaderUri = ResourceUri("validated_forward");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
+                       inputs);
+  const auto descs = compiler.prepare(
+      pass, RenderWorkBuildContext::realtime(scene, options), inputs);
+
+  EXPECT(inputs.size() == 2,
+         "same material type variants should both produce draw inputs");
+  EXPECT(descs.size() == 2,
+         "same material type variants should both produce descs");
+  if (descs.size() != 2) {
+    return;
+  }
+
+  expectAcceptedDescHasBackendPipelineFacts(
+      descs[0], "first material variant desc should be accepted");
+  expectAcceptedDescHasBackendPipelineFacts(
+      descs[1], "second material variant desc should be accepted");
+  EXPECT(descs[0].shaderVariantKey != descs[1].shaderVariantKey,
+         "fixture should produce distinct shader/material variants");
+  EXPECT(descs[0].pipelineKey != descs[1].pipelineKey,
+         "pipeline key must separate shader/material variants even when "
+         "material type signature matches");
 }
 
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
@@ -325,8 +808,8 @@ void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
   EXPECT(!descs.front().diagnostics.empty(),
          "materialless rejection should carry diagnostic");
   if (!descs.front().diagnostics.empty()) {
-    EXPECT(descs.front().diagnostics.front().code ==
-               RenderInputDiagnosticCode::MaterialRequired,
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MaterialRequired),
            "diagnostic should report missing required material");
   }
 }
@@ -367,8 +850,8 @@ void testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection() {
   EXPECT(!descs.front().diagnostics.empty(),
          "missing required material should carry diagnostic");
   if (!descs.front().diagnostics.empty()) {
-    EXPECT(descs.front().diagnostics.front().code ==
-               RenderInputDiagnosticCode::MaterialRequired,
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MaterialRequired),
            "diagnostic should be MaterialRequired");
   }
 }
@@ -422,8 +905,14 @@ void testNoMaterialDebugRenderableAcceptedWithDrawPayload() {
              "debug no-material draw command should use index buffer count");
     }
   }
-  EXPECT(descs.size() == 1 && descs.front().accepted(),
-         "debug no-material renderable should prepare an accepted desc");
+  EXPECT(descs.size() == 1,
+         "debug no-material renderable should prepare one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "debug no-material renderable without shader facts should reject");
+    EXPECT(hasFatalPipelineDiagnostic(descs.front()),
+           "debug no-material rejection should carry fatal pipeline diagnostic");
+  }
   EXPECT(!HasDrawCommands<RenderInputDesc>,
          "debug no-material desc should not copy draw commands");
 }
@@ -458,8 +947,14 @@ void testDebugObjectClassDoesNotRequireDebugOverlayPassName() {
 
   EXPECT(inputs.size() == 1,
          "debug object class should not require Pass_DebugOverlay name");
-  EXPECT(descs.size() == 1 && descs.front().accepted(),
-         "debug object class should accept a custom pass name");
+  EXPECT(descs.size() == 1,
+         "debug object class should still produce one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "debug object without shader facts should reject even for custom pass");
+    EXPECT(hasFatalPipelineDiagnostic(descs.front()),
+           "debug object rejection should carry fatal pipeline diagnostic");
+  }
 }
 
 void testDebugMeshObjectClassAcceptsNoMaterialDebugRenderable() {
@@ -501,8 +996,14 @@ void testDebugMeshObjectClassAcceptsNoMaterialDebugRenderable() {
     EXPECT(draw->drawCommands.size() == 1,
            "debug.mesh no-material draw payload should stay on input");
   }
-  EXPECT(descs.size() == 1 && descs.front().accepted(),
-         "debug.mesh no-material renderable should prepare an accepted desc");
+  EXPECT(descs.size() == 1,
+         "debug.mesh no-material renderable should prepare one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "debug.mesh without shader facts should reject");
+    EXPECT(hasFatalPipelineDiagnostic(descs.front()),
+           "debug.mesh rejection should carry fatal pipeline diagnostic");
+  }
   EXPECT(!HasDrawCommands<RenderInputDesc>,
          "debug.mesh desc should not copy draw commands");
 }
@@ -618,8 +1119,8 @@ void testUnsupportedObjectClassProducesRejectedDesc() {
   EXPECT(!descs.front().diagnostics.empty(),
          "unsupported object class should carry diagnostic");
   if (!descs.front().diagnostics.empty()) {
-    EXPECT(descs.front().diagnostics.front().code ==
-               RenderInputDiagnosticCode::ObjectClassRejected,
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::ObjectClassRejected),
            "diagnostic should be ObjectClassRejected");
   }
 }
@@ -664,8 +1165,8 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   EXPECT(!descs.front().diagnostics.empty(),
          "material type filter should carry diagnostic");
   if (!descs.front().diagnostics.empty()) {
-    EXPECT(descs.front().diagnostics.front().code ==
-               RenderInputDiagnosticCode::MaterialTypeRejected,
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MaterialTypeRejected),
            "diagnostic should be MaterialTypeRejected");
   }
 }
@@ -673,13 +1174,19 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
 } // namespace
 
 int main() {
+  testRenderInputPayloadDoesNotExposePipelineFacts();
   testDescReferencesInputWithoutOwningPayload();
   testDescStatusDefaultsAndStats();
   testComputePayloadRemainsOnInput();
   testDescCarriesPipelineFacts();
   testFullscreenTriangleBuildsOneInputAndDesc();
   testPrepareReferencesInputWithoutCopyingDrawCommands();
-  testFullscreenDescStatsPipelineAndShaderFactsArePopulated();
+  testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected();
+  testComputeInputWithoutShaderFactsIsRejected();
+  testSceneRenderableValidatedShaderFactsPreparePipelineDesc();
+  testSceneRenderableIncludesCameraSceneResourceBinding();
+  testSceneRenderableRejectsUnresolvedRequiredBinding();
+  testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();

@@ -23,6 +23,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace LX_test {
@@ -117,6 +118,34 @@ inline LX_core::RenderWorkItem makeMinimalDirectRasterHelperItemForVulkanTests(
   item.pipelineKey = LX_core::PipelineKey::build(
       item.materialTypeVariant, item.renderPathNodeSignature);
   return item;
+}
+
+inline LX_core::PipelineBuildDesc
+makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+    const LX_core::IVertexBuffer &vertexBuffer,
+    const LX_core::IndexBuffer &indexBuffer,
+    LX_core::StringID pass = LX_core::Pass_PostProcess,
+    const LX_core::RenderTarget &target = {}) {
+  constexpr const char *kShaderName = "minimal";
+  auto shader = makeMinimalShaderForVulkanTests();
+
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = kShaderName;
+  shaderProgram.shader = shader;
+
+  LX_core::RenderState renderState;
+  renderState.cullMode = LX_core::CullMode::None;
+  renderState.depthTestEnable = false;
+  renderState.depthWriteEnable = false;
+
+  const LX_core::PipelineKey key = LX_core::PipelineKey::build(
+      shaderProgram.getPipelineSignature(),
+      testRenderPathNodeSignature(pass, target));
+  return LX_core::PipelineBuildDesc::graphics(
+      key, shaderProgram.getPipelineSignature(), target.toDesc(),
+      shader->getAllStages(), shader->getReflectionBindings(),
+      vertexBuffer.getLayout(), renderState, indexBuffer.getTopology(),
+      std::nullopt, {});
 }
 
 inline LX_core::RenderWorkItem

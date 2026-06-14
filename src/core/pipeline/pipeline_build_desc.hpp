@@ -8,13 +8,10 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace LX_core {
-
-struct RenderWorkItem; // forward decl
-struct RenderBatch;
-struct RenderPathNodeContext;
 
 enum class PipelineBuildType {
   Graphics,
@@ -40,14 +37,13 @@ struct PushConstantRange {
 };
 
 /*
-@source_analysis.section PipelineBuildDesc：从 legacy helper work 派生出的构建输入包
+@source_analysis.section PipelineBuildDesc：backend 构建 pipeline 的事实包
 `PipelineKey` 只回答“是不是同一条 pipeline”；`PipelineBuildDesc` 回答
 “如果这条 pipeline 还没建，backend 需要哪些输入”。
 
-它从一个已经校验好的 `RenderWorkItem` 派生，不重新判断材质是否合法，也不重新推导
-identity。073-e 之后，realtime material-source geometry 的正向 pipeline lookup
-应从 `RenderBatch` 与 node context 派生；这个入口只保留给 compute/offline 与
-fullscreen/IBL/debug 这类显式 direct raster helper。
+它不再从旧 work item / batch 反向推导。调用方必须在 RenderWorkCompiler prepare
+阶段或显式 backend 过渡调用点先准备好 shader、layout、render state、target 和
+attachment 等结构事实，然后用 `graphics` / `compute` 直接构造。
 */
 struct PipelineBuildDesc {
   PipelineBuildType type = PipelineBuildType::Graphics;
@@ -63,12 +59,19 @@ struct PipelineBuildDesc {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
   PushConstantRange pushConstant;
 
-  /// Derive a complete PipelineBuildDesc from a fully-built helper work item.
-  /// Direct raster helpers require shader, vertex, and index resources.
-  /// Compute items require shader stages and descriptor bindings only.
-  static PipelineBuildDesc fromRenderWorkItem(const RenderWorkItem &item);
-  static PipelineBuildDesc fromRenderBatch(const RenderBatch &batch,
-                                           const RenderPathNodeContext &context);
+  static PipelineBuildDesc
+  graphics(PipelineKey key, StringID shaderVariantKey, RenderTargetDesc target,
+           std::vector<ShaderStageCode> stages,
+           std::vector<ShaderResourceBinding> bindings,
+           VertexLayout vertexLayout, RenderState renderState,
+           PrimitiveTopology topology,
+           std::optional<RenderPathNodeRenderingMode> renderingMode,
+           std::vector<RenderPathAttachmentContract> attachments);
+
+  static PipelineBuildDesc
+  compute(PipelineKey key, StringID shaderVariantKey,
+          std::vector<ShaderStageCode> stages,
+          std::vector<ShaderResourceBinding> bindings);
 };
 
 } // namespace LX_core

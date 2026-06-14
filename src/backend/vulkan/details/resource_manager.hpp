@@ -18,12 +18,6 @@
 
 #include <vulkan/vulkan.h>
 
-namespace LX_core {
-struct RenderBatch;
-struct RenderPathNodeContext;
-struct RenderWorkItem;
-} // namespace LX_core
-
 namespace LX_core::backend {
 
 class VulkanDevice;
@@ -126,10 +120,8 @@ public:
   VulkanRenderPass &getRenderPass();
   VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
 
-  VulkanPipelineRef getOrCreatePipeline(const LX_core::RenderWorkItem &item);
   VulkanPipelineRef
-  getOrCreatePipeline(const LX_core::RenderBatch &batch,
-                      const LX_core::RenderPathNodeContext &context);
+  getOrCreatePipeline(const LX_core::PipelineBuildDesc &desc);
 
   /// Bulk preload — intended to be called once per scene init from the
   /// VulkanRenderer after building a FrameGraph.

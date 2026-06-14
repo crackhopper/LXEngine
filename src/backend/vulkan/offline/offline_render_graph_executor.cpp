@@ -27,6 +27,18 @@ findPipelineResource(const RenderWorkItem &item, StringID bindingName) {
   return it->resource();
 }
 
+[[nodiscard]] const PipelineBuildDesc &
+findPipelineBuildDesc(const std::vector<PipelineBuildDesc> &descs,
+                      PipelineKey key) {
+  const auto it = std::find_if(
+      descs.begin(), descs.end(),
+      [key](const PipelineBuildDesc &desc) { return desc.key == key; });
+  if (it == descs.end()) {
+    throw std::runtime_error("offline render graph missing pipeline build desc");
+  }
+  return *it;
+}
+
 } // namespace
 
 OfflineRenderGraphExecutor::OfflineRenderGraphExecutor(
@@ -73,6 +85,8 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
       continue;
     }
 
+    const std::vector<PipelineBuildDesc> pipelineDescs =
+        queue.collectUniquePipelineBuildDescs();
     auto cmd = m_commandManager.beginSingleTimeCommands();
     for (const RenderWorkItem &item : queue.getItems()) {
       if (item.domain != RenderDomain::Offline ||
@@ -81,7 +95,8 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
             "offline render graph only supports offline compute work");
       }
 
-      VulkanPipelineRef pipeline = m_resourceManager.getOrCreatePipeline(item);
+      VulkanPipelineRef pipeline = m_resourceManager.getOrCreatePipeline(
+          findPipelineBuildDesc(pipelineDescs, item.pipelineKey));
       cmd->bindPipeline(pipeline);
       cmd->bindResources(m_resourceManager, pipeline, item);
       cmd->executeWorkItem(item);

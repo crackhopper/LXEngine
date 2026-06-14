@@ -144,6 +144,7 @@ struct BatchQueueFixtureDesc final {
   usize drawCount = 0;
   u32 indexCount = 0;
   StringID materialTypeSignature;
+  StringID materialTypeVariant;
 };
 
 struct BatchQueueFixture final {
@@ -180,7 +181,8 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
         .mesh = mesh,
         .material = fixture.material,
         .debugId = StringID("helmet.sameSignature"),
-        .materialTypeSignature = desc.materialTypeSignature});
+        .materialTypeSignature = desc.materialTypeSignature,
+        .materialTypeVariant = desc.materialTypeVariant});
   }
 
   fixture.queue.prepareDrawInputs(fixture.table.buildUploadView());
@@ -390,7 +392,9 @@ void testSameSignatureInputsProduceOneBatch() {
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
                             .materialTypeSignature =
-                                StringID("standard-pbr-opaque")});
+                                StringID("standard-pbr-opaque"),
+                            .materialTypeVariant =
+                                StringID("standard-pbr-opaque.variant")});
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
@@ -444,6 +448,9 @@ void testSameSignatureInputsProduceOneBatch() {
     EXPECT(candidate.materialTypeSignature ==
                StringID("standard-pbr-opaque"),
            "candidate should preserve material type signature");
+    EXPECT(candidate.materialTypeVariant ==
+               StringID("standard-pbr-opaque.variant"),
+           "candidate should preserve material type variant");
     EXPECT(candidate.objectDataSignature ==
                StringID("BindlessObjectData.v1"),
            "candidate should carry node object data ABI signature");
@@ -456,10 +463,13 @@ void testSameSignatureInputsProduceOneBatch() {
            "batch should carry the object data ABI signature");
     EXPECT(batch.materialTypeSignature == StringID("standard-pbr-opaque"),
            "batch should carry the material type signature");
+    EXPECT(batch.materialTypeVariant ==
+               StringID("standard-pbr-opaque.variant"),
+           "batch should carry the material type variant");
     EXPECT(batch.derivedPipelineKey ==
-               PipelineKey::build(batch.materialTypeSignature,
+               PipelineKey::build(batch.materialTypeVariant,
                                   analysis.context.renderPathNodeSignature),
-           "batch pipeline key should derive from material type and node "
+           "batch pipeline key should derive from material variant and node "
            "signature");
     EXPECT(batch.commandOffset == 0,
            "single batch command offset should start at zero");
@@ -497,6 +507,80 @@ void testSameSignatureInputsProduceOneBatch() {
          "new batch compiler must not report old fallback usage");
 }
 
+void testSameMaterialTypeDifferentVariantsSplitPipelineKeys() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeIndexedMesh(3));
+  const MaterialHandle material = table.registerMaterial(makeSourceMaterial());
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  const StringID materialType = StringID("standard-pbr-opaque");
+  const StringID variants[] = {StringID("standard-pbr-opaque.variant.a"),
+                               StringID("standard-pbr-opaque.variant.b")};
+  for (usize i = 0; i < 2; ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = table.registerObject(object);
+    queue.addDrawInput(RenderQueueDrawInput{
+        .inputIndex = i,
+        .object = objectHandle,
+        .mesh = mesh,
+        .material = material,
+        .debugId = StringID("helmet.variantSplit"),
+        .materialTypeSignature = materialType,
+        .materialTypeVariant = variants[i]});
+  }
+
+  queue.prepareDrawInputs(table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "same material type with different variants should prepare without "
+         "diagnostics");
+  EXPECT(analysis.candidates.size() == 2,
+         "variant split fixture should produce two candidates");
+  EXPECT(analysis.batches.size() == 2,
+         "material type variants should be batch compatibility keys");
+  if (analysis.candidates.size() == 2) {
+    EXPECT(analysis.candidates[0].materialTypeSignature ==
+               analysis.candidates[1].materialTypeSignature,
+           "fixture should keep material type signature shared");
+    EXPECT(analysis.candidates[0].materialTypeVariant !=
+               analysis.candidates[1].materialTypeVariant,
+           "fixture should use distinct material type variants");
+  }
+  if (analysis.batches.size() == 2) {
+    EXPECT(analysis.batches[0].materialTypeSignature ==
+               analysis.batches[1].materialTypeSignature,
+           "split batches should still expose the shared material type");
+    EXPECT(analysis.batches[0].materialTypeVariant !=
+               analysis.batches[1].materialTypeVariant,
+           "split batches should carry distinct material variants");
+    EXPECT(analysis.batches[0].derivedPipelineKey !=
+               analysis.batches[1].derivedPipelineKey,
+           "distinct variants must not share pipeline keys");
+    EXPECT(analysis.batches[0].derivedPipelineKey ==
+               PipelineKey::build(analysis.batches[0].materialTypeVariant,
+                                  analysis.context.renderPathNodeSignature),
+           "first batch pipeline key should use material variant");
+    EXPECT(analysis.batches[1].derivedPipelineKey ==
+               PipelineKey::build(analysis.batches[1].materialTypeVariant,
+                                  analysis.context.renderPathNodeSignature),
+           "second batch pipeline key should use material variant");
+  }
+}
+
 void testDistinctMaterialInstancesWithSameSignatureShareBatch() {
   SceneResourceTable table;
   const MeshHandle mesh = table.registerMesh(makeIndexedMesh(3));
@@ -528,7 +612,8 @@ void testDistinctMaterialInstancesWithSameSignatureShareBatch() {
         .mesh = mesh,
         .material = materials[i],
         .debugId = StringID("helmet.distinctMaterialInstance"),
-        .materialTypeSignature = StringID("standard-pbr-opaque")});
+        .materialTypeSignature = StringID("standard-pbr-opaque"),
+        .materialTypeVariant = StringID("standard-pbr-opaque.variant")});
   }
 
   queue.prepareDrawInputs(table.buildUploadView());
@@ -580,6 +665,8 @@ void testDifferentMaterialTypeSignaturesSplitBatches() {
                                        .debugId =
                                            StringID("helmet.materialSplit"),
                                        .materialTypeSignature =
+                                           materialTypes[i],
+                                       .materialTypeVariant =
                                            materialTypes[i]});
   }
 
@@ -617,7 +704,9 @@ void testDifferentObjectDataSignaturesSplitBatches() {
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
                             .materialTypeSignature =
-                                StringID("standard-pbr-opaque")});
+                                StringID("standard-pbr-opaque"),
+                            .materialTypeVariant =
+                                StringID("standard-pbr-opaque.variant")});
   RenderPathNodeData &nodeData =
       const_cast<RenderPathNodeData &>(fixture.queue.nodeData());
   if (nodeData.preparedCandidates.size() == 2) {
@@ -676,7 +765,8 @@ void testGlobalGeometryIndirectCommandsDoNotDoubleApplyVertexOffset() {
         .mesh = meshes[i],
         .material = material,
         .debugId = StringID("helmet.globalGeometryVertexOffset"),
-        .materialTypeSignature = StringID("standard-pbr-opaque")});
+        .materialTypeSignature = StringID("standard-pbr-opaque"),
+        .materialTypeVariant = StringID("standard-pbr-opaque.variant")});
   }
 
   queue.prepareDrawInputs(table.buildUploadView());
@@ -849,6 +939,7 @@ int main() {
   testGpuResourceTableConsumesSceneBindlessUploadView();
   testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis();
   testSameSignatureInputsProduceOneBatch();
+  testSameMaterialTypeDifferentVariantsSplitPipelineKeys();
   testDistinctMaterialInstancesWithSameSignatureShareBatch();
   testDifferentMaterialTypeSignaturesSplitBatches();
   testDifferentObjectDataSignaturesSplitBatches();

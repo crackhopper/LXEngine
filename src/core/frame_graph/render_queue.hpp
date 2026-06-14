@@ -36,10 +36,12 @@ struct RenderQueueDrawInput final {
   StringID debugId;
   Vec3f sortCenter{};
   StringID materialTypeSignature;
+  StringID materialTypeVariant;
 };
 
 struct RenderBatchPipelineFacts final {
   StringID materialTypeSignature;
+  StringID materialTypeVariant;
   ShaderProgramSet shaderProgram;
   IShaderSharedPtr shaderInfo;
   RenderState renderState;
@@ -85,6 +87,7 @@ struct PreparedRenderDrawCandidate final {
   u32 instanceCount = 1;
   StringID objectDataSignature;
   StringID materialTypeSignature;
+  StringID materialTypeVariant;
   StringID finalShaderReflectionIdentity;
   StringID debugId;
   Vec3f sortCenter{};
@@ -94,6 +97,7 @@ struct RenderBatch final {
   usize batchIndex = 0;
   StringID objectDataSignature;
   StringID materialTypeSignature;
+  StringID materialTypeVariant;
   PipelineKey derivedPipelineKey;
   u32 commandOffset = 0;
   u32 commandCount = 0;

@@ -2,15 +2,38 @@
 
 #include "core/asset/mesh.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace LX_core {
 namespace {
+
+void noteDiagnostic(RenderInputDesc &desc, RenderInputDiagnosticCode code,
+                    std::string message);
+
+struct DrawPreparationFacts final {
+  StringID pipelineVariantKey;
+  ShaderProgramSet shaderProgram;
+  IShaderSharedPtr shaderInfo;
+  RenderState renderState;
+  VertexLayout vertexLayout;
+  PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+  DescriptorResourceList descriptorResources;
+};
+
+struct ComputePreparationFacts final {
+  StringID pipelineVariantKey;
+  ShaderProgramSet shaderProgram;
+  IShaderSharedPtr shaderInfo;
+  DescriptorResourceList descriptorResources;
+};
 
 [[nodiscard]] StringID shaderUriId(const FramePass &pass) {
   return StringID(pass.shaderUri.string());
@@ -20,12 +43,9 @@ namespace {
   return pass.name.id != 0 ? pass.name : StringID("<unnamed-pass>");
 }
 
-[[nodiscard]] StringID inputPipelineVariant(const FramePass &pass,
-                                            const RenderInput &input) {
+[[nodiscard]] StringID fallbackPipelineVariant(const FramePass &pass,
+                                               const RenderInput &input) {
   if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
-    if (draw->materialTypeSignature.id != 0) {
-      return draw->materialTypeSignature;
-    }
     const std::string source =
         draw->source == RenderDrawInputSource::FullscreenTriangle
             ? "fullscreen-triangle"
@@ -41,9 +61,14 @@ namespace {
 }
 
 [[nodiscard]] PipelineKey makePipelineKey(const FramePass &pass,
-                                          const RenderInput &input) {
-  return PipelineKey::build(inputPipelineVariant(pass, input),
+                                          StringID pipelineVariantKey) {
+  return PipelineKey::build(pipelineVariantKey,
                             getFramePassRenderPathNodeSignature(pass));
+}
+
+[[nodiscard]] PipelineKey makePipelineKey(const FramePass &pass,
+                                          const RenderInput &input) {
+  return makePipelineKey(pass, fallbackPipelineVariant(pass, input));
 }
 
 [[nodiscard]] PrimitiveTopology pipelineTopologyFor(const FramePass &pass) {
@@ -53,25 +78,274 @@ namespace {
   return PrimitiveTopology::TriangleList;
 }
 
-[[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(const FramePass &pass,
-                                                      PipelineKey key) {
-  PipelineBuildDesc buildDesc;
-  buildDesc.type = pass.stage == RenderPassStage::Compute
-                       ? PipelineBuildType::Compute
-                       : PipelineBuildType::Graphics;
-  buildDesc.key = key;
-  buildDesc.shaderVariantKey = shaderUriId(pass);
-  buildDesc.target = pass.target;
-  buildDesc.renderingMode = pass.renderingMode;
-  buildDesc.attachments = pass.attachments;
-  buildDesc.renderState = pass.renderState;
-  buildDesc.topology = pipelineTopologyFor(pass);
-  if (buildDesc.type == PipelineBuildType::Compute) {
-    buildDesc.pushConstant.size = 0;
-    buildDesc.pushConstant.stageFlagsMask =
-        static_cast<ShaderStageMask32>(ShaderStage::Compute);
+[[nodiscard]] StringID shaderVariantKeyFor(const FramePass &pass,
+                                           const DrawPreparationFacts &facts) {
+  if (facts.shaderInfo) {
+    return facts.shaderProgram.getPipelineSignature();
   }
-  return buildDesc;
+  return shaderUriId(pass);
+}
+
+[[nodiscard]] StringID shaderVariantKeyFor(const FramePass &pass,
+                                           const ComputePreparationFacts &facts) {
+  if (facts.shaderInfo) {
+    return facts.shaderProgram.getPipelineSignature();
+  }
+  return shaderUriId(pass);
+}
+
+[[nodiscard]] StringID
+reflectionIdentityFor(const IShaderSharedPtr &shaderInfo) {
+  if (!shaderInfo) {
+    return {};
+  }
+  return StringID("shader-reflection:" + shaderInfo->getShaderName() + ":" +
+                  std::to_string(shaderInfo->getProgramHash()));
+}
+
+void appendResourceDependency(std::vector<GpuResourceRef> &out,
+                              const GpuResourceRef &resource) {
+  if (resource.isValid()) {
+    out.push_back(resource);
+  }
+}
+
+void appendDescriptorResourceDependencies(std::vector<GpuResourceRef> &out,
+                                          const DescriptorResourceList &list) {
+  for (const DescriptorResourceRef &descriptor : list) {
+    if (descriptor.isResource() && descriptor.resource().isValid()) {
+      out.push_back(descriptor.resource());
+    }
+  }
+}
+
+[[nodiscard]] std::optional<VertexLayout>
+vertexLayoutFromResource(const GpuResourceRef &resource) {
+  if (!resource.isValid()) {
+    return std::nullopt;
+  }
+  const auto *vertexBuffer =
+      dynamic_cast<const IVertexBuffer *>(&resource.get());
+  if (vertexBuffer == nullptr) {
+    return std::nullopt;
+  }
+  return vertexBuffer->getLayout();
+}
+
+[[nodiscard]] std::optional<PrimitiveTopology>
+topologyFromResource(const GpuResourceRef &resource) {
+  if (!resource.isValid()) {
+    return std::nullopt;
+  }
+  const auto *indexBuffer =
+      dynamic_cast<const IndexBuffer *>(&resource.get());
+  if (indexBuffer == nullptr) {
+    return std::nullopt;
+  }
+  return indexBuffer->getTopology();
+}
+
+[[nodiscard]] std::optional<VertexLayout>
+filterVertexLayoutToShaderInputs(const VertexLayout &layout,
+                                 const IShader &shader) {
+  const auto &shaderInputs = shader.getVertexInputs();
+  if (shaderInputs.empty()) {
+    return layout;
+  }
+
+  std::vector<VertexLayoutItem> filteredItems;
+  filteredItems.reserve(shaderInputs.size());
+  for (const auto &input : shaderInputs) {
+    const auto it = std::find_if(
+        layout.getItems().begin(), layout.getItems().end(),
+        [&input](const VertexLayoutItem &item) {
+          return item.location == input.location && item.type == input.type;
+        });
+    if (it == layout.getItems().end()) {
+      return std::nullopt;
+    }
+    filteredItems.push_back(*it);
+  }
+  return VertexLayout(std::move(filteredItems), layout.getStride());
+}
+
+[[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(
+    const FramePass &pass, PipelineKey key,
+    const DrawPreparationFacts &facts) {
+  std::vector<ShaderStageCode> stages;
+  std::vector<ShaderResourceBinding> bindings;
+  if (facts.shaderInfo) {
+    stages = facts.shaderInfo->getAllStages();
+    bindings = facts.shaderInfo->getReflectionBindings();
+  }
+
+  return PipelineBuildDesc::graphics(
+      key, shaderVariantKeyFor(pass, facts), pass.target, std::move(stages),
+      std::move(bindings), facts.vertexLayout, facts.renderState, facts.topology,
+      pass.renderingMode, pass.attachments);
+}
+
+[[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(
+    const FramePass &pass, PipelineKey key,
+    const ComputePreparationFacts &facts) {
+  std::vector<ShaderStageCode> stages;
+  std::vector<ShaderResourceBinding> bindings;
+  if (facts.shaderInfo) {
+    stages = facts.shaderInfo->getAllStages();
+    bindings = facts.shaderInfo->getReflectionBindings();
+  }
+  return PipelineBuildDesc::compute(
+      key, shaderVariantKeyFor(pass, facts), std::move(stages),
+      std::move(bindings));
+}
+
+[[nodiscard]] DescriptorResourceList
+collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
+                                  const FramePass &pass) {
+  if (!context.hasRealtimeScene()) {
+    return {};
+  }
+
+  const Scene &scene = context.realtimeScene();
+  const auto &options = context.realtimeOptions();
+  if (options.cameraResource.has_value()) {
+    return scene.getSceneLevelResources(pass.name, *options.cameraResource);
+  }
+
+  const RenderTarget sceneResourceTarget =
+      options.sceneResourceTarget.value_or(RenderTarget(pass.target));
+  return scene.getSceneLevelResources(pass.name, sceneResourceTarget);
+}
+
+[[nodiscard]] DrawPreparationFacts collectDrawPreparationFacts(
+    const FramePass &pass, const RenderWorkBuildContext &context,
+    const RenderDrawInput &draw, RenderInputDesc &desc) {
+  DrawPreparationFacts facts;
+  facts.pipelineVariantKey = fallbackPipelineVariant(pass, draw);
+  facts.renderState = pass.renderState;
+  facts.topology = pipelineTopologyFor(pass);
+
+  if (const auto layout = vertexLayoutFromResource(draw.vertexBuffer)) {
+    facts.vertexLayout = *layout;
+  }
+  if (const auto topology = topologyFromResource(draw.indexBuffer)) {
+    facts.topology = *topology;
+  }
+
+  if (draw.source != RenderDrawInputSource::SceneRenderable ||
+      !context.hasRealtimeScene()) {
+    return facts;
+  }
+
+  const auto &renderables = context.realtimeScene().getRenderables();
+  if (draw.sourceRenderableIndex >= renderables.size() ||
+      !renderables[draw.sourceRenderableIndex]) {
+    return facts;
+  }
+
+  const auto validated =
+      renderables[draw.sourceRenderableIndex]->getValidatedPassData(pass.name);
+  if (!validated.has_value()) {
+    return facts;
+  }
+
+  const ValidatedRenderablePassData &data = validated->get();
+  facts.pipelineVariantKey = data.materialTypeVariant.id != 0
+                                 ? data.materialTypeVariant
+                                 : data.shaderProgram.getPipelineSignature();
+  facts.shaderProgram = data.shaderProgram;
+  facts.shaderInfo = data.shaderInfo;
+  facts.renderState = data.renderState;
+
+  const GpuResourceRef vertexResource =
+      data.vertexBuffer.isValid() ? data.vertexBuffer : draw.vertexBuffer;
+  if (const auto layout = vertexLayoutFromResource(vertexResource)) {
+    if (facts.shaderInfo) {
+      const auto filtered =
+          filterVertexLayoutToShaderInputs(*layout, *facts.shaderInfo);
+      if (filtered.has_value()) {
+        facts.vertexLayout = *filtered;
+      } else {
+        noteDiagnostic(desc, RenderInputDiagnosticCode::MissingPipelineFacts,
+                       "draw input vertex layout is missing a shader input");
+      }
+    } else {
+      facts.vertexLayout = *layout;
+    }
+  }
+
+  const GpuResourceRef indexResource =
+      data.indexBuffer.isValid() ? data.indexBuffer : draw.indexBuffer;
+  if (const auto topology = topologyFromResource(indexResource)) {
+    facts.topology = *topology;
+  } else if (pass.input.geometry.has_value()) {
+    facts.topology = pass.input.geometry->topology;
+  }
+
+  facts.descriptorResources = buildSceneDescriptorResources(
+      SceneDescriptorResourceContext{
+          .scene = context.realtimeScene(),
+          .renderable = data,
+          .pass = pass.name,
+          .target = RenderTarget(pass.target),
+          .sceneResources = collectSceneLevelResourcesForPass(context, pass),
+      });
+
+  return facts;
+}
+
+[[nodiscard]] ComputePreparationFacts
+collectComputePreparationFacts(const FramePass &pass,
+                               const RenderComputeInput &compute) {
+  ComputePreparationFacts facts;
+  facts.pipelineVariantKey = fallbackPipelineVariant(pass, compute);
+  return facts;
+}
+
+void fillPreparedFacts(const FramePass &pass,
+                       const RenderWorkBuildContext &context,
+                       const RenderDrawInput &draw, RenderInputDesc &desc) {
+  const DrawPreparationFacts facts =
+      collectDrawPreparationFacts(pass, context, draw, desc);
+  desc.pipelineKey = makePipelineKey(pass, facts.pipelineVariantKey);
+  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts);
+  desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
+  desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
+  desc.bindingPlan.descriptors = facts.descriptorResources;
+  appendResourceDependency(desc.resourceDependencies, draw.vertexBuffer);
+  appendResourceDependency(desc.resourceDependencies, draw.indexBuffer);
+  appendDescriptorResourceDependencies(desc.resourceDependencies,
+                                       desc.bindingPlan.descriptors);
+  if (!facts.shaderInfo) {
+    noteDiagnostic(desc, RenderInputDiagnosticCode::MissingShaderReflection,
+                   "draw input has no shader reflection facts");
+  }
+  if (desc.pipelineBuildDesc.stages.empty()) {
+    noteDiagnostic(desc, RenderInputDiagnosticCode::MissingPipelineFacts,
+                   "draw input has no shader stage pipeline facts");
+  }
+}
+
+void fillPreparedFacts(const FramePass &pass, const RenderComputeInput &compute,
+                       RenderInputDesc &desc) {
+  (void)compute;
+  const ComputePreparationFacts facts =
+      collectComputePreparationFacts(pass, compute);
+  desc.pipelineKey = makePipelineKey(pass, facts.pipelineVariantKey);
+  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts);
+  desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
+  desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
+  desc.bindingPlan.descriptors = facts.descriptorResources;
+  appendDescriptorResourceDependencies(desc.resourceDependencies,
+                                       desc.bindingPlan.descriptors);
+  if (!facts.shaderInfo) {
+    noteDiagnostic(desc, RenderInputDiagnosticCode::MissingShaderReflection,
+                   "compute input has no shader reflection facts");
+  }
+  if (desc.pipelineBuildDesc.stages.empty()) {
+    noteDiagnostic(desc, RenderInputDiagnosticCode::MissingPipelineFacts,
+                   "compute input has no shader stage pipeline facts");
+  }
 }
 
 [[nodiscard]] RenderInputDiagnostic
@@ -90,6 +364,104 @@ void reject(RenderInputDesc &desc, RenderInputDiagnosticCode code,
   desc.status = RenderInputStatus::Rejected;
   desc.diagnostics.push_back(
       makeDiagnostic(code, desc.pass, desc.debugId, std::move(message)));
+}
+
+void noteDiagnostic(RenderInputDesc &desc, RenderInputDiagnosticCode code,
+                    std::string message) {
+  desc.diagnostics.push_back(
+      makeDiagnostic(code, desc.pass, desc.debugId, std::move(message)));
+}
+
+[[nodiscard]] std::optional<StringID>
+descriptorBindingName(const DescriptorResourceRef &descriptor) {
+  if (descriptor.isTextureArray()) {
+    return descriptor.getBindingName();
+  }
+  if (!descriptor.resource().isValid()) {
+    return std::nullopt;
+  }
+  return descriptor.resource().getBindingName();
+}
+
+[[nodiscard]] bool isValidTextureArrayDescriptor(
+    const DescriptorResourceRef &descriptor) {
+  if (!descriptor.isTextureArray() || descriptor.getBindingName().id == 0 ||
+      descriptor.textures().empty()) {
+    return false;
+  }
+  return std::all_of(descriptor.textures().begin(),
+                     descriptor.textures().end(),
+                     [](const TextureSamplerRef &texture) {
+                       return texture.isValid();
+                     });
+}
+
+[[nodiscard]] bool descriptorMatchesBindingType(
+    const DescriptorResourceRef &descriptor,
+    const ShaderResourceBinding &binding) {
+  switch (binding.type) {
+  case ShaderPropertyType::UniformBuffer:
+    return descriptor.isResource() && descriptor.resource().isValid() &&
+           descriptor.resource().getType() == ResourceType::UniformBuffer;
+  case ShaderPropertyType::StorageBuffer:
+    return descriptor.isResource() && descriptor.resource().isValid() &&
+           descriptor.resource().getType() == ResourceType::StorageBuffer;
+  case ShaderPropertyType::Texture2D:
+  case ShaderPropertyType::TextureCube:
+    if (isValidTextureArrayDescriptor(descriptor)) {
+      return true;
+    }
+    return descriptor.isResource() && descriptor.resource().isValid() &&
+           descriptor.resource().getType() == ResourceType::CombinedImageSampler;
+  default:
+    return true;
+  }
+}
+
+void validateBindingPlanCompleteness(RenderInputDesc &desc) {
+  for (const ShaderResourceBinding &binding :
+       desc.pipelineBuildDesc.bindings) {
+    const StringID bindingName(binding.name);
+    const auto descriptorIt = std::find_if(
+        desc.bindingPlan.descriptors.begin(), desc.bindingPlan.descriptors.end(),
+        [bindingName](const DescriptorResourceRef &descriptor) {
+          const auto descriptorName = descriptorBindingName(descriptor);
+          return descriptorName.has_value() && *descriptorName == bindingName;
+        });
+
+    if (descriptorIt == desc.bindingPlan.descriptors.end()) {
+      reject(desc, RenderInputDiagnosticCode::MissingBinding,
+             "reflected shader binding '" + binding.name +
+                 "' has no prepared descriptor resource");
+      continue;
+    }
+
+    if (!descriptorMatchesBindingType(*descriptorIt, binding)) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "prepared descriptor resource for reflected shader binding '" +
+                 binding.name + "' is missing or has incompatible type");
+    }
+  }
+}
+
+[[nodiscard]] bool hasDiagnosticCode(const RenderInputDesc &desc,
+                                     RenderInputDiagnosticCode code) {
+  return std::any_of(desc.diagnostics.begin(), desc.diagnostics.end(),
+                     [code](const RenderInputDiagnostic &diagnostic) {
+                       return diagnostic.code == code;
+                     });
+}
+
+[[nodiscard]] bool hasFatalPipelineDiagnostic(const RenderInputDesc &desc) {
+  return hasDiagnosticCode(desc,
+                           RenderInputDiagnosticCode::MissingShaderReflection) ||
+         hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts);
+}
+
+void rejectFatalPipelineFacts(RenderInputDesc &desc) {
+  if (desc.accepted() && hasFatalPipelineDiagnostic(desc)) {
+    desc.status = RenderInputStatus::Rejected;
+  }
 }
 
 [[nodiscard]] bool hasSubmittableDrawCommand(const RenderDrawInput &draw) {
@@ -274,7 +646,10 @@ void buildSceneRenderableInputs(
   const VisibilityLayerMask visibleMask =
       resolveVisibleMask(scene, pass, context.realtimeOptions());
 
-  for (const auto &renderable : scene.getRenderables()) {
+  const auto &renderables = scene.getRenderables();
+  for (usize renderableIndex = 0; renderableIndex < renderables.size();
+       ++renderableIndex) {
+    const auto &renderable = renderables[renderableIndex];
     if (!renderable) {
       continue;
     }
@@ -284,6 +659,7 @@ void buildSceneRenderableInputs(
 
     auto draw = std::make_unique<RenderDrawInput>();
     draw->source = RenderDrawInputSource::SceneRenderable;
+    draw->sourceRenderableIndex = static_cast<u32>(renderableIndex);
     draw->pass = pass.name;
     draw->debugId = renderable->getDebugId().id != 0
                         ? renderable->getDebugId()
@@ -500,10 +876,9 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     desc.debugId =
         input.debugId.id != 0 ? input.debugId : stablePassDebugId(pass);
     desc.pipelineKey = makePipelineKey(pass, input);
-    desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey);
-    desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
 
     if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
+      fillPreparedFacts(pass, context, *draw, desc);
       if (pass.input.kind == RenderPassInputKind::FullscreenTriangle) {
         validateFullscreenDesc(pass, *draw, desc);
       } else if (pass.input.kind == RenderPassInputKind::SceneRenderables) {
@@ -514,6 +889,7 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
       }
     } else if (const auto *compute =
                    dynamic_cast<const RenderComputeInput *>(&input)) {
+      fillPreparedFacts(pass, *compute, desc);
       if (pass.input.kind == RenderPassInputKind::ComputeDispatch) {
         validateComputeDesc(pass, *compute, desc);
       } else {
@@ -524,6 +900,10 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
       reject(desc, RenderInputDiagnosticCode::UnsupportedInputContract,
              "unknown render input type");
     }
+    if (desc.accepted()) {
+      validateBindingPlanCompleteness(desc);
+    }
+    rejectFatalPipelineFacts(desc);
 
     descs.push_back(std::move(desc));
   }

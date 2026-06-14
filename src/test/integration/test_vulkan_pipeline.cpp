@@ -44,7 +44,10 @@ int main() {
     auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
         *vertexBufferPtr, *indexBufferPtr);
 
-    auto pipeline = resourceManager->getOrCreatePipeline(item);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
 
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);

@@ -552,22 +552,22 @@ makePipelineIdentityDebug(const LX_core::RenderWorkItem &item) {
     const LX_core::RenderBatch &batch,
     const LX_core::RenderPathNodeContext &context) {
   PipelineIdentityDebug out;
-  out.materialTypeVariant = debugString(batch.materialTypeSignature);
+  out.materialTypeVariant = debugString(batch.materialTypeVariant);
   out.renderPathNodeSignature = debugString(context.renderPathNodeSignature);
   out.pipelineKey = debugString(batch.derivedPipelineKey.id);
 
   const auto factsIt = std::find_if(
       context.pipelineFacts.begin(), context.pipelineFacts.end(),
       [&batch](const LX_core::RenderBatchPipelineFacts &facts) {
-        return facts.materialTypeSignature == batch.materialTypeSignature;
+        return facts.materialTypeVariant == batch.materialTypeVariant;
       });
   if (factsIt == context.pipelineFacts.end()) {
     return out;
   }
 
-  out.materialTypeVariant =
-      debugString(factsIt->shaderProgram.getPipelineSignature()) +
-      " materialType=" + debugString(batch.materialTypeSignature);
+  out.materialTypeVariant = debugString(factsIt->materialTypeVariant) +
+                            " materialType=" +
+                            debugString(batch.materialTypeSignature);
   out.shaderName =
       factsIt->shaderProgram.shaderName.empty()
           ? (factsIt->shaderInfo ? factsIt->shaderInfo->getShaderName()
@@ -2353,6 +2353,8 @@ private:
   void submitDirectHelperQueue(const LX_core::RenderWorkQueue &queue,
                                LX_core::StringID passName,
                                VulkanCommandBuffer &cmd) {
+    const std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
+        queue.collectUniquePipelineBuildDescs();
     for (const LX_core::RenderWorkItem &item : queue.getItems()) {
       if (!LX_core::isAllowedDirectRasterHelperWorkItem(item)) {
         throw std::runtime_error(
@@ -2362,7 +2364,15 @@ private:
             LX_core::directRasterPassPurposeName(
                 item.directRaster.purpose));
       }
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
+      const auto pipelineDescIt = std::find_if(
+          pipelineDescs.begin(), pipelineDescs.end(),
+          [&item](const LX_core::PipelineBuildDesc &desc) {
+            return desc.key == item.pipelineKey;
+          });
+      if (pipelineDescIt == pipelineDescs.end()) {
+        throw std::runtime_error("direct helper missing pipeline build desc");
+      }
+      auto pipeline = resourceManager().getOrCreatePipeline(*pipelineDescIt);
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, item);
       cmd.executeWorkItem(item);
@@ -2477,9 +2487,18 @@ private:
       }
       cmd.bindRenderBatchGeometry(resourceManager(),
                                   analysis.context.batchGeometryResources);
+      const std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
+          queue.collectUniquePipelineBuildDescs();
       for (const LX_core::RenderBatch &batch : analysis.batches) {
-        auto pipeline =
-            resourceManager().getOrCreatePipeline(batch, analysis.context);
+        const auto pipelineDescIt = std::find_if(
+            pipelineDescs.begin(), pipelineDescs.end(),
+            [&batch](const LX_core::PipelineBuildDesc &desc) {
+              return desc.key == batch.derivedPipelineKey;
+            });
+        if (pipelineDescIt == pipelineDescs.end()) {
+          throw std::runtime_error("render batch missing pipeline build desc");
+        }
+        auto pipeline = resourceManager().getOrCreatePipeline(*pipelineDescIt);
         cmd.bindPipeline(pipeline);
         cmd.bindSceneBindlessResources(resourceManager(), pipeline,
                                        analysis.context,

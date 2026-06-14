@@ -79,6 +79,9 @@ makeRenderBatchPipelineFacts(const ValidatedRenderablePassData &data,
   }
   return RenderBatchPipelineFacts{
       .materialTypeSignature = data.materialTypeSignature,
+      .materialTypeVariant = data.materialTypeVariant.id != 0
+                                 ? data.materialTypeVariant
+                                 : data.shaderProgram.getPipelineSignature(),
       .shaderProgram = data.shaderProgram,
       .shaderInfo = data.shaderInfo,
       .renderState = data.renderState,
@@ -105,6 +108,7 @@ bool sameBackendShaderFacts(const RenderBatchPipelineFacts &a,
 bool samePipelineFacts(const RenderBatchPipelineFacts &a,
                        const RenderBatchPipelineFacts &b) {
   return a.materialTypeSignature == b.materialTypeSignature &&
+         a.materialTypeVariant == b.materialTypeVariant &&
          sameBackendShaderFacts(a, b) &&
          a.renderState.getPipelineSignature() ==
              b.renderState.getPipelineSignature() &&
@@ -116,7 +120,7 @@ void mergePipelineFacts(RenderPathNodeContext &context,
   const auto it = std::find_if(
       context.pipelineFacts.begin(), context.pipelineFacts.end(),
       [&facts](const RenderBatchPipelineFacts &existing) {
-        return existing.materialTypeSignature == facts.materialTypeSignature;
+        return existing.materialTypeVariant == facts.materialTypeVariant;
       });
   if (it == context.pipelineFacts.end()) {
     context.pipelineFacts.push_back(std::move(facts));
@@ -124,8 +128,8 @@ void mergePipelineFacts(RenderPathNodeContext &context,
   }
   if (!samePipelineFacts(*it, facts)) {
     throw std::logic_error(
-        "RenderPathNode material type has conflicting shader/render-state "
-        "pipeline facts; use a distinct material type signature instead of a "
+        "RenderPathNode material variant has conflicting shader/render-state "
+        "pipeline facts; use a distinct material type variant instead of a "
         "backend split key");
   }
 }
@@ -448,6 +452,9 @@ resolveCandidateInstanceCount(const SceneGpuObjectRecord &object) {
   candidate.instanceCount = instanceCount;
   candidate.objectDataSignature = context.objectDataSignature;
   candidate.materialTypeSignature = input.materialTypeSignature;
+  candidate.materialTypeVariant = input.materialTypeVariant.id != 0
+                                      ? input.materialTypeVariant
+                                      : input.materialTypeSignature;
   candidate.debugId = input.debugId;
   candidate.sortCenter = input.sortCenter;
   return candidate;
@@ -516,7 +523,7 @@ void validateNodeGeometryContract(
 [[nodiscard]] bool isBatchCompatible(
     const RenderBatch &batch, const PreparedRenderDrawCandidate &candidate) {
   return batch.objectDataSignature == candidate.objectDataSignature &&
-         batch.materialTypeSignature == candidate.materialTypeSignature;
+         batch.materialTypeVariant == candidate.materialTypeVariant;
 }
 
 [[nodiscard]] IndexedIndirectDrawCommand
@@ -557,6 +564,43 @@ void updateBatchStats(RenderBatchAnalysis &analysis,
       ++analysis.stats.legacyRejectedDrawCount;
     } else {
       ++analysis.stats.unsupportedDrawCount;
+    }
+  }
+}
+
+[[nodiscard]] bool isMaterialSourceGeometryBinding(
+    const ShaderResourceBinding &binding) {
+  constexpr std::string_view kMaterialSourceGeometryBindings[] = {
+      "SceneObjects", "SceneDraws", "SceneMaterials", "SceneMaterialRefs",
+      "SceneTextures"};
+  for (const std::string_view name : kMaterialSourceGeometryBindings) {
+    if (binding.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void validateDirectRasterHelperPipelineFacts(
+    const DirectRasterPassPurpose purpose,
+    const ShaderProgramSet &shaderProgram, const IShader &shaderInfo) {
+  if (purpose == DirectRasterPassPurpose::Unspecified) {
+    throw std::logic_error("DirectRasterPass pipeline desc requires an "
+                           "explicit non-material helper purpose");
+  }
+
+  if (shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE")) {
+    throw std::logic_error("material-source geometry must use render batch "
+                           "pipeline facts, not DirectRasterPass");
+  }
+
+  for (const ShaderResourceBinding &binding :
+       shaderInfo.getReflectionBindings()) {
+    if (isMaterialSourceGeometryBinding(binding)) {
+      throw std::logic_error("material-source geometry binding '" +
+                             binding.name +
+                             "' must use render batch pipeline facts, not "
+                             "DirectRasterPass");
     }
   }
 }
@@ -702,7 +746,49 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   for (const auto &item : m_nonGeometryDispatchItems) {
     if (!seen.insert(item.pipelineKey).second)
       continue;
-    out.push_back(PipelineBuildDesc::fromRenderWorkItem(item));
+    if (!item.shaderInfo) {
+      throw std::logic_error("render work pipeline desc requires shaderInfo");
+    }
+    if (item.kind == RenderWorkKind::ComputeDispatch) {
+      out.push_back(PipelineBuildDesc::compute(
+          item.pipelineKey, item.shaderProgram.getPipelineSignature(),
+          item.shaderInfo->getAllStages(),
+          item.shaderInfo->getReflectionBindings()));
+      continue;
+    }
+    if (item.kind != RenderWorkKind::DirectRasterPass) {
+      throw std::logic_error("unsupported render work kind for pipeline desc");
+    }
+
+    validateDirectRasterHelperPipelineFacts(
+        item.directRaster.purpose, item.shaderProgram, *item.shaderInfo);
+    if (!item.directRaster.vertexBuffer.isValid()) {
+      throw std::logic_error("DirectRasterPass pipeline desc requires "
+                             "vertexBuffer");
+    }
+    if (!item.directRaster.indexBuffer.isValid()) {
+      throw std::logic_error(
+          "DirectRasterPass pipeline desc requires indexBuffer");
+    }
+    const auto *vertexBuffer = dynamic_cast<const IVertexBuffer *>(
+        &item.directRaster.vertexBuffer.get());
+    if (vertexBuffer == nullptr) {
+      throw std::logic_error(
+          "DirectRasterPass vertexBuffer must implement IVertexBuffer");
+    }
+    const auto *indexBuffer =
+        dynamic_cast<const IndexBuffer *>(&item.directRaster.indexBuffer.get());
+    if (indexBuffer == nullptr) {
+      throw std::logic_error(
+          "DirectRasterPass indexBuffer must be an IndexBuffer");
+    }
+
+    out.push_back(PipelineBuildDesc::graphics(
+        item.pipelineKey, item.shaderProgram.getPipelineSignature(),
+        item.target, item.shaderInfo->getAllStages(),
+        item.shaderInfo->getReflectionBindings(), vertexBuffer->getLayout(),
+        item.renderState, indexBuffer->getTopology(), item.renderingMode,
+        item.attachments));
   }
   const RenderBatchAnalysis analysis = compileIndirectBatches();
   if (!analysis.ok()) {
@@ -710,8 +796,31 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
   }
   out.reserve(out.size() + analysis.batches.size());
   for (const RenderBatch &batch : analysis.batches) {
-    PipelineBuildDesc desc =
-        PipelineBuildDesc::fromRenderBatch(batch, analysis.context);
+    const auto factsIt = std::find_if(
+        analysis.context.pipelineFacts.begin(),
+        analysis.context.pipelineFacts.end(),
+        [&batch](const RenderBatchPipelineFacts &facts) {
+          return facts.materialTypeVariant == batch.materialTypeVariant;
+        });
+    if (factsIt == analysis.context.pipelineFacts.end()) {
+      throw std::logic_error(
+          "RenderBatch pipeline desc missing material type facts");
+    }
+    if (!factsIt->shaderInfo) {
+      throw std::logic_error("RenderBatch pipeline desc requires shaderInfo");
+    }
+
+    const PipelineKey key =
+        batch.derivedPipelineKey.id.id == 0
+            ? PipelineKey::build(batch.materialTypeVariant,
+                                 analysis.context.renderPathNodeSignature)
+            : batch.derivedPipelineKey;
+    PipelineBuildDesc desc = PipelineBuildDesc::graphics(
+        key, factsIt->shaderProgram.getPipelineSignature(),
+        analysis.context.target, factsIt->shaderInfo->getAllStages(),
+        factsIt->shaderInfo->getReflectionBindings(), factsIt->vertexLayout,
+        factsIt->renderState, factsIt->topology,
+        analysis.context.renderingMode, analysis.context.attachments);
     if (!seen.insert(desc.key).second) {
       continue;
     }
@@ -753,8 +862,9 @@ RenderBatchAnalysis RenderWorkQueue::compileIndirectBatches() const {
       batch.batchIndex = analysis.batches.size();
       batch.objectDataSignature = candidate.objectDataSignature;
       batch.materialTypeSignature = candidate.materialTypeSignature;
+      batch.materialTypeVariant = candidate.materialTypeVariant;
       batch.derivedPipelineKey =
-          PipelineKey::build(batch.materialTypeSignature,
+          PipelineKey::build(batch.materialTypeVariant,
                              analysis.context.renderPathNodeSignature);
       analysis.batches.push_back(std::move(batch));
       batchIt = std::prev(analysis.batches.end());
@@ -886,6 +996,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
         .debugId = renderable->getDebugId(),
         .sortCenter = validatedData.sortCenter,
         .materialTypeSignature = validatedData.materialTypeSignature,
+        .materialTypeVariant = validatedData.materialTypeVariant,
     });
   }
 

@@ -35,19 +35,11 @@ static_assert(
     std::variant_size_v<
         decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
                      .getOrCreatePipeline(
-                         std::declval<const LX_core::RenderWorkItem &>()))> ==
-        2,
-    "VulkanResourceManager must expose one pipeline resolution entry for "
-    "graphics and compute work items");
-static_assert(
-    std::variant_size_v<
-        decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
-                     .getOrCreatePipeline(
-                         std::declval<const LX_core::RenderBatch &>(),
                          std::declval<
-                             const LX_core::RenderPathNodeContext &>()))> == 2,
-    "VulkanResourceManager must expose batch pipeline resolution for compiler "
-    "RenderBatch submissions");
+                             const LX_core::PipelineBuildDesc &>()))> ==
+        2,
+    "VulkanResourceManager must expose one desc-based pipeline resolution "
+    "entry for graphics and compute pipelines");
 
 namespace {
 
@@ -98,22 +90,38 @@ void syncRenderWorkItemResources(
   resourceManager.collectGarbage();
 }
 
-LX_core::RenderWorkItem
+struct SyncedDebugOverlayItem final {
+  LX_core::RenderWorkItem item;
+  LX_core::PipelineBuildDesc pipelineBuildDesc;
+};
+
+SyncedDebugOverlayItem
 syncDebugOverlayItem(LX_core::backend::VulkanResourceManager &resourceManager,
                      LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
                      LX_core::Scene &scene) {
   auto item = LX_test::debugOverlayDirectRasterHelperItemFromScene(scene);
+  LX_core::RenderWorkQueue pipelineQueue;
+  pipelineQueue.addItem(item);
+  auto pipelineDescs = pipelineQueue.collectUniquePipelineBuildDescs();
+  if (pipelineDescs.size() != 1u) {
+    throw std::runtime_error(
+        "debug overlay fixture expected exactly one pipeline build desc");
+  }
   syncRenderWorkItemResources(resourceManager, cmdBufferMgr, item);
-  return item;
+  return SyncedDebugOverlayItem{
+      .item = std::move(item),
+      .pipelineBuildDesc = std::move(pipelineDescs.front()),
+  };
 }
 
 bool drawDebugOverlayItem(
     LX_core::backend::VulkanDevice &device,
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    const LX_core::RenderWorkItem &item) {
+    const SyncedDebugOverlayItem &work) {
+  const LX_core::RenderWorkItem &item = work.item;
   auto &renderPass = resourceManager.getRenderPass();
-  auto pipeline = resourceManager.getOrCreatePipeline(item);
+  auto pipeline = resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
   const VkPipeline pipelineHandle =
       std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
   if (pipelineHandle == VK_NULL_HANDLE) {
@@ -185,9 +193,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (smallVkVertex->get().getSize() !=
-          smallItem.directRaster.vertexBuffer.get().getByteSize() ||
+          smallItem.item.directRaster.vertexBuffer.get().getByteSize() ||
       smallVkIndex->get().getSize() !=
-          smallItem.directRaster.indexBuffer.get().getByteSize()) {
+          smallItem.item.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -237,9 +245,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (grownVkVertex->get().getSize() !=
-          grownItem.directRaster.vertexBuffer.get().getByteSize() ||
+          grownItem.item.directRaster.vertexBuffer.get().getByteSize() ||
       grownVkIndex->get().getSize() !=
-          grownItem.directRaster.indexBuffer.get().getByteSize()) {
+          grownItem.item.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -284,7 +292,7 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
 
-  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, grownItem);
+  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, grownItem.item);
   auto retainedVkVertex = resourceManager.getBuffer(retainedVertexIdentity);
   auto retainedVkIndex = resourceManager.getBuffer(retainedIndexIdentity);
   if (!retainedVkVertex || !retainedVkIndex) {
@@ -292,9 +300,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (retainedVkVertex->get().getSize() !=
-          grownItem.directRaster.vertexBuffer.get().getByteSize() ||
+          grownItem.item.directRaster.vertexBuffer.get().getByteSize() ||
       retainedVkIndex->get().getSize() !=
-          grownItem.directRaster.indexBuffer.get().getByteSize()) {
+          grownItem.item.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained "
                  "CPU capacity\n";
     return false;
@@ -518,7 +526,10 @@ int main() {
 
     auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
         *vertexBufferPtr, *indexBufferPtr);
-    auto pipeline = resourceManager->getOrCreatePipeline(item);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {

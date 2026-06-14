@@ -4,6 +4,7 @@
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/math/mat.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"
@@ -321,6 +322,7 @@ std::array<Mat4f, 6> captureViewProjections() {
 
 struct BakeWorkItem final {
   RenderWorkItem item;
+  PipelineBuildDesc pipelineBuildDesc;
   VertexBufferUniquePtr vertexBuffer;
   IndexBufferUniquePtr indexBuffer;
 };
@@ -377,12 +379,18 @@ BakeWorkItem makeBakeItem(const std::string &shaderName,
   if (!resolvedShaderProgram.has_value()) {
     throw std::logic_error("IBL bake material missing shader program");
   }
+  item.shaderProgram = resolvedShaderProgram->get();
   item.materialTypeVariant =
-      material->getMaterialTypeVariantSignature(resolvedShaderProgram->get());
+      material->getMaterialTypeVariantSignature(item.shaderProgram);
   item.renderPathNodeSignature = makeBakeRenderPathNodeSignature(
       shaderName, item.renderState, item.target, indexCount);
   item.pipelineKey =
       PipelineKey::build(item.materialTypeVariant, item.renderPathNodeSignature);
+  work.pipelineBuildDesc = PipelineBuildDesc::graphics(
+      item.pipelineKey, item.shaderProgram.getPipelineSignature(), item.target,
+      item.shaderInfo->getAllStages(), item.shaderInfo->getReflectionBindings(),
+      work.vertexBuffer->getLayout(), item.renderState,
+      work.indexBuffer->getTopology(), item.renderingMode, item.attachments);
   return work;
 }
 
@@ -578,7 +586,7 @@ void IblBakeRenderer::renderEquirectToCubemap(
                    36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -639,7 +647,7 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
                    36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -704,7 +712,7 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
                            36u);
 
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 mip = 0; mip < mipLevels; ++mip) {
@@ -772,7 +780,7 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
   auto work = makeFullscreenBakeItem("ibl_brdf_lut", target);
   syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
   transitionTexture2D(

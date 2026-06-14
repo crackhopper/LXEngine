@@ -109,7 +109,10 @@ int main() {
     }
     resourceManager->collectGarbage();
 
-    auto pipeline = resourceManager->getOrCreatePipeline(renderItem);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {

@@ -2,11 +2,10 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/rhi/index_buffer.hpp"
-#include "core/pipeline/pipeline_build_desc.hpp"
-#include "core/rhi/vertex_buffer.hpp"
 #include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/render_queue.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
@@ -46,10 +45,26 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
-        *vertexBufferPtr, *indexBufferPtr);
+    auto shader = LX_test::makeMinimalShaderForVulkanTests();
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = "minimal";
+    shaderProgram.shader = shader;
 
-    auto info = LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
+    LX_core::RenderState renderState;
+    renderState.cullMode = LX_core::CullMode::None;
+    renderState.depthTestEnable = false;
+    renderState.depthWriteEnable = false;
+
+    const LX_core::RenderTarget target;
+    const LX_core::PipelineKey key = LX_core::PipelineKey::build(
+        shaderProgram.getPipelineSignature(),
+        LX_test::testRenderPathNodeSignature(LX_core::Pass_PostProcess,
+                                             target));
+    auto info = LX_core::PipelineBuildDesc::graphics(
+        key, shaderProgram.getPipelineSignature(), target.toDesc(),
+        shader->getAllStages(), shader->getReflectionBindings(),
+        vertexBufferPtr->getLayout(), renderState,
+        indexBufferPtr->getTopology(), std::nullopt, {});
 
     auto &cache = resourceManager->getPipelineCache();
     auto found0 = cache.find(info.key);
@@ -84,16 +99,6 @@ int main() {
     if (cache.size() != 1) {
       std::cerr << "FAIL: preload rebuilt existing key, cache size = "
                 << cache.size() << "\n";
-      return 1;
-    }
-
-    // Direct queue collection should also produce exactly this one helper info.
-    LX_core::RenderWorkQueue helperQueue;
-    helperQueue.addItem(item);
-    auto infos = helperQueue.collectUniquePipelineBuildDescs();
-    if (infos.size() != 1) {
-      std::cerr << "FAIL: render work queue produced " << infos.size()
-                << " infos, expected 1\n";
       return 1;
     }
 

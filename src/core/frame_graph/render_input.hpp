@@ -62,6 +62,7 @@ struct RenderDrawInput final : RenderInput {
   }
 
   RenderDrawInputSource source = RenderDrawInputSource::SceneRenderable;
+  u32 sourceRenderableIndex = u32_max;
   ObjectHandle object;
   MeshHandle mesh;
   MaterialHandle material;
