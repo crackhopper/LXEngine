@@ -147,13 +147,34 @@ validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass) {
               GlobalStringTable::get().toDebugString(bindingName) + "'");
     }
 
+    if (!item.shaderInfo) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("FinalShader"),
+          "Material v2 validation requires a resolved final shader");
+    }
+    if (item.materialTypeVariant.id == 0) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("MaterialTypeVariant"),
+          "Material v2 validation requires a final material type variant");
+    }
+    if (item.renderPathNodeSignature.id == 0) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("RenderPathNodeSignature"),
+          "Material v2 validation requires a final RenderPath node signature");
+    }
+    if (item.pipelineKey.id.id == 0) {
+      addMaterialV2Diagnostic(
+          result, i, item, pass, StringID("PipelineKey"),
+          "Material v2 validation requires a final pipeline key");
+    }
+
     if (shaderConsumesBinding(item.shaderInfo, "SceneMaterials") &&
         item.raster.materialIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneMaterials"),
           "Material v2 validation requires a typed SceneMaterials index");
     }
-    if (!shaderConsumesBinding(item.shaderInfo, "SceneMaterials") &&
+    if (shaderConsumesBinding(item.shaderInfo, "SceneMaterialRefs") &&
         item.raster.materialRefIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneMaterialRefs"),

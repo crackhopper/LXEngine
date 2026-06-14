@@ -1,9 +1,13 @@
+#include "core/asset/shader.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 using namespace LX_core;
@@ -33,6 +37,52 @@ struct TestResource final : public IGpuResource {
   StringID bindingName;
   std::vector<u8> bytes;
 };
+
+struct ShaderWithBindings final : public IShader {
+  explicit ShaderWithBindings(std::vector<ShaderResourceBinding> bindings)
+      : m_bindings(std::move(bindings)) {}
+
+  const std::vector<ShaderStageCode> &getAllStages() const override {
+    return m_stages;
+  }
+
+  const std::vector<ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return m_bindings;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(u32 set, u32 binding) const override {
+    for (const ShaderResourceBinding &candidate : m_bindings) {
+      if (candidate.set == set && candidate.binding == binding) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(const std::string &name) const override {
+    for (const ShaderResourceBinding &candidate : m_bindings) {
+      if (candidate.name == name) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  usize getProgramHash() const override { return 0; }
+
+  std::vector<ShaderStageCode> m_stages;
+  std::vector<ShaderResourceBinding> m_bindings;
+};
+
+ShaderResourceBinding storageBinding(const char *name) {
+  ShaderResourceBinding binding;
+  binding.name = name;
+  binding.type = ShaderPropertyType::StorageBuffer;
+  return binding;
+}
 
 RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
                                 const IGpuResource &index) {
@@ -118,12 +168,80 @@ void testStrictContractRejectsPartialCoverage() {
          "strict bindless contract should report uncovered draw item");
 }
 
+void testMaterialV2StrictRejectsMissingFinalIdentity() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  item.shaderInfo = std::make_shared<ShaderWithBindings>(
+      std::vector<ShaderResourceBinding>{storageBinding("SceneMaterials")});
+  item.materialTypeVariant = StringID{};
+  item.renderPathNodeSignature = StringID{};
+  item.pipelineKey = PipelineKey{};
+  item.raster.materialIndex = 0;
+  item.raster.drawRecordIndex = 0;
+
+  RenderWorkQueue queue;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "strict material v2 validation should reject missing final material "
+         "source identities");
+  EXPECT(!result.diagnostics.empty(),
+         "missing final identities should produce diagnostics");
+}
+
+void testMaterialV2StrictRejectsMissingTypedSourceRef() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  item.shaderInfo = std::make_shared<ShaderWithBindings>(
+      std::vector<ShaderResourceBinding>{storageBinding("SceneMaterialRefs"),
+                                         storageBinding("SceneDraws")});
+  item.raster.drawRecordIndex = 0;
+  item.raster.materialRefIndex = u32_max;
+
+  RenderWorkQueue queue;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "strict material v2 validation should reject missing typed material "
+         "source ref index");
+  EXPECT(!result.diagnostics.empty(),
+         "missing typed material source ref should produce diagnostics");
+}
+
+void testMaterialV2StrictDoesNotInferMaterialRefFallback() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  item.shaderInfo = std::make_shared<ShaderWithBindings>(
+      std::vector<ShaderResourceBinding>{storageBinding("SceneDraws")});
+  item.raster.drawRecordIndex = 0;
+  item.raster.materialRefIndex = u32_max;
+
+  RenderWorkQueue queue;
+  queue.addItem(std::move(item));
+
+  const MaterialV2ValidationResult result =
+      validateMaterialV2StrictQueue(queue, StringID("Forward"));
+  EXPECT(result.ok,
+         "strict material v2 validation should not infer SceneMaterialRefs "
+         "from the absence of SceneMaterials");
+}
+
 } // namespace
 
 int main() {
   testStrictContractAcceptsFullyCoveredBatch();
   testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode();
   testStrictContractRejectsPartialCoverage();
+  testMaterialV2StrictRejectsMissingFinalIdentity();
+  testMaterialV2StrictRejectsMissingTypedSourceRef();
+  testMaterialV2StrictDoesNotInferMaterialRefFallback();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless validation contract checks failed\n";
     return 1;
