@@ -34,7 +34,10 @@ PipelineKey = MaterialTypeVariant + RenderPathNodeSignature
 ```
 
 That is a current pipeline-cache implementation fact, not the target opaque
-batch key for `073-e`.
+batch key for `073-e`. `073-e` supplements that boundary with an explicit
+object data ABI signature for bindless indirect draws. The current bindless
+path has one object data ABI value, but keeping it explicit prevents future
+object table/shader ABI variants from being conflated with material variants.
 
 `REQ-073-d` is executing the hard cut for the old material/source compatibility
 surface. After `073-d`, positive realtime material-source paths must use:
@@ -102,7 +105,7 @@ The positive opaque path is:
 ```text
 RenderPathGraph opaque node
   -> final source-variant shader reflection
-  -> material pipeline signature for this node
+  -> object data signature + material pipeline signature for this node
   -> SceneResourceTableUploadView
   -> OpaqueGeometryDrawCandidate with typed material/draw/object/mesh indices
   -> OpaqueBatchCompiler
@@ -116,6 +119,7 @@ Its input model is:
 ```text
 OpaqueBatchContext
   render path node/pass context
+  object data ABI resolver
   material signature resolver
   global geometry table view
   backend indirect capability
@@ -124,6 +128,7 @@ OpaqueGeometryDrawCandidate[]
   object/draw indices
   mesh table range
   material ref/source-local material indices
+  object data signature
   material pipeline signature
   indirect draw counts and offsets
 ```
@@ -131,8 +136,8 @@ OpaqueGeometryDrawCandidate[]
 `target`, attachments, render-state defaults, and pass identity are context for
 the node that is currently being compiled. They are not fields copied onto each
 candidate for comparison. If a candidate builder only has object, mesh, and
-bound material facts, that is sufficient for batching once the material
-pipeline signature and mesh table range are resolved.
+bound material facts, that is sufficient for batching once the object data
+signature, material pipeline signature, and mesh table range are resolved.
 
 If the current implementation only has per-mesh `GpuResourceRef` vertex/index
 buffers at this point, `073-e` must first register/resolve them into the global
@@ -146,6 +151,7 @@ by the shader and backend are explicit:
 
 - valid mesh/geometry table ranges;
 - non-zero index and instance counts;
+- object data signature resolved for the current bindless object/draw table ABI;
 - material pipeline signature resolved for the current opaque RenderPathNode;
 - typed draw record index when `SceneDraws` or `SceneObjects` is consumed;
 - typed source material reference when source-local material data is consumed;
@@ -164,8 +170,8 @@ reason to fall back to old direct/per-item submission.
 
 ### Batch Compatibility
 
-Opaque batch compatibility is material-signature based inside one opaque
-RenderPathNode.
+Opaque batch compatibility is object-data-signature plus material-signature
+based inside one opaque RenderPathNode.
 
 The batch compiler is scoped to a concrete RenderPathNode/pass. That means pass
 id, render state, attachment contract, target format, topology, and shader base
@@ -183,19 +189,31 @@ table/buffer model:
   belongs to debug/post-effect handling or a separate explicit pass.
 
 Given that context, two opaque geometry candidates can be batched together
-exactly when their material pipeline signature matches. In current terminology
-this is the material source/type signature that selects the final shader variant
-and therefore the pipeline for the current RenderPathNode.
+exactly when their object data signature and material pipeline signature match.
+
+The object data signature is not the old mesh-derived `objectSignature`. It is
+the shader-visible object/draw table ABI signature: which object/draw records,
+buffers, and accessors the selected shader expects. For the current bindless
+opaque path this value is intentionally singular, for example
+`BindlessOpaqueObjectData.v1`. It is still part of the batch/pipeline identity
+so future static/skinned/meshlet/other object data ABI variants do not need
+another identity redesign.
+
+In current material terminology, material pipeline signature is the material
+source/type signature that selects the final shader variant and therefore the
+material side of the pipeline for the current RenderPathNode.
 
 The practical batch key for `073-e` is:
 
+- object data signature, derived from the bindless object/draw table ABI;
 - material pipeline signature, derived from material type/source signature and
   final source-variant identity for the current RenderPathNode.
 
 Everything else is either:
 
 - fixed by the RenderPathNode;
-- derived from the material pipeline signature for backend pipeline lookup;
+- derived from the object data signature and material pipeline signature for
+  backend pipeline lookup;
 - encoded as table index/range data inside the indirect command path;
 - an invalid-input diagnostic;
 - or old direct-submit state that must be deleted.
@@ -205,6 +223,7 @@ The compatibility signature must not include:
 - `kind` / `RenderWorkKind`;
 - `PipelineKey` as an independent key;
 - `RenderPathNodeSignature` as a per-draw split key;
+- old mesh-derived `objectSignature` that represents vertex layout/topology;
 - material URI;
 - material name;
 - material parameter values;
@@ -217,8 +236,9 @@ The compatibility signature must not include:
 - `techniques/...` shader URI.
 
 Different material values or different texture slots stay in one batch when the
-material pipeline signature matches. The draw command carries the table
-index/range that selects the actual object/material/mesh data.
+object data signature and material pipeline signature match. The draw command
+carries the table index/range that selects the actual object/material/mesh
+data.
 
 If current code cannot batch because two meshes still require different bound
 vertex/index buffers, that is not a desired compatibility split. It is a missing
@@ -231,15 +251,17 @@ with a diagnostic. It must not become a permanent batch key.
 
 | Concept | `073-e` status | Reason |
 |---|---|---|
-| material pipeline signature | Only opaque batch key | It selects the final source-variant shader/pipeline for the current opaque node. |
+| object data signature | Opaque batch key and pipeline identity axis | It represents the shader-visible bindless object/draw table ABI. Current value is singular; future ABI variants can split intentionally. |
+| material pipeline signature | Opaque batch key and pipeline identity axis | It selects the final source-variant shader/pipeline for the current opaque node. |
 | RenderPathNode/pass context | Batch compiler scope, not a split key | Pass state, target, topology, and attachment contract are fixed before candidates are compared. |
-| `PipelineKey` | Derived backend lookup value, not an independent batch key | Backend may need it to fetch/create the PSO, but batching should not compare a second identity that can drift from the material signature. |
+| `PipelineKey` | Derived backend lookup value, not an independent batch key | Backend may need it to fetch/create the PSO, but batching should derive it from object data signature, material pipeline signature, and node context instead of comparing a second identity that can drift. |
 | `RenderPathNodeSignature` | Current pipeline-cache implementation detail, not a per-draw batch key | The node signature belongs to the pass context. It must not be copied onto every draw as a reason to split. |
 | draw/object/material/mesh indices and ranges | Indirect command payload and validation data | They select per-draw table records after batching; they do not create a new PSO. |
 | descriptor resources | Global table/scene binding data only | Per-material descriptor identity is old bound-resource behavior and must not split same-signature materials. |
 | vertex layout | Fixed opaque input contract or invalid input | Bindless opaque geometry exposes the fixed position-only input expected by the shader. |
 | topology | Fixed opaque input contract or separate explicit pass | Opaque geometry is triangle list; debug line/wireframe rendering is not an opaque material batch variant. |
 | target/attachment | RenderPathNode context | It affects the pass/pipeline environment, not compatibility between two draw candidates already inside that node. |
+| old mesh-derived `objectSignature` | Delete or rename away from opaque batching | It currently means renderable/mesh pipeline shape in older paths, which conflicts with bindless object data ABI signature. |
 | `RenderWorkKind` / `kind` | Delete from opaque batching path | A runtime kind tag models the old union DTO. Opaque geometry should use typed candidate/batch structures instead. |
 
 ### Batch Compiler Result
@@ -260,8 +282,8 @@ The exact C++ names can differ, but the behavior must be explicit:
 - every input item is either covered by one batch or has one diagnostic;
 - no draw is silently skipped;
 - diagnostics preserve item index, pass, object signature, material signature,
-  material pipeline signature, RenderPathNode context, derived PipelineKey when
-  available, and split/rejection reason;
+  object data signature, material pipeline signature, RenderPathNode context,
+  derived PipelineKey when available, and split/rejection reason;
 - stats expose item count, batch count, indirect-capable draw count,
   unsupported draw count, and fallback-observed count.
 
@@ -278,6 +300,7 @@ Diagnostics use a constrained reason vocabulary so tests can assert exact
 causes:
 
 - `material-pipeline-signature-mismatch`;
+- `object-data-signature-mismatch`;
 - `missing-material-ref-index`;
 - `missing-draw-record-index`;
 - `invalid-material-ref-index`;
@@ -349,6 +372,9 @@ Add failing tests before implementation:
 - current descriptor-resource equality split is rejected as old behavior for
   per-material resource differences;
 - `RenderWorkKind` / `kind` is not part of the opaque batch contract;
+- current bindless object data signature is a single stable value and is part
+  of the opaque batch signature;
+- old mesh-derived `objectSignature` cannot split opaque bindless batches;
 - different vertex buffers or object topology cannot become permanent opaque
   batch split keys;
 - zero index count, zero instance count, missing material ref, missing draw
@@ -359,12 +385,13 @@ Add failing tests before implementation:
 
 Construct same-source material instances with different parameter values and
 texture slots. They must share the compatible opaque batch when
-the material pipeline signature matches.
+the object data signature and material pipeline signature match.
 
 ### Split Diagnostics
 
-Construct mismatches for material pipeline signature and invalid table/range
-data. Assert the exact split or rejection reasons and preserved item identities.
+Construct mismatches for object data signature, material pipeline signature, and
+invalid table/range data. Assert the exact split or rejection reasons and
+preserved item identities.
 
 ### Backend Indirect Submission
 
