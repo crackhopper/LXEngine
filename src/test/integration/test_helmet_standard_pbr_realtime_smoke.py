@@ -145,7 +145,11 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertEqual(unsupported_draw_count, 0)
         self.assertEqual(legacy_rejected_draw_count, 0)
         self.assertEqual(fallback_count, 0)
-        self.assertLessEqual(first_command_offset, last_command_offset)
+        covered_command_count = last_command_offset + 1
+        self.assertEqual(first_command_offset, 0)
+        self.assertEqual(covered_command_count, submitted_draw_count)
+        self.assertEqual(covered_command_count, compiler_draw_count)
+        self.assertEqual(covered_command_count, indirect_capable_draw_count)
         self.assertTrue(payload.get("cpuSrgbPngPath"))
         self.assertTrue(payload.get("metadataPath"))
 
