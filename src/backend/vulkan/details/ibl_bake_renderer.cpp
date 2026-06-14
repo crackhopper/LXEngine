@@ -355,10 +355,13 @@ BakeWorkItem makeBakeItem(const std::string &shaderName,
   work.indexBuffer = IndexBuffer::createUnique(std::move(indices));
 
   RenderWorkItem &item = work.item;
+  item.kind = RenderWorkKind::DirectRasterPass;
+  item.directRaster.purpose = DirectRasterPassPurpose::IblBake;
   item.shaderInfo = shader;
   item.renderState = material->getPassRenderState(Pass_PostProcess);
-  item.raster.vertexBuffer = GpuResourceRef{*work.vertexBuffer};
-  item.raster.indexBuffer = GpuResourceRef{*work.indexBuffer};
+  item.directRaster.vertexBuffer = GpuResourceRef{*work.vertexBuffer};
+  item.directRaster.indexBuffer = GpuResourceRef{*work.indexBuffer};
+  item.directRaster.indexCount = indexCount;
   item.descriptorResources.reserve(resources.size());
   for (auto &resource : resources) {
     if (resource.isValid()) {

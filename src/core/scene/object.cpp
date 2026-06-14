@@ -148,6 +148,15 @@ StringID makeObjectPipelineSignature(const IVertexBuffer &vertexBuffer,
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, objectFields);
 }
 
+[[nodiscard]] StringID makeMaterialTypeSignature(
+    const MaterialInstance &material, const RenderState &renderState) {
+  const std::string &bsdfType = material.getBsdfType();
+  const std::string normalizedType =
+      (bsdfType.empty() ? std::string("<unspecified>") : bsdfType) + "-" +
+      (renderState.blendEnable ? "transparent" : "opaque");
+  return StringID(normalizedType);
+}
+
 std::vector<u32> copyIndexBufferData(const IndexBuffer &indexBuffer) {
   std::vector<u32> indices(indexBuffer.indexCount());
   if (!indices.empty()) {
@@ -626,10 +635,10 @@ void SceneNode::rebuildValidatedCache() {
         worldBounds.isValid()
             ? worldBounds.getCenter()
             : Transform::fromMat4(getWorldTransform()).translation;
-    data.objectSignature = getPipelineSignature(pass);
-    data.materialSignature = material->getPipelineSignature(pass);
     data.materialTypeVariant =
         material->getMaterialTypeVariantSignature(shaderProgram);
+    data.materialTypeSignature =
+        makeMaterialTypeSignature(*material, data.renderState);
 
     if (entry.meshOverlay.enabled) {
       if (geometryStorage.getIndexBuffer().getTopology() !=

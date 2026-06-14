@@ -35,10 +35,8 @@ struct ValidatedRenderablePassData {
   GpuResourceRef bonesResource;
   RenderState renderState;
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
-  StringID objectSignature;
-  StringID materialSignature;
   StringID materialTypeVariant;
-  StringID renderPathNodeSignature;
+  StringID materialTypeSignature;
 };
 
 class IRenderable {

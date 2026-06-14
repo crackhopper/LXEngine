@@ -2,8 +2,13 @@
 #include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
+#include <algorithm>
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace LX_core;
@@ -34,14 +39,60 @@ struct AuditResource final : public IGpuResource {
   std::vector<u8> bytes;
 };
 
-RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
+std::filesystem::path repoRoot() {
+  return std::filesystem::path(__FILE__).parent_path().parent_path()
+      .parent_path().parent_path();
+}
+
+std::string readTextFile(const std::filesystem::path &path) {
+  std::ifstream input(path);
+  return std::string(std::istreambuf_iterator<char>(input),
+                     std::istreambuf_iterator<char>());
+}
+
+void testProductionCodeHasNoOldRealtimeRasterDtoTokens() {
+  const std::array<std::string, 3> forbiddenTokens = {
+      std::string("Raster") + "Draw", std::string("Raster") + "Batch",
+      std::string("raster") + "Batch"};
+  const std::array<std::filesystem::path, 2> roots = {
+      repoRoot() / "src/core", repoRoot() / "src/backend"};
+
+  bool foundForbiddenToken = false;
+  for (const auto &root : roots) {
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(root)) {
+      if (!entry.is_regular_file()) {
+        continue;
+      }
+      const auto extension = entry.path().extension().string();
+      if (extension != ".cpp" && extension != ".hpp" && extension != ".h") {
+        continue;
+      }
+      const std::string text = readTextFile(entry.path());
+      for (const auto &token : forbiddenTokens) {
+        if (text.find(token) != std::string::npos) {
+          std::cerr << "[FAIL] old realtime raster DTO token '" << token
+                    << "' remains in production file "
+                    << entry.path().lexically_relative(repoRoot()).string()
+                    << '\n';
+          foundForbiddenToken = true;
+        }
+      }
+    }
+  }
+
+  EXPECT(!foundForbiddenToken,
+         "production code must not expose old realtime raster DTO names");
+}
+
+RenderWorkItem makeLegacyDirectRasterAuditItem(const IGpuResource &vertex,
                                    const IGpuResource &index,
                                    const IGpuResource &camera,
                                    const IGpuResource &material,
                                    u32 firstIndex) {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
-  item.kind = RenderWorkKind::RasterDraw;
+  item.kind = RenderWorkKind::DirectRasterPass;
   item.pass = StringID("Forward");
   RenderTargetDesc target;
   target.role = RenderTargetRole::Swapchain;
@@ -56,11 +107,11 @@ RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
   item.pipelineKey =
       PipelineKey::build(item.materialTypeVariant,
                          item.renderPathNodeSignature);
-  item.raster.vertexBuffer = GpuResourceRef{vertex};
-  item.raster.indexBuffer = GpuResourceRef{index};
-  item.raster.indexCount = 3;
-  item.raster.firstIndex = firstIndex;
-  item.raster.instanceCount = 1;
+  item.directRaster.vertexBuffer = GpuResourceRef{vertex};
+  item.directRaster.indexBuffer = GpuResourceRef{index};
+  item.directRaster.indexCount = 3;
+  item.directRaster.firstIndex = firstIndex;
+  item.directRaster.instanceCount = 1;
   item.descriptorResources.emplace_back(camera);
   item.descriptorResources.emplace_back(material);
   return item;
@@ -74,8 +125,8 @@ void testMigratedQueueRejectsIncompleteCoverageWithoutFallback() {
                          StringID("MaterialParams"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.indexBuffer = GpuResourceRef{};
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
   const BindlessValidationResult result =
@@ -93,7 +144,7 @@ void testMigratedQueueRejectsIncompleteCoverageWithoutFallback() {
          "falling back to per-item submission");
 }
 
-void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
+void testMigratedQueueRejectsLegacyRenderWorkItems() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -101,20 +152,23 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
                          StringID("MaterialParams"), 64);
 
   RenderWorkQueue queue;
-  queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 0));
-  queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 3));
+  queue.addItem(makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0));
+  queue.addItem(makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 3));
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(queue, StringID("Forward"));
-  EXPECT(result.ok, "fully covered migrated queue should pass bindless audit");
-  EXPECT(result.coveredItemCount == queue.getItems().size(),
-         "audit should cover every migrated draw item");
+  EXPECT(!result.ok,
+         "legacy RenderWorkItem geometry should not pass bindless audit");
+  EXPECT(result.coveredItemCount == 0,
+         "legacy RenderWorkItem geometry should not count as covered");
+  EXPECT(result.diagnostics.size() == 2,
+         "audit should diagnose every legacy RenderWorkItem");
 
   const BindlessSubmissionDecision decision = decideBindlessSubmission(
       queue, StringID("Forward"), true, true);
-  EXPECT(decision.kind == BindlessSubmissionDecisionKind::BindlessBatch,
-         "renderer decision should submit fully covered migrated queue as a "
-         "bindless batch");
+  EXPECT(decision.kind ==
+             BindlessSubmissionDecisionKind::StrictValidationRejected,
+         "renderer decision should reject legacy RenderWorkItem geometry");
 }
 
 void testMaterialV2ValidationRejectsLegacyMaterialDescriptor() {
@@ -125,9 +179,9 @@ void testMaterialV2ValidationRejectsLegacyMaterialDescriptor() {
                          64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = 0;
-  item.raster.drawRecordIndex = 0;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = 0;
+  item.directRaster.drawRecordIndex = 0;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
@@ -161,9 +215,9 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
                          StringID("SceneMaterials"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = u32_max;
-  item.raster.drawRecordIndex = u32_max;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = u32_max;
+  item.directRaster.drawRecordIndex = u32_max;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
@@ -175,6 +229,7 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
          "typed-index fallback rejection should include diagnostics");
   bool namesMaterialIndex = false;
   bool namesDrawIndex = false;
+  bool namesFinalShader = false;
   for (const auto &diagnostic : result.diagnostics) {
     EXPECT(diagnostic.pass == StringID("Forward"),
            "typed-index diagnostic should name the rejected pass");
@@ -191,14 +246,21 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
         diagnostic.reason.find("typed SceneDraws index") != std::string::npos) {
       namesDrawIndex = true;
     }
+    if (diagnostic.bindingName == StringID("FinalShader") &&
+        diagnostic.reason.find("resolved final shader") != std::string::npos) {
+      namesFinalShader = true;
+    }
   }
-  EXPECT(namesMaterialIndex,
-         "typed-index diagnostic should name the missing SceneMaterials index");
+  EXPECT(!namesMaterialIndex,
+         "legacy RenderWorkItem validation should not infer SceneMaterials "
+         "consumption without final shader reflection");
   EXPECT(namesDrawIndex,
          "typed-index diagnostic should name the missing SceneDraws index");
+  EXPECT(namesFinalShader,
+         "typed-index diagnostic should require final shader reflection");
 }
 
-void testMaterialV2ValidationAcceptsTypedSceneData() {
+void testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -206,27 +268,35 @@ void testMaterialV2ValidationAcceptsTypedSceneData() {
                          StringID("SceneMaterials"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = 0;
-  item.raster.drawRecordIndex = 0;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = 0;
+  item.directRaster.drawRecordIndex = 0;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
       validateMaterialV2StrictQueue(queue, StringID("Forward"));
-  EXPECT(result.ok,
-         "Material v2 validation should accept typed SceneMaterials data");
-  EXPECT(result.diagnostics.empty(),
-         "accepted Material v2 validation queue should not emit diagnostics");
+  EXPECT(!result.ok,
+         "Task 2 should not preserve a positive legacy RenderWorkItem "
+         "geometry path for typed SceneMaterials data");
+  const bool namesFinalShader =
+      std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+                  [](const MaterialV2ValidationDiagnostic &diagnostic) {
+                    return diagnostic.bindingName == StringID("FinalShader");
+                  });
+  EXPECT(namesFinalShader,
+         "legacy typed SceneMaterials item should still require final shader "
+         "reflection");
 }
 
 } // namespace
 
 int main() {
+  testProductionCodeHasNoOldRealtimeRasterDtoTokens();
   testMigratedQueueRejectsIncompleteCoverageWithoutFallback();
-  testMigratedQueueAcceptsFullyCoveredIndirectBatch();
+  testMigratedQueueRejectsLegacyRenderWorkItems();
   testMaterialV2ValidationRejectsLegacyMaterialDescriptor();
   testMaterialV2ValidationRejectsTypedIndexFallback();
-  testMaterialV2ValidationAcceptsTypedSceneData();
+  testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader();
   if (g_failures != 0) {
     std::cerr << g_failures << " REQ-071 bridge audit checks failed\n";
     return 1;

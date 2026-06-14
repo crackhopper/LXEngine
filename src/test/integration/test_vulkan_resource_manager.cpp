@@ -7,6 +7,7 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/asset/texture.hpp"
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -38,6 +39,15 @@ static_assert(
         2,
     "VulkanResourceManager must expose one pipeline resolution entry for "
     "graphics and compute work items");
+static_assert(
+    std::variant_size_v<
+        decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
+                     .getOrCreatePipeline(
+                         std::declval<const LX_core::RenderBatch &>(),
+                         std::declval<
+                             const LX_core::RenderPathNodeContext &>()))> == 2,
+    "VulkanResourceManager must expose batch pipeline resolution for compiler "
+    "RenderBatch submissions");
 
 namespace {
 
@@ -92,7 +102,7 @@ LX_core::RenderWorkItem
 syncDebugOverlayItem(LX_core::backend::VulkanResourceManager &resourceManager,
                      LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
                      LX_core::Scene &scene) {
-  auto item = LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
+  auto item = LX_test::debugOverlayDirectRasterHelperItemFromScene(scene);
   syncRenderWorkItemResources(resourceManager, cmdBufferMgr, item);
   return item;
 }
@@ -175,9 +185,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (smallVkVertex->get().getSize() !=
-          smallItem.raster.vertexBuffer.get().getByteSize() ||
+          smallItem.directRaster.vertexBuffer.get().getByteSize() ||
       smallVkIndex->get().getSize() !=
-          smallItem.raster.indexBuffer.get().getByteSize()) {
+          smallItem.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -227,9 +237,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (grownVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer.get().getByteSize() ||
+          grownItem.directRaster.vertexBuffer.get().getByteSize() ||
       grownVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer.get().getByteSize()) {
+          grownItem.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -282,9 +292,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (retainedVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer.get().getByteSize() ||
+          grownItem.directRaster.vertexBuffer.get().getByteSize() ||
       retainedVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer.get().getByteSize()) {
+          grownItem.directRaster.indexBuffer.get().getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained "
                  "CPU capacity\n";
     return false;
@@ -506,18 +516,8 @@ int main() {
       return 1;
     }
 
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
-    auto node = LX_core::SceneNode::create("vulkan_resource_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
+    auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
     auto pipeline = resourceManager->getOrCreatePipeline(item);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);

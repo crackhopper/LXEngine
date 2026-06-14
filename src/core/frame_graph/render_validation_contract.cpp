@@ -7,22 +7,55 @@ namespace LX_core {
 namespace {
 
 [[nodiscard]] std::string reasonForUncoveredItem(const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::RasterDraw) {
-    return "item is not a raster draw";
+  if (item.kind != RenderWorkKind::DirectRasterPass) {
+    return "item is not a direct raster pass";
   }
-  if (!item.raster.vertexBuffer.isValid()) {
-    return "raster draw has no vertex buffer";
+  if (!item.directRaster.vertexBuffer.isValid()) {
+    return "direct raster pass has no vertex buffer";
   }
-  if (!item.raster.indexBuffer.isValid()) {
-    return "raster draw has no index buffer";
+  if (!item.directRaster.indexBuffer.isValid()) {
+    return "direct raster pass has no index buffer";
   }
-  if (item.raster.indexCount == 0) {
-    return "raster draw has zero indexCount";
+  if (item.directRaster.indexCount == 0) {
+    return "direct raster pass has zero indexCount";
   }
-  if (item.raster.instanceCount == 0) {
-    return "raster draw has zero instanceCount";
+  if (item.directRaster.instanceCount == 0) {
+    return "direct raster pass has zero instanceCount";
   }
-  return "raster draw was not covered by an indirect bindless batch";
+  return "direct raster pass was not covered by an indirect bindless batch";
+}
+
+[[nodiscard]] std::string
+reasonForBatchDiagnostic(const RenderBatchDiagnosticReason reason) {
+  switch (reason) {
+  case RenderBatchDiagnosticReason::ObjectDataSignatureMismatch:
+    return "object-data-signature-mismatch";
+  case RenderBatchDiagnosticReason::MaterialTypeSignatureMismatch:
+    return "material-type-signature-mismatch";
+  case RenderBatchDiagnosticReason::SourceMaterialRefUnresolved:
+    return "source-material-ref-unresolved";
+  case RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved:
+    return "object-draw-record-unresolved";
+  case RenderBatchDiagnosticReason::InvalidSourceMaterialRef:
+    return "invalid-source-material-ref";
+  case RenderBatchDiagnosticReason::InvalidDrawRecord:
+    return "invalid-draw-record";
+  case RenderBatchDiagnosticReason::MissingMeshRange:
+    return "missing-mesh-range";
+  case RenderBatchDiagnosticReason::InvalidMeshRange:
+    return "invalid-mesh-range";
+  case RenderBatchDiagnosticReason::ZeroIndexCount:
+    return "zero-index-count";
+  case RenderBatchDiagnosticReason::ZeroInstanceCount:
+    return "zero-instance-count";
+  case RenderBatchDiagnosticReason::GlobalGeometryTableMissing:
+    return "global-geometry-table-missing";
+  case RenderBatchDiagnosticReason::BackendIndirectUnsupported:
+    return "backend-indirect-unsupported";
+  case RenderBatchDiagnosticReason::LegacyInputRejected:
+    return "legacy-input-rejected";
+  }
+  return "unknown-render-batch-diagnostic";
 }
 
 [[nodiscard]] bool isLegacyMaterialBinding(StringID bindingName) {
@@ -63,27 +96,175 @@ void addMaterialV2Diagnostic(MaterialV2ValidationResult &result, usize itemIndex
   result.diagnostics.push_back(std::move(diagnostic));
 }
 
+void addBindlessDecisionDiagnostic(BindlessSubmissionDecision &decision,
+                                   StringID pass,
+                                   const RenderWorkQueue &queue,
+                                   std::string reason) {
+  BindlessValidationDiagnostic diagnostic;
+  diagnostic.pass = pass;
+  if (!queue.getItems().empty()) {
+    const RenderWorkItem &item = queue.getItems().front();
+    diagnostic.debugId = item.debugId;
+    diagnostic.objectSignature = item.objectSignature;
+    diagnostic.materialSignature = item.materialSignature;
+  }
+  diagnostic.reason = std::move(reason);
+  decision.validation.diagnostics.push_back(std::move(diagnostic));
+}
+
 } // namespace
+
+bool isAllowedDirectRasterHelperPurpose(const DirectRasterPassPurpose purpose,
+                                        const bool allowTestOnly) {
+  switch (purpose) {
+  case DirectRasterPassPurpose::FullscreenPostProcess:
+  case DirectRasterPassPurpose::IblBake:
+  case DirectRasterPassPurpose::DebugOverlay:
+    return true;
+  case DirectRasterPassPurpose::TestOnlyNonMaterial:
+    return allowTestOnly;
+  case DirectRasterPassPurpose::Unspecified:
+    return false;
+  }
+  return false;
+}
+
+bool isAllowedDirectRasterHelperWorkItem(const RenderWorkItem &item,
+                                         const bool allowTestOnly) {
+  return item.kind == RenderWorkKind::DirectRasterPass &&
+         isAllowedDirectRasterHelperPurpose(item.directRaster.purpose,
+                                            allowTestOnly);
+}
+
+RenderWorkQueueSubmissionClassification
+classifyRenderWorkQueueSubmission(const RenderWorkQueue &queue,
+                                  const bool allowTestOnly) {
+  const auto &items = queue.getItems();
+  const bool hasItems = !items.empty();
+  const bool hasDrawInputs = !queue.nodeData().drawInputs.empty();
+  if (!hasItems && !hasDrawInputs) {
+    return {RenderWorkQueueSubmissionClass::Empty, {}};
+  }
+
+  if (hasItems && hasDrawInputs) {
+    return {RenderWorkQueueSubmissionClass::MixedDirectHelperAndMaterialSource,
+            "direct helper items cannot be mixed with material-source draw "
+            "inputs"};
+  }
+
+  if (hasItems) {
+    for (const RenderWorkItem &item : items) {
+      if (!isAllowedDirectRasterHelperWorkItem(item, allowTestOnly)) {
+        return {RenderWorkQueueSubmissionClass::InvalidDirectHelper,
+                "queue contains a non-helper or disallowed direct raster work "
+                "item"};
+      }
+    }
+    return {RenderWorkQueueSubmissionClass::DirectHelper, {}};
+  }
+
+  return {RenderWorkQueueSubmissionClass::MaterialSourceBatch, {}};
+}
 
 BindlessValidationResult
 validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
   BindlessValidationResult result;
   const auto &items = queue.getItems();
-  const auto batches = queue.compileIndirectBatches();
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  const auto &drawInputs = queue.nodeData().drawInputs;
 
-  std::unordered_set<usize> covered;
-  for (const auto &batch : batches) {
-    for (const usize index : batch.sourceItemIndices) {
-      covered.insert(index);
+  std::unordered_set<usize> drawInputIds;
+  drawInputIds.reserve(drawInputs.size());
+  for (const RenderDrawInput &drawInput : drawInputs) {
+    drawInputIds.insert(drawInput.inputIndex);
+  }
+
+  std::unordered_set<usize> diagnosedInputIds;
+  diagnosedInputIds.reserve(analysis.diagnostics.size());
+
+  for (const RenderBatchDiagnostic &batchDiagnostic : analysis.diagnostics) {
+    BindlessValidationDiagnostic diagnostic;
+    diagnostic.itemIndex = batchDiagnostic.inputIndex;
+    diagnostic.pass = batchDiagnostic.pass.id == 0 ? pass : batchDiagnostic.pass;
+    diagnostic.debugId = batchDiagnostic.debugId;
+    diagnostic.objectSignature = batchDiagnostic.objectDataSignature;
+    diagnostic.materialSignature = batchDiagnostic.materialTypeSignature;
+    diagnostic.reason = reasonForBatchDiagnostic(batchDiagnostic.reason);
+    result.diagnostics.push_back(std::move(diagnostic));
+    diagnosedInputIds.insert(batchDiagnostic.inputIndex);
+  }
+
+  const auto addAnalysisDiagnostic =
+      [&](const usize itemIndex, const StringID debugId,
+          const StringID objectSignature, const StringID materialSignature,
+          std::string reason) {
+    BindlessValidationDiagnostic diagnostic;
+    diagnostic.itemIndex = itemIndex;
+    diagnostic.pass =
+        analysis.context.pass.id == 0 ? pass : analysis.context.pass;
+    diagnostic.debugId = debugId;
+    diagnostic.objectSignature = objectSignature;
+    diagnostic.materialSignature = materialSignature;
+    diagnostic.reason = std::move(reason);
+    result.diagnostics.push_back(std::move(diagnostic));
+  };
+
+  std::unordered_set<usize> coveredInputIds;
+  coveredInputIds.reserve(analysis.candidates.size());
+  for (const RenderBatch &batch : analysis.batches) {
+    for (const usize candidateIndex : batch.candidateIndices) {
+      if (candidateIndex >= analysis.candidates.size()) {
+        addAnalysisDiagnostic(
+            candidateIndex, StringID{}, batch.objectDataSignature,
+            batch.materialTypeSignature,
+            "render batch analysis referenced invalid candidate index");
+        continue;
+      }
+
+      const PreparedRenderDrawCandidate &candidate =
+          analysis.candidates[candidateIndex];
+      if (drawInputIds.find(candidate.inputIndex) == drawInputIds.end()) {
+        addAnalysisDiagnostic(
+            candidate.inputIndex, candidate.debugId,
+            candidate.objectDataSignature, candidate.materialTypeSignature,
+            "render batch analysis covered unknown draw input");
+        continue;
+      }
+      if (diagnosedInputIds.find(candidate.inputIndex) !=
+          diagnosedInputIds.end()) {
+        addAnalysisDiagnostic(
+            candidate.inputIndex, candidate.debugId,
+            candidate.objectDataSignature, candidate.materialTypeSignature,
+            "render batch analysis covered a diagnosed draw input");
+        continue;
+      }
+      if (!coveredInputIds.insert(candidate.inputIndex).second) {
+        addAnalysisDiagnostic(
+            candidate.inputIndex, candidate.debugId,
+            candidate.objectDataSignature, candidate.materialTypeSignature,
+            "render batch analysis covered a draw input more than once");
+      }
     }
   }
-  result.coveredItemCount = covered.size();
+  result.coveredItemCount = coveredInputIds.size();
+
+  for (const RenderDrawInput &drawInput : drawInputs) {
+    if (coveredInputIds.find(drawInput.inputIndex) != coveredInputIds.end()) {
+      continue;
+    }
+    if (diagnosedInputIds.find(drawInput.inputIndex) !=
+        diagnosedInputIds.end()) {
+      continue;
+    }
+    addAnalysisDiagnostic(drawInput.inputIndex, drawInput.debugId,
+                          analysis.context.objectDataSignature,
+                          drawInput.materialTypeSignature,
+                          "draw input was not covered by render batch "
+                          "analysis");
+  }
 
   for (usize i = 0; i < items.size(); ++i) {
     const RenderWorkItem &item = items[i];
-    if (covered.find(i) != covered.end()) {
-      continue;
-    }
     BindlessValidationDiagnostic diagnostic;
     diagnostic.itemIndex = i;
     diagnostic.pass = pass;
@@ -94,7 +275,7 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
     result.diagnostics.push_back(std::move(diagnostic));
   }
 
-  result.ok = result.diagnostics.empty();
+  result.ok = analysis.ok() && result.diagnostics.empty();
   return result;
 }
 
@@ -102,16 +283,32 @@ BindlessSubmissionDecision decideBindlessSubmission(
     const RenderWorkQueue &queue, StringID pass, const bool strictValidation,
     const bool migratedPass) {
   BindlessSubmissionDecision decision;
-  const auto &items = queue.getItems();
-  if (items.empty()) {
+  const RenderWorkQueueSubmissionClassification classification =
+      classifyRenderWorkQueueSubmission(queue);
+  switch (classification.kind) {
+  case RenderWorkQueueSubmissionClass::Empty:
     decision.kind = BindlessSubmissionDecisionKind::Empty;
     decision.validation.ok = true;
     return decision;
+  case RenderWorkQueueSubmissionClass::DirectHelper:
+    decision.kind = BindlessSubmissionDecisionKind::DirectHelper;
+    decision.validation.ok = true;
+    return decision;
+  case RenderWorkQueueSubmissionClass::MixedDirectHelperAndMaterialSource:
+  case RenderWorkQueueSubmissionClass::InvalidDirectHelper:
+    decision.kind =
+        BindlessSubmissionDecisionKind::StrictValidationRejected;
+    decision.validation.ok = false;
+    addBindlessDecisionDiagnostic(decision, pass, queue,
+                                  classification.reason);
+    return decision;
+  case RenderWorkQueueSubmissionClass::MaterialSourceBatch:
+    break;
   }
 
   decision.validation = validateBindlessMigratedQueue(queue, pass);
-  if (decision.validation.ok &&
-      decision.validation.coveredItemCount == items.size()) {
+  if (decision.validation.ok && queue.getItems().empty() &&
+      decision.validation.coveredItemCount == queue.nodeData().drawInputs.size()) {
     decision.kind = BindlessSubmissionDecisionKind::BindlessBatch;
     return decision;
   }
@@ -132,7 +329,7 @@ validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass) {
   const auto &items = queue.getItems();
   for (usize i = 0; i < items.size(); ++i) {
     const RenderWorkItem &item = items[i];
-    if (item.kind != RenderWorkKind::RasterDraw) {
+    if (item.kind != RenderWorkKind::DirectRasterPass) {
       continue;
     }
 
@@ -169,18 +366,18 @@ validateMaterialV2StrictQueue(const RenderWorkQueue &queue, StringID pass) {
     }
 
     if (shaderConsumesBinding(item.shaderInfo, "SceneMaterials") &&
-        item.raster.materialIndex == u32_max) {
+        item.directRaster.materialIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneMaterials"),
           "Material v2 validation requires a typed SceneMaterials index");
     }
     if (shaderConsumesBinding(item.shaderInfo, "SceneMaterialRefs") &&
-        item.raster.materialRefIndex == u32_max) {
+        item.directRaster.materialRefIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneMaterialRefs"),
           "Material v2 validation requires a typed source material ref index");
     }
-    if (item.raster.drawRecordIndex == u32_max) {
+    if (item.directRaster.drawRecordIndex == u32_max) {
       addMaterialV2Diagnostic(
           result, i, item, pass, StringID("SceneDraws"),
           "Material v2 validation requires a typed SceneDraws index");

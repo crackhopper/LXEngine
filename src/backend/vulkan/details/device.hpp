@@ -55,6 +55,7 @@ public:
   VkFormat getDepthFormat() const { return m_depthFormat; }
   VkExtent2D getExtent() const { return m_extent; }
   bool supportsDynamicRendering() const { return m_dynamicRenderingSupported; }
+  u32 getMaxDrawIndirectCount() const;
 
   // 队列一定存在，否则创建实例的时候就会扔出异常。
   VkQueue getGraphicsQueue() const { return m_graphicsQueue; }

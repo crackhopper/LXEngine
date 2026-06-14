@@ -5,15 +5,11 @@
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/camera_component.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
-#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 
 #include "core/utils/filesystem_tools.hpp"
@@ -23,10 +19,27 @@
 #include <vulkan/vulkan.h>
 
 #include <iostream>
+#include <stdexcept>
+#include <string_view>
 #include <vector>
+
+namespace {
+
+bool isKnownEnvironmentSetupFailure(const std::string_view message) {
+  return message.find("No available video device") != std::string_view::npos ||
+         message.find("Failed to find GPUs with Vulkan support") !=
+             std::string_view::npos ||
+         message.find("Failed to find a suitable GPU") !=
+             std::string_view::npos ||
+         message.find("Failed to create Vulkan surface handle") !=
+             std::string_view::npos;
+}
+
+} // namespace
 
 int main() {
   expSetEnvVK();
+  bool commandRecordingStarted = false;
   try {
     auto success = initializeRuntimeAssetRoot();
     if (!success) {
@@ -72,8 +85,7 @@ int main() {
 
     using V = LX_core::VertexPosNormalUvBone;
 
-    // Build a minimal scene so VulkanCommandBuffer::bindResources has CPU-side
-    // descriptor resources to upload into descriptor sets.
+    // Build a minimal non-material direct helper item.
     auto vertexBufferPtr = LX_core::VertexBuffer<V>::create({
         V({-5.0f, 5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f},
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
@@ -82,45 +94,10 @@ int main() {
         V({5.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f},
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
-    auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-
-    auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
-
-    auto node = LX_core::SceneNode::create("vulkan_command_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create(std::vector<LX_core::Bone>{}));
-    auto scene = LX_core::Scene::create(node);
-    auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
-    scene->addCamera(cameraNode);
-    auto lightNode = LX_core::SceneNode::create("command_buffer_light");
-    scene->addRenderable(lightNode);
-    scene->attachLight(lightNode,
-                       std::make_shared<LX_core::DirectionalLight>());
-
-    auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-    auto *dirLight = dynamic_cast<LX_core::DirectionalLight *>(
-        &scene->getLights().front().get());
-
-    // Default directional light UBO (shader expects it).
-    if (dirLight) {
-      auto &lightUbo = dirLight->getDirectionalUBO();
-      lightUbo.param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-      lightUbo.param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-      lightUbo.setDirty();
-    }
-
-    // Camera matrices needed for camera data uploads.
-    camera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},
-                         LX_core::Vec3f{0.0f, 1.0f, 0.0f});
-    camera->get().updateMatrices();
-
-    auto renderItem =
-        LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
+    auto indexBufferPtr = LX_core::IndexBuffer::create(
+        {0u, 1u, 2u, 0u, 1u, 2u, 0u, 2u, 1u});
+    auto renderItem = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
 
     // Sync all CPU-side resources to GPU.
     LX_core::RenderWorkQueue uploadQueue;
@@ -140,7 +117,62 @@ int main() {
       return 1;
     }
 
+    LX_core::RenderBatchGeometryResources batchGeometry;
+    batchGeometry.vertexBuffer = LX_core::GpuResourceRef{*vertexBufferPtr};
+    batchGeometry.indexBuffer = LX_core::GpuResourceRef{*indexBufferPtr};
+    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.vertexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.indexBuffer);
+    resourceManager->collectGarbage();
+
+    LX_core::RenderBatch batch;
+    batch.commandOffset = 7;
+    batch.commands = {
+        LX_core::IndexedIndirectDrawCommand{
+            .indexCount = 3,
+            .instanceCount = 1,
+            .firstIndex = 0,
+            .vertexOffset = 0,
+            .firstInstance = 11,
+        },
+        LX_core::IndexedIndirectDrawCommand{
+            .indexCount = 6,
+            .instanceCount = 1,
+            .firstIndex = 3,
+            .vertexOffset = 0,
+            .firstInstance = 12,
+        },
+    };
+    batch.commandCount = static_cast<u32>(batch.commands.size());
+
     cmdBufferMgr->beginFrame(0);
+    commandRecordingStarted = true;
+    auto unboundBatchCmd = cmdBufferMgr->allocateBuffer();
+
+    VkCommandBufferBeginInfo unboundBeginInfo{};
+    unboundBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(unboundBatchCmd->getHandle(), &unboundBeginInfo);
+    unboundBatchCmd->beginRenderPass(renderPass.getHandle(),
+                                     framebuffer->getHandle(), extent,
+                                     renderPass.getClearValues());
+    unboundBatchCmd->setViewport(extent.width, extent.height);
+    unboundBatchCmd->setScissor(extent.width, extent.height);
+    unboundBatchCmd->bindPipeline(pipeline);
+
+    bool rejectedMissingBatchGeometry = false;
+    try {
+      unboundBatchCmd->executeRenderBatch(batch);
+    } catch (const std::runtime_error &) {
+      rejectedMissingBatchGeometry = true;
+    }
+    unboundBatchCmd->endRenderPass();
+    vkEndCommandBuffer(unboundBatchCmd->getHandle());
+
+    if (!rejectedMissingBatchGeometry) {
+      std::cerr << "executeRenderBatch accepted an indirect draw without "
+                   "explicit batch geometry binding\n";
+      return 1;
+    }
+
     auto cmd = cmdBufferMgr->allocateBuffer();
 
     VkCommandBufferBeginInfo beginInfo{};
@@ -155,11 +187,50 @@ int main() {
     cmd->setScissor(extent.width, extent.height);
     cmd->bindPipeline(pipeline);
 
-    cmd->bindResources(*resourceManager, pipeline, renderItem);
-    cmd->executeWorkItem(renderItem);
+    cmd->bindRenderBatchGeometry(*resourceManager, batchGeometry);
+    cmd->executeRenderBatch(batch);
+    const auto batchStats = cmd->getRenderBatchSubmissionStats();
+    if (batchStats.compilerBatchCountConsumed != 1 ||
+        batchStats.boundBatchGeometryCount != 1 ||
+        batchStats.submittedDirectIndexedDrawCount != 0 ||
+        batchStats.submittedIndexedIndirectCommandCount != 2 ||
+        batchStats.submittedIndirectBatchCount != 1 ||
+        batchStats.submittedIndirectDrawCount != 2 ||
+        batchStats.firstCommandOffset != 7 ||
+        batchStats.lastCommandOffset != 8 ||
+        batchStats.fallbackObservedCount != 0) {
+      std::cerr << "RenderBatch submission stats mismatch: consumed="
+                << batchStats.compilerBatchCountConsumed
+                << " geometryBinds=" << batchStats.boundBatchGeometryCount
+                << " directDraws=" << batchStats.submittedDirectIndexedDrawCount
+                << " indexedIndirectCommands="
+                << batchStats.submittedIndexedIndirectCommandCount
+                << " batches="
+                << batchStats.submittedIndirectBatchCount
+                << " draws=" << batchStats.submittedIndirectDrawCount
+                << " first=" << batchStats.firstCommandOffset
+                << " last=" << batchStats.lastCommandOffset
+                << " fallback=" << batchStats.fallbackObservedCount << "\n";
+      return 1;
+    }
     cmd->endRenderPass();
 
-    vkEndCommandBuffer(cmd->getHandle());
+    if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+      std::cerr << "Failed to end batch command buffer\n";
+      return 1;
+    }
+
+    VkCommandBuffer submittedBatchCommand = cmd->getHandle();
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &submittedBatchCommand;
+    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo,
+                      VK_NULL_HANDLE) != VK_SUCCESS) {
+      std::cerr << "Failed to submit batch command buffer\n";
+      return 1;
+    }
+    vkQueueWaitIdle(device->getGraphicsQueue());
 
     auto &descriptorMgr = device->getDescriptorManager();
     const auto descriptorFootprint = [&descriptorMgr](const u32 frameCount) {
@@ -206,7 +277,11 @@ int main() {
 
     return 0;
   } catch (const std::exception &e) {
-    std::cerr << "SKIP VulkanCommandBuffer test: " << e.what() << "\n";
-    return 0;
+    if (!commandRecordingStarted && isKnownEnvironmentSetupFailure(e.what())) {
+      std::cerr << "SKIP VulkanCommandBuffer test: " << e.what() << "\n";
+      return 0;
+    }
+    std::cerr << "FAIL VulkanCommandBuffer test: " << e.what() << "\n";
+    return 1;
   }
 }

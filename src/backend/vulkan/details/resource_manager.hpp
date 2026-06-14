@@ -19,6 +19,8 @@
 #include <vulkan/vulkan.h>
 
 namespace LX_core {
+struct RenderBatch;
+struct RenderPathNodeContext;
 struct RenderWorkItem;
 } // namespace LX_core
 
@@ -125,6 +127,9 @@ public:
   VulkanRenderPass &getRenderPass(const RenderTargetDesc &target);
 
   VulkanPipelineRef getOrCreatePipeline(const LX_core::RenderWorkItem &item);
+  VulkanPipelineRef
+  getOrCreatePipeline(const LX_core::RenderBatch &batch,
+                      const LX_core::RenderPathNodeContext &context);
 
   /// Bulk preload — intended to be called once per scene init from the
   /// VulkanRenderer after building a FrameGraph.

@@ -5,7 +5,14 @@
 #include "../pipelines/pipeline_ref.hpp"
 #include <vulkan/vulkan.h>
 #include <memory>
+#include <string_view>
 #include <vector>
+
+namespace LX_core {
+struct RenderBatch;
+struct RenderBatchGeometryResources;
+struct RenderPathNodeContext;
+} // namespace LX_core
 
 namespace LX_core::backend {
 
@@ -13,12 +20,27 @@ namespace LX_core::backend {
 
 class VulkanResourceManager;
 class VulkanComputePipeline;
+class VulkanBuffer;
+
+struct VulkanRenderBatchSubmissionStats final {
+  usize compilerBatchCountConsumed = 0;
+  usize boundBatchGeometryCount = 0;
+  usize submittedDirectIndexedDrawCount = 0;
+  usize submittedIndexedIndirectCommandCount = 0;
+  usize submittedIndirectBatchCount = 0;
+  usize submittedIndirectDrawCount = 0;
+  u32 firstCommandOffset = 0;
+  u32 lastCommandOffset = 0;
+  usize fallbackObservedCount = 0;
+};
 
 class VulkanCommandBuffer {
 public:
-  VulkanCommandBuffer(VkCommandBuffer handle, VulkanDevice &device)
-      : m_handle(handle), m_device(device) {}
-  ~VulkanCommandBuffer() = default;
+  VulkanCommandBuffer(
+      VkCommandBuffer handle, VulkanDevice &device,
+      std::vector<std::unique_ptr<VulkanBuffer>> *retainedIndirectBuffers =
+          nullptr);
+  ~VulkanCommandBuffer();
 
   VkCommandBuffer getHandle() const { return m_handle; }
 
@@ -51,8 +73,20 @@ public:
                      const RenderWorkItem &item);
   void bindResources(VulkanResourceManager &resourceManager,
                      VulkanPipelineRef pipeline, const RenderWorkItem &item);
+  void bindSceneBindlessResources(VulkanResourceManager &resourceManager,
+                                  VulkanPipelineRef pipeline,
+                                  const RenderPathNodeContext &context,
+                                  PipelineKey pipelineKey = {});
+  void bindRenderBatchGeometry(VulkanResourceManager &resourceManager,
+                               const RenderBatchGeometryResources &geometry);
 
   void executeWorkItem(const RenderWorkItem &item);
+  void executeRenderBatch(const RenderBatch &batch);
+
+  const VulkanRenderBatchSubmissionStats &
+  getRenderBatchSubmissionStats() const {
+    return m_renderBatchSubmissionStats;
+  }
 
   void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size,
                   VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0) {
@@ -87,17 +121,28 @@ public:
   }
 
 private:
+  void bindDescriptorResourcesWithLayout(
+      VulkanResourceManager &resourceManager,
+      const std::vector<ShaderResourceBinding> &bindings,
+      VkPipelineLayout pipelineLayout, VkPipelineBindPoint bindPoint,
+      const DescriptorResourceList &descriptorResources, StringID pass,
+      PipelineKey pipelineKey, std::string_view operation);
   void
   bindResourcesWithLayout(VulkanResourceManager &resourceManager,
                           const std::vector<ShaderResourceBinding> &bindings,
                           VkPipelineLayout pipelineLayout,
                           VkPipelineBindPoint bindPoint,
                           const RenderWorkItem &item);
-  void executeRasterDrawItem(const RenderWorkItem &item);
+  void executeDirectRasterPassItem(const RenderWorkItem &item);
   void executeComputeDispatchItem(const RenderWorkItem &item);
 
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;
+  std::vector<std::unique_ptr<VulkanBuffer>> *m_retainedIndirectBuffers =
+      nullptr;
+  std::vector<std::unique_ptr<VulkanBuffer>> m_ownedIndirectBuffers;
+  VulkanRenderBatchSubmissionStats m_renderBatchSubmissionStats;
+  bool m_renderBatchGeometryBound = false;
 };
 
 using VulkanCommandBufferUniquePtr = std::unique_ptr<VulkanCommandBuffer>;

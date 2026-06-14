@@ -13,6 +13,8 @@
 namespace LX_core {
 
 struct RenderWorkItem; // forward decl
+struct RenderBatch;
+struct RenderPathNodeContext;
 
 enum class PipelineBuildType {
   Graphics,
@@ -38,13 +40,14 @@ struct PushConstantRange {
 };
 
 /*
-@source_analysis.section PipelineBuildDesc：从 RenderWorkItem 派生出的构建输入包
+@source_analysis.section PipelineBuildDesc：从 legacy helper work 派生出的构建输入包
 `PipelineKey` 只回答“是不是同一条 pipeline”；`PipelineBuildDesc` 回答
 “如果这条 pipeline 还没建，backend 需要哪些输入”。
 
 它从一个已经校验好的 `RenderWorkItem` 派生，不重新判断材质是否合法，也不重新推导
-identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备好，backend
-只负责把 这些事实翻译成 Vulkan pipeline 创建参数。
+identity。073-e 之后，realtime material-source geometry 的正向 pipeline lookup
+应从 `RenderBatch` 与 node context 派生；这个入口只保留给 compute/offline 与
+fullscreen/IBL/debug 这类显式 direct raster helper。
 */
 struct PipelineBuildDesc {
   PipelineBuildType type = PipelineBuildType::Graphics;
@@ -60,10 +63,12 @@ struct PipelineBuildDesc {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
   PushConstantRange pushConstant;
 
-  /// Derive a complete PipelineBuildDesc from a fully-built RenderWorkItem.
-  /// Graphics items require shader, material, vertex, and index resources.
+  /// Derive a complete PipelineBuildDesc from a fully-built helper work item.
+  /// Direct raster helpers require shader, vertex, and index resources.
   /// Compute items require shader stages and descriptor bindings only.
   static PipelineBuildDesc fromRenderWorkItem(const RenderWorkItem &item);
+  static PipelineBuildDesc fromRenderBatch(const RenderBatch &batch,
+                                           const RenderPathNodeContext &context);
 };
 
 } // namespace LX_core

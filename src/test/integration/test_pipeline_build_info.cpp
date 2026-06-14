@@ -1,17 +1,11 @@
-#include "core/asset/material_instance.hpp"
-#include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/image_format.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
@@ -20,6 +14,7 @@
 
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 using namespace LX_core;
@@ -76,27 +71,9 @@ private:
   std::vector<VertexInputAttribute> m_vertexInputs;
 };
 
-SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
-  static int cameraCounter = 0;
-  auto node = SceneNode::create("pipeline_build_info_camera_" +
-                                std::to_string(++cameraCounter));
-  auto camera = node->addComponent<CameraComponent>();
-  camera->get().setTarget(target);
-  camera->get().updateMatrices();
-  return node;
-}
-
-void configureMaterialV2UploadData(const MaterialInstanceSharedPtr &material) {
-  material->setBsdfType("matte");
-  material->setMaterialSourceUri(ResourceUri(
-      "assets://shaders/glsl/common/materials/matte.contract.glsl"));
-  material->setMaterialSourceReflectionHash("matte-source-contract-v1");
-  material->setMaterialSourceSignature(StringID("matte-source-signature"));
-  MaterialParameterEnvelope kd;
-  kd.kind = MaterialEnvelopeKind::Rgb;
-  kd.rgbValue = Vec3f{0.25f, 0.5f, 0.75f};
-  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
-  material->syncGpuData();
+void keepResourceAlive(std::shared_ptr<IGpuResource> resource) {
+  static std::vector<std::shared_ptr<IGpuResource>> resources;
+  resources.push_back(std::move(resource));
 }
 
 RenderWorkItem
@@ -104,36 +81,16 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
           std::vector<VertexInputAttribute> vertexInputs = {},
           const RenderTarget &target = {}) {
   std::vector<ShaderResourceBinding> bindings = {
-      ShaderResourceBinding{"CameraUBO",
+      ShaderResourceBinding{"FullscreenParams",
                             0,
                             0,
                             ShaderPropertyType::UniformBuffer,
                             1,
-                            192,
+                            16,
                             0,
-                            ShaderStage::Vertex,
+                            ShaderStage::Fragment,
                             {}},
   };
-  if (topo == PrimitiveTopology::TriangleList) {
-    bindings.push_back(ShaderResourceBinding{"SceneMaterials",
-                                             0,
-                                             7,
-                                             ShaderPropertyType::StorageBuffer,
-                                             1,
-                                             96,
-                                             0,
-                                             ShaderStage::Fragment,
-                                             {}});
-    bindings.push_back(ShaderResourceBinding{"SceneTextures",
-                                             0,
-                                             11,
-                                             ShaderPropertyType::Texture2D,
-                                             256,
-                                             0,
-                                             0,
-                                             ShaderStage::Fragment,
-                                             {}});
-  }
   std::vector<ShaderStageCode> stages = {
       ShaderStageCode{ShaderStage::Vertex, std::vector<u32>{0x07230203, 0, 0}},
       ShaderStageCode{ShaderStage::Fragment,
@@ -142,42 +99,41 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
 
   auto shader = std::make_shared<FakeShader>(
       std::move(bindings), std::move(stages), std::move(vertexInputs));
-  auto tmpl = MaterialTemplate::create("fake_shader");
 
-  ShaderProgramSet set;
-  set.shaderName = "fake_shader";
-  set.variants.push_back(ShaderVariant{
-      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
-      .enabled = true,
-      .materialContractSource = ResourceUri(
-          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
-      .materialSourceSignature = StringID("matte-source-signature"),
-  });
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  entry.renderState = RenderState{};
-  entry.renderState.cullMode = CullMode::Front;
-  entry.renderState.depthTestEnable = false;
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-  auto material = MaterialInstance::create(tmpl);
-  configureMaterialV2UploadData(material);
+  ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = "direct_helper_shader";
+  shaderProgram.shader = shader;
 
   // Minimal vertex + index buffers.
   auto vb = VertexBuffer<VertexPos>::create(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto ib = IndexBuffer::create({0, 1, 2}, topo);
-  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
+  RenderWorkItem item;
+  item.domain = RenderDomain::Realtime;
+  item.kind = RenderWorkKind::DirectRasterPass;
+  item.directRaster.purpose = DirectRasterPassPurpose::TestOnlyNonMaterial;
+  item.shaderInfo = shader;
+  item.shaderProgram = shaderProgram;
+  item.renderState = RenderState{};
+  item.renderState.cullMode = CullMode::Front;
+  item.renderState.depthTestEnable = false;
+  item.directRaster.vertexBuffer = GpuResourceRef{*vb};
+  item.directRaster.indexBuffer = GpuResourceRef{*ib};
+  item.directRaster.indexCount = static_cast<u32>(ib->indexCount());
+  item.directRaster.instanceCount = 1;
+  item.pass = Pass_PostProcess;
+  item.target = target.toDesc();
+  item.objectSignature = StringID("pipeline_build_info.direct_helper_object");
+  item.materialSignature = StringID("pipeline_build_info.direct_helper_state");
+  item.materialTypeVariant = shaderProgram.getPipelineSignature();
+  item.renderPathNodeSignature =
+      LX_test::testRenderPathNodeSignature(Pass_PostProcess, target);
+  item.pipelineKey =
+      PipelineKey::build(item.materialTypeVariant,
+                         item.renderPathNodeSignature);
 
-  auto node = SceneNode::create("pipeline_build_info_node");
-  node->addComponent<MeshComponent>(mesh);
-  node->addComponent<MaterialComponent>(material);
-  auto scene = Scene::create(node);
-  scene->addCamera(makeCameraNodeWithTarget(target));
-  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward, target);
-  static std::vector<SceneSharedPtr> keepAliveScenes;
-  keepAliveScenes.push_back(std::move(scene));
+  keepResourceAlive(vb);
+  keepResourceAlive(ib);
   return item;
 }
 
@@ -188,11 +144,9 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
 void testFromRenderWorkItemPopulatesBindings() {
   auto item = buildItem();
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(info.bindings.size() == 3, "bindings.size()==3");
-  if (info.bindings.size() == 3) {
-    EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
-    EXPECT(info.bindings[1].name == "SceneMaterials", "binding 1 name");
-    EXPECT(info.bindings[2].name == "SceneTextures", "binding 2 name");
+  EXPECT(info.bindings.size() == 1, "bindings.size()==1");
+  if (info.bindings.size() == 1) {
+    EXPECT(info.bindings[0].name == "FullscreenParams", "binding 0 name");
   }
 }
 
@@ -202,14 +156,82 @@ void testFromRenderWorkItemKeyMatches() {
   EXPECT(info.key == item.pipelineKey, "key matches item.pipelineKey");
 }
 
-void testFromRenderWorkItemCarriesMaterialSourceVariant() {
+void testFromRenderWorkItemCarriesHelperShaderProgramSignature() {
   auto item = buildItem();
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(item.shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE"),
-         "render work should carry material source shader variant");
+  EXPECT(!item.shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE"),
+         "direct helper fixture must not carry material source shader variant");
   EXPECT(info.shaderVariantKey == item.shaderProgram.getPipelineSignature(),
          "build desc shader variant key should match render work shader "
          "program signature");
+}
+
+void testFromRenderWorkItemRejectsMaterialSourceDirectRasterPass() {
+  auto item = buildItem();
+  item.shaderProgram.variants.push_back(ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = ResourceUri(
+          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
+      .materialSourceSignature = StringID("matte-source-signature"),
+  });
+  bool rejected = false;
+  try {
+    (void)PipelineBuildDesc::fromRenderWorkItem(item);
+  } catch (const std::logic_error &error) {
+    rejected = std::string(error.what()).find("material-source geometry") !=
+               std::string::npos;
+  }
+  EXPECT(rejected,
+         "material-source DirectRasterPass must not produce pipeline desc");
+}
+
+void testFromRenderWorkItemRejectsUnclassifiedDirectRasterPass() {
+  auto item = buildItem();
+  item.directRaster.purpose = DirectRasterPassPurpose::Unspecified;
+  bool rejected = false;
+  try {
+    (void)PipelineBuildDesc::fromRenderWorkItem(item);
+  } catch (const std::logic_error &error) {
+    rejected = std::string(error.what()).find("non-material helper purpose") !=
+               std::string::npos;
+  }
+  EXPECT(rejected,
+         "DirectRasterPass must declare an explicit non-material helper "
+         "purpose");
+}
+
+void testFromRenderWorkItemRejectsMaterialSourceSceneBindings() {
+  auto item = buildItem();
+  std::vector<ShaderResourceBinding> bindings = {
+      ShaderResourceBinding{"SceneMaterials",
+                            0,
+                            7,
+                            ShaderPropertyType::StorageBuffer,
+                            1,
+                            96,
+                            0,
+                            ShaderStage::Fragment,
+                            {}},
+  };
+  std::vector<ShaderStageCode> stages = {
+      ShaderStageCode{ShaderStage::Fragment,
+                      std::vector<u32>{0x07230203, 1, 0}},
+  };
+  auto shader = std::make_shared<FakeShader>(std::move(bindings),
+                                             std::move(stages));
+  item.shaderInfo = shader;
+  item.shaderProgram.shader = shader;
+
+  bool rejected = false;
+  try {
+    (void)PipelineBuildDesc::fromRenderWorkItem(item);
+  } catch (const std::logic_error &error) {
+    rejected = std::string(error.what()).find("material-source geometry") !=
+               std::string::npos;
+  }
+  EXPECT(rejected,
+         "SceneMaterials DirectRasterPass must not produce pipeline desc");
 }
 
 void testFromRenderWorkItemStagesPreserved() {
@@ -228,14 +250,13 @@ void testFromRenderWorkItemTopology() {
   EXPECT(info2.topology == PrimitiveTopology::LineList, "topology line");
 }
 
-void testFromRenderWorkItemRenderStateFromMaterial() {
+void testFromRenderWorkItemRenderStateFromHelperItem() {
   auto item = buildItem();
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  // MaterialInstance resolves render state from the template's pass definition.
   EXPECT(info.renderState.cullMode == CullMode::Front,
-         "renderState cull comes from material");
+         "renderState cull comes from helper item");
   EXPECT(info.renderState.depthTestEnable == false,
-         "renderState depthTest comes from material");
+         "renderState depthTest comes from helper item");
 }
 
 void testFromRenderWorkItemIsDeterministic() {
@@ -309,8 +330,6 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
         {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
   });
   auto ib = IndexBuffer::create({0u, 1u, 2u});
-  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
-
   std::vector<ShaderResourceBinding> bindings = {
       ShaderResourceBinding{"CameraUBO",
                             0,
@@ -332,31 +351,34 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
 
   auto shader = std::make_shared<FakeShader>(
       std::move(bindings), std::move(stages), std::move(shaderInputs));
-  auto tmpl = MaterialTemplate::create("filtered_layout_shader");
-  ShaderProgramSet set;
-  set.shaderName = "filtered_layout_shader";
-  set.variants.push_back(ShaderVariant{
-      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
-      .enabled = true,
-      .materialContractSource = ResourceUri(
-          "assets://shaders/glsl/common/materials/matte.contract.glsl"),
-      .materialSourceSignature = StringID("matte-source-signature"),
-  });
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
+  ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = "filtered_layout_helper_shader";
+  shaderProgram.shader = shader;
 
-  auto material = MaterialInstance::create(tmpl);
-  configureMaterialV2UploadData(material);
-  auto node = SceneNode::create("filtered_layout_node");
-  node->addComponent<MeshComponent>(mesh);
-  node->addComponent<MaterialComponent>(material);
-  auto scene = Scene::create(node);
-  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
+  RenderWorkItem item;
+  item.domain = RenderDomain::Realtime;
+  item.kind = RenderWorkKind::DirectRasterPass;
+  item.directRaster.purpose = DirectRasterPassPurpose::TestOnlyNonMaterial;
+  item.shaderInfo = shader;
+  item.shaderProgram = shaderProgram;
+  item.renderState = RenderState{};
+  item.directRaster.vertexBuffer = GpuResourceRef{*vb};
+  item.directRaster.indexBuffer = GpuResourceRef{*ib};
+  item.directRaster.indexCount = static_cast<u32>(ib->indexCount());
+  item.directRaster.instanceCount = 1;
+  item.pass = Pass_PostProcess;
+  item.target = RenderTarget{}.toDesc();
+  item.objectSignature = StringID("pipeline_build_info.filtered_helper_object");
+  item.materialSignature = StringID("pipeline_build_info.filtered_helper_state");
+  item.materialTypeVariant = shaderProgram.getPipelineSignature();
+  item.renderPathNodeSignature =
+      LX_test::testRenderPathNodeSignature(Pass_PostProcess, RenderTarget{});
+  item.pipelineKey =
+      PipelineKey::build(item.materialTypeVariant,
+                         item.renderPathNodeSignature);
+  keepResourceAlive(vb);
+  keepResourceAlive(ib);
 
-  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward);
   auto info = PipelineBuildDesc::fromRenderWorkItem(item);
   const auto &items = info.vertexLayout.getItems();
   EXPECT(items.size() == 2, "vertex layout should drop unused attributes");
@@ -368,38 +390,6 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
          "filtered layout keeps original stride");
 }
 
-ShaderProgramSet makeSourceVariantProgramSet(const ResourceUri &sourceUri,
-                                             StringID sourceSignature) {
-  ShaderProgramSet set;
-  set.shaderName = "fake_shader";
-  set.variants.push_back(ShaderVariant{
-      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
-      .enabled = true,
-      .materialContractSource = sourceUri,
-      .materialSourceSignature = sourceSignature,
-  });
-  return set;
-}
-
-void testMaterialSourceVariantAffectsShaderProgramSignature() {
-  const ResourceUri matteSource(
-      "assets://shaders/glsl/common/materials/matte.contract.glsl");
-  const ResourceUri metalSource(
-      "assets://shaders/glsl/common/materials/metal.contract.glsl");
-
-  const ShaderProgramSet matte =
-      makeSourceVariantProgramSet(matteSource, StringID("matte-source-sig"));
-  const ShaderProgramSet texturedMatte =
-      makeSourceVariantProgramSet(matteSource, StringID("matte-source-sig"));
-  const ShaderProgramSet metal =
-      makeSourceVariantProgramSet(metalSource, StringID("metal-source-sig"));
-
-  EXPECT(matte.getPipelineSignature() == texturedMatte.getPipelineSignature(),
-         "texture presence must not produce shader variant key");
-  EXPECT(matte.getPipelineSignature() != metal.getPipelineSignature(),
-         "different bsdf.source should produce different shader variant key");
-}
-
 } // namespace
 
 int main() {
@@ -407,15 +397,17 @@ int main() {
 
   testFromRenderWorkItemPopulatesBindings();
   testFromRenderWorkItemKeyMatches();
-  testFromRenderWorkItemCarriesMaterialSourceVariant();
+  testFromRenderWorkItemCarriesHelperShaderProgramSignature();
+  testFromRenderWorkItemRejectsMaterialSourceDirectRasterPass();
+  testFromRenderWorkItemRejectsUnclassifiedDirectRasterPass();
+  testFromRenderWorkItemRejectsMaterialSourceSceneBindings();
   testFromRenderWorkItemStagesPreserved();
   testFromRenderWorkItemTopology();
-  testFromRenderWorkItemRenderStateFromMaterial();
+  testFromRenderWorkItemRenderStateFromHelperItem();
   testFromRenderWorkItemIsDeterministic();
   testFromRenderWorkItemPreservesTargetDesc();
   testFromRenderWorkItemPreservesRenderPathRenderingContract();
   testFromRenderWorkItemFiltersVertexLayoutToShaderInputs();
-  testMaterialSourceVariantAffectsShaderProgramSignature();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

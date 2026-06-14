@@ -2,10 +2,6 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
-#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
@@ -45,18 +41,8 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
-    auto node = LX_core::SceneNode::create("vulkan_pipeline_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
+    auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
 
     auto pipeline = resourceManager->getOrCreatePipeline(item);
 

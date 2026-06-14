@@ -24,6 +24,7 @@ struct BindlessValidationResult final {
 
 enum class BindlessSubmissionDecisionKind {
   Empty,
+  DirectHelper,
   BindlessBatch,
   StrictValidationRejected,
 };
@@ -47,6 +48,29 @@ struct MaterialV2ValidationResult final {
   bool ok = false;
   std::vector<MaterialV2ValidationDiagnostic> diagnostics;
 };
+
+enum class RenderWorkQueueSubmissionClass {
+  Empty,
+  DirectHelper,
+  MaterialSourceBatch,
+  MixedDirectHelperAndMaterialSource,
+  InvalidDirectHelper,
+};
+
+struct RenderWorkQueueSubmissionClassification final {
+  RenderWorkQueueSubmissionClass kind = RenderWorkQueueSubmissionClass::Empty;
+  std::string reason;
+};
+
+[[nodiscard]] bool isAllowedDirectRasterHelperPurpose(
+    DirectRasterPassPurpose purpose, bool allowTestOnly = false);
+
+[[nodiscard]] bool isAllowedDirectRasterHelperWorkItem(
+    const RenderWorkItem &item, bool allowTestOnly = false);
+
+[[nodiscard]] RenderWorkQueueSubmissionClassification
+classifyRenderWorkQueueSubmission(const RenderWorkQueue &queue,
+                                  bool allowTestOnly = false);
 
 [[nodiscard]] BindlessValidationResult
 validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass);

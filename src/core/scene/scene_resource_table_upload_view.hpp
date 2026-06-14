@@ -28,6 +28,11 @@ struct SceneResourceMaterialUploadIndex final {
   u32 typedIndex = u32_max;
 };
 
+struct SceneResourceMaterialRefUploadIndex final {
+  MaterialHandle handle;
+  u32 typedIndex = u32_max;
+};
+
 struct SceneResourceTextureUploadIndex final {
   TextureHandle handle;
   u32 typedIndex = u32_max;
@@ -113,6 +118,8 @@ struct SceneResourceTableUploadView final {
   std::span<const ResourceIdentityHandle> renderPathGraphShaders;
   std::span<const SceneResourceMeshUploadIndex> meshIndexByHandle;
   std::span<const SceneResourceMaterialUploadIndex> materialIndexByHandle;
+  std::span<const SceneResourceMaterialRefUploadIndex>
+      materialRefIndexByHandle;
   std::span<const SceneResourceTextureUploadIndex> textureIndexByHandle;
   std::span<const SceneResourceObjectUploadIndex> objectIndexByHandle;
   std::span<const SceneResourceCameraUploadIndex> cameraIndexByHandle;

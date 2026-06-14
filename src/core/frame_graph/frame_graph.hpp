@@ -122,8 +122,9 @@ private:
 
 /*
 @source_analysis.section FrameGraph：加载期预构建的 per-pass 调度器
-`FrameGraph` 是把 scene 翻译成"按 pass 组织的 RenderWorkItem 列表"并校验
-pass 间资源声明的入口。它的核心职责包括：
+`FrameGraph` 是把 scene 翻译成 per-pass queue 并校验 pass 间资源声明的入口：
+realtime geometry 进入 `RenderDrawInput` / node data，helper / compute work 才保留为
+`RenderWorkItem`。它的核心职责包括：
 
 - 持有 `vector<FramePass>`：通过 `addPass` 累加，顺序是 declaration / original
   insertion order；真正的执行顺序由 `compile` 输出的 DAG order 决定
@@ -136,12 +137,12 @@ pass 间资源声明的入口。它的核心职责包括：
 
 注意它仍然不做 attachment 复用，也不持有 backend attachment 资源；这些都留给
 backend 执行层。core 层这里只提供 registry-backed 资源依赖图、稳定 pass 顺序和
-per-pass queue 预构建。
+per-pass queue 重建入口。
 
-跨 pass 唯一的协调动作是 `collectAllPipelineBuildDescs`：在所有 queue 输出
-的 PipelineBuildDesc 上做一次全局 PipelineKey 去重，避免相同 pipeline 在
-不同 pass 里被 backend 重复构建。这是分层去重的外层 — 内层（同 pass 内）
-由 `RenderWorkQueue::collectUniquePipelineBuildDescs` 完成。
+跨 pass 唯一的 pipeline 预构建协调动作是 `collectAllPipelineBuildDescs`。
+073-e 之后它只覆盖 compute/offline/fullscreen/debug 这类明确 helper work item；
+realtime material-source geometry 的正向 pipeline lookup 由 RenderBatch +
+RenderPathNode context 派生，不能从旧 per-item DTO 去重得到。
 */
 class FrameGraph {
 public:
@@ -179,19 +180,15 @@ FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不�
 
 /*
 @source_analysis.section collectAllPipelineBuildDescs：跨 pass 全局 PipelineKey 去重
-这是 FrameGraph 唯一面向 backend 的输出：把所有 pass 的预构建需求汇总成
-一份去重后的 `PipelineBuildDesc` 列表。
+这是 FrameGraph 面向 backend pipeline 预构建的输出：把所有 pass 中仍合法存在的
+direct helper / compute work item，以及已经成功编译的 material-source
+`RenderBatchAnalysis` batch pipeline desc，汇总成一份去重后的 `PipelineBuildDesc`
+列表。material-source geometry 的 desc 只从 batch identity 与
+`RenderPathNodeContext` 派生，不回读旧 per-item DTO。
 
-去重粒度是 `PipelineKey`，与 RenderWorkQueue 内层去重一致。两层去重的关系：
-
-- RenderWorkQueue 内层：去掉同一条 queue 内重复的 RenderWorkItem（同材质同几何的
-  多个实例只产出一条 build desc）
-- FrameGraph 外层：去掉跨 pass 出现的相同 PipelineKey（理论上罕见，但当材质
-  支持多 pass 且某两 pass 在 PipelineKey 上恰好碰撞时会出现）
-
-之所以分两层而不是一次性全局去重，是因为 RenderWorkQueue 不知道其它 pass 存在 —
-让它去做全局判定会破坏单 pass 收口的封装。两层各自只看自己的视角，
-FrameGraph 这一层只看到"队列已去重的输出"再做最少整理。
+去重粒度仍是 `PipelineKey`。RenderWorkQueue 内层先做单 queue 去重，FrameGraph
+外层再整理跨 pass 重复 pipeline；RenderBatch 正向几何路径不经由
+`RenderWorkItem` 去重。
 
 REQ-073-c 之后，`PipelineKey` 只由 MaterialTypeVariant 和 RenderPathNode
 signature 组成；不同 target 是否分裂 pipeline 由 RenderPathNode 的 attachment /

@@ -21,6 +21,7 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
@@ -384,6 +385,59 @@ MaterialInstanceSharedPtr makeSceneMaterialsShaderMaterial(
   MaterialParameterEnvelope kd;
   kd.kind = MaterialEnvelopeKind::Rgb;
   kd.rgbValue = Vec3f{baseColor.x, baseColor.y, baseColor.z};
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
+  return material;
+}
+
+MaterialInstanceSharedPtr makeSourceBatchMaterial(
+    const std::string &sourceUri, const std::string &reflectionHash,
+    const Vec3f &baseColor) {
+  MaterialContractReflection contract;
+  contract.sourceUri = ResourceUri(sourceUri);
+  contract.declaredType = "matte";
+  contract.reflectionHash = reflectionHash;
+  contract.storageAbiHash = "matte-storage-v1";
+  contract.accessorAbiHash = "material-surface-v1";
+  contract.parameters.push_back(MaterialContractParameter{
+      "Kd", true, {MaterialContractParameterKind::Rgb}});
+  contract.storageFields.push_back(MaterialContractStorageField{
+      .name = "baseColor",
+      .type = MaterialContractStorageFieldType::Vec4,
+      .inputKind = MaterialContractStorageInputKind::ParameterValue,
+      .parameterName = "Kd",
+      .defaultValue = Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+  });
+  const StringID sourceSignature = contract.sourceSignature();
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{});
+  ShaderProgramSet shaderSet;
+  shaderSet.shaderName = "source_batch_fixture";
+  shaderSet.shader = shader;
+  shaderSet.variants.push_back(ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = contract.sourceUri,
+      .materialSourceSignature = sourceSignature,
+  });
+
+  auto materialTemplate = MaterialTemplate::create("source_batch_fixture");
+  MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = shaderSet;
+  passDefinition.renderState = RenderState{};
+  materialTemplate->setPassDefinition(Pass_Forward, std::move(passDefinition));
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  material->setBsdfType("matte");
+  material->setMaterialSourceUri(contract.sourceUri);
+  material->setMaterialSourceReflectionHash(contract.reflectionHash);
+  material->setMaterialSourceSignature(sourceSignature);
+  material->setMaterialContractReflection(std::move(contract));
+
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = baseColor;
   material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
   return material;
 }
@@ -1268,7 +1322,7 @@ void testRealtimeSceneLevelResourcesExposeGpuMaterialTables() {
   }
 }
 
-void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
+void testRealtimeRenderQueuePreservesMaterialHandlesForPreparation() {
   auto first = SceneNode::create("first_material_node");
   first->addComponent<MeshComponent>(makeMeshBuffer());
   first->addComponent<MaterialComponent>(
@@ -1287,29 +1341,35 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
   const RenderTarget renderTarget{targetDesc};
+  const StringID renderPathNodeSignature =
+      testRenderPathNodeSignature(Pass_Forward, renderTarget);
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, renderTarget,
-      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
+      Pass_Forward, renderTarget, renderPathNodeSignature, std::nullopt);
 
-  EXPECT(queue.getItems().size() == 2,
-         "queue should contain both material-index test draws");
-  std::vector<u32> materialIndices;
-  for (const RenderWorkItem &item : queue.getItems()) {
-    EXPECT(item.raster.materialIndex != u32_max,
-           "queued draw should carry a typed SceneMaterials index");
-    materialIndices.push_back(item.raster.materialIndex);
+  EXPECT(queue.nodeData().drawInputs.size() == 2,
+         "queue should contain both material-index test draw inputs");
+
+  const auto uploadView = scene->resources().buildUploadView();
+  EXPECT(uploadView.materials.size() == 2,
+         "upload view should contain compact SceneMaterials records");
+  for (const auto &drawInput : queue.nodeData().drawInputs) {
+    EXPECT(drawInput.object.isValid(),
+           "draw input should preserve object handle for preparation");
+    EXPECT(drawInput.mesh.isValid(),
+           "draw input should preserve mesh handle for preparation");
+    EXPECT(drawInput.material.isValid(),
+           "draw input should preserve material handle for preparation");
+    EXPECT(drawInput.materialTypeSignature.id != 0,
+           "draw input should preserve material type signature for later "
+           "batch compatibility");
   }
-  std::sort(materialIndices.begin(), materialIndices.end());
-  EXPECT(materialIndices.size() == 2 && materialIndices[0] == 0 &&
-             materialIndices[1] == 1,
-         "queued draws should write compact SceneMaterials indices per draw");
 }
 
-void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
+void testRealtimeRenderQueueLeavesTypedDrawRecordIndicesInUploadView() {
   auto first = SceneNode::create("first_draw_record_node");
   first->addComponent<MeshComponent>(makeMeshBuffer());
   first->addComponent<MaterialComponent>(
@@ -1330,13 +1390,14 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
   const RenderTarget renderTarget{targetDesc};
+  const StringID renderPathNodeSignature =
+      testRenderPathNodeSignature(Pass_Forward, renderTarget);
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, renderTarget,
-      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
+      Pass_Forward, renderTarget, renderPathNodeSignature, std::nullopt);
 
   const auto uploadView = scene->resources().buildUploadView();
   EXPECT(uploadView.objects.size() == 2,
@@ -1350,22 +1411,220 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
            "draw record should point at compact material record");
   }
 
-  const auto batches = queue.compileIndirectBatches();
-  EXPECT(!batches.empty(),
-         "draw-record queue test should compile indirect batches");
-  std::vector<u32> firstInstances;
-  for (const auto &batch : batches) {
-    for (const auto &command : batch.commands) {
-      firstInstances.push_back(command.firstInstance);
-    }
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(analysis.context.pass == Pass_Forward,
+         "batch analysis should retain the node pass context");
+  EXPECT(analysis.context.renderPathNodeSignature == renderPathNodeSignature,
+         "batch analysis should retain the RenderPathNode context signature");
+  EXPECT(analysis.context.objectDataSignature ==
+             StringID("BindlessObjectData.v1"),
+         "batch analysis should use the bindless object data ABI signature");
+  EXPECT(analysis.context.backendIndirectSupported,
+         "realtime node context should mark backend indirect support");
+  EXPECT(!analysis.ok(),
+         "legacy GPU-record materials should be rejected by source-material "
+         "preparation");
+  EXPECT(analysis.batches.empty(),
+         "Task 4 preparation should not emit indirect command batches");
+  EXPECT(analysis.diagnostics.size() == 2,
+         "source-material preparation should diagnose every legacy material "
+         "draw input");
+  EXPECT(analysis.stats.unsupportedDrawCount == 2,
+         "unsupported count should match rejected draw inputs");
+  for (const RenderBatchDiagnostic &diagnostic : analysis.diagnostics) {
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::SourceMaterialRefUnresolved,
+           "legacy GPU-record materials should not invent source material "
+           "refs");
   }
-  std::sort(firstInstances.begin(), firstInstances.end());
-  EXPECT(firstInstances.size() == 2 && firstInstances[0] == 0 &&
-             firstInstances[1] == 1,
-         "firstInstance should index typed draw records, not materials");
 }
 
-void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
+void testRenderQueuePreparationConsumesUploadViewMappingsAndMeshRanges() {
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, "memory://matte-preparation.material", R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [0.2, 0.4, 0.6] }
+    sigma: { kind: float, value: 0.15 }
+)");
+  EXPECT(parsed.instance != nullptr,
+         "source material fixture should parse for queue preparation");
+  EXPECT(parsed.diagnostics.empty(),
+         "source material fixture should parse without diagnostics");
+  if (!parsed.instance) {
+    return;
+  }
+
+  const auto mesh = table.registerMesh(uniqueMesh(makeTwoTriangleMeshBuffer()));
+  const auto material = table.registerMaterial(std::move(parsed.instance));
+  std::array<ObjectHandle, 2> objects{};
+  for (usize i = 0; i < objects.size(); ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    objects[i] = table.registerObject(object);
+  }
+
+  const auto view = table.buildUploadView();
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = Pass_Forward,
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  for (usize i = 0; i < objects.size(); ++i) {
+    queue.addDrawInput(RenderDrawInput{
+        .inputIndex = i,
+        .object = objects[i],
+        .mesh = mesh,
+        .material = material,
+        .debugId = StringID("source.prepared.draw"),
+        .materialTypeSignature = StringID("standard-pbr-opaque")});
+  }
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(analysis.ok(),
+         "source-material draw inputs should prepare without diagnostics");
+  EXPECT(analysis.batches.size() == 1,
+         "same-signature source-material draw inputs should merge into one "
+         "batch");
+  EXPECT(analysis.candidates.size() == objects.size(),
+         "queue should expose one prepared candidate per valid draw input");
+  EXPECT(analysis.stats.inputDrawCount == objects.size(),
+         "analysis stats should preserve source draw input count");
+  EXPECT(analysis.stats.preparedCandidateCount == objects.size(),
+         "analysis stats should count prepared candidates");
+  EXPECT(analysis.stats.batchCount == 1,
+         "analysis stats should count the merged source-material batch");
+  EXPECT(analysis.stats.drawCount == objects.size(),
+         "analysis stats should count one indirect command per source draw");
+  EXPECT(analysis.stats.indirectCapableDrawCount == objects.size(),
+         "all valid source draw inputs should be indirect-capable");
+  EXPECT(analysis.stats.unsupportedDrawCount == 0,
+         "valid upload-view preparation should not count unsupported draws");
+  if (!analysis.batches.empty()) {
+    const RenderBatch &batch = analysis.batches.front();
+    EXPECT(batch.candidateIndices.size() == objects.size(),
+           "source-material batch should reference every prepared candidate");
+    EXPECT(batch.commands.size() == objects.size(),
+           "source-material batch should emit one command per prepared "
+           "candidate");
+  }
+  for (usize i = 0; i < analysis.candidates.size(); ++i) {
+    const PreparedRenderDrawCandidate &candidate = analysis.candidates[i];
+    EXPECT(candidate.objectIndex == i,
+           "candidate object index should come from object handle mapping");
+    EXPECT(candidate.drawRecordIndex == i,
+           "candidate draw record should derive from the object typed index");
+    EXPECT(candidate.meshIndex == 0,
+           "candidate mesh index should come from draw record mesh index");
+    EXPECT(candidate.materialIndex == u32_max,
+           "source-material candidate should not invent a legacy material "
+           "index");
+    EXPECT(candidate.materialRefIndex == 0,
+           "candidate should resolve source material ref index");
+    EXPECT(candidate.sourceStorageIndex == 0,
+           "candidate should resolve source storage row");
+    EXPECT(candidate.sourceLocalMaterialIndex == 0,
+           "candidate should resolve source-local material row");
+    EXPECT(candidate.indexCount == 6,
+           "candidate should copy global mesh index count");
+    EXPECT(candidate.firstIndex == 0,
+           "candidate should copy global mesh first index");
+    EXPECT(candidate.vertexOffset == 0,
+           "candidate should copy global mesh vertex offset");
+    EXPECT(candidate.objectDataSignature ==
+               StringID("BindlessObjectData.v1"),
+           "candidate should carry node object data signature");
+    EXPECT(candidate.materialTypeSignature ==
+               StringID("standard-pbr-opaque"),
+           "candidate should carry input material type signature");
+  }
+}
+
+void testRealtimeRenderQueueBatchesSourceMaterialsByNormalizedType() {
+  auto first = SceneNode::create("source_batch_first");
+  first->addComponent<MeshComponent>(makeMeshBuffer());
+  first->addComponent<MaterialComponent>(makeSourceBatchMaterial(
+      "memory://materials/matte-a.contract.glsl", "matte-reflect-a",
+      Vec3f{0.8f, 0.2f, 0.1f}));
+
+  auto second = SceneNode::create("source_batch_second");
+  second->addComponent<MeshComponent>(makeMeshBuffer());
+  second->addComponent<MaterialComponent>(makeSourceBatchMaterial(
+      "memory://materials/matte-b.contract.glsl", "matte-reflect-b",
+      Vec3f{0.1f, 0.2f, 0.8f}));
+
+  auto scene = Scene::create("source_batch_scene", first);
+  scene->addRenderable(second);
+  scene->resources().beginRenderResourceScope();
+
+  RenderTargetDesc targetDesc;
+  targetDesc.role = RenderTargetRole::Swapchain;
+  RenderWorkQueue queue;
+  const RenderTarget renderTarget{targetDesc};
+  const StringID renderPathNodeSignature =
+      testRenderPathNodeSignature(Pass_Forward, renderTarget);
+  queue.build(
+      RenderWorkBuildContext::realtime(*scene,
+                                       RenderWorkBuildContext::RealtimeOptions{
+                                           .visibleMask = VisibilityMask_All,
+                                       }),
+      Pass_Forward, renderTarget, renderPathNodeSignature, std::nullopt);
+
+  const auto &drawInputs = queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 2,
+         "production queue build should keep both source-material draw inputs");
+  if (drawInputs.size() == 2) {
+    EXPECT(drawInputs[0].materialTypeSignature == StringID("matte-opaque"),
+           "first source material should use normalized material type "
+           "signature");
+    EXPECT(drawInputs[1].materialTypeSignature == StringID("matte-opaque"),
+           "second source material should use normalized material type "
+           "signature");
+  }
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "queue-built source materials with the same normalized type should "
+         "prepare without diagnostics");
+  EXPECT(analysis.candidates.size() == 2,
+         "production queue build should produce two prepared candidates");
+  EXPECT(analysis.batches.size() == 1,
+         "source URI and reflection differences must not split production "
+         "batches");
+  if (analysis.candidates.size() == 2) {
+    EXPECT(analysis.candidates[0].materialRefIndex !=
+               analysis.candidates[1].materialRefIndex,
+           "fixture should exercise distinct source material refs");
+  }
+  const std::vector<PipelineBuildDesc> preloadDescs =
+      queue.collectUniquePipelineBuildDescs();
+  EXPECT(preloadDescs.size() == 1,
+         "valid material-source batches should contribute one preloadable "
+         "pipeline build desc");
+  if (!preloadDescs.empty() && !analysis.batches.empty()) {
+    EXPECT(preloadDescs.front().key ==
+               analysis.batches.front().derivedPipelineKey,
+           "preload desc should use the compiler-derived batch pipeline key");
+    EXPECT(preloadDescs.front().type == PipelineBuildType::Graphics,
+           "material-source batch preload desc should be a graphics pipeline");
+    EXPECT(preloadDescs.front().target.role == RenderTargetRole::Swapchain,
+           "preload desc should preserve the node render target");
+  }
+}
+
+void testRealtimeRenderQueueRejectsShaderIndependentDrawInputUntilBatching() {
   auto node = SceneNode::create("shader_independent_typed_indices");
   node->addComponent<MeshComponent>(makeMeshBuffer());
   node->addComponent<MaterialComponent>(makeGpuRecordMaterial());
@@ -1385,16 +1644,19 @@ void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
       Pass_Forward, renderTarget,
       testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
-  EXPECT(queue.getItems().size() == 1,
-         "queue should contain the shader-independent typed-index draw");
-  if (!queue.getItems().empty()) {
-    const RenderWorkItem &item = queue.getItems().front();
-    EXPECT(item.raster.materialIndex != u32_max,
-           "queued draw should carry a typed SceneMaterials index even when "
-           "the shader does not consume SceneMaterials");
-    EXPECT(item.raster.drawRecordIndex != u32_max,
-           "queued draw should carry a typed SceneDraws index even when the "
-           "shader does not consume SceneDraws");
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
+         "queue should contain the shader-independent draw input");
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(!analysis.ok(),
+         "legacy GPU-record material should reject source-material "
+         "preparation");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "legacy GPU-record material should produce one preparation "
+         "diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::SourceMaterialRefUnresolved,
+           "legacy GPU-record material should not infer a source material ref");
   }
 }
 
@@ -2140,6 +2402,53 @@ void testSceneResourceTableUploadViewExportsHandleToTypedIndexMappings() {
          "light handle should map to a compact light typed index");
 }
 
+void testSceneResourceTableUploadViewExportsMaterialRefHandleMappings() {
+  SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, "memory://matte-ref-map.material", R"(
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [0.2, 0.4, 0.6] }
+    sigma: { kind: float, value: 0.15 }
+)");
+  EXPECT(parsed.instance != nullptr,
+         "source material fixture should parse for material ref mapping");
+  EXPECT(parsed.diagnostics.empty(),
+         "source material fixture should parse without diagnostics");
+  if (!parsed.instance) {
+    return;
+  }
+
+  const auto mesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
+  const auto material = table.registerMaterial(std::move(parsed.instance));
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+  (void)table.registerObject(object);
+
+  const auto view = table.buildUploadView();
+  EXPECT(!view.materialRefIndexByHandle.empty(),
+         "upload view should expose source material handle to material ref "
+         "mapping");
+  const auto materialRefIt = std::find_if(
+      view.materialRefIndexByHandle.begin(), view.materialRefIndexByHandle.end(),
+      [&](const SceneResourceMaterialRefUploadIndex &entry) {
+        return entry.handle == material;
+      });
+  EXPECT(materialRefIt != view.materialRefIndexByHandle.end() &&
+             materialRefIt->typedIndex < view.materialRefs.size(),
+         "source material handle should map to a compact material ref row");
+  if (materialRefIt != view.materialRefIndexByHandle.end() &&
+      !view.draws.empty()) {
+    EXPECT(materialRefIt->typedIndex == view.draws.front().materialRefIndex,
+           "material ref handle mapping should match the draw row source ref");
+  }
+}
+
 void testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies() {
   SceneResourceTable table;
   const auto releasedMesh = table.registerMesh(uniqueMesh(makeMeshBuffer()));
@@ -2374,9 +2683,11 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
-  testRealtimeRenderQueueWritesTypedGpuMaterialIndex();
-  testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex();
-  testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption();
+  testRealtimeRenderQueuePreservesMaterialHandlesForPreparation();
+  testRealtimeRenderQueueLeavesTypedDrawRecordIndicesInUploadView();
+  testRenderQueuePreparationConsumesUploadViewMappingsAndMeshRanges();
+  testRealtimeRenderQueueBatchesSourceMaterialsByNormalizedType();
+  testRealtimeRenderQueueRejectsShaderIndependentDrawInputUntilBatching();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();
@@ -2392,6 +2703,7 @@ int main() {
   testSceneResourceTableUploadViewPacksMatrixColumns();
   testSceneResourceTableUploadViewUsesCompactRecordIndices();
   testSceneResourceTableUploadViewExportsHandleToTypedIndexMappings();
+  testSceneResourceTableUploadViewExportsMaterialRefHandleMappings();
   testSceneResourceTableUploadViewSkipsObjectsWithReleasedDependencies();
   testSceneResourceTableUploadViewSkipsObjectsWithStaleDependencies();
   testSceneResourceTableUploadViewEmitsPrimitivePerTriangle();

@@ -2044,6 +2044,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .renderPathGraphShaders = m_gpuRenderPathGraphShaders,
         .meshIndexByHandle = m_gpuMeshIndexByHandle,
         .materialIndexByHandle = m_gpuMaterialIndexByHandle,
+        .materialRefIndexByHandle = m_gpuMaterialRefIndexByHandle,
         .textureIndexByHandle = m_gpuTextureIndexByHandle,
         .objectIndexByHandle = m_gpuObjectIndexByHandle,
         .cameraIndexByHandle = m_gpuCameraIndexByHandle,
@@ -2078,6 +2079,7 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuRenderPathGraphShaders.clear();
   m_gpuMeshIndexByHandle.clear();
   m_gpuMaterialIndexByHandle.clear();
+  m_gpuMaterialRefIndexByHandle.clear();
   m_gpuTextureIndexByHandle.clear();
   m_gpuObjectIndexByHandle.clear();
   m_gpuCameraIndexByHandle.clear();
@@ -2484,6 +2486,11 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
           .materialIndex = u32_max,
           .materialRefIndex = static_cast<u32>(m_gpuMaterialRefs.size()),
       };
+      m_gpuMaterialRefIndexByHandle.push_back(
+          SceneResourceMaterialRefUploadIndex{
+              .handle = handle,
+              .typedIndex = compact.materialRefIndex,
+          });
       m_gpuMaterialRefs.push_back(SceneGpuMaterialRefRecord{
           .sourceStorageIndex = sourceStorageIndex,
           .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
