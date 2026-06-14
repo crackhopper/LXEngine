@@ -38,13 +38,39 @@ enum class RenderDomain {
 };
 
 enum class RenderWorkKind {
-  RasterDraw,
-  RasterBatch,
+  Unspecified,
+  DirectRasterPass,
   ComputeDispatch,
   RayTracingDispatch,
 };
 
-struct RasterDrawWorkPayload final {
+enum class DirectRasterPassPurpose {
+  Unspecified,
+  FullscreenPostProcess,
+  IblBake,
+  DebugOverlay,
+  TestOnlyNonMaterial,
+};
+
+inline const char *
+directRasterPassPurposeName(const DirectRasterPassPurpose purpose) {
+  switch (purpose) {
+  case DirectRasterPassPurpose::Unspecified:
+    return "Unspecified";
+  case DirectRasterPassPurpose::FullscreenPostProcess:
+    return "FullscreenPostProcess";
+  case DirectRasterPassPurpose::IblBake:
+    return "IblBake";
+  case DirectRasterPassPurpose::DebugOverlay:
+    return "DebugOverlay";
+  case DirectRasterPassPurpose::TestOnlyNonMaterial:
+    return "TestOnlyNonMaterial";
+  }
+  return "Unknown";
+}
+
+struct DirectRasterWorkPayload final {
+  DirectRasterPassPurpose purpose = DirectRasterPassPurpose::Unspecified;
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
   u32 materialIndex = u32_max;
@@ -64,11 +90,6 @@ struct IndexedIndirectDrawCommand final {
   u32 firstInstance = 0;
 };
 
-struct RasterBatchWorkPayload final {
-  std::vector<IndexedIndirectDrawCommand> commands;
-  std::vector<usize> sourceItemIndices;
-};
-
 struct ComputeDispatchWorkPayload final {
   u32 groupCountX = 1;
   u32 groupCountY = 1;
@@ -84,26 +105,23 @@ GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结�
 字段拆分体现两个边界：
 
 - `domain / kind / shaderInfo / pipelineKey / pass / target`：决定走哪条
-  pipeline，以及这份 work 是 raster draw、compute dispatch 还是后续 RT work
+  pipeline，以及这份 work 是 direct raster pass、compute dispatch 还是后续 RT work
 - `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
   binding name 命中，不依赖位置
-- `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
-  vertex/index/material index 当成所有 render work 的公共字段
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
-  不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
-  work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable
-  解析。
+- `directRaster / compute`：按 work kind 存放特化 payload，避免把 direct-raster-only
+  vertex/index/material index 当成所有 render work 的公共字段。Direct raster 还必须
+  带显式 helper purpose；realtime material-source geometry 不允许借这个 payload
+  构建 pipeline。
 */
 struct RenderWorkItem final {
   RenderDomain domain = RenderDomain::Realtime;
-  RenderWorkKind kind = RenderWorkKind::RasterDraw;
+  RenderWorkKind kind = RenderWorkKind::Unspecified;
   ShaderPtr shaderInfo;
   RenderState renderState;
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
   ShaderProgramSet shaderProgram;
 
-  RasterDrawWorkPayload raster;
-  RasterBatchWorkPayload rasterBatch;
+  DirectRasterWorkPayload directRaster;
   ComputeDispatchWorkPayload compute;
 
   DescriptorResourceList descriptorResources; // 材质 + skeleton 等资源

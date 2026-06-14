@@ -2023,12 +2023,13 @@ void testUnconfiguredIblResourcesAreNotInjected() {
 void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
-  item.kind = RenderWorkKind::RasterDraw;
+  item.kind = RenderWorkKind::DirectRasterPass;
+  item.directRaster.purpose = DirectRasterPassPurpose::TestOnlyNonMaterial;
   auto vertexBuffer = VertexBuffer<VertexPos>::createUnique(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto indexBuffer = IndexBuffer::createUnique({0u, 1u, 2u});
-  item.raster.vertexBuffer = GpuResourceRef{*vertexBuffer};
-  item.raster.indexBuffer = GpuResourceRef{*indexBuffer};
+  item.directRaster.vertexBuffer = GpuResourceRef{*vertexBuffer};
+  item.directRaster.indexBuffer = GpuResourceRef{*indexBuffer};
 
   static const ShaderResourceBinding materialBinding{
       .name = "UploadPlanParams",

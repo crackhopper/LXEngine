@@ -4,6 +4,8 @@
 #include "core/scene/scene.hpp"
 
 #include <cassert>
+#include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 
 namespace LX_core {
@@ -18,9 +20,10 @@ shader/pass 下的 vertex input state 过宽，也会增加 “shader 没声明�
 填了”的噪声。
 
 这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader
-需要的 location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
-`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 raster / compute
-work item。
+需要的 location/type。前置校验已经在调用路径做过；这里的 assert 是为了保证
+`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 direct non-material
+raster pass / compute work item。realtime material-source geometry 的 pipeline
+lookup 由 RenderBatch + RenderPathNode context 派生，不走这个 direct payload。
 */
 VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
                                               const IShader &shader) {
@@ -53,6 +56,46 @@ VertexLayout filterVertexLayoutToShaderInputs(const VertexLayout &layout,
   return VertexLayout(std::move(filteredItems), layout.getStride());
 }
 
+[[nodiscard]] bool isMaterialSourceGeometryBinding(
+    const ShaderResourceBinding &binding) {
+  constexpr std::string_view kMaterialSourceGeometryBindings[] = {
+      "SceneObjects", "SceneDraws", "SceneMaterials", "SceneMaterialRefs",
+      "SceneTextures"};
+  for (const std::string_view name : kMaterialSourceGeometryBindings) {
+    if (binding.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void validateDirectRasterHelperOnly(const RenderWorkItem &item) {
+  if (item.directRaster.purpose == DirectRasterPassPurpose::Unspecified) {
+    throw std::logic_error("PipelineBuildDesc::fromRenderWorkItem: "
+                           "DirectRasterPass requires an explicit "
+                           "non-material helper purpose");
+  }
+
+  if (item.shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE")) {
+    throw std::logic_error("PipelineBuildDesc::fromRenderWorkItem: "
+                           "material-source geometry must use RenderBatch, "
+                           "not DirectRasterPass");
+  }
+
+  if (!item.shaderInfo) {
+    return;
+  }
+  for (const ShaderResourceBinding &binding :
+       item.shaderInfo->getReflectionBindings()) {
+    if (isMaterialSourceGeometryBinding(binding)) {
+      throw std::logic_error("PipelineBuildDesc::fromRenderWorkItem: "
+                             "material-source geometry binding '" +
+                             binding.name +
+                             "' must use RenderBatch, not DirectRasterPass");
+    }
+  }
+}
+
 } // namespace
 
 PipelineBuildDesc
@@ -77,15 +120,18 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
     return info;
   }
 
-  const auto &raster = item.raster;
-  assert((item.kind == RenderWorkKind::RasterDraw ||
-          item.kind == RenderWorkKind::RasterBatch) &&
-         "PipelineBuildDesc::fromRenderWorkItem: raster draw item required");
+  if (item.kind != RenderWorkKind::DirectRasterPass) {
+    throw std::logic_error("PipelineBuildDesc::fromRenderWorkItem: "
+                           "unsupported helper work item kind");
+  }
+  validateDirectRasterHelperOnly(item);
+
+  const auto &directRaster = item.directRaster;
   assert(item.shaderInfo &&
          "PipelineBuildDesc::fromRenderWorkItem: shaderInfo required");
-  assert(raster.vertexBuffer.isValid() &&
+  assert(directRaster.vertexBuffer.isValid() &&
          "PipelineBuildDesc::fromRenderWorkItem: vertexBuffer required");
-  assert(raster.indexBuffer.isValid() &&
+  assert(directRaster.indexBuffer.isValid() &&
          "PipelineBuildDesc::fromRenderWorkItem: indexBuffer required");
   PipelineBuildDesc info;
   info.type = PipelineBuildType::Graphics;
@@ -97,13 +143,15 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   info.stages = item.shaderInfo->getAllStages();
   info.bindings = item.shaderInfo->getReflectionBindings();
 
-  const auto *vb = dynamic_cast<const IVertexBuffer *>(&raster.vertexBuffer.get());
+  const auto *vb =
+      dynamic_cast<const IVertexBuffer *>(&directRaster.vertexBuffer.get());
   assert(vb && "PipelineBuildDesc::fromRenderWorkItem: vertex buffer is not "
                "IVertexBuffer");
   info.vertexLayout =
       filterVertexLayoutToShaderInputs(vb->getLayout(), *item.shaderInfo);
 
-  const auto *ib = dynamic_cast<const IndexBuffer *>(&raster.indexBuffer.get());
+  const auto *ib =
+      dynamic_cast<const IndexBuffer *>(&directRaster.indexBuffer.get());
   assert(
       ib &&
       "PipelineBuildDesc::fromRenderWorkItem: index buffer is not IndexBuffer");

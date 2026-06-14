@@ -625,8 +625,8 @@ findLightDirection(const LX_core::DescriptorResourceList &resources) {
   out.objectSignature =
       LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
   out.indexCount =
-      item.raster.indexBuffer.isValid()
-          ? item.raster.indexBuffer.get().getByteSize() / sizeof(u32)
+      item.directRaster.indexBuffer.isValid()
+          ? item.directRaster.indexBuffer.get().getByteSize() / sizeof(u32)
           : 0;
 
   const auto &sceneNode = static_cast<const LX_core::SceneNode &>(renderable);
@@ -2177,10 +2177,47 @@ private:
     submitBindlessQueue(pass.queue, pass.name, cmd);
   }
 
+  void submitDirectHelperQueue(const LX_core::RenderWorkQueue &queue,
+                               LX_core::StringID passName,
+                               VulkanCommandBuffer &cmd) {
+    for (const LX_core::RenderWorkItem &item : queue.getItems()) {
+      if (!LX_core::isAllowedDirectRasterHelperWorkItem(item)) {
+        throw std::runtime_error(
+            "direct helper submission rejected pass " +
+            LX_core::GlobalStringTable::get().toDebugString(passName) +
+            ": item is not an allowed direct helper purpose=" +
+            LX_core::directRasterPassPurposeName(
+                item.directRaster.purpose));
+      }
+      auto pipeline = resourceManager().getOrCreatePipeline(item);
+      cmd.bindPipeline(pipeline);
+      cmd.bindResources(resourceManager(), pipeline, item);
+      cmd.executeWorkItem(item);
+    }
+  }
+
   void submitBindlessQueue(LX_core::RenderWorkQueue &queue,
                            LX_core::StringID passName,
                            VulkanCommandBuffer &cmd) {
-    (void)cmd;
+    const LX_core::RenderWorkQueueSubmissionClassification classification =
+        LX_core::classifyRenderWorkQueueSubmission(queue);
+    switch (classification.kind) {
+    case LX_core::RenderWorkQueueSubmissionClass::Empty:
+      return;
+    case LX_core::RenderWorkQueueSubmissionClass::DirectHelper:
+      submitDirectHelperQueue(queue, passName, cmd);
+      return;
+    case LX_core::RenderWorkQueueSubmissionClass::
+        MixedDirectHelperAndMaterialSource:
+    case LX_core::RenderWorkQueueSubmissionClass::InvalidDirectHelper:
+      throw std::runtime_error(
+          "render queue submission rejected pass " +
+          LX_core::GlobalStringTable::get().toDebugString(passName) + ": " +
+          classification.reason);
+    case LX_core::RenderWorkQueueSubmissionClass::MaterialSourceBatch:
+      break;
+    }
+
     const bool strictBindlessValidation = strictBindlessValidationEnabled();
     const bool migratedValidationPass =
         isMigratedBindlessValidationPass(passName);
@@ -2211,6 +2248,11 @@ private:
     const auto decision = LX_core::decideBindlessSubmission(
         queue, passName, strictBindlessValidation, migratedValidationPass);
     if (decision.kind == LX_core::BindlessSubmissionDecisionKind::Empty) {
+      return;
+    }
+    if (decision.kind ==
+        LX_core::BindlessSubmissionDecisionKind::DirectHelper) {
+      submitDirectHelperQueue(queue, passName, cmd);
       return;
     }
 
@@ -2273,6 +2315,9 @@ private:
       return;
     }
     LX_core::RenderWorkItem item;
+    item.kind = LX_core::RenderWorkKind::DirectRasterPass;
+    item.directRaster.purpose =
+        LX_core::DirectRasterPassPurpose::FullscreenPostProcess;
     item.shaderInfo = material->getPassShader(pass);
     item.renderState = material->getPassRenderState(pass);
     const auto shaderProgram = material->getPassShaderProgram(pass);
@@ -2289,10 +2334,11 @@ private:
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
     auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
+    item.directRaster.vertexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
+    item.directRaster.indexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    item.directRaster.indexCount = 3;
     const LX_core::MaterialHandle materialHandle =
         m_scene->resources().addRenderMaterial(std::move(material));
     item.descriptorResources = LX_core::buildSceneMaterialDescriptorResources(
@@ -2352,6 +2398,9 @@ private:
     }
 
     LX_core::RenderWorkItem item;
+    item.kind = LX_core::RenderWorkKind::DirectRasterPass;
+    item.directRaster.purpose =
+        LX_core::DirectRasterPassPurpose::FullscreenPostProcess;
     item.shaderInfo = material->getPassShader(LX_core::Pass_DeferredLighting);
     item.renderState =
         material->getPassRenderState(LX_core::Pass_DeferredLighting);
@@ -2369,10 +2418,11 @@ private:
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
     auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
+    item.directRaster.vertexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
+    item.directRaster.indexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    item.directRaster.indexCount = 3;
     const LX_core::MaterialHandle materialHandle =
         m_scene->resources().addRenderMaterial(std::move(material));
     item.descriptorResources = LX_core::buildSceneMaterialDescriptorResources(
@@ -2432,6 +2482,9 @@ private:
     VulkanPostProcessBuilder builder(m_postProcessSettings);
     auto material = builder.createSkyboxBackgroundMaterial();
     LX_core::RenderWorkItem item;
+    item.kind = LX_core::RenderWorkKind::DirectRasterPass;
+    item.directRaster.purpose =
+        LX_core::DirectRasterPassPurpose::FullscreenPostProcess;
     item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
     item.renderState = material->getPassRenderState(LX_core::Pass_Forward);
     const auto shaderProgram =
@@ -2447,10 +2500,11 @@ private:
         std::vector<LX_core::VertexPos>{
             {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}, {{0.0f, 0.0f, 0.0f}}});
     auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
+    item.directRaster.vertexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
+    item.directRaster.indexBuffer =
         m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    item.directRaster.indexCount = 3;
     const LX_core::MaterialHandle materialHandle =
         m_scene->resources().addRenderMaterial(std::move(material));
     item.descriptorResources = LX_core::buildSceneMaterialDescriptorResources(
@@ -2515,14 +2569,79 @@ private:
     const LX_core::RenderTarget debugRenderTarget{debugTarget};
     for (auto &pass : m_frameGraph.getPasses()) {
       if (pass.name == LX_core::Pass_DebugOverlay) {
-        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
-                             *m_scene,
-                             LX_core::RenderWorkBuildContext::RealtimeOptions{
-                                 .sceneResourceTarget = defaultCameraTarget,
-                             }),
-                         LX_core::Pass_DebugOverlay, debugRenderTarget,
-                         LX_core::getFramePassRenderPathNodeSignature(pass),
-                         pass.geometry, pass.renderingMode, pass.attachments);
+        pass.queue.clearItems();
+        const auto sceneResources = m_scene->getSceneLevelResources(
+            LX_core::Pass_DebugOverlay, defaultCameraTarget);
+        const LX_core::VisibilityLayerMask visibleMask =
+            m_scene->getCombinedCameraCullingMask(defaultCameraTarget);
+        for (const auto &renderable : m_scene->getRenderables()) {
+          if (!renderable || !renderable->isDebugOnlyRenderable()) {
+            continue;
+          }
+          if (!renderable->supportsPass(LX_core::Pass_DebugOverlay)) {
+            continue;
+          }
+          if ((renderable->getVisibilityLayerMask() & visibleMask) == 0) {
+            continue;
+          }
+          const auto validated =
+              renderable->getValidatedPassData(LX_core::Pass_DebugOverlay);
+          if (!validated.has_value()) {
+            continue;
+          }
+          const auto &validatedData = validated->get();
+          LX_core::RenderWorkItem item;
+          item.domain = LX_core::RenderDomain::Realtime;
+          item.kind = LX_core::RenderWorkKind::DirectRasterPass;
+          item.directRaster.purpose =
+              LX_core::DirectRasterPassPurpose::DebugOverlay;
+          item.shaderInfo = validatedData.shaderInfo;
+          item.shaderProgram = validatedData.shaderProgram;
+          item.renderState = validatedData.renderState;
+          item.directRaster.vertexBuffer = validatedData.vertexBuffer;
+          item.directRaster.indexBuffer = validatedData.indexBuffer;
+          item.directRaster.instanceCount = 1;
+          if (!item.directRaster.indexBuffer.isValid()) {
+            throw std::runtime_error(
+                "DebugOverlay direct helper missing index buffer");
+          }
+          const auto *indexBuffer =
+              dynamic_cast<const LX_core::IndexBuffer *>(
+                  &item.directRaster.indexBuffer.get());
+          if (!indexBuffer) {
+            throw std::runtime_error(
+                "DebugOverlay direct helper index resource is not IndexBuffer");
+          }
+          item.directRaster.indexCount =
+              static_cast<u32>(indexBuffer->indexCount());
+          item.pass = LX_core::Pass_DebugOverlay;
+          item.target = debugTarget;
+          item.debugId = renderable->getDebugId();
+          item.objectSignature =
+              renderable->getPipelineSignature(LX_core::Pass_DebugOverlay);
+          if (const auto material =
+                  m_scene->resources().resolve(validatedData.materialHandle)) {
+            item.materialSignature =
+                material->get().getPipelineSignature(LX_core::Pass_DebugOverlay);
+          }
+          item.materialTypeVariant = validatedData.materialTypeVariant;
+          item.renderPathNodeSignature =
+              LX_core::getFramePassRenderPathNodeSignature(pass);
+          item.renderingMode = pass.renderingMode;
+          item.attachments = pass.attachments;
+          item.pipelineKey = LX_core::PipelineKey::build(
+              item.materialTypeVariant, item.renderPathNodeSignature);
+          item.descriptorResources = LX_core::buildSceneDescriptorResources(
+              LX_core::SceneDescriptorResourceContext{
+                  .scene = *m_scene,
+                  .renderable = validatedData,
+                  .pass = LX_core::Pass_DebugOverlay,
+                  .target = debugRenderTarget,
+                  .sceneResources = sceneResources,
+              });
+          pass.queue.addItem(std::move(item));
+        }
+        pass.queue.sort();
         return;
       }
     }

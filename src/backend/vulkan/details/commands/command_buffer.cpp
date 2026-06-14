@@ -139,6 +139,17 @@ void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
   throw std::runtime_error(oss.str());
 }
 
+std::string directRasterWorkItemContext(const RenderWorkItem &item) {
+  std::ostringstream oss;
+  oss << " pass="
+      << LX_core::GlobalStringTable::get().toDebugString(item.pass)
+      << " debugId="
+      << LX_core::GlobalStringTable::get().toDebugString(item.debugId)
+      << " purpose="
+      << LX_core::directRasterPassPurposeName(item.directRaster.purpose);
+  return oss.str();
+}
+
 void logDescriptorBufferBindingIfChanged(
     const RenderWorkItem &item, const ShaderResourceBinding &binding,
     const IGpuResource &cpuRes, const VkDescriptorBufferInfo &bufferInfo) {
@@ -404,11 +415,11 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     allocatedSets.push_back(std::move(setPtr));
   }
 
-  const auto &raster = item.raster;
+  const auto &directRaster = item.directRaster;
 
-  if (raster.vertexBuffer.isValid()) {
+  if (directRaster.vertexBuffer.isValid()) {
     auto vbOpt = resourceManager.getBuffer(
-        raster.vertexBuffer.getBackendCacheIdentity());
+        directRaster.vertexBuffer.getBackendCacheIdentity());
     if (vbOpt) {
       VkBuffer vbHandle = vbOpt->get().getHandle();
       VkDeviceSize offsets[] = {0};
@@ -416,9 +427,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     }
   }
 
-  if (raster.indexBuffer.isValid()) {
+  if (directRaster.indexBuffer.isValid()) {
     auto ibOpt = resourceManager.getBuffer(
-        raster.indexBuffer.getBackendCacheIdentity());
+        directRaster.indexBuffer.getBackendCacheIdentity());
     if (ibOpt) {
       vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
                            VK_INDEX_TYPE_UINT32);
@@ -451,41 +462,36 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
              pipeline);
 }
 
-void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::RasterDraw &&
-      item.kind != RenderWorkKind::RasterBatch) {
-    return;
+void VulkanCommandBuffer::executeDirectRasterPassItem(
+    const RenderWorkItem &item) {
+  if (item.kind != RenderWorkKind::DirectRasterPass) {
+    throw std::runtime_error(
+        "executeDirectRasterPassItem received non-DirectRasterPass work item" +
+        directRasterWorkItemContext(item));
   }
 
-  const auto &raster = item.raster;
-  if (!raster.vertexBuffer.isValid() || !raster.indexBuffer.isValid()) {
-    return;
+  const auto &directRaster = item.directRaster;
+  if (!directRaster.vertexBuffer.isValid()) {
+    throw std::runtime_error(
+        "executeDirectRasterPassItem missing vertex buffer" +
+        directRasterWorkItemContext(item));
+  }
+  if (!directRaster.indexBuffer.isValid()) {
+    throw std::runtime_error(
+        "executeDirectRasterPassItem missing index buffer" +
+        directRasterWorkItemContext(item));
   }
 
-  if (item.kind == RenderWorkKind::RasterBatch &&
-      !item.rasterBatch.commands.empty()) {
-    for (const auto &command : item.rasterBatch.commands) {
-      if (command.indexCount == 0 || command.instanceCount == 0) {
-        continue;
-      }
-      vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
-                       command.firstIndex, command.vertexOffset,
-                       command.firstInstance);
-    }
-    return;
+  if (directRaster.indexCount == 0) {
+    throw std::runtime_error(
+        "executeDirectRasterPassItem has zero indexCount" +
+        directRasterWorkItemContext(item));
   }
-
-  const usize indexCount =
-      raster.indexCount != 0 ? raster.indexCount
-                             : raster.indexBuffer.get().getByteSize() /
-                                   sizeof(u32);
-  if (indexCount == 0) {
-    return;
-  }
-  vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), raster.instanceCount,
-                   raster.firstIndex, raster.vertexOffset,
-                   raster.drawRecordIndex == u32_max ? 0u
-                                                     : raster.drawRecordIndex);
+  vkCmdDrawIndexed(
+      m_handle, directRaster.indexCount, directRaster.instanceCount,
+      directRaster.firstIndex, directRaster.vertexOffset,
+      directRaster.drawRecordIndex == u32_max ? 0u
+                                              : directRaster.drawRecordIndex);
 }
 
 void VulkanCommandBuffer::executeComputeDispatchItem(
@@ -499,15 +505,16 @@ void VulkanCommandBuffer::executeComputeDispatchItem(
 
 void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
   switch (item.kind) {
-  case RenderWorkKind::RasterDraw:
-  case RenderWorkKind::RasterBatch:
-    executeRasterDrawItem(item);
+  case RenderWorkKind::DirectRasterPass:
+    executeDirectRasterPassItem(item);
     return;
   case RenderWorkKind::ComputeDispatch:
     executeComputeDispatchItem(item);
     return;
   case RenderWorkKind::RayTracingDispatch:
     throw std::runtime_error("RayTracingDispatch work is not implemented");
+  case RenderWorkKind::Unspecified:
+    throw std::runtime_error("Unspecified RenderWorkKind cannot be executed");
   }
   throw std::runtime_error("unknown RenderWorkKind");
 }

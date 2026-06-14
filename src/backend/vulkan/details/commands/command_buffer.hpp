@@ -93,7 +93,7 @@ private:
                           VkPipelineLayout pipelineLayout,
                           VkPipelineBindPoint bindPoint,
                           const RenderWorkItem &item);
-  void executeRasterDrawItem(const RenderWorkItem &item);
+  void executeDirectRasterPassItem(const RenderWorkItem &item);
   void executeComputeDispatchItem(const RenderWorkItem &item);
 
   VkCommandBuffer m_handle = VK_NULL_HANDLE;

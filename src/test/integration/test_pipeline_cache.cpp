@@ -7,12 +7,7 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
-#include "core/scene/scene.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
 #include "core/utils/env.hpp"
-#include "core/utils/filesystem_tools.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
@@ -51,20 +46,8 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
-    auto node = LX_core::SceneNode::create("pipeline_cache_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    // RenderWorkQueue::build internally merges scene.getSceneLevelResources(pass, target),
-    // so the item already carries camera + light UBOs — no side-channel injection.
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
+    auto item = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
 
     auto info = LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
 
@@ -104,10 +87,12 @@ int main() {
       return 1;
     }
 
-    // FrameGraph-driven collection should also produce exactly this one info.
+    // FrameGraph collection should also produce exactly this one helper info.
     LX_core::FrameGraph fg;
-    fg.addPass(LX_core::FramePass{LX_core::Pass_Forward, {}, {}});
-    fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+    LX_core::FramePass helperPass;
+    helperPass.name = LX_core::Pass_PostProcess;
+    helperPass.queue.addItem(item);
+    fg.addPass(std::move(helperPass));
     auto infos = fg.collectAllPipelineBuildDescs();
     if (infos.size() != 1) {
       std::cerr << "FAIL: frame graph produced " << infos.size()

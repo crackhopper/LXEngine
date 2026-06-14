@@ -3,8 +3,12 @@
 #include "core/rhi/gpu_resource.hpp"
 
 #include <algorithm>
+#include <array>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace LX_core;
@@ -35,14 +39,60 @@ struct AuditResource final : public IGpuResource {
   std::vector<u8> bytes;
 };
 
-RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
+std::filesystem::path repoRoot() {
+  return std::filesystem::path(__FILE__).parent_path().parent_path()
+      .parent_path().parent_path();
+}
+
+std::string readTextFile(const std::filesystem::path &path) {
+  std::ifstream input(path);
+  return std::string(std::istreambuf_iterator<char>(input),
+                     std::istreambuf_iterator<char>());
+}
+
+void testProductionCodeHasNoOldRealtimeRasterDtoTokens() {
+  const std::array<std::string, 3> forbiddenTokens = {
+      std::string("Raster") + "Draw", std::string("Raster") + "Batch",
+      std::string("raster") + "Batch"};
+  const std::array<std::filesystem::path, 2> roots = {
+      repoRoot() / "src/core", repoRoot() / "src/backend"};
+
+  bool foundForbiddenToken = false;
+  for (const auto &root : roots) {
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(root)) {
+      if (!entry.is_regular_file()) {
+        continue;
+      }
+      const auto extension = entry.path().extension().string();
+      if (extension != ".cpp" && extension != ".hpp" && extension != ".h") {
+        continue;
+      }
+      const std::string text = readTextFile(entry.path());
+      for (const auto &token : forbiddenTokens) {
+        if (text.find(token) != std::string::npos) {
+          std::cerr << "[FAIL] old realtime raster DTO token '" << token
+                    << "' remains in production file "
+                    << entry.path().lexically_relative(repoRoot()).string()
+                    << '\n';
+          foundForbiddenToken = true;
+        }
+      }
+    }
+  }
+
+  EXPECT(!foundForbiddenToken,
+         "production code must not expose old realtime raster DTO names");
+}
+
+RenderWorkItem makeLegacyDirectRasterAuditItem(const IGpuResource &vertex,
                                    const IGpuResource &index,
                                    const IGpuResource &camera,
                                    const IGpuResource &material,
                                    u32 firstIndex) {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
-  item.kind = RenderWorkKind::RasterDraw;
+  item.kind = RenderWorkKind::DirectRasterPass;
   item.pass = StringID("Forward");
   RenderTargetDesc target;
   target.role = RenderTargetRole::Swapchain;
@@ -57,11 +107,11 @@ RenderWorkItem makeDefaultPathDraw(const IGpuResource &vertex,
   item.pipelineKey =
       PipelineKey::build(item.materialTypeVariant,
                          item.renderPathNodeSignature);
-  item.raster.vertexBuffer = GpuResourceRef{vertex};
-  item.raster.indexBuffer = GpuResourceRef{index};
-  item.raster.indexCount = 3;
-  item.raster.firstIndex = firstIndex;
-  item.raster.instanceCount = 1;
+  item.directRaster.vertexBuffer = GpuResourceRef{vertex};
+  item.directRaster.indexBuffer = GpuResourceRef{index};
+  item.directRaster.indexCount = 3;
+  item.directRaster.firstIndex = firstIndex;
+  item.directRaster.instanceCount = 1;
   item.descriptorResources.emplace_back(camera);
   item.descriptorResources.emplace_back(material);
   return item;
@@ -75,8 +125,8 @@ void testMigratedQueueRejectsIncompleteCoverageWithoutFallback() {
                          StringID("MaterialParams"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.indexBuffer = GpuResourceRef{};
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
   const BindlessValidationResult result =
@@ -102,8 +152,8 @@ void testMigratedQueueRejectsLegacyRenderWorkItems() {
                          StringID("MaterialParams"), 64);
 
   RenderWorkQueue queue;
-  queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 0));
-  queue.addItem(makeDefaultPathDraw(vertex, index, camera, material, 3));
+  queue.addItem(makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0));
+  queue.addItem(makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 3));
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(queue, StringID("Forward"));
@@ -129,9 +179,9 @@ void testMaterialV2ValidationRejectsLegacyMaterialDescriptor() {
                          64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = 0;
-  item.raster.drawRecordIndex = 0;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = 0;
+  item.directRaster.drawRecordIndex = 0;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
@@ -165,9 +215,9 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
                          StringID("SceneMaterials"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = u32_max;
-  item.raster.drawRecordIndex = u32_max;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = u32_max;
+  item.directRaster.drawRecordIndex = u32_max;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
@@ -218,9 +268,9 @@ void testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader() {
                          StringID("SceneMaterials"), 64);
 
   RenderWorkQueue queue;
-  RenderWorkItem item = makeDefaultPathDraw(vertex, index, camera, material, 0);
-  item.raster.materialIndex = 0;
-  item.raster.drawRecordIndex = 0;
+  RenderWorkItem item = makeLegacyDirectRasterAuditItem(vertex, index, camera, material, 0);
+  item.directRaster.materialIndex = 0;
+  item.directRaster.drawRecordIndex = 0;
   queue.addItem(std::move(item));
 
   const MaterialV2ValidationResult result =
@@ -241,6 +291,7 @@ void testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader() {
 } // namespace
 
 int main() {
+  testProductionCodeHasNoOldRealtimeRasterDtoTokens();
   testMigratedQueueRejectsIncompleteCoverageWithoutFallback();
   testMigratedQueueRejectsLegacyRenderWorkItems();
   testMaterialV2ValidationRejectsLegacyMaterialDescriptor();

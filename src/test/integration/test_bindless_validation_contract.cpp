@@ -102,11 +102,11 @@ ShaderResourceBinding storageBinding(const char *name) {
   return binding;
 }
 
-RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
+RenderWorkItem makeLegacyDirectRasterValidationItem(const IGpuResource &vertex,
                                 const IGpuResource &index) {
   RenderWorkItem item;
   item.domain = RenderDomain::Realtime;
-  item.kind = RenderWorkKind::RasterDraw;
+  item.kind = RenderWorkKind::DirectRasterPass;
   item.pass = StringID("Forward");
   item.debugId = StringID("bindless.validation.draw");
   item.objectSignature = StringID("bindless.validation.mesh");
@@ -122,10 +122,10 @@ RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
   item.pipelineKey =
       PipelineKey::build(item.materialTypeVariant,
                          item.renderPathNodeSignature);
-  item.raster.vertexBuffer = GpuResourceRef{vertex};
-  item.raster.indexBuffer = GpuResourceRef{index};
-  item.raster.indexCount = 3;
-  item.raster.instanceCount = 1;
+  item.directRaster.vertexBuffer = GpuResourceRef{vertex};
+  item.directRaster.indexBuffer = GpuResourceRef{index};
+  item.directRaster.indexCount = 3;
+  item.directRaster.instanceCount = 1;
   return item;
 }
 
@@ -262,6 +262,78 @@ void testDecisionAcceptsFullyBatchedMigratedWork() {
          "validation");
 }
 
+void testDecisionAcceptsDirectHelperQueueOutsideMaterialBatching() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
+  item.directRaster.purpose = DirectRasterPassPurpose::FullscreenPostProcess;
+  queue.addItem(std::move(item));
+
+  const RenderWorkQueueSubmissionClassification classification =
+      classifyRenderWorkQueueSubmission(queue);
+  EXPECT(classification.kind == RenderWorkQueueSubmissionClass::DirectHelper,
+         "helper-only queue should be classified outside material-source "
+         "batching");
+
+  const BindlessSubmissionDecision decision =
+      decideBindlessSubmission(queue, StringID("PostProcess"), false, true);
+  EXPECT(decision.kind == BindlessSubmissionDecisionKind::DirectHelper,
+         "helper-only queue should choose direct helper submission");
+  EXPECT(decision.validation.ok,
+         "direct helper decision should not carry bindless rejection "
+         "diagnostics");
+}
+
+void testDecisionRejectsMixedDirectHelperAndMaterialDrawInputs() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
+  item.directRaster.purpose = DirectRasterPassPurpose::FullscreenPostProcess;
+  queue.addItem(std::move(item));
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .debugId = StringID("mixed.directHelper.materialSource"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+
+  const RenderWorkQueueSubmissionClassification classification =
+      classifyRenderWorkQueueSubmission(queue);
+  EXPECT(classification.kind ==
+             RenderWorkQueueSubmissionClass::MixedDirectHelperAndMaterialSource,
+         "mixed helper and material-source draw inputs should fail closed");
+
+  const BindlessSubmissionDecision decision =
+      decideBindlessSubmission(queue, StringID("Forward"), false, true);
+  EXPECT(decision.kind ==
+             BindlessSubmissionDecisionKind::StrictValidationRejected,
+         "mixed helper and material-source queue should not enter direct or "
+         "batch submission");
+  EXPECT(!decision.validation.diagnostics.empty(),
+         "mixed queue rejection should explain the boundary violation");
+}
+
+void testTestOnlyDirectHelperRequiresExplicitTestAllowance() {
+  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
+  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
+  RenderWorkQueue queue;
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
+  item.directRaster.purpose = DirectRasterPassPurpose::TestOnlyNonMaterial;
+  queue.addItem(std::move(item));
+
+  const RenderWorkQueueSubmissionClassification productionClassification =
+      classifyRenderWorkQueueSubmission(queue);
+  EXPECT(productionClassification.kind ==
+             RenderWorkQueueSubmissionClass::InvalidDirectHelper,
+         "test-only direct helper purpose should not be production-allowed");
+
+  const RenderWorkQueueSubmissionClassification testClassification =
+      classifyRenderWorkQueueSubmission(queue, true);
+  EXPECT(testClassification.kind == RenderWorkQueueSubmissionClass::DirectHelper,
+         "test-only direct helper purpose should require explicit test "
+         "allowance");
+}
+
 void testStrictContractRejectsPreparationDiagnostics() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 1,
@@ -330,8 +402,8 @@ void testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
   RenderWorkQueue queue;
-  RenderWorkItem item = makeMigratedDraw(vertex, index);
-  item.raster.indexBuffer = GpuResourceRef{};
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
+  item.directRaster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
   const BindlessSubmissionDecision decision =
@@ -356,8 +428,8 @@ void testStrictContractRejectsPartialCoverage() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   RenderWorkQueue queue;
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkItem item = makeMigratedDraw(vertex, index);
-  item.raster.indexBuffer = GpuResourceRef{};
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
+  item.directRaster.indexBuffer = GpuResourceRef{};
   queue.addItem(std::move(item));
 
   const BindlessValidationResult result =
@@ -370,14 +442,14 @@ void testStrictContractRejectsPartialCoverage() {
 void testMaterialV2StrictRejectsMissingFinalIdentity() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
   item.shaderInfo = std::make_shared<ShaderWithBindings>(
       std::vector<ShaderResourceBinding>{storageBinding("SceneMaterials")});
   item.materialTypeVariant = StringID{};
   item.renderPathNodeSignature = StringID{};
   item.pipelineKey = PipelineKey{};
-  item.raster.materialIndex = 0;
-  item.raster.drawRecordIndex = 0;
+  item.directRaster.materialIndex = 0;
+  item.directRaster.drawRecordIndex = 0;
 
   RenderWorkQueue queue;
   queue.addItem(std::move(item));
@@ -394,12 +466,12 @@ void testMaterialV2StrictRejectsMissingFinalIdentity() {
 void testMaterialV2StrictRejectsMissingTypedSourceRef() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
   item.shaderInfo = std::make_shared<ShaderWithBindings>(
       std::vector<ShaderResourceBinding>{storageBinding("SceneMaterialRefs"),
                                          storageBinding("SceneDraws")});
-  item.raster.drawRecordIndex = 0;
-  item.raster.materialRefIndex = u32_max;
+  item.directRaster.drawRecordIndex = 0;
+  item.directRaster.materialRefIndex = u32_max;
 
   RenderWorkQueue queue;
   queue.addItem(std::move(item));
@@ -416,11 +488,11 @@ void testMaterialV2StrictRejectsMissingTypedSourceRef() {
 void testMaterialV2StrictDoesNotInferMaterialRefFallback() {
   TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkItem item = makeMigratedDraw(vertex, index);
+  RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
   item.shaderInfo = std::make_shared<ShaderWithBindings>(
       std::vector<ShaderResourceBinding>{storageBinding("SceneDraws")});
-  item.raster.drawRecordIndex = 0;
-  item.raster.materialRefIndex = u32_max;
+  item.directRaster.drawRecordIndex = 0;
+  item.directRaster.materialRefIndex = u32_max;
 
   RenderWorkQueue queue;
   queue.addItem(std::move(item));
@@ -1089,6 +1161,9 @@ void testMissingDrawRecordInputProducesDiagnostic() {
 int main() {
   testStrictContractAcceptsBatchedPreparedDrawInputs();
   testDecisionAcceptsFullyBatchedMigratedWork();
+  testDecisionAcceptsDirectHelperQueueOutsideMaterialBatching();
+  testDecisionRejectsMixedDirectHelperAndMaterialDrawInputs();
+  testTestOnlyDirectHelperRequiresExplicitTestAllowance();
   testStrictContractRejectsPreparationDiagnostics();
   testStrictContractRejectsUnbatchedPreparedDrawInputs();
   testStrictContractRejectsDuplicateCandidateInputCoverage();

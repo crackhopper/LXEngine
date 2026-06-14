@@ -56,12 +56,11 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
 
   for (const RenderWorkItem &item : queue.getItems()) {
     plan.domain = item.domain;
-    if (item.kind == RenderWorkKind::RasterDraw ||
-        item.kind == RenderWorkKind::RasterBatch) {
+    if (item.kind == RenderWorkKind::DirectRasterPass) {
       appendUniqueResource(plan.resources, seenResources,
-                           item.raster.vertexBuffer);
+                           item.directRaster.vertexBuffer);
       appendUniqueResource(plan.resources, seenResources,
-                           item.raster.indexBuffer);
+                           item.directRaster.indexBuffer);
     }
 
     for (const DescriptorResourceRef &resource : item.descriptorResources) {

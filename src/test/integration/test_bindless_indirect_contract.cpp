@@ -177,12 +177,12 @@ SceneResourceTableUploadView makeSourceMaterialUploadView(
   return sceneTable.buildUploadView();
 }
 
-RenderWorkItem makeDrawItem(const IGpuResource &vertex,
+RenderWorkItem makeLegacyDirectBatchAuditItem(const IGpuResource &vertex,
                             const IGpuResource &index,
                             const IGpuResource &camera, PipelineKey key,
                             u32 firstIndex) {
   RenderWorkItem item;
-  item.kind = RenderWorkKind::RasterDraw;
+  item.kind = RenderWorkKind::DirectRasterPass;
   item.pass = StringID("Forward");
   RenderTargetDesc target;
   target.role = RenderTargetRole::Swapchain;
@@ -190,11 +190,11 @@ RenderWorkItem makeDrawItem(const IGpuResource &vertex,
   target.depthFormat = ImageFormat::D32Float;
   item.target = target;
   item.pipelineKey = key;
-  item.raster.vertexBuffer = GpuResourceRef{vertex};
-  item.raster.indexBuffer = GpuResourceRef{index};
-  item.raster.indexCount = 6;
-  item.raster.instanceCount = 1;
-  item.raster.firstIndex = firstIndex;
+  item.directRaster.vertexBuffer = GpuResourceRef{vertex};
+  item.directRaster.indexBuffer = GpuResourceRef{index};
+  item.directRaster.indexCount = 6;
+  item.directRaster.instanceCount = 1;
+  item.directRaster.firstIndex = firstIndex;
   item.descriptorResources.emplace_back(camera);
   return item;
 }
@@ -343,8 +343,8 @@ void testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis() {
                          StringID("bindless.indirect.renderPathNode"));
 
   RenderWorkQueue queue;
-  queue.addItem(makeDrawItem(vertex, index, camera, key, 0));
-  queue.addItem(makeDrawItem(vertex, index, camera, key, 6));
+  queue.addItem(makeLegacyDirectBatchAuditItem(vertex, index, camera, key, 0));
+  queue.addItem(makeLegacyDirectBatchAuditItem(vertex, index, camera, key, 6));
 
   const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
   EXPECT(analysis.batches.empty(),

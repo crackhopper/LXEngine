@@ -1,9 +1,7 @@
 #pragma once
 
-// Shared helpers for integration tests that need to materialize a
-// RenderWorkItem from a Scene. Originally REQ-008; REQ-009 adds a target
-// parameter so the queue's scene-level-resource filter can match the
-// camera's RenderTarget.
+// Shared helpers for integration tests that need explicit non-material direct
+// raster helper items or small reusable scene setup.
 
 #include "core/rhi/gpu_resource.hpp"
 #include "core/asset/material_instance.hpp"
@@ -38,19 +36,6 @@ testRenderPathNodeSignature(LX_core::StringID pass,
   return LX_core::getFramePassRenderPathNodeSignature(framePass);
 }
 
-/// Build a local RenderWorkQueue from `scene` for `pass` + `target` and return
-/// the first RenderWorkItem. Asserts the queue is non-empty. Default
-inline LX_core::RenderWorkItem
-firstItemFromScene(LX_core::Scene &scene, LX_core::StringID pass,
-                   const LX_core::RenderTarget &target = {}) {
-  LX_core::RenderWorkQueue q;
-  q.build(LX_core::RenderWorkBuildContext::realtime(scene), pass, target,
-          testRenderPathNodeSignature(pass, target), std::nullopt);
-  assert(!q.getItems().empty() &&
-         "scene produced no items for pass/target");
-  return q.getItems().front();
-}
-
 inline LX_core::SceneNodeSharedPtr makeDefaultCameraNodeWithTarget() {
   static int cameraCounter = 0;
   auto node = LX_core::SceneNode::create(
@@ -81,6 +66,72 @@ loadTestShaderStage(const std::string &shaderName, const char *stageSuffix,
   code.bytecode.resize(bytes.size() / sizeof(u32));
   std::memcpy(code.bytecode.data(), bytes.data(), bytes.size());
   return code;
+}
+
+inline LX_core::IShaderSharedPtr makeMinimalShaderForVulkanTests() {
+  constexpr const char *kShaderName = "minimal";
+  std::vector<LX_core::ShaderStageCode> stages{
+      loadTestShaderStage(kShaderName, "vert.spv", LX_core::ShaderStage::Vertex),
+      loadTestShaderStage(kShaderName, "frag.spv",
+                          LX_core::ShaderStage::Fragment),
+  };
+
+  return std::make_shared<LX_infra::CompiledShader>(
+      stages, LX_infra::ShaderReflector::reflect(stages),
+      LX_infra::ShaderReflector::reflectVertexInputs(stages), kShaderName);
+}
+
+inline LX_core::RenderWorkItem makeMinimalDirectRasterHelperItemForVulkanTests(
+    const LX_core::IVertexBuffer &vertexBuffer,
+    const LX_core::IndexBuffer &indexBuffer,
+    LX_core::StringID pass = LX_core::Pass_PostProcess,
+    const LX_core::RenderTarget &target = {}) {
+  constexpr const char *kShaderName = "minimal";
+  auto shader = makeMinimalShaderForVulkanTests();
+
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = kShaderName;
+  shaderProgram.shader = shader;
+
+  LX_core::RenderWorkItem item;
+  item.domain = LX_core::RenderDomain::Realtime;
+  item.kind = LX_core::RenderWorkKind::DirectRasterPass;
+  item.directRaster.purpose =
+      LX_core::DirectRasterPassPurpose::TestOnlyNonMaterial;
+  item.shaderInfo = shader;
+  item.shaderProgram = shaderProgram;
+  item.renderState = LX_core::RenderState{};
+  item.renderState.cullMode = LX_core::CullMode::None;
+  item.renderState.depthTestEnable = false;
+  item.renderState.depthWriteEnable = false;
+  item.directRaster.vertexBuffer = LX_core::GpuResourceRef{vertexBuffer};
+  item.directRaster.indexBuffer = LX_core::GpuResourceRef{indexBuffer};
+  item.directRaster.indexCount = static_cast<u32>(indexBuffer.indexCount());
+  item.directRaster.instanceCount = 1;
+  item.pass = pass;
+  item.target = target.toDesc();
+  item.objectSignature = LX_core::StringID("vulkan_test_minimal_direct_object");
+  item.materialSignature = LX_core::StringID("vulkan_test_minimal_direct_state");
+  item.materialTypeVariant = shaderProgram.getPipelineSignature();
+  item.renderPathNodeSignature = testRenderPathNodeSignature(pass, target);
+  item.pipelineKey = LX_core::PipelineKey::build(
+      item.materialTypeVariant, item.renderPathNodeSignature);
+  return item;
+}
+
+inline LX_core::RenderWorkItem
+debugOverlayDirectRasterHelperItemFromScene(
+    LX_core::Scene &scene, const LX_core::RenderTarget &target = {}) {
+  LX_core::RenderWorkQueue q;
+  q.build(LX_core::RenderWorkBuildContext::realtime(scene),
+          LX_core::Pass_DebugOverlay, target,
+          testRenderPathNodeSignature(LX_core::Pass_DebugOverlay, target),
+          std::nullopt);
+  assert(!q.getItems().empty() &&
+         "debug overlay scene produced no direct helper item");
+  auto item = q.getItems().front();
+  item.directRaster.purpose = LX_core::DirectRasterPassPurpose::DebugOverlay;
+  return item;
 }
 
 inline LX_core::MaterialInstanceSharedPtr
