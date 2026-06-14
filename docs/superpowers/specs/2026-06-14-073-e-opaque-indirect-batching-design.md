@@ -1,4 +1,4 @@
-# REQ-073-e Opaque Indirect Batching And REQ-073-f Transparent BMW Handoff Design
+# REQ-073-e Opaque Indirect Batching Design
 
 Date: 2026-06-14
 
@@ -7,23 +7,10 @@ Date: 2026-06-14
 `REQ-073-e` is the hard landing for realtime opaque geometry batching and
 backend indirect draw submission.
 
-The previous `REQ-073-f` realtime hard-cut scope is no longer a separate cleanup
-phase for `REQ-073-a/b/c` compatibility. That hard cut moved forward into
-`REQ-073-d`, which owns the `techniques/...` to `render_paths/...` migration,
-legacy material-source route deletion, and ordinary positive-test cleanup.
-
-The new split is:
-
-- `REQ-073-e`: opaque realtime geometry batching, backend indirect draw, old
-  opaque geometry submission replacement, diagnostics, and Helmet smoke.
-- `REQ-073-f`: transparent queue sorting/batching, glass material support,
-  BMW converter/shader coverage, transparent RenderPathGraph pass, and BMW
-  smoke.
-
-This keeps `073-e` focused on the batching system that must exist before BMW
-glass/transparent work can be meaningful, while keeping the BMW-specific
-material and transparent pass expansion out of the Helmet/opaque implementation
-cycle.
+`REQ-073-d` owns the `techniques/...` to `render_paths/...` migration, legacy
+material-source route deletion, and ordinary positive-test cleanup. `REQ-073-e`
+starts from that hard-cut baseline and focuses only on opaque material-source
+geometry batching, backend indirect draw, diagnostics, and Helmet smoke.
 
 ## Current Context
 
@@ -93,15 +80,10 @@ opaque batching concept.
 
 `073-e` excludes:
 
-- BMW smoke;
-- glass material support;
-- transparent queue sorting;
-- transparent RenderPathGraph pass;
+- additional realtime smoke scenes beyond Helmet;
+- non-opaque material/pass support;
 - OfflineRT;
 - package, BC7, and pipeline cache serialization.
-
-`073-e` may mention transparent work only as the explicit handoff to `073-f`.
-It must not add a partial transparent system.
 
 ## REQ-073-e Architecture
 
@@ -183,10 +165,8 @@ This table is the implementation guardrail: a field cannot be added to an input
 structure unless that input stage is the stage that can actually know it.
 
 The compiler itself should not be named or structured as an opaque-only class.
-`073-e` implements the opaque policy first, but `073-f` should be able to reuse
-the same `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler`
-shape for transparent nodes, changing only the node policy such as depth sort
-and contiguous-compatible merge rules.
+`073-e` implements the opaque material-type policy through the generic
+`RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler` shape.
 
 The queue-owned batch pipeline flow is:
 
@@ -202,9 +182,7 @@ RenderPathNodeData
 
 For `073-e`, the node policy can sort/group prepared candidates for batch
 locality because the accepted material types are opaque and depth order is not
-the semantic constraint. For `073-f`, transparent material types must sort by
-depth first, and only adjacent prepared candidates with the same batch signature
-may merge after that sort.
+the semantic constraint.
 
 If the current implementation only has per-mesh `GpuResourceRef` vertex/index
 buffers at this point, `073-e` must first register/resolve them into the global
@@ -256,12 +234,10 @@ are node context; they are not copied onto every prepared candidate as split
 keys.
 
 For `073-e`, the current node accepts opaque material types. Opaque is not a
-special node class in the batching model. If a surface needs distinct opaque and
-transparent shader/material behavior, that distinction should be encoded in the
-material type identity, for example `standard-pbr-opaque` versus
-`standard-pbr-transparent`, and the RenderPathNode lists the material types it
-supports. `073-e` implements the opaque material-type side; `073-f` adds the
-transparent material types and transparent sorting policy.
+special node class in the batching model. If a surface needs distinct shader or
+material behavior, that distinction belongs in the material type identity, and
+the RenderPathNode lists the material types it supports. `073-e` implements only
+the opaque material-type side.
 
 In the target architecture, geometry data for a geometry RenderPathNode comes
 from one global geometry table/buffer model:
@@ -340,7 +316,7 @@ with a diagnostic. It must not become a permanent batch key.
 | Concept | `073-e` status | Reason |
 |---|---|---|
 | object data signature | Batch key and pipeline identity axis | It represents the shader-visible bindless object/draw table ABI. Current value is singular; future ABI variants can split intentionally. |
-| material type signature | Batch key and material-side pipeline identity axis | It represents the material type/source contract identity. Opaque/transparent distinctions belong here when they require different material behavior. |
+| material type signature | Batch key and material-side pipeline identity axis | It represents the material type/source contract identity. |
 | RenderPathNode/pass context | Batch compiler scope, not a split key | Pass state, target, topology, and attachment contract are fixed before prepared candidates are compared. |
 | `PipelineKey` | Derived backend lookup value, not an independent batch key | Backend may need it to fetch/create the PSO, but batching should derive it from object data signature, material type signature, and node context instead of comparing a second identity that can drift. |
 | `RenderPathNodeSignature` | Current pipeline-cache implementation detail, not a per-draw batch key | The node signature belongs to the pass context. It must not be copied onto every draw as a reason to split. |
@@ -514,8 +490,7 @@ The Helmet smoke proves:
 - no skipped draw is treated as success.
 
 Helmet is intentionally chosen because it keeps this requirement focused on the
-opaque indirect/batching path. BMW glass and transparent material coverage are
-deferred to `073-f`.
+opaque indirect/batching path.
 
 ## REQ-073-e Tests
 
@@ -567,41 +542,6 @@ Run low-resolution Helmet realtime smoke and assert:
 - indirect-capable draw count matches the expected opaque draw count;
 - fallback-observed count is zero.
 
-## REQ-073-f Handoff
-
-`073-f` becomes the transparent BMW follow-up.
-
-It owns:
-
-- transparent queue sorting;
-- transparent batching rules;
-- transparent RenderPathGraph pass / RenderPathNode contract;
-- glass material contract and shader variant support required by BMW;
-- BMW converter support for BMW materials that are not covered by Helmet;
-- BMW realtime smoke.
-
-Transparent batching is a general mechanism, not a BMW-only shortcut:
-
-```text
-opaque:
-  batch size and state locality may drive ordering
-
-transparent:
-  depth order is primary
-  sort back-to-front first
-  only contiguous compatible transparent items may merge into an indirect batch
-```
-
-The transparent pass must be explicit in RenderPathGraph. It must not be
-selected by material name or implicit alpha heuristics. Glass or other BMW
-transparent materials must either be supported with explicit source contracts
-and shader variants, or fail-fast with diagnostics. They must not fall back to
-opaque approximation, debug material, or skipped draw success.
-
-`073-f` does not reopen `073-e` opaque batching architecture. It consumes the
-batch compiler and backend indirect submission model from `073-e` and extends
-it with transparent ordering constraints.
-
 ## Acceptance
 
 `REQ-073-e` is ready for implementation planning when this spec is accepted and
@@ -609,8 +549,7 @@ the active requirement is aligned to:
 
 - opaque-only batching and indirect draw;
 - Helmet-only smoke;
-- no BMW/glass/transparent scope in `073-e`;
-- BMW/glass/transparent sorting moved to `073-f`.
+- no non-opaque material/pass or extra scene-smoke scope in `073-e`.
 
 `REQ-073-e` is implementation-complete only when:
 
@@ -620,5 +559,4 @@ the active requirement is aligned to:
 - hard-cut rg audits prove there is no second successful realtime geometry
   batching/submission path;
 - backend indirect submission is proven;
-- Helmet realtime smoke passes on the new path;
-- `073-f` remains scoped to transparent/BMW follow-up.
+- Helmet realtime smoke passes on the new path.
