@@ -319,6 +319,7 @@ RenderPassNode makeRenderPassNode(std::string id,
   pass.shaderUri = "render_paths/Forward/frame_graph_build_plan_test";
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.geometry = RenderPathGeometryContract{};
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
   return pass;
@@ -1114,8 +1115,8 @@ void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
       "PostProcess", {"hdr.color", "feature.toneMapping"}, {"swapchain.color"});
   node.shaderUri = "post_process";
   node.dispatch = RenderPassDispatch::Fullscreen;
-  node.filters.renderClasses = {"fullscreen.post"};
-  node.filters.bsdfTypes = {"none"};
+  node.input = RenderPassInputContract{};
+  node.input.kind = RenderPassInputKind::FullscreenTriangle;
   node.renderState.cullMode = CullMode::None;
   node.renderState.depthTestEnable = false;
   node.renderState.depthWriteEnable = false;
@@ -1146,12 +1147,10 @@ void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
          "FramePass should preserve graph stage");
   EXPECT(pass.dispatch == RenderPassDispatch::Fullscreen,
          "FramePass should preserve graph dispatch");
-  EXPECT(pass.filters.renderClasses.size() == 1 &&
-             pass.filters.renderClasses[0] == "fullscreen.post",
-         "FramePass should preserve render class filters");
-  EXPECT(pass.filters.bsdfTypes.size() == 1 &&
-             pass.filters.bsdfTypes[0] == "none",
-         "FramePass should preserve bsdf filters");
+  EXPECT(pass.input.kind == RenderPassInputKind::FullscreenTriangle,
+         "FramePass should preserve graph input kind");
+  EXPECT(!pass.input.geometry.has_value(),
+         "FramePass should preserve fullscreen input without geometry");
   EXPECT(pass.renderState.cullMode == CullMode::None,
          "FramePass should preserve cull mode");
   EXPECT(!pass.renderState.depthTestEnable,
@@ -1201,6 +1200,20 @@ void testFrameGraphBuildPlanRejectsIncompleteRenderPathPass() {
              },
              "targets"),
          "render path graph pass without targets should fail fast");
+
+  RenderPathGraph missingInputGeometry;
+  missingInputGeometry.name = "MissingInputGeometry";
+  missingInputGeometry.passes.push_back(
+      makeRenderPassNode("ForwardOpaque", {"scene.camera"}, {"hdr.color"}));
+  missingInputGeometry.passes[0].input.geometry.reset();
+  EXPECT(throwsInvalidArgument(
+             [&] {
+               [[maybe_unused]] const FrameGraph graph =
+                   buildFrameGraphFromRenderPathGraph(missingInputGeometry,
+                                                      registry);
+             },
+             "input.geometry"),
+         "scene-renderables pass without input geometry should fail fast");
 }
 
 void testDefaultForwardRenderPathGraphPassSetValidation() {
@@ -1306,6 +1319,8 @@ void testDeferredLightingReadsComeFromRenderPathGraphSources() {
       GlobalStringTable::get().toDebugString(Pass_DeferredLighting),
       {"gbuffer.emissive", "depth.main"}, {"hdr.color"});
   lighting.dispatch = RenderPassDispatch::Fullscreen;
+  lighting.input = RenderPassInputContract{};
+  lighting.input.kind = RenderPassInputKind::FullscreenTriangle;
   graphAsset.passes.push_back(std::move(lighting));
 
   const FrameGraph graph =

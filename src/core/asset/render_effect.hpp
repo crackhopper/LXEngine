@@ -24,11 +24,6 @@ struct RenderPathFeatureDependency final {
   ResourceUri uri;
 };
 
-struct RenderPassNodeFilters final {
-  std::vector<std::string> renderClasses;
-  std::vector<std::string> bsdfTypes;
-};
-
 enum class RenderPathNodeRenderingMode {
   Dynamic,
   Traditional,
@@ -45,6 +40,28 @@ struct RenderPathGeometryContract final {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
 };
 
+enum class RenderPassInputKind {
+  SceneRenderables,
+  FullscreenTriangle,
+  ComputeDispatch,
+};
+
+struct RenderPassObjectInputFilter final {
+  std::vector<std::string> renderClasses;
+};
+
+struct RenderPassMaterialInputFilter final {
+  std::vector<std::string> types;
+  bool required = true;
+};
+
+struct RenderPassInputContract final {
+  RenderPassInputKind kind = RenderPassInputKind::SceneRenderables;
+  RenderPassObjectInputFilter object;
+  RenderPassMaterialInputFilter material;
+  std::optional<RenderPathGeometryContract> geometry;
+};
+
 struct RenderPathAttachmentContract final {
   std::string target;
   ImageFormat format = ImageFormat::BGRA8;
@@ -58,9 +75,8 @@ struct RenderPassNode final {
   ResourceUri shaderUri;
   RenderPassStage stage = RenderPassStage::Raster;
   RenderPassDispatch dispatch = RenderPassDispatch::Draw;
-  RenderPassNodeFilters filters;
+  RenderPassInputContract input;
   std::optional<RenderPathNodeRenderingMode> renderingMode;
-  std::optional<RenderPathGeometryContract> geometry;
   std::vector<RenderPathAttachmentContract> attachments;
   std::vector<std::string> sources;
   std::vector<std::string> targets;
@@ -69,6 +85,8 @@ struct RenderPassNode final {
 };
 
 [[nodiscard]] StringID getRenderPathNodeSignature(const RenderPassNode &node);
+[[nodiscard]] std::optional<std::string>
+validateRenderPassInputContract(const RenderPassNode &node);
 
 struct RenderPathGraph final {
   std::string name;

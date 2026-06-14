@@ -3,6 +3,18 @@
 namespace LX_core {
 namespace {
 
+[[nodiscard]] const char *inputKindName(RenderPassInputKind kind) {
+  switch (kind) {
+  case RenderPassInputKind::SceneRenderables:
+    return "scene-renderables";
+  case RenderPassInputKind::FullscreenTriangle:
+    return "fullscreen-triangle";
+  case RenderPassInputKind::ComputeDispatch:
+    return "compute-dispatch";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] StringID renderingModeSignature(RenderPathNodeRenderingMode mode) {
   return StringID(mode == RenderPathNodeRenderingMode::Dynamic
                       ? "rendering=dynamic"
@@ -40,10 +52,62 @@ attachmentSignature(const RenderPathAttachmentContract &attachment) {
 
 } // namespace
 
+std::optional<std::string>
+validateRenderPassInputContract(const RenderPassNode &node) {
+  const RenderPassInputContract &input = node.input;
+  switch (input.kind) {
+  case RenderPassInputKind::SceneRenderables:
+    if (node.stage != RenderPassStage::Raster ||
+        node.dispatch != RenderPassDispatch::Draw) {
+      return std::string("input.kind '") + inputKindName(input.kind) +
+             "' requires raster draw";
+    }
+    if (!input.geometry.has_value()) {
+      return "input.geometry is required for scene-renderables input";
+    }
+    break;
+  case RenderPassInputKind::FullscreenTriangle:
+    if (node.stage != RenderPassStage::Raster ||
+        node.dispatch != RenderPassDispatch::Fullscreen) {
+      return std::string("input.kind '") + inputKindName(input.kind) +
+             "' requires raster fullscreen";
+    }
+    if (!input.object.renderClasses.empty()) {
+      return "input.object is not accepted for fullscreen-triangle input";
+    }
+    if (!input.material.types.empty() || !input.material.required) {
+      return "input.material is not accepted for fullscreen-triangle input";
+    }
+    if (input.geometry.has_value()) {
+      return "input.geometry is not accepted for fullscreen-triangle input";
+    }
+    break;
+  case RenderPassInputKind::ComputeDispatch:
+    if (node.stage != RenderPassStage::Compute ||
+        node.dispatch != RenderPassDispatch::Compute) {
+      return std::string("input.kind '") + inputKindName(input.kind) +
+             "' requires compute dispatch";
+    }
+    if (!input.object.renderClasses.empty()) {
+      return "input.object is not accepted for compute-dispatch input";
+    }
+    if (!input.material.types.empty() || !input.material.required) {
+      return "input.material is not accepted for compute-dispatch input";
+    }
+    if (input.geometry.has_value()) {
+      return "input.geometry is not accepted for compute-dispatch input";
+    }
+    break;
+  }
+  return std::nullopt;
+}
+
 StringID getRenderPathNodeSignature(const RenderPassNode &node) {
   std::vector<StringID> fields;
-  fields.reserve(8 + node.sources.size() + node.targets.size() +
-                 node.attachments.size());
+  const RenderPassInputContract &input = node.input;
+  fields.reserve(12 + input.object.renderClasses.size() +
+                 input.material.types.size() + node.sources.size() +
+                 node.targets.size() + node.attachments.size());
   fields.push_back(StringID("pass=" + node.id));
   fields.push_back(StringID("shader=" + node.shaderUri.string()));
   fields.push_back(StringID(node.stage == RenderPassStage::Raster
@@ -58,8 +122,23 @@ StringID getRenderPathNodeSignature(const RenderPassNode &node) {
   if (node.renderingMode.has_value()) {
     fields.push_back(renderingModeSignature(*node.renderingMode));
   }
-  if (node.geometry.has_value()) {
-    fields.push_back(geometrySignature(*node.geometry));
+  fields.push_back(StringID(input.kind == RenderPassInputKind::SceneRenderables
+                                ? "input=scene-renderables"
+                                : input.kind ==
+                                          RenderPassInputKind::FullscreenTriangle
+                                      ? "input=fullscreen-triangle"
+                                      : "input=compute-dispatch"));
+  for (const std::string &renderClass : input.object.renderClasses) {
+    fields.push_back(StringID("object.renderClass=" + renderClass));
+  }
+  fields.push_back(StringID(input.material.required
+                                ? "material.required=true"
+                                : "material.required=false"));
+  for (const std::string &type : input.material.types) {
+    fields.push_back(StringID("material.type=" + type));
+  }
+  if (input.geometry.has_value()) {
+    fields.push_back(geometrySignature(*input.geometry));
   }
   for (const std::string &source : node.sources) {
     fields.push_back(StringID("source=" + source));

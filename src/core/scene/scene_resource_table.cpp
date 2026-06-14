@@ -1316,6 +1316,11 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
   std::vector<ShaderHandle> shaderHandles;
   shaderHandles.reserve(graph.passes.size());
   for (const auto &pass : graph.passes) {
+    if (const auto inputError = validateRenderPassInputContract(pass)) {
+      const std::string passName = pass.id.empty() ? "<unnamed>" : pass.id;
+      throw std::invalid_argument("RenderPathGraph '" + uri.string() +
+                                  "' pass '" + passName + "' " + *inputError);
+    }
     if (pass.shaderUri.string().empty()) {
       continue;
     }

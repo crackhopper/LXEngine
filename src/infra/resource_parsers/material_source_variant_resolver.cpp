@@ -101,11 +101,12 @@ struct TypeSourceFacts final {
 
 [[nodiscard]] bool passAllowsType(const LX_core::RenderPassNode &pass,
                                   const std::string &type) {
-  if (pass.filters.bsdfTypes.empty()) {
+  if (pass.input.material.types.empty()) {
     return true;
   }
-  return std::find(pass.filters.bsdfTypes.begin(), pass.filters.bsdfTypes.end(),
-                   type) != pass.filters.bsdfTypes.end();
+  return std::find(pass.input.material.types.begin(),
+                   pass.input.material.types.end(),
+                   type) != pass.input.material.types.end();
 }
 
 [[nodiscard]] std::optional<LX_core::ShaderProgramSet> compileVariantShader(

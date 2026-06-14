@@ -121,7 +121,7 @@ PipelineKey buildKey(const Fixture &f, StringID pass,
                                          shaderProgram->get().shaderName);
   renderPathPass.renderState = f.material->getPassRenderState(pass);
   renderPathPass.renderingMode = RenderPathNodeRenderingMode::Dynamic;
-  renderPathPass.geometry = geometry;
+  renderPathPass.input.geometry = geometry;
 
   const StringID materialTypeVariant =
       f.material->getMaterialTypeVariantSignature(shaderProgram->get());
@@ -206,14 +206,14 @@ void testRenderPathGeometryMismatchFailsQueueBuild() {
   renderPathPass.name = Pass_Forward;
   renderPathPass.target = RenderTargetDesc::swapchain(ImageFormat::BGRA8,
                                                       ImageFormat::D32Float);
-  renderPathPass.geometry = lineGeometry;
+  renderPathPass.input.geometry = lineGeometry;
 
   RenderWorkQueue queue;
   bool threw = false;
   try {
     queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
                 RenderTarget{}, getFramePassRenderPathNodeSignature(renderPathPass),
-                renderPathPass.geometry);
+                renderPathPass.input.geometry);
   } catch (const std::logic_error &e) {
     threw =
         std::string(e.what()).find("topology contract mismatch") !=

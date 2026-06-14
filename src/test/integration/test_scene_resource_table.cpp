@@ -927,6 +927,7 @@ void testRenderFeatureDirtyPropagationMarksDependentRenderPathGraph() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  pass.input.geometry = RenderPathGeometryContract{};
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =

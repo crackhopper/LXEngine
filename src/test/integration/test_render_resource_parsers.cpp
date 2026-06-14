@@ -137,10 +137,8 @@ void testDefaultRenderFeatureAssetParses() {
          "default tone mapping feature should declare exposure");
 }
 
-// REQ-073-e2 Task 1 only characterizes the target parser contract. Default
-// render-path assets still use top-level filters/geometry until Task 2 migrates
-// the assets and parser together; these asset smokes are current-fact coverage,
-// not target-schema positive coverage.
+// REQ-073-e2 Task 2 keeps the default render-path assets as positive coverage
+// for the target input-contract schema.
 void testDefaultRenderPathGraphAssetParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
@@ -311,6 +309,11 @@ passes:
     stage: raster
     dispatch: draw
     shader: ""
+    input:
+      kind: scene-renderables
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -318,9 +321,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [scene.camera]
     targets: [hdr.color]
     renderState:
@@ -332,6 +332,11 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -339,9 +344,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: []
     targets: [hdr.color]
     renderState:
@@ -353,6 +355,11 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -360,9 +367,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [scene.camera]
     targets: []
     renderState:
@@ -398,6 +402,16 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      object:
+        renderClass: [surface.opaque]
+        ignoredFilter: true
+      material:
+        type: [matte]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -405,13 +419,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [matte]
-      ignoredFilter: true
     sources: [geometry.vertex, scene.camera]
     targets: [hdr.color]
     renderState:
@@ -427,8 +434,9 @@ passes:
          "diagnostic should reject unknown root field");
   EXPECT(hasDiagnosticContaining(parsed, "features.toneMapping.fallback"),
          "diagnostic should reject unknown feature dependency field");
-  EXPECT(hasDiagnosticContaining(parsed, "passes.Forward.filters.ignoredFilter"),
-         "diagnostic should reject unknown filter field");
+  EXPECT(hasDiagnosticContaining(parsed,
+                                 "passes.Forward.input.object.ignoredFilter"),
+         "diagnostic should reject unknown object input filter field");
 }
 
 void testLegacyRenderEffectSchemaIsRejectedByNewParser() {
@@ -483,6 +491,11 @@ passes:
     stage: raster
     dispatch: draw
     shader: missing/not_real_shader
+    input:
+      kind: scene-renderables
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -490,9 +503,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [scene.camera]
     targets: [hdr.color]
     renderState:
@@ -545,6 +555,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -552,9 +569,6 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [hdr.color]
     renderState:
@@ -566,6 +580,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Deferred/pbr_gbuffer
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -573,9 +594,6 @@ passes:
           format: RGBA8
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [gbuffer.albedo]
     renderState:
@@ -587,6 +605,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: render_paths/Deferred/deferred_lighting
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:
@@ -605,6 +625,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: post_process
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:
@@ -623,6 +645,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_threshold
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:
@@ -641,6 +665,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_blur_h
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:
@@ -659,6 +685,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: bloom_blur_v
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:

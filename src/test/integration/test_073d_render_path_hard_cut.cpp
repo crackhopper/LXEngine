@@ -212,13 +212,13 @@ LX_core::RenderPathGraph makeLegacyTechniqueGraph() {
   forward.shaderUri = LX_core::ResourceUri(legacyForwardPbrUri());
   forward.stage = LX_core::RenderPassStage::Raster;
   forward.dispatch = LX_core::RenderPassDispatch::Draw;
-  forward.filters.bsdfTypes = {"standard-pbr"};
+  forward.input.material.types = {"standard-pbr"};
   forward.renderingMode = LX_core::RenderPathNodeRenderingMode::Dynamic;
 
   LX_core::RenderPathGeometryContract geometry;
   geometry.vertex = LX_core::RenderPathGeometryVertexContract::PositionOnly;
   geometry.topology = LX_core::PrimitiveTopology::TriangleList;
-  forward.geometry = geometry;
+  forward.input.geometry = geometry;
 
   LX_core::RenderPathAttachmentContract colorAttachment;
   colorAttachment.target = "hdr.color";
@@ -304,6 +304,13 @@ passes:
     dispatch: draw
     shader: )yaml") +
                                 rejectedUri + R"yaml(
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -316,9 +323,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [hdr.color, depth.main]
     renderState:

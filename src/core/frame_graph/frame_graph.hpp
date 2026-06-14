@@ -71,9 +71,8 @@ struct FramePass {
   ResourceUri shaderUri;
   RenderPassStage stage = RenderPassStage::Raster;
   RenderPassDispatch dispatch = RenderPassDispatch::Draw;
-  RenderPassNodeFilters filters;
+  RenderPassInputContract input;
   std::optional<RenderPathNodeRenderingMode> renderingMode;
-  std::optional<RenderPathGeometryContract> geometry;
   std::vector<RenderPathAttachmentContract> attachments;
   RenderState renderState;
   StringID renderPathNodeSignature;

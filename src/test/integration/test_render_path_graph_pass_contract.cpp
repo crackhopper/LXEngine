@@ -174,6 +174,53 @@ passes:
          "render state should be retained");
 }
 
+void testMaterialRequiredInvalidBooleanReportsDiagnostic() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  LX_infra::ParsedRenderPathGraphResource parsed;
+  bool threw = false;
+  try {
+    parsed = parser.parse("memory://invalid-required", R"(
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+passes:
+  - id: Forward
+    shader: render_paths/Forward/pbr
+    stage: raster
+    dispatch: draw
+    input:
+      kind: scene-renderables
+      material:
+        required: maybe
+      geometry:
+        vertex: position-only
+        topology: triangle-list
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+    sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
+    targets: [hdr.color]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+)");
+  } catch (const std::exception &) {
+    threw = true;
+  }
+
+  EXPECT(!threw, "invalid material.required must not escape as exception");
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "invalid material.required should fail parse");
+  EXPECT(hasDiagnosticContaining(parsed, "passes.Forward.input.material.required"),
+         "diagnostic should name invalid material.required field");
+}
+
 void testFullscreenTriangleInputParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://fullscreen", R"(
@@ -187,6 +234,13 @@ passes:
     dispatch: fullscreen
     input:
       kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8
+          samples: 1
+          layers: 1
     sources: [hdr.color]
     targets: [swapchain.color]
     renderState:
@@ -252,6 +306,7 @@ int main() {
   testRenderPathGraphPassContractRequiresExplicitFields();
   testRasterPassRejectsOldTopLevelFiltersAndGeometry();
   testRenderPathGraphContractParsesCompletePass();
+  testMaterialRequiredInvalidBooleanReportsDiagnostic();
   testFullscreenTriangleInputParses();
   testRenderPathGraphPassRejectsLegacyPassNodeFields();
   if (g_failures != 0) {

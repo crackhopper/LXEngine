@@ -135,8 +135,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
-    filters:
-      bsdf: [standard-pbr]
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -149,9 +154,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera, scene.lights]
     targets: [hdr.color, depth.main]
     renderState:
@@ -196,6 +198,8 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [hdr.color, depth.main]
     renderState:
@@ -206,11 +210,12 @@ passes:
 )yaml");
 
   EXPECT(!parsed.renderPathGraph.has_value(),
-         "raster draw passes must declare rendering and geometry contracts");
+         "raster draw passes must declare rendering and input geometry "
+         "contracts");
   EXPECT(diagnosticsContain(parsed.diagnostics, "rendering"),
          "diagnostic should name missing rendering contract");
   EXPECT(diagnosticsContain(parsed.diagnostics, "geometry"),
-         "diagnostic should name missing geometry contract");
+        "diagnostic should name missing input geometry contract");
 }
 
 void testUnknownRenderPathResourceVocabularyFails() {
@@ -223,6 +228,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -235,9 +247,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, unknown.resource]
     targets: [hdr.color, depth.main]
     renderState:
@@ -418,8 +427,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/shadow_depth_only
-    filters:
-      bsdf: [standard-pbr]
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -428,9 +442,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, scene.camera, scene.lights]
     targets: [shadow.main]
     renderState:
@@ -442,8 +453,13 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
-    filters:
-      bsdf: [standard-pbr]
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -456,9 +472,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera, scene.lights]
     targets: [hdr.color, depth.main]
     renderState:

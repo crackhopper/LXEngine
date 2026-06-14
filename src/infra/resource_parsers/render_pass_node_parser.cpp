@@ -106,6 +106,47 @@ std::vector<std::string> parseStringList(const YAML::Node &node) {
   return values;
 }
 
+std::optional<std::vector<std::string>>
+parseStringSequence(const YAML::Node &node, RenderPassNodeParseResult &result,
+                    const std::string &field) {
+  if (!node) {
+    return std::vector<std::string>{};
+  }
+  if (!node.IsSequence()) {
+    addDiagnostic(result, field, "must be a sequence of strings");
+    return std::nullopt;
+  }
+  std::vector<std::string> values;
+  values.reserve(node.size());
+  for (std::size_t i = 0; i < node.size(); ++i) {
+    if (!node[i].IsScalar()) {
+      addDiagnostic(result, field + "[" + std::to_string(i) + "]",
+                    "must be a string");
+      return std::nullopt;
+    }
+    values.push_back(node[i].as<std::string>());
+  }
+  return values;
+}
+
+std::optional<bool> parseBoolScalar(const YAML::Node &node,
+                                    RenderPassNodeParseResult &result,
+                                    const std::string &field) {
+  if (!node || !node.IsScalar()) {
+    addDiagnostic(result, field, "must be a boolean");
+    return std::nullopt;
+  }
+  const std::string value = node.as<std::string>();
+  if (value == "true") {
+    return true;
+  }
+  if (value == "false") {
+    return false;
+  }
+  addDiagnostic(result, field, "expected true or false");
+  return std::nullopt;
+}
+
 bool isKnownRenderPathResourceName(const std::string &name) {
   constexpr std::array knownResources{
       "geometry.vertex",
@@ -150,10 +191,10 @@ bool rejectUnsupportedFields(const YAML::Node &node,
       continue;
     }
     const std::string key = it->first.as<std::string>();
-    if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
-        key == "rendering" || key == "geometry" || key == "sources" ||
-        key == "targets" || key == "renderState" || key == "writeMode" ||
-        key == "filters") {
+    if (key == "id" || key == "shader" || key == "stage" ||
+        key == "dispatch" || key == "rendering" || key == "input" ||
+        key == "sources" || key == "targets" || key == "renderState" ||
+        key == "writeMode") {
       continue;
     }
     if (key == "enginePass") {
@@ -368,6 +409,239 @@ parseGeometryContract(const YAML::Node &node, RenderPassNodeParseResult &result,
   return geometry;
 }
 
+std::optional<LX_core::RenderPassInputKind>
+parseInputKind(const YAML::Node &node, RenderPassNodeParseResult &result,
+               const std::string &field) {
+  if (!node || !node.IsScalar()) {
+    addDiagnostic(result, field, "missing required field");
+    return std::nullopt;
+  }
+  const std::string value = node.as<std::string>();
+  if (value == "scene-renderables") {
+    return LX_core::RenderPassInputKind::SceneRenderables;
+  }
+  if (value == "fullscreen-triangle") {
+    return LX_core::RenderPassInputKind::FullscreenTriangle;
+  }
+  if (value == "compute-dispatch") {
+    return LX_core::RenderPassInputKind::ComputeDispatch;
+  }
+  addDiagnostic(result, field,
+                "expected scene-renderables, fullscreen-triangle, or "
+                "compute-dispatch");
+  return std::nullopt;
+}
+
+std::optional<LX_core::RenderPassObjectInputFilter>
+parseObjectInputFilter(const YAML::Node &node,
+                       RenderPassNodeParseResult &result,
+                       const std::string &field) {
+  LX_core::RenderPassObjectInputFilter object;
+  if (!node) {
+    return object;
+  }
+  if (!node.IsMap()) {
+    addDiagnostic(result, field, "object input filter must be a map");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field,
+                    "object input filter field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "renderClass") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported object input filter field");
+    valid = false;
+  }
+  auto renderClasses =
+      parseStringSequence(node["renderClass"], result, field + ".renderClass");
+  if (!valid || !renderClasses.has_value()) {
+    return std::nullopt;
+  }
+  object.renderClasses = std::move(*renderClasses);
+  return object;
+}
+
+std::optional<LX_core::RenderPassMaterialInputFilter>
+parseMaterialInputFilter(const YAML::Node &node,
+                         RenderPassNodeParseResult &result,
+                         const std::string &field) {
+  LX_core::RenderPassMaterialInputFilter material;
+  if (!node) {
+    return material;
+  }
+  if (!node.IsMap()) {
+    addDiagnostic(result, field, "material input filter must be a map");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field,
+                    "material input filter field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "type" || key == "required") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported material input filter field");
+    valid = false;
+  }
+  auto types = parseStringSequence(node["type"], result, field + ".type");
+  if (!types.has_value()) {
+    return std::nullopt;
+  }
+  material.types = std::move(*types);
+  if (const auto required = node["required"]) {
+    auto parsedRequired = parseBoolScalar(required, result, field + ".required");
+    if (!parsedRequired.has_value()) {
+      return std::nullopt;
+    }
+    material.required = *parsedRequired;
+  }
+  if (!valid) {
+    return std::nullopt;
+  }
+  return material;
+}
+
+std::optional<LX_core::RenderPassInputContract>
+parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
+                   const std::string &field, LX_core::RenderPassStage stage,
+                   LX_core::RenderPassDispatch dispatch) {
+  if (!node || !node.IsMap()) {
+    addDiagnostic(result, field, "missing required field");
+    return std::nullopt;
+  }
+
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field, "input field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "kind" || key == "object" || key == "material" ||
+        key == "geometry") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key, "unsupported input contract field");
+    valid = false;
+  }
+
+  auto kind = parseInputKind(node["kind"], result, field + ".kind");
+  if (!valid || !kind.has_value()) {
+    return std::nullopt;
+  }
+
+  LX_core::RenderPassInputContract input;
+  input.kind = *kind;
+
+  if (input.kind == LX_core::RenderPassInputKind::FullscreenTriangle) {
+    if (stage != LX_core::RenderPassStage::Raster ||
+        dispatch != LX_core::RenderPassDispatch::Fullscreen) {
+      addDiagnostic(result, field + ".kind",
+                    "fullscreen-triangle input requires raster fullscreen");
+      return std::nullopt;
+    }
+    bool rejectedField = false;
+    if (node["object"]) {
+      addDiagnostic(result, field + ".object",
+                    "fullscreen-triangle input does not accept object filter");
+      rejectedField = true;
+    }
+    if (node["material"]) {
+      addDiagnostic(result, field + ".material",
+                    "fullscreen-triangle input does not accept material filter");
+      rejectedField = true;
+    }
+    if (node["geometry"]) {
+      addDiagnostic(result, field + ".geometry",
+                    "fullscreen-triangle input does not accept geometry");
+      rejectedField = true;
+    }
+    return rejectedField ? std::nullopt
+                         : std::optional<LX_core::RenderPassInputContract>(
+                               std::move(input));
+  }
+
+  if (input.kind == LX_core::RenderPassInputKind::ComputeDispatch) {
+    if (stage != LX_core::RenderPassStage::Compute ||
+        dispatch != LX_core::RenderPassDispatch::Compute) {
+      addDiagnostic(result, field + ".kind",
+                    "compute-dispatch input requires compute dispatch");
+      return std::nullopt;
+    }
+    bool rejectedField = false;
+    if (node["object"]) {
+      addDiagnostic(result, field + ".object",
+                    "compute-dispatch input does not accept object filter");
+      rejectedField = true;
+    }
+    if (node["material"]) {
+      addDiagnostic(result, field + ".material",
+                    "compute-dispatch input does not accept material filter");
+      rejectedField = true;
+    }
+    if (node["geometry"]) {
+      addDiagnostic(result, field + ".geometry",
+                    "compute-dispatch input does not accept geometry");
+      rejectedField = true;
+    }
+    return rejectedField ? std::nullopt
+                         : std::optional<LX_core::RenderPassInputContract>(
+                               std::move(input));
+  }
+
+  auto object = parseObjectInputFilter(node["object"], result, field + ".object");
+  auto material =
+      parseMaterialInputFilter(node["material"], result, field + ".material");
+  std::optional<LX_core::RenderPathGeometryContract> geometry;
+  bool geometryValid = true;
+  if (node["geometry"]) {
+    auto parsedGeometry = parseGeometryContract(node["geometry"], result,
+                                                field + ".geometry");
+    if (parsedGeometry.has_value()) {
+      geometry = *parsedGeometry;
+    } else {
+      geometryValid = false;
+    }
+  }
+  if (!valid || !kind.has_value() || !object.has_value() ||
+      !material.has_value() || !geometryValid) {
+    return std::nullopt;
+  }
+
+  input.object = std::move(*object);
+  input.material = std::move(*material);
+  input.geometry = geometry;
+
+  if (!input.geometry.has_value()) {
+    addDiagnostic(result, field + ".geometry",
+                  "scene-renderables input requires geometry");
+    return std::nullopt;
+  }
+  if (stage != LX_core::RenderPassStage::Raster ||
+      dispatch != LX_core::RenderPassDispatch::Draw) {
+    addDiagnostic(result, field + ".kind",
+                  "scene-renderables input requires raster draw");
+    return std::nullopt;
+  }
+
+  return input;
+}
+
 std::optional<LX_core::ImageFormat>
 parseImageFormat(const YAML::Node &node, RenderPassNodeParseResult &result,
                  const std::string &field) {
@@ -485,6 +759,7 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   requireField(node["shader"], result, fieldPrefix + ".shader");
   requireField(node["stage"], result, fieldPrefix + ".stage");
   requireField(node["dispatch"], result, fieldPrefix + ".dispatch");
+  requireField(node["input"], result, fieldPrefix + ".input");
   requireField(node["sources"], result, fieldPrefix + ".sources");
   requireField(node["targets"], result, fieldPrefix + ".targets");
   auto renderState = parseRenderState(node["renderState"], result,
@@ -509,12 +784,8 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
     renderingMode = parseRenderingMode(node["rendering"], result,
                                        fieldPrefix + ".rendering");
   }
-  std::optional<LX_core::RenderPathGeometryContract> geometry;
-  if (*dispatch == LX_core::RenderPassDispatch::Draw) {
-    requireField(node["geometry"], result, fieldPrefix + ".geometry");
-    geometry = parseGeometryContract(node["geometry"], result,
-                                     fieldPrefix + ".geometry");
-  }
+  auto input = parseInputContract(node["input"], result, fieldPrefix + ".input",
+                                  *stage, *dispatch);
   if (!result.diagnostics.empty()) {
     return result;
   }
@@ -555,8 +826,8 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   pass.shaderUri = node["shader"].as<std::string>();
   pass.stage = *stage;
   pass.dispatch = *dispatch;
+  pass.input = std::move(*input);
   pass.renderingMode = renderingMode;
-  pass.geometry = geometry;
   pass.attachments = std::move(attachments);
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);

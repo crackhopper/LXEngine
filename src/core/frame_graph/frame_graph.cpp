@@ -92,8 +92,9 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   }
 
   std::vector<StringID> fields;
-  fields.reserve(10 + pass.reads.size() + pass.writes.size() +
-                 pass.attachments.size());
+  fields.reserve(14 + pass.input.object.renderClasses.size() +
+                 pass.input.material.types.size() + pass.reads.size() +
+                 pass.writes.size() + pass.attachments.size());
   fields.push_back(StringID("pass=" +
                             GlobalStringTable::get().toDebugString(pass.name)));
   fields.push_back(StringID("shader=" + pass.shaderUri.string()));
@@ -111,8 +112,24 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   if (pass.renderingMode.has_value()) {
     fields.push_back(framePassRenderingModeSignature(*pass.renderingMode));
   }
-  if (pass.geometry.has_value()) {
-    fields.push_back(framePassGeometrySignature(*pass.geometry));
+  fields.push_back(StringID(pass.input.kind ==
+                                    RenderPassInputKind::SceneRenderables
+                                ? "input=scene-renderables"
+                                : pass.input.kind ==
+                                          RenderPassInputKind::FullscreenTriangle
+                                      ? "input=fullscreen-triangle"
+                                      : "input=compute-dispatch"));
+  for (const std::string &renderClass : pass.input.object.renderClasses) {
+    fields.push_back(StringID("object.renderClass=" + renderClass));
+  }
+  fields.push_back(StringID(pass.input.material.required
+                                ? "material.required=true"
+                                : "material.required=false"));
+  for (const std::string &type : pass.input.material.types) {
+    fields.push_back(StringID("material.type=" + type));
+  }
+  if (pass.input.geometry.has_value()) {
+    fields.push_back(framePassGeometrySignature(*pass.input.geometry));
   }
   for (const FrameGraphRead &read : pass.reads) {
     fields.push_back(StringID(
@@ -141,7 +158,8 @@ void FrameGraph::build(const RenderWorkBuildContext &context) {
   for (auto &pass : m_passes) {
     pass.queue.build(context, pass.name, RenderTarget{pass.target},
                      getFramePassRenderPathNodeSignature(pass),
-                     pass.geometry, pass.renderingMode, pass.attachments);
+                     pass.input.geometry, pass.renderingMode,
+                     pass.attachments);
   }
 }
 

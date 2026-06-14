@@ -2072,7 +2072,7 @@ public:
                             outputCullingMask & ~LX_core::Layer_EditorOverlay,
                     }),
                 LX_core::Pass_Forward, target,
-                forwardPass.renderPathNodeSignature, forwardPass.geometry,
+                forwardPass.renderPathNodeSignature, forwardPass.input.geometry,
                 forwardPass.renderingMode, forwardPass.attachments);
     const auto &drawInputs = queue.nodeData().drawInputs;
     if (drawInputs.empty()) {
@@ -2709,7 +2709,8 @@ private:
                              }),
                          passName, renderTarget,
                          LX_core::getFramePassRenderPathNodeSignature(pass),
-                         pass.geometry, pass.renderingMode, pass.attachments);
+                         pass.input.geometry, pass.renderingMode,
+                         pass.attachments);
         return;
       }
     }

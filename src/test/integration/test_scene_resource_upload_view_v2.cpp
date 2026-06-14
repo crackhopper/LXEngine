@@ -110,6 +110,10 @@ void registerObject(SceneResourceTable &table, MeshHandle mesh,
   (void)table.registerObject(object);
 }
 
+void requireSceneRenderableGeometry(RenderPassNode &pass) {
+  pass.input.geometry = RenderPathGeometryContract{};
+}
+
 bool buildUploadThrows(SceneResourceTable &table,
                        const std::string &expectedText) {
   try {
@@ -315,6 +319,7 @@ void testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -377,6 +382,7 @@ void testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -682,6 +688,7 @@ void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   bool rejected = false;
@@ -699,6 +706,36 @@ void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
          "registered RenderFeature payload");
   EXPECT(table.renderFeatureCount() == 0,
          "missing feature dependency must not create a placeholder feature");
+}
+
+void testRenderPathGraphRegistrationRejectsSceneInputWithoutGeometry() {
+  SceneResourceTable table;
+  const ShaderHandle shaderHandle = table.registerShaderResource(
+      ResourceUri("memory://shaders/surface_lit.shader"),
+      shaderSourceFixture(), shaderPayloadFixture());
+  EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
+
+  RenderPathGraph graph;
+  graph.name = "InvalidInputContract";
+  RenderPassNode pass;
+  pass.id = "ForwardOpaque";
+  pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
+  pass.sources.push_back("SceneColor");
+  pass.targets.push_back("SceneColor");
+  graph.passes.push_back(pass);
+
+  bool rejected = false;
+  try {
+    [[maybe_unused]] const RenderPathGraphHandle graphHandle =
+        table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
+                                      std::move(graph));
+  } catch (const std::invalid_argument &error) {
+    rejected =
+        std::string(error.what()).find("input.geometry") != std::string::npos;
+  }
+  EXPECT(rejected,
+         "RenderPathGraph registration should reject scene-renderables input "
+         "without geometry");
 }
 
 void testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency() {
@@ -734,6 +771,7 @@ void testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency() {
   pass.shaderUri = ResourceUri("memory://shaders/missing.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   bool rejected = false;
@@ -779,6 +817,7 @@ void testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency() {
   pass.shaderUri = ResourceUri("memory://shaders/source_only.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   bool rejected = false;
@@ -852,6 +891,7 @@ void testUploadViewRejectsReleasedRenderPathGraphFeatureDependency() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -898,6 +938,7 @@ void testUploadViewRejectsReleasedRenderPathGraphShaderDependency() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -942,6 +983,7 @@ void testExportRejectsReleasedRenderPathGraphDependencies() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -988,6 +1030,7 @@ void testExportRejectsFailedRenderPathGraphShaderDependency() {
   pass.shaderUri = ResourceUri("memory://shaders/surface_lit.shader");
   pass.sources.push_back("SceneColor");
   pass.targets.push_back("SceneColor");
+  requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
   const RenderPathGraphHandle graphHandle =
@@ -1040,6 +1083,7 @@ int main() {
   testUploadViewRejectsMaterialSourceSignatureMismatch();
   testUploadViewRejectsUnresolvedExplicitTextureSlot();
   testRenderPathGraphRegistrationRejectsMissingFeatureResource();
+  testRenderPathGraphRegistrationRejectsSceneInputWithoutGeometry();
   testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency();
   testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency();
   testUploadViewRejectsSourceResolvedShaderWithoutPayload();

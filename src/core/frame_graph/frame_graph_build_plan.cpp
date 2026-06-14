@@ -69,9 +69,8 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.shaderUri = node.shaderUri;
   pass.stage = node.stage;
   pass.dispatch = node.dispatch;
-  pass.filters = node.filters;
+  pass.input = node.input;
   pass.renderingMode = node.renderingMode;
-  pass.geometry = node.geometry;
   pass.attachments = node.attachments;
   pass.renderState = node.renderState;
   pass.renderPathNodeSignature = getRenderPathNodeSignature(node);
@@ -93,6 +92,9 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
   }
   if (node.targets.empty()) {
     throw std::invalid_argument(prefix + " missing targets");
+  }
+  if (const auto inputError = validateRenderPassInputContract(node)) {
+    throw std::invalid_argument(prefix + " " + *inputError);
   }
 }
 

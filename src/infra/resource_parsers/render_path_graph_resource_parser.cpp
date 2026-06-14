@@ -39,18 +39,6 @@ std::optional<LX_core::RenderPath> parseRenderPath(std::string value) {
   return std::nullopt;
 }
 
-std::vector<std::string> parseStringList(const YAML::Node &node) {
-  std::vector<std::string> values;
-  if (!node || !node.IsSequence()) {
-    return values;
-  }
-  values.reserve(node.size());
-  for (const auto &entry : node) {
-    values.push_back(entry.as<std::string>());
-  }
-  return values;
-}
-
 void rejectRootFields(ParsedRenderPathGraphResource &result,
                       const LX_core::ResourceUri &uri, const YAML::Node &root) {
   for (auto it = root.begin(); it != root.end(); ++it) {
@@ -65,36 +53,6 @@ void rejectRootFields(ParsedRenderPathGraphResource &result,
     }
     addDiagnostic(result, uri, key, "unsupported render path graph field");
   }
-}
-
-LX_core::RenderPassNodeFilters
-parseFilters(ParsedRenderPathGraphResource &result,
-             const LX_core::ResourceUri &uri, const YAML::Node &filters,
-             const std::string &fieldPrefix) {
-  LX_core::RenderPassNodeFilters parsed;
-  if (!filters) {
-    return parsed;
-  }
-  if (!filters.IsMap()) {
-    addDiagnostic(result, uri, fieldPrefix, "filters must be a map");
-    return parsed;
-  }
-  for (auto it = filters.begin(); it != filters.end(); ++it) {
-    if (!it->first.IsScalar()) {
-      addDiagnostic(result, uri, fieldPrefix,
-                    "filter field names must be scalar strings");
-      continue;
-    }
-    const std::string key = it->first.as<std::string>();
-    if (key == "renderClass" || key == "bsdf") {
-      continue;
-    }
-    addDiagnostic(result, uri, fieldPrefix + "." + key,
-                  "unsupported pass filter field");
-  }
-  parsed.renderClasses = parseStringList(filters["renderClass"]);
-  parsed.bsdfTypes = parseStringList(filters["bsdf"]);
-  return parsed;
 }
 
 std::optional<LX_core::RenderPassNode>
@@ -119,8 +77,6 @@ parseRenderPassNode(ParsedRenderPathGraphResource &result,
   }
 
   LX_core::RenderPassNode pass = std::move(*parsedPass.pass);
-  pass.filters =
-      parseFilters(result, uri, node["filters"], fieldPrefix + ".filters");
   return pass;
 }
 

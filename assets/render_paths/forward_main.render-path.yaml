@@ -11,6 +11,14 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/shadow_depth_only
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -19,12 +27,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate, standard-pbr]
     sources:
       - geometry.vertex
       - geometry.index
@@ -42,6 +44,14 @@ passes:
     stage: raster
     dispatch: draw
     shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -54,12 +64,6 @@ passes:
           samples: 1
           layers: 1
           depth: true
-    geometry:
-      vertex: position-only
-      topology: triangle-list
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate, standard-pbr]
     sources:
       - geometry.vertex
       - geometry.index
@@ -78,6 +82,8 @@ passes:
     stage: raster
     dispatch: fullscreen
     shader: post_process
+    input:
+      kind: fullscreen-triangle
     rendering:
       mode: dynamic
       attachments:
@@ -98,6 +104,15 @@ passes:
     stage: raster
     dispatch: draw
     shader: debug_overlay
+    input:
+      kind: scene-renderables
+      object:
+        renderClass: [debug.mesh]
+      material:
+        required: false
+      geometry:
+        vertex: position-only
+        topology: line-list
     rendering:
       mode: dynamic
       attachments:
@@ -105,9 +120,6 @@ passes:
           format: BGRA8
           samples: 1
           layers: 1
-    geometry:
-      vertex: position-only
-      topology: line-list
     sources: [scene.camera]
     targets: [debug.overlay]
     writeMode: append
