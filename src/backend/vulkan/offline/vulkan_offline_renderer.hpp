@@ -11,7 +11,7 @@ namespace LX_core::backend::offline {
 积分器。具体 headless Vulkan device、compute pipeline、buffer 上传、dispatch 和
 readback 生命周期由被选中的 integrator 管理。
 
-它和 realtime 路径复用 core `FrameGraph` / `RenderWorkItem` / resource table
+它和 realtime 路径复用 core `FrameGraph` / `RenderInputDesc` / resource table
 输入链路；差异收敛在 integrator 的执行目标和 Vulkan headless 管线。离线渲染会在
 job 的 `SceneResourceTable` 内建立 render-scope storage/output 资源，所以 render
 入口接收可变 job，而不是把临时资源塞进独立旁路。

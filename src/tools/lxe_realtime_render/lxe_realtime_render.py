@@ -325,7 +325,7 @@ def require_pipeline_metadata(metadata_path: Path) -> None:
 
 
 REQUIRED_RENDER_INPUT_STAT_KEYS = (
-    "inputCount",
+    "compilerInputCount",
     "acceptedInputCount",
     "rejectedInputCount",
     "submittedDrawCount",

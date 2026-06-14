@@ -152,7 +152,7 @@ Vec4f toGpuBoundsMax(const BoundingBox &bounds) {
 
 SceneGpuMaterialRecord toGpuMaterialRecord(const MaterialInstance &material) {
   SceneGpuMaterialRecord record;
-  const auto renderState = material.getPassRenderState(Pass_OfflineRayTrace);
+  const auto renderState = material.getPassRenderState(Pass_Forward);
   record.flags = (record.flags & ~kSceneGpuMaterialCullModeMask) |
                  materialCullModeAsGpuFlag(renderState.cullMode);
 

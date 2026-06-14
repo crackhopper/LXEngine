@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/frame_graph/render_input.hpp"
-#include "core/scene/scene.hpp"
 
 #include <memory>
 #include <vector>

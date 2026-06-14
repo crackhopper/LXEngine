@@ -3,6 +3,7 @@
 #include "core/asset/render_effect.hpp"
 #include "core/asset/shader.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/scene/scene.hpp"
 
 #include <functional>

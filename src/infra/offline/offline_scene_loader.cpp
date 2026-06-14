@@ -2,8 +2,6 @@
 
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
-#include "core/asset/material_pass_definition.hpp"
-#include "core/frame_graph/pass.hpp"
 #include "core/math/bounds.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -347,45 +345,10 @@ struct LoadState final {
     state.providedOfflineShader = state.offlineShaderProvider();
     if (!state.providedOfflineShader) {
       throw std::runtime_error(
-          "offline shader provider returned no OfflineRayTrace shader");
+          "offline shader provider returned no shader");
     }
   }
   return state.providedOfflineShader;
-}
-
-void ensureOfflineRayTracePass(MaterialInstanceSharedPtr &material,
-                               LoadState &state) {
-  if (!material) {
-    return;
-  }
-
-  if (material->isPassEnabled(LX_core::Pass_OfflineRayTrace) &&
-      material->getPassShader(LX_core::Pass_OfflineRayTrace)) {
-    if (!state.loaded.offlineShader) {
-      state.loaded.offlineShader =
-          material->getPassShader(LX_core::Pass_OfflineRayTrace);
-    }
-    return;
-  }
-
-  const LX_core::IShaderSharedPtr shader = resolveProvidedOfflineShader(state);
-  if (!shader) {
-    return;
-  }
-
-  LX_core::MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram.shaderName = shader->getShaderName();
-  passDefinition.shaderProgram.shader = shader;
-  passDefinition.renderState = LX_core::RenderState{};
-
-  material->getTemplate()->setPassDefinition(
-      LX_core::Pass_OfflineRayTrace, std::move(passDefinition));
-  material->getTemplate()->rebuildMaterialInterface();
-  material->setPassEnabled(LX_core::Pass_OfflineRayTrace, true);
-
-  if (!state.loaded.offlineShader) {
-    state.loaded.offlineShader = shader;
-  }
 }
 
 void visitNode(const OfflineAssetResolver &resolver,
@@ -430,12 +393,6 @@ void visitNode(const OfflineAssetResolver &resolver,
       MaterialInstanceSharedPtr material = loadMaterialInstance(
           resolver, node.materialUri, node.materialOverrides,
           node.nodeMaterialOverrides, state.loaded.table, state.materialCache);
-      ensureOfflineRayTracePass(material, state);
-      if (!state.loaded.offlineShader && material &&
-          material->isPassEnabled(LX_core::Pass_OfflineRayTrace)) {
-        state.loaded.offlineShader =
-            material->getPassShader(LX_core::Pass_OfflineRayTrace);
-      }
       materialHandle = state.loaded.table.registerMaterial(
           material->cloneInstanceDataUnique());
       state.materialByKey.emplace(materialKey, materialHandle);
@@ -463,6 +420,7 @@ OfflineSceneLoader::load(const LX_infra::scene_io::SceneDocument &document,
                          const std::string &cameraPath) const {
   LoadState state;
   state.offlineShaderProvider = m_offlineShaderProvider;
+  state.loaded.offlineShader = resolveProvidedOfflineShader(state);
   const std::string requestedCamera =
       cameraPath.empty() ? document.gameplayCameraPath() : cameraPath;
 

@@ -12,6 +12,11 @@
 
 namespace LX_core {
 
+enum class RenderDomain {
+  Realtime,
+  Offline,
+};
+
 enum class RenderInputKind { Draw, Compute };
 enum class RenderInputStatus { Accepted, Rejected };
 enum class RenderDrawInputSource { SceneRenderable, FullscreenTriangle };
@@ -93,7 +98,7 @@ struct RenderInputBindingPlan final {
 };
 
 struct RenderInputStats final {
-  usize inputCount = 0;
+  usize compilerInputCount = 0;
   usize acceptedInputCount = 0;
   usize rejectedInputCount = 0;
   usize submittedDrawCount = 0;

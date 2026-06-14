@@ -73,7 +73,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(int(stats.get("litPixelCount", 0)), 64)
         self.assertGreaterEqual(float(stats.get("averageLuminance", 0.0)), 0.001)
         input_stats = payload["renderInputStats"]
-        input_count = self._required_int_stat(input_stats, "inputCount")
+        input_count = self._required_int_stat(input_stats, "compilerInputCount")
         accepted_input_count = self._required_int_stat(
             input_stats, "acceptedInputCount"
         )
@@ -241,7 +241,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         omit_key: str = "", **overrides: object
     ) -> dict[str, object]:
         stats: dict[str, object] = {
-            "inputCount": 2,
+            "compilerInputCount": 2,
             "acceptedInputCount": 2,
             "rejectedInputCount": 0,
             "submittedDrawCount": 2,

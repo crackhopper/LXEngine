@@ -25,27 +25,8 @@ struct VulkanFrameGraphAttachmentDumpResult final {
   double nonZeroRatio = 0.0;
 };
 
-struct VulkanRealtimeRenderBatchStats final {
-  usize compilerInputDrawCount = 0;
-  usize compilerPreparedCandidateCount = 0;
-  usize compilerBatchCount = 0;
-  usize compilerDrawCount = 0;
-  usize indirectCapableDrawCount = 0;
-  usize unsupportedDrawCount = 0;
-  usize legacyRejectedDrawCount = 0;
-  usize compilerBatchCountConsumed = 0;
-  usize boundBatchGeometryCount = 0;
-  usize submittedDirectIndexedDrawCount = 0;
-  usize submittedIndexedIndirectCommandCount = 0;
-  usize submittedIndirectBatchCount = 0;
-  usize submittedIndirectDrawCount = 0;
-  u32 firstCommandOffset = 0;
-  u32 lastCommandOffset = 0;
-  usize fallbackObservedCount = 0;
-};
-
 struct VulkanRealtimeRenderInputStats final {
-  usize inputCount = 0;
+  usize compilerInputCount = 0;
   usize acceptedInputCount = 0;
   usize rejectedInputCount = 0;
   usize submittedDrawCount = 0;
@@ -63,7 +44,6 @@ struct VulkanRealtimeProfileOutputResult final {
   std::filesystem::path depthDebugPath;
   std::filesystem::path metadataPath;
   VulkanRealtimeRenderInputStats renderInputStats;
-  VulkanRealtimeRenderBatchStats renderBatchStats;
   u32 width = 0;
   u32 height = 0;
 };

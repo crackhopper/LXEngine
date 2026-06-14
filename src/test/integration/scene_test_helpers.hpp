@@ -1,7 +1,7 @@
 #pragma once
 
-// Shared helpers for integration tests that need explicit non-material direct
-// raster helper items or small reusable scene setup.
+// Shared helpers for integration tests that need desc-backed Vulkan inputs or
+// small reusable scene setup.
 
 #include "core/rhi/gpu_resource.hpp"
 #include "core/asset/material_instance.hpp"
@@ -13,7 +13,6 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_input.hpp"
-#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
@@ -81,44 +80,6 @@ inline LX_core::IShaderSharedPtr makeMinimalShaderForVulkanTests() {
   return std::make_shared<LX_infra::CompiledShader>(
       stages, LX_infra::ShaderReflector::reflect(stages),
       LX_infra::ShaderReflector::reflectVertexInputs(stages), kShaderName);
-}
-
-inline LX_core::RenderWorkItem makeMinimalDirectRasterHelperItemForVulkanTests(
-    const LX_core::IVertexBuffer &vertexBuffer,
-    const LX_core::IndexBuffer &indexBuffer,
-    LX_core::StringID pass = LX_core::Pass_PostProcess,
-    const LX_core::RenderTarget &target = {}) {
-  constexpr const char *kShaderName = "minimal";
-  auto shader = makeMinimalShaderForVulkanTests();
-
-  LX_core::ShaderProgramSet shaderProgram;
-  shaderProgram.shaderName = kShaderName;
-  shaderProgram.shader = shader;
-
-  LX_core::RenderWorkItem item;
-  item.domain = LX_core::RenderDomain::Realtime;
-  item.kind = LX_core::RenderWorkKind::DirectRasterPass;
-  item.directRaster.purpose =
-      LX_core::DirectRasterPassPurpose::TestOnlyNonMaterial;
-  item.shaderInfo = shader;
-  item.shaderProgram = shaderProgram;
-  item.renderState = LX_core::RenderState{};
-  item.renderState.cullMode = LX_core::CullMode::None;
-  item.renderState.depthTestEnable = false;
-  item.renderState.depthWriteEnable = false;
-  item.directRaster.vertexBuffer = LX_core::GpuResourceRef{vertexBuffer};
-  item.directRaster.indexBuffer = LX_core::GpuResourceRef{indexBuffer};
-  item.directRaster.indexCount = static_cast<u32>(indexBuffer.indexCount());
-  item.directRaster.instanceCount = 1;
-  item.pass = pass;
-  item.target = target.toDesc();
-  item.objectSignature = LX_core::StringID("vulkan_test_minimal_direct_object");
-  item.materialSignature = LX_core::StringID("vulkan_test_minimal_direct_state");
-  item.materialTypeVariant = shaderProgram.getPipelineSignature();
-  item.renderPathNodeSignature = testRenderPathNodeSignature(pass, target);
-  item.pipelineKey = LX_core::PipelineKey::build(
-      item.materialTypeVariant, item.renderPathNodeSignature);
-  return item;
 }
 
 inline LX_core::RenderDrawInput makeMinimalRenderDrawInputForVulkanTests(
@@ -214,62 +175,6 @@ inline LX_core::RenderInputDesc makeAcceptedRenderInputDescForVulkanTests(
   desc.resourceDependencies.push_back(input.vertexBuffer);
   desc.resourceDependencies.push_back(input.indexBuffer);
   return desc;
-}
-
-inline LX_core::RenderDrawInput
-renderDrawInputFromWorkItemForVulkanTests(const LX_core::RenderWorkItem &item) {
-  LX_core::RenderDrawInput input;
-  input.source = LX_core::RenderDrawInputSource::SceneRenderable;
-  input.pass = item.pass;
-  input.debugId = item.debugId.id != 0 ? item.debugId : item.objectSignature;
-  input.inputIndex = 0;
-  input.vertexBuffer = item.directRaster.vertexBuffer;
-  input.indexBuffer = item.directRaster.indexBuffer;
-  input.drawCommands.push_back(LX_core::RenderDrawCommand{
-      .indexCount = item.directRaster.indexCount,
-      .instanceCount = item.directRaster.instanceCount,
-      .firstIndex = item.directRaster.firstIndex,
-      .vertexOffset = item.directRaster.vertexOffset,
-      .firstInstance = item.directRaster.drawRecordIndex == u32_max
-                           ? 0u
-                           : item.directRaster.drawRecordIndex,
-  });
-  return input;
-}
-
-inline LX_core::RenderInputDesc makeAcceptedRenderInputDescForVulkanTests(
-    const LX_core::PipelineBuildDesc &pipelineDesc,
-    const LX_core::RenderWorkItem &item,
-    const LX_core::RenderDrawInput &input) {
-  LX_core::RenderInputDesc desc =
-      makeAcceptedRenderInputDescForVulkanTests(pipelineDesc, input);
-  desc.pass = item.pass;
-  desc.debugId = input.debugId;
-  desc.pipelineKey = item.pipelineKey;
-  desc.pipelineBuildDesc.key = item.pipelineKey;
-  desc.bindingPlan.descriptors = item.descriptorResources;
-  for (const LX_core::DescriptorResourceRef &resource :
-       desc.bindingPlan.descriptors) {
-    if (resource.isResource()) {
-      desc.resourceDependencies.push_back(resource.resource());
-    }
-  }
-  return desc;
-}
-
-inline LX_core::RenderWorkItem
-debugOverlayDirectRasterHelperItemFromScene(
-    LX_core::Scene &scene, const LX_core::RenderTarget &target = {}) {
-  LX_core::RenderWorkQueue q;
-  q.build(LX_core::RenderWorkBuildContext::realtime(scene),
-          LX_core::Pass_DebugOverlay, target,
-          testRenderPathNodeSignature(LX_core::Pass_DebugOverlay, target),
-          std::nullopt);
-  assert(!q.getItems().empty() &&
-         "debug overlay scene produced no direct helper item");
-  auto item = q.getItems().front();
-  item.directRaster.purpose = LX_core::DirectRasterPassPurpose::DebugOverlay;
-  return item;
 }
 
 inline LX_core::MaterialInstanceSharedPtr

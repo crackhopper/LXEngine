@@ -9,10 +9,6 @@
 #include <utility>
 #include <vector>
 
-namespace LX_core {
-struct RenderWorkItem;
-} // namespace LX_core
-
 namespace LX_core::backend {
 class VulkanDevice;
 

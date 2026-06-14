@@ -2,7 +2,8 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/frame_graph/frame_graph.hpp"
-#include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
+#include "core/frame_graph/render_work_compiler.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/asset/shader.hpp"
@@ -183,7 +184,7 @@ void testRenderPathTopologyContractChangeProducesDifferentKey() {
          "RenderPathNode topology contract must change the pipeline key");
 }
 
-void testRenderPathGeometryMismatchFailsQueueBuild() {
+void testRenderPathGeometryMismatchRejectsPreparedDesc() {
   auto f = Fixture::make("pbr", {}, RenderState{},
                          PrimitiveTopology::TriangleList);
   auto node = SceneNode::create("geometry_mismatch_node");
@@ -206,21 +207,28 @@ void testRenderPathGeometryMismatchFailsQueueBuild() {
   renderPathPass.name = Pass_Forward;
   renderPathPass.target = RenderTargetDesc::swapchain(ImageFormat::BGRA8,
                                                       ImageFormat::D32Float);
+  renderPathPass.stage = RenderPassStage::Raster;
+  renderPathPass.dispatch = RenderPassDispatch::Draw;
+  renderPathPass.input.kind = RenderPassInputKind::SceneRenderables;
   renderPathPass.input.geometry = lineGeometry;
 
-  RenderWorkQueue queue;
-  bool threw = false;
-  try {
-    queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
-                RenderTarget{}, getFramePassRenderPathNodeSignature(renderPathPass),
-                renderPathPass.input.geometry);
-  } catch (const std::logic_error &e) {
-    threw =
-        std::string(e.what()).find("topology contract mismatch") !=
-        std::string::npos;
-  }
-  EXPECT(threw,
-         "RenderWorkQueue must reject object topology incompatible with "
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context = RenderWorkBuildContext::realtime(*scene);
+  compiler.buildInputs(renderPathPass, context, inputs);
+  const std::vector<RenderInputDesc> descs =
+      compiler.prepare(renderPathPass, context, inputs);
+  const bool rejectedForGeometry = std::any_of(
+      descs.begin(), descs.end(), [](const RenderInputDesc &desc) {
+        return std::any_of(
+            desc.diagnostics.begin(), desc.diagnostics.end(),
+            [](const RenderInputDiagnostic &diagnostic) {
+              return diagnostic.code ==
+                     RenderInputDiagnosticCode::GeometryContractMismatch;
+            });
+      });
+  EXPECT(rejectedForGeometry,
+         "prepared desc must reject object topology incompatible with "
          "RenderPathNode geometry");
 }
 
@@ -330,7 +338,7 @@ int main() {
   testVariantChangeProducesDifferentKey();
   testObjectTopologyChangeDoesNotProduceDifferentKey();
   testRenderPathTopologyContractChangeProducesDifferentKey();
-  testRenderPathGeometryMismatchFailsQueueBuild();
+  testRenderPathGeometryMismatchRejectsPreparedDesc();
   testSkeletonPresenceDoesNotProduceDifferentKey();
   testDifferentPassProducesDifferentKey();
   testToDebugStringSmoke();

@@ -66,7 +66,8 @@ RenderWorkBuildContext::findPassPreparationFacts(StringID pass) const {
   return std::nullopt;
 }
 
-offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
+offline::OfflineRenderJob &
+RenderWorkBuildContext::offlineJob() const {
   if (const auto *job = std::get_if<OfflineSource>(&m_source)) {
     return job->get();
   }

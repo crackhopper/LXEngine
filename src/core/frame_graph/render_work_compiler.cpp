@@ -3,6 +3,8 @@
 #include "core/asset/mesh.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
+#include "core/offline/offline_render_job.hpp"
+#include "core/offline/offline_scene_storage_resources.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
@@ -348,6 +350,21 @@ collectComputePreparationFacts(const FramePass &pass,
   facts.pipelineVariantKey = fallbackPipelineVariant(pass, compute);
   if (const auto passFacts = context.findPassPreparationFacts(pass.name)) {
     applyPassPreparationFacts(facts, passFacts->get());
+  }
+  if (context.domain() == RenderDomain::Offline) {
+    offline::OfflineRenderJob &job = context.offlineJob();
+    if (job.offlineShader) {
+      facts.shaderInfo = job.offlineShader;
+      facts.shaderProgram.shaderName = job.offlineShader->getShaderName();
+      facts.shaderProgram.shader = job.offlineShader;
+      facts.pipelineVariantKey = StringID(
+          "offline-primary-ray:" +
+          std::to_string(job.offlineShader->getProgramHash()));
+    }
+    offline::OfflineSceneStorageResources storageResources =
+        offline::buildOfflineSceneStorageResources(job);
+    appendDescriptorResources(facts.descriptorResources,
+                              storageResources.descriptorResources);
   }
   return facts;
 }
@@ -861,7 +878,7 @@ void validateComputeDesc(const FramePass &pass, const RenderComputeInput &input,
 void updateStats(std::vector<RenderInputDesc> &descs,
                  const std::vector<std::unique_ptr<RenderInput>> &inputs) {
   RenderInputStats stats;
-  stats.inputCount = inputs.size();
+  stats.compilerInputCount = inputs.size();
   for (const RenderInputDesc &desc : descs) {
     if (desc.accepted()) {
       ++stats.acceptedInputCount;
@@ -903,6 +920,13 @@ void RenderWorkCompiler::buildInputs(
     compute->pass = pass.name;
     compute->debugId = stablePassDebugId(pass);
     compute->inputIndex = outInputs.size();
+    if (context.domain() == RenderDomain::Offline) {
+      offline::OfflineRenderJob &job = context.offlineJob();
+      compute->groupCountX = (job.output.width + 7u) / 8u;
+      compute->groupCountY = (job.output.height + 7u) / 8u;
+      compute->groupCountZ = 1u;
+      compute->readbackResource = StringID("OutputPixels");
+    }
     outInputs.push_back(std::move(compute));
     return;
   }

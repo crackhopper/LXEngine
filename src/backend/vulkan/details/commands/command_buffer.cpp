@@ -1,7 +1,6 @@
 #include "command_buffer.hpp"
 #include "core/asset/texture.hpp"
 #include "core/frame_graph/frame_graph.hpp"
-#include "core/frame_graph/render_queue.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/string_table.hpp"
 #include "../descriptors/descriptor_manager.hpp"
@@ -22,13 +21,6 @@
 #include <variant>
 
 namespace LX_core::backend {
-
-static_assert(sizeof(IndexedIndirectDrawCommand) ==
-                  sizeof(VkDrawIndexedIndirectCommand),
-              "IndexedIndirectDrawCommand must match Vulkan indirect ABI");
-static_assert(alignof(IndexedIndirectDrawCommand) ==
-                  alignof(VkDrawIndexedIndirectCommand),
-              "IndexedIndirectDrawCommand alignment must match Vulkan ABI");
 
 VkViewport makeVulkanViewport(u32 width, u32 height) {
   VkViewport viewport{};
@@ -157,17 +149,6 @@ void logMissingDescriptorBindingOnce(StringID pass, PipelineKey pipelineKey,
       << LX_core::GlobalStringTable::get().getName(pass.id)
       << " pipelineKey=" << pipelineKey.id.id << ": " << reason;
   throw std::runtime_error(oss.str());
-}
-
-std::string directRasterWorkItemContext(const RenderWorkItem &item) {
-  std::ostringstream oss;
-  oss << " pass="
-      << LX_core::GlobalStringTable::get().toDebugString(item.pass)
-      << " debugId="
-      << LX_core::GlobalStringTable::get().toDebugString(item.debugId)
-      << " purpose="
-      << LX_core::directRasterPassPurposeName(item.directRaster.purpose);
-  return oss.str();
 }
 
 void logDescriptorBufferBindingIfChanged(
@@ -448,38 +429,6 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     VulkanResourceManager &resourceManager,
     const std::vector<ShaderResourceBinding> &bindings,
     const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
-    const RenderWorkItem &item) {
-  bindDescriptorResourcesWithLayout(resourceManager, bindings, pipelineLayout,
-                                    bindPoint, item.descriptorResources,
-                                    item.pass, item.pipelineKey,
-                                    "bindResources");
-  const auto &directRaster = item.directRaster;
-
-  if (directRaster.vertexBuffer.isValid()) {
-    auto vbOpt = resourceManager.getBuffer(
-        directRaster.vertexBuffer.getBackendCacheIdentity());
-    if (vbOpt) {
-      VkBuffer vbHandle = vbOpt->get().getHandle();
-      VkDeviceSize offsets[] = {0};
-      vkCmdBindVertexBuffers(m_handle, 0, 1, &vbHandle, offsets);
-    }
-  }
-
-  if (directRaster.indexBuffer.isValid()) {
-    auto ibOpt = resourceManager.getBuffer(
-        directRaster.indexBuffer.getBackendCacheIdentity());
-    if (ibOpt) {
-      vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
-                           VK_INDEX_TYPE_UINT32);
-    }
-  }
-
-}
-
-void VulkanCommandBuffer::bindResourcesWithLayout(
-    VulkanResourceManager &resourceManager,
-    const std::vector<ShaderResourceBinding> &bindings,
-    const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
     const RenderInput &input, const RenderInputDesc &desc) {
   bindDescriptorResourcesWithLayout(resourceManager, bindings, pipelineLayout,
                                     bindPoint, desc.bindingPlan.descriptors,
@@ -531,14 +480,6 @@ void VulkanCommandBuffer::bindRenderInputGeometry(
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanGraphicsPipeline &pipeline,
-                                        const RenderWorkItem &item) {
-  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
-                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          item);
-}
-
-void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
-                                        VulkanGraphicsPipeline &pipeline,
                                         const RenderInput &input,
                                         const RenderInputDesc &desc) {
   bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
@@ -548,27 +489,11 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanComputePipeline &pipeline,
-                                        const RenderWorkItem &item) {
-  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
-                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                          item);
-}
-
-void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
-                                        VulkanComputePipeline &pipeline,
                                         const RenderInput &input,
                                         const RenderInputDesc &desc) {
   bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
                           pipeline.getLayout(), VK_PIPELINE_BIND_POINT_COMPUTE,
                           input, desc);
-}
-
-void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
-                                        VulkanPipelineRef pipeline,
-                                        const RenderWorkItem &item) {
-  std::visit([this, &resourceManager, &item](
-                 auto ref) { bindResources(resourceManager, ref.get(), item); },
-             pipeline);
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
@@ -579,127 +504,6 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
     bindResources(resourceManager, ref.get(), input, desc);
   },
              pipeline);
-}
-
-void VulkanCommandBuffer::bindSceneBindlessResources(
-    VulkanResourceManager &resourceManager, VulkanPipelineRef pipeline,
-    const RenderPathNodeContext &context, PipelineKey pipelineKey) {
-  std::visit(
-      [this, &resourceManager, &context, pipelineKey](auto ref) {
-        auto &pipelineObject = ref.get();
-        using PipelineObject =
-            std::remove_reference_t<decltype(pipelineObject)>;
-        constexpr VkPipelineBindPoint bindPoint =
-            std::is_same_v<PipelineObject, VulkanComputePipeline>
-                ? VK_PIPELINE_BIND_POINT_COMPUTE
-                : VK_PIPELINE_BIND_POINT_GRAPHICS;
-        bindDescriptorResourcesWithLayout(
-            resourceManager, pipelineObject.getBindings(),
-            pipelineObject.getLayout(), bindPoint, context.sceneResources,
-            context.pass, pipelineKey, "bindSceneBindlessResources");
-      },
-      pipeline);
-}
-
-void VulkanCommandBuffer::bindRenderBatchGeometry(
-    VulkanResourceManager &resourceManager,
-    const RenderBatchGeometryResources &geometry) {
-  if (!geometry.vertexBuffer.isValid()) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry missing global vertex buffer");
-  }
-  if (!geometry.indexBuffer.isValid()) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry missing global index buffer");
-  }
-  if (geometry.vertexBuffer.getType() != ResourceType::VertexBuffer) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry vertex resource is not a vertex buffer");
-  }
-  if (geometry.indexBuffer.getType() != ResourceType::IndexBuffer) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry index resource is not an index buffer");
-  }
-
-  auto vertexBuffer =
-      resourceManager.getBuffer(geometry.vertexBuffer.getBackendCacheIdentity());
-  if (!vertexBuffer.has_value()) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry global vertex buffer was not uploaded");
-  }
-  auto indexBuffer =
-      resourceManager.getBuffer(geometry.indexBuffer.getBackendCacheIdentity());
-  if (!indexBuffer.has_value()) {
-    throw std::runtime_error(
-        "bindRenderBatchGeometry global index buffer was not uploaded");
-  }
-
-  VkBuffer vertexHandle = vertexBuffer->get().getHandle();
-  VkDeviceSize offsets[] = {0};
-  vkCmdBindVertexBuffers(m_handle, 0, 1, &vertexHandle, offsets);
-  vkCmdBindIndexBuffer(m_handle, indexBuffer->get().getHandle(), 0,
-                       VK_INDEX_TYPE_UINT32);
-
-  m_renderBatchGeometryBound = true;
-  ++m_renderBatchSubmissionStats.boundBatchGeometryCount;
-}
-
-void VulkanCommandBuffer::executeDirectRasterPassItem(
-    const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::DirectRasterPass) {
-    throw std::runtime_error(
-        "executeDirectRasterPassItem received non-DirectRasterPass work item" +
-        directRasterWorkItemContext(item));
-  }
-
-  const auto &directRaster = item.directRaster;
-  if (!directRaster.vertexBuffer.isValid()) {
-    throw std::runtime_error(
-        "executeDirectRasterPassItem missing vertex buffer" +
-        directRasterWorkItemContext(item));
-  }
-  if (!directRaster.indexBuffer.isValid()) {
-    throw std::runtime_error(
-        "executeDirectRasterPassItem missing index buffer" +
-        directRasterWorkItemContext(item));
-  }
-
-  if (directRaster.indexCount == 0) {
-    throw std::runtime_error(
-        "executeDirectRasterPassItem has zero indexCount" +
-        directRasterWorkItemContext(item));
-  }
-  vkCmdDrawIndexed(
-      m_handle, directRaster.indexCount, directRaster.instanceCount,
-      directRaster.firstIndex, directRaster.vertexOffset,
-      directRaster.drawRecordIndex == u32_max ? 0u
-                                              : directRaster.drawRecordIndex);
-  ++m_renderBatchSubmissionStats.submittedDirectIndexedDrawCount;
-}
-
-void VulkanCommandBuffer::executeComputeDispatchItem(
-    const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::ComputeDispatch) {
-    return;
-  }
-  vkCmdDispatch(m_handle, item.compute.groupCountX, item.compute.groupCountY,
-                item.compute.groupCountZ);
-}
-
-void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
-  switch (item.kind) {
-  case RenderWorkKind::DirectRasterPass:
-    executeDirectRasterPassItem(item);
-    return;
-  case RenderWorkKind::ComputeDispatch:
-    executeComputeDispatchItem(item);
-    return;
-  case RenderWorkKind::RayTracingDispatch:
-    throw std::runtime_error("RayTracingDispatch work is not implemented");
-  case RenderWorkKind::Unspecified:
-    throw std::runtime_error("Unspecified RenderWorkKind cannot be executed");
-  }
-  throw std::runtime_error("unknown RenderWorkKind");
 }
 
 void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
@@ -721,7 +525,6 @@ void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
       vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
                        command.firstIndex, command.vertexOffset,
                        command.firstInstance);
-      ++m_renderBatchSubmissionStats.submittedDirectIndexedDrawCount;
     }
     return;
   }
@@ -733,81 +536,6 @@ void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
   }
 
   throw std::runtime_error("executeRenderInput received unknown input type");
-}
-
-void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {
-  if (batch.commands.empty()) {
-    return;
-  }
-  if (!m_renderBatchGeometryBound) {
-    throw std::runtime_error(
-        "executeRenderBatch requires bindRenderBatchGeometry before indirect "
-        "draw submission");
-  }
-  if (batch.commands.size() > std::numeric_limits<u32>::max()) {
-    throw std::runtime_error(
-        "executeRenderBatch received too many indirect commands");
-  }
-  if (batch.commandCount != 0 &&
-      batch.commandCount != static_cast<u32>(batch.commands.size())) {
-    throw std::runtime_error(
-        "executeRenderBatch received mismatched commandCount");
-  }
-
-  const VkDeviceSize byteSize =
-      sizeof(IndexedIndirectDrawCommand) * batch.commands.size();
-  auto indirectBuffer = VulkanBuffer::create(
-      m_device, byteSize, VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  indirectBuffer->uploadData(batch.commands.data(), byteSize);
-
-  const u32 maxDrawIndirectCount = m_device.getMaxDrawIndirectCount();
-  if (maxDrawIndirectCount == 0) {
-    throw std::runtime_error(
-        "executeRenderBatch requires nonzero maxDrawIndirectCount");
-  }
-
-  const u32 totalCommandCount = static_cast<u32>(batch.commands.size());
-  u32 submittedCommandOffset = 0;
-  while (submittedCommandOffset < totalCommandCount) {
-    const u32 remainingCommandCount =
-        totalCommandCount - submittedCommandOffset;
-    const u32 chunkCommandCount =
-        remainingCommandCount < maxDrawIndirectCount ? remainingCommandCount
-                                                     : maxDrawIndirectCount;
-    const VkDeviceSize chunkByteOffset =
-        sizeof(IndexedIndirectDrawCommand) * submittedCommandOffset;
-    vkCmdDrawIndexedIndirect(
-        m_handle, indirectBuffer->getHandle(), chunkByteOffset,
-        chunkCommandCount, sizeof(IndexedIndirectDrawCommand));
-    submittedCommandOffset += chunkCommandCount;
-  }
-
-  auto &retainedBuffers =
-      m_retainedIndirectBuffers == nullptr ? m_ownedIndirectBuffers
-                                           : *m_retainedIndirectBuffers;
-  retainedBuffers.push_back(std::move(indirectBuffer));
-
-  const u32 firstOffset = batch.commandOffset;
-  const u32 lastOffset =
-      batch.commandOffset + static_cast<u32>(batch.commands.size()) - 1u;
-  const bool firstSubmittedBatch =
-      m_renderBatchSubmissionStats.submittedIndirectBatchCount == 0;
-  ++m_renderBatchSubmissionStats.compilerBatchCountConsumed;
-  ++m_renderBatchSubmissionStats.submittedIndirectBatchCount;
-  m_renderBatchSubmissionStats.submittedIndexedIndirectCommandCount +=
-      batch.commands.size();
-  m_renderBatchSubmissionStats.submittedIndirectDrawCount +=
-      batch.commands.size();
-  if (firstSubmittedBatch ||
-      firstOffset < m_renderBatchSubmissionStats.firstCommandOffset) {
-    m_renderBatchSubmissionStats.firstCommandOffset = firstOffset;
-  }
-  if (firstSubmittedBatch ||
-      lastOffset > m_renderBatchSubmissionStats.lastCommandOffset) {
-    m_renderBatchSubmissionStats.lastCommandOffset = lastOffset;
-  }
 }
 
 } // namespace LX_core::backend

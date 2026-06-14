@@ -390,7 +390,7 @@ void testDescStatusDefaultsAndStats() {
       .debugId = StringID("diagnostic-input"),
       .message = "missing pipeline facts",
   });
-  desc.stats.inputCount = 2;
+  desc.stats.compilerInputCount = 2;
   desc.stats.acceptedInputCount = 1;
   desc.stats.rejectedInputCount = 1;
   desc.stats.submittedDrawCount = 3;
@@ -401,11 +401,11 @@ void testDescStatusDefaultsAndStats() {
   EXPECT(desc.diagnostics.front().code ==
              RenderInputDiagnosticCode::MissingPipelineFacts,
          "desc diagnostic code should round-trip");
-  EXPECT(desc.stats.inputCount == 2, "desc stats should carry input count");
+  EXPECT(desc.stats.compilerInputCount == 2, "desc stats should carry compiler input count");
   EXPECT(desc.stats.acceptedInputCount == 1,
-         "desc stats should carry accepted input count");
+         "desc stats should carry accepted compiler input count");
   EXPECT(desc.stats.rejectedInputCount == 1,
-         "desc stats should carry rejected input count");
+         "desc stats should carry rejected compiler input count");
   EXPECT(desc.stats.submittedDrawCount == 3,
          "desc stats should carry submitted draw count");
   EXPECT(desc.stats.submittedDispatchCount == 0,
@@ -553,7 +553,7 @@ void testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected() {
          "pipeline build desc key should match desc pipeline key");
   EXPECT(desc.shaderUri == StringID("post_process"),
          "fullscreen desc should carry shader uri");
-  EXPECT(desc.stats.inputCount == 1, "stats should count one input");
+  EXPECT(desc.stats.compilerInputCount == 1, "stats should count one input");
   EXPECT(!desc.accepted(),
          "fullscreen desc with skeleton shader facts should be rejected");
   EXPECT(hasFatalPipelineDiagnostic(desc),
