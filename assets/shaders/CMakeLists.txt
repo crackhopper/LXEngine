@@ -1,9 +1,9 @@
 # Compile GLSL shaders to SPIR-V for Vulkan.
 # Runtime asset layout:
-#   assets/shaders/glsl/techniques/Forward/<shaderName>.vert
-#   assets/shaders/glsl/techniques/Forward/<shaderName>.frag
-#   <build>/assets/shaders/glsl/techniques/Forward/<shaderName>.vert.spv
-#   <build>/assets/shaders/glsl/techniques/Forward/<shaderName>.frag.spv
+#   assets/shaders/glsl/render_paths/Forward/<shaderName>.vert
+#   assets/shaders/glsl/render_paths/Forward/<shaderName>.frag
+#   <build>/assets/shaders/glsl/render_paths/Forward/<shaderName>.vert.spv
+#   <build>/assets/shaders/glsl/render_paths/Forward/<shaderName>.frag.spv
 
 if(POLICY CMP0116)
   cmake_policy(SET CMP0116 NEW)

@@ -26,10 +26,11 @@ bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName)
 }
 
 bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
-  return hasShaderOutputsAtRoot(root, "techniques/Forward/pbr") &&
+  return hasShaderOutputsAtRoot(root, "render_paths/Forward/pbr") &&
          hasShaderOutputsAtRoot(root, "post_process") &&
-         hasShaderOutputsAtRoot(root, "techniques/Deferred/deferred_lighting") &&
-         hasShaderOutputsAtRoot(root, "techniques/Deferred/pbr_gbuffer");
+         hasShaderOutputsAtRoot(root,
+                                "render_paths/Deferred/deferred_lighting") &&
+         hasShaderOutputsAtRoot(root, "render_paths/Deferred/pbr_gbuffer");
 }
 
 std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
