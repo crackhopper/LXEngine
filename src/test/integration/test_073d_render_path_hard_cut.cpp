@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -79,6 +80,34 @@ std::string readTextFile(const fs::path &path) {
 
 bool textContains(std::string_view text, std::string_view needle) {
   return text.find(needle) != std::string_view::npos;
+}
+
+std::optional<std::string_view> functionBody(std::string_view source,
+                                             std::string_view signature) {
+  const std::size_t signaturePos = source.find(signature);
+  if (signaturePos == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const std::size_t openBrace = source.find('{', signaturePos);
+  if (openBrace == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  std::size_t depth = 0;
+  for (std::size_t i = openBrace; i < source.size(); ++i) {
+    if (source[i] == '{') {
+      ++depth;
+      continue;
+    }
+    if (source[i] != '}') {
+      continue;
+    }
+    --depth;
+    if (depth == 0) {
+      return source.substr(openBrace + 1, i - openBrace - 1);
+    }
+  }
+  return std::nullopt;
 }
 
 bool textContainsLegacyUriMigration(std::string_view text) {
@@ -320,6 +349,83 @@ void testLegacyTechniqueUriRejectedByMaterialSourceVariantResolver() {
   }
 }
 
+void testRendererNamesLoadedScenePipelinePreparationPhase(
+    const fs::path &repoRoot) {
+  const fs::path rendererPath =
+      repoRoot / "src/backend/vulkan/vulkan_realtime_renderer.cpp";
+  const std::string rendererSource = readTextFile(rendererPath);
+  const std::string rendererLabel = rendererPath.generic_string();
+  const std::optional<std::string_view> initSceneBody =
+      functionBody(rendererSource, "void initScene(SceneSharedPtr _scene)");
+  EXPECT(initSceneBody.has_value(),
+         rendererLabel + " must define initScene(SceneSharedPtr _scene)");
+
+  if (initSceneBody.has_value()) {
+    const std::string_view body = *initSceneBody;
+    const auto compilePos = body.find("m_frameGraph.compile()");
+    const auto attachResourcesPos =
+        body.find("attachFrameGraphSampledResources()");
+    const auto uploadSyncPos = body.find("syncRenderUploadPlan(pass.queue)");
+    const auto collectGarbagePos =
+        body.find("resourceManager().collectGarbage();");
+    const auto prepareCallPos = body.find("preparePipelinesForLoadedScene();");
+    EXPECT(compilePos != std::string_view::npos,
+           rendererLabel + " initScene must compile the FrameGraph");
+    EXPECT(attachResourcesPos != std::string_view::npos,
+           rendererLabel +
+               " initScene must attach sampled resources before preparation");
+    EXPECT(uploadSyncPos != std::string_view::npos,
+           rendererLabel +
+               " initScene must sync upload plans before preparation");
+    EXPECT(collectGarbagePos != std::string_view::npos,
+           rendererLabel +
+               " initScene must collect garbage before pipeline preparation");
+    EXPECT(prepareCallPos != std::string_view::npos,
+           rendererLabel +
+               " initScene must call preparePipelinesForLoadedScene()");
+    if (compilePos != std::string_view::npos &&
+        attachResourcesPos != std::string_view::npos &&
+        uploadSyncPos != std::string_view::npos &&
+        collectGarbagePos != std::string_view::npos &&
+        prepareCallPos != std::string_view::npos) {
+      EXPECT(compilePos < attachResourcesPos &&
+                 attachResourcesPos < uploadSyncPos &&
+                 uploadSyncPos < collectGarbagePos &&
+                 collectGarbagePos < prepareCallPos,
+             rendererLabel +
+                 " initScene must prepare pipelines after compile, sampled "
+                 "resource attachment, upload sync, and garbage collection");
+    }
+  }
+
+  const std::optional<std::string_view> prepareFunctionBody =
+      functionBody(rendererSource, "void preparePipelinesForLoadedScene()");
+  EXPECT(prepareFunctionBody.has_value(),
+         rendererLabel + " must define preparePipelinesForLoadedScene()");
+  if (prepareFunctionBody.has_value()) {
+    const std::string_view body = *prepareFunctionBody;
+    const auto collectDescsPos =
+        body.find("m_frameGraph.collectAllPipelineBuildDescs()");
+    const auto preloadPipelinesPos =
+        body.find("resourceManager().preloadPipelines(pipelineDescs)");
+    EXPECT(collectDescsPos != std::string_view::npos,
+           rendererLabel +
+               " preparePipelinesForLoadedScene() must collect "
+               "PipelineBuildDesc values from the FrameGraph");
+    EXPECT(preloadPipelinesPos != std::string_view::npos,
+           rendererLabel +
+               " preparePipelinesForLoadedScene() must preload collected "
+               "pipeline descriptions");
+    if (collectDescsPos != std::string_view::npos &&
+        preloadPipelinesPos != std::string_view::npos) {
+      EXPECT(collectDescsPos < preloadPipelinesPos,
+             rendererLabel +
+                 " preparePipelinesForLoadedScene() must collect FrameGraph "
+                 "PipelineBuildDesc values before preloading pipelines");
+    }
+  }
+}
+
 bool shouldScanFile(const fs::path &path) {
   const std::string filename = path.filename().string();
   if (filename == "test_073d_render_path_hard_cut.cpp") {
@@ -392,6 +498,7 @@ int main() {
   testDefaultGraphAssetsUseRenderPathShaderUris(repoRoot);
   testLegacyTechniqueUriRejectedByResourceParser();
   testLegacyTechniqueUriRejectedByMaterialSourceVariantResolver();
+  testRendererNamesLoadedScenePipelinePreparationPhase(repoRoot);
   testProductionOldTokenAudit(repoRoot);
 
   if (g_failures != 0) {

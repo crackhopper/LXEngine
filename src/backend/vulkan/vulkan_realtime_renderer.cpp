@@ -1332,10 +1332,12 @@ public:
     }
     resourceManager().collectGarbage();
 
-    // Pre-build every pipeline the scene needs. Runtime cache misses still
-    // work via getOrCreatePipeline(item) but emit a warning log.
-    auto infos = m_frameGraph.collectAllPipelineBuildDescs();
-    resourceManager().preloadPipelines(infos);
+    // Explicit pipeline preparation happens only after scene resources,
+    // material source variants, FrameGraph queues, upload resources, and final
+    // shader reflection are ready. Future pipeline cache package loading
+    // belongs inside this phase and must validate the same PipelineBuildDesc
+    // identities.
+    preparePipelinesForLoadedScene();
   }
 
   void uploadData() {
@@ -2674,6 +2676,12 @@ private:
       }
       ++cascadeIndex;
     }
+  }
+
+  void preparePipelinesForLoadedScene() {
+    const std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
+        m_frameGraph.collectAllPipelineBuildDescs();
+    resourceManager().preloadPipelines(pipelineDescs);
   }
 
   void attachFrameGraphSampledResources() {
