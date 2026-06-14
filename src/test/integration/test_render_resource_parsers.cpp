@@ -137,6 +137,10 @@ void testDefaultRenderFeatureAssetParses() {
          "default tone mapping feature should declare exposure");
 }
 
+// REQ-073-e2 Task 1 only characterizes the target parser contract. Default
+// render-path assets still use top-level filters/geometry until Task 2 migrates
+// the assets and parser together; these asset smokes are current-fact coverage,
+// not target-schema positive coverage.
 void testDefaultRenderPathGraphAssetParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
