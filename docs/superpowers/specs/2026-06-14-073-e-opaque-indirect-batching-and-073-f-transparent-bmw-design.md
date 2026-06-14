@@ -40,12 +40,14 @@ path has one object data ABI value, but keeping it explicit prevents future
 object table/shader ABI variants from being conflated with material variants.
 
 `REQ-073-d` is executing the hard cut for the old material/source compatibility
-surface. After `073-d`, positive realtime material-source paths must use:
+surface. After `073-d`, positive realtime material-source paths must have access
+to:
 
 - `render_paths/...` shader URIs;
 - RenderPathGraph / RenderPathNode pass ownership;
 - final source-variant shader reflection;
-- typed SceneResourceTable material/draw/object indices.
+- `SceneResourceTableUploadView` data that can resolve typed
+  material/draw/object indices during batch preparation.
 
 The current `REQ-073-e` code surface already has some scaffolding:
 
@@ -78,7 +80,7 @@ opaque batching concept.
 
 `073-e` includes:
 
-- opaque Forward/Deferred geometry draw candidate readiness for indirect draw;
+- opaque Forward/Deferred prepared draw candidate readiness for indirect draw;
 - table-index/range based batch compatibility;
 - a diagnostic batch compiler result rather than silent skips;
 - backend indirect draw submission as the realtime opaque geometry default;
@@ -104,10 +106,12 @@ The positive opaque path is:
 
 ```text
 RenderPathGraph opaque node
-  -> final source-variant shader reflection
-  -> object data signature + material pipeline signature for this node
+  -> node-scoped object ABI resolver + material/source variant resolver
   -> SceneResourceTableUploadView
   -> RenderWorkQueue builds RenderPathNodeContext + RenderPathNodeData
+       from handle/ref-level RenderDrawInput
+  -> RenderBatchPreparation stage resolves per-input final reflection,
+     signatures, typed table indices, and PreparedRenderDrawCandidate
   -> RenderBatchCompiler
        batches or rejects with diagnostics
   -> Vulkan indirect draw submission
@@ -130,21 +134,50 @@ RenderPathNodeContext
   backend indirect capability
 
 RenderPathNodeData
-  RenderDrawCandidate[]
-    object/draw indices
-    mesh table range
-    material ref/source-local material indices
+  RenderDrawInput[]
+    object handle or renderable object reference
+    mesh handle or mesh reference
+    material handle or material reference
+    local primitive/submesh reference when present
+    debug identity and sort source data
+
+RenderBatchPreparation stage output
+  PreparedRenderDrawCandidate[]
+    typed object/draw indices
+    typed mesh table range
+    typed material ref/source-local material indices
     object data signature
     material pipeline signature
+    final shader reflection identity used for readiness
     indirect draw counts and offsets
-    sort data when the node policy needs it
+    sort key when the node policy needs it
 ```
 
 `target`, attachments, render-state defaults, and pass identity are context for
 the node that is currently being compiled. They are not fields copied onto each
-draw candidate for comparison. If a candidate builder only has object, mesh, and
-bound material facts, that is sufficient for batching once the object data
-signature, material pipeline signature, and mesh table range are resolved.
+draw input for comparison. A draw input builder should only need object, mesh,
+and bound material references plus debug/sort source data. Typed GPU table
+indices and indirect command payload are produced later by batch preparation
+from `SceneResourceTableUploadView`; they must not be hand-authored upstream or
+copied forward from the old `RenderWorkItem` path.
+
+`RenderBatchPreparation` names a queue-owned stage or helper, not a new public
+hierarchy. Its purpose is to make data provenance explicit:
+
+| Value | Producer | Consumer |
+|---|---|---|
+| `RenderPathNodeContext` | RenderPathGraph node selection plus renderer/backend state for the current pass | Preparation, compiler, and backend submission as node scope |
+| `RenderDrawInput` | Scene/renderable traversal from object, mesh/submesh, and bound material references | Preparation only |
+| `SceneResourceTableUploadView` | SceneResourceTable upload build from `REQ-073-b` table state | Preparation only |
+| final shader reflection | Material-source variant resolution from `REQ-073-c` for an input material/source in this node | Material signature resolver and readiness validation |
+| object data signature | Object/draw table ABI resolver for the current bindless object data contract | Prepared candidate and backend pipeline lookup |
+| material pipeline signature | Material signature resolver for the input material in the current node | Prepared candidate and backend pipeline lookup |
+| typed object/draw/material/mesh indices and ranges | Preparation, by resolving `RenderDrawInput` through `SceneResourceTableUploadView` | Prepared candidate validation and indirect command generation |
+| `PreparedRenderDrawCandidate` | Preparation output after all required table facts are explicit | Sort policy and batch merge |
+| `RenderBatchAnalysis` | Batch compiler output | Vulkan indirect submission and diagnostics/tests |
+
+This table is the implementation guardrail: a field cannot be added to an input
+structure unless that input stage is the stage that can actually know it.
 
 The compiler itself should not be named or structured as an opaque-only class.
 `073-e` implements the opaque policy first, but `073-f` should be able to reuse
@@ -152,46 +185,57 @@ the same `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler`
 shape for transparent nodes, changing only the node policy such as depth sort
 and contiguous-compatible merge rules.
 
-The generic compiler flow is:
+The queue-owned batch pipeline flow is:
 
 ```text
 RenderPathNodeData
-  -> validate candidate readiness
+  -> resolve RenderDrawInput through SceneResourceTableUploadView
+  -> emit PreparedRenderDrawCandidate or preparation diagnostic
+  -> validate prepared candidate readiness
   -> apply RenderPathNodeContext sort policy
-  -> merge contiguous candidates with the same batch signature
+  -> merge contiguous prepared candidates with the same batch signature
   -> return RenderBatchAnalysis
 ```
 
-For `073-e`, the opaque node policy can sort/group for batch locality because
-opaque depth order is not the semantic constraint. For `073-f`, transparent
-nodes must sort by depth first, and only adjacent candidates with the same batch
-signature may merge after that sort.
+For `073-e`, the opaque node policy can sort/group prepared candidates for batch
+locality because opaque depth order is not the semantic constraint. For `073-f`,
+transparent nodes must sort by depth first, and only adjacent prepared candidates
+with the same batch signature may merge after that sort.
 
 If the current implementation only has per-mesh `GpuResourceRef` vertex/index
 buffers at this point, `073-e` must first register/resolve them into the global
-geometry table or reject the candidate with `global-geometry-table-missing`. It
-must not compare those resource identities to decide batch compatibility.
+geometry table or reject the draw input with `global-geometry-table-missing`
+during preparation. It must not compare those resource identities to decide
+batch compatibility.
 
-### Draw Candidate Readiness
+### Prepared Draw Candidate Readiness
 
-A draw candidate in an opaque geometry node is indirect-ready only when all
-facts needed by the shader and backend are explicit:
+A prepared draw candidate in an opaque geometry node is indirect-ready only when
+all facts needed by the shader and backend have been resolved by batch
+preparation:
 
 - valid mesh/geometry table ranges;
 - non-zero index and instance counts;
 - object data signature resolved for the current bindless object/draw table ABI;
 - material pipeline signature resolved for the current opaque RenderPathNode;
-- typed draw record index when `SceneDraws` or `SceneObjects` is consumed;
-- typed source material reference when source-local material data is consumed;
+- typed draw/object indices produced from the input object reference when
+  `SceneDraws` or `SceneObjects` is consumed;
+- typed material ref and source-local material indices produced from the input
+  material reference when source-local material data is consumed;
 - valid material storage and source-local material index;
 - final shader reflection from the material-source variant.
+
+The typed draw/object/material/mesh indices are preparation outputs. They are
+not fields that scene/renderable code is allowed to pre-fill on
+`RenderDrawInput`. This prevents the new path from becoming a wrapper around
+old `RenderWorkItem::raster.drawRecordIndex` / `materialRefIndex` fields.
 
 The current implementation names `RenderWorkKind`, `kind`, `RasterDraw`, and
 `RasterBatch` are old submission DTO details. They are not requirement concepts.
 The geometry route should move to explicit node-level context/data plus draw
-candidate structures under `RenderWorkQueue`. It must not introduce an
-opaque-only parallel hierarchy. After the batch compiler accepts a draw
-candidate, the backend submits it through indirect draw.
+input and prepared candidate structures under `RenderWorkQueue`. It must not
+introduce an opaque-only parallel hierarchy. After the batch compiler accepts a
+prepared candidate, the backend submits it through indirect draw.
 
 Missing data is a preparation error or an unsupported diagnostic. It is not a
 reason to fall back to old direct/per-item submission.
@@ -216,8 +260,9 @@ table/buffer model:
 - debug line/wireframe rendering is not an opaque geometry batch variant. It
   belongs to debug/post-effect handling or a separate explicit pass.
 
-Given that context, two opaque geometry candidates can be batched together
-exactly when their object data signature and material pipeline signature match.
+Given that context, two prepared opaque geometry candidates can be batched
+together exactly when their object data signature and material pipeline
+signature match.
 
 The object data signature is not the old mesh-derived `objectSignature`. It is
 the shader-visible object/draw table ABI signature: which object/draw records,
@@ -281,14 +326,14 @@ with a diagnostic. It must not become a permanent batch key.
 |---|---|---|
 | object data signature | Batch key and pipeline identity axis | It represents the shader-visible bindless object/draw table ABI. Current value is singular; future ABI variants can split intentionally. |
 | material pipeline signature | Batch key and pipeline identity axis | It selects the final source-variant shader/pipeline for the current node. |
-| RenderPathNode/pass context | Batch compiler scope, not a split key | Pass state, target, topology, and attachment contract are fixed before candidates are compared. |
+| RenderPathNode/pass context | Batch compiler scope, not a split key | Pass state, target, topology, and attachment contract are fixed before prepared candidates are compared. |
 | `PipelineKey` | Derived backend lookup value, not an independent batch key | Backend may need it to fetch/create the PSO, but batching should derive it from object data signature, material pipeline signature, and node context instead of comparing a second identity that can drift. |
 | `RenderPathNodeSignature` | Current pipeline-cache implementation detail, not a per-draw batch key | The node signature belongs to the pass context. It must not be copied onto every draw as a reason to split. |
-| draw/object/material/mesh indices and ranges | Indirect command payload and validation data | They select per-draw table records after batching; they do not create a new PSO. |
+| draw/object/material/mesh indices and ranges | Preparation output, indirect command payload, and validation data | They select per-draw table records after input resolution; they do not create a new PSO. |
 | descriptor resources | Global table/scene binding data only | Per-material descriptor identity is old bound-resource behavior and must not split same-signature materials. |
 | vertex layout | Fixed opaque input contract or invalid input | Bindless opaque geometry exposes the fixed position-only input expected by the shader. |
 | topology | Fixed opaque input contract or separate explicit pass | Opaque geometry is triangle list; debug line/wireframe rendering is not an opaque material batch variant. |
-| target/attachment | RenderPathNode context | It affects the pass/pipeline environment, not compatibility between two draw candidates already inside that node. |
+| target/attachment | RenderPathNode context | It affects the pass/pipeline environment, not compatibility between two prepared candidates already inside that node. |
 | old mesh-derived `objectSignature` | Delete or rename away from opaque batching | It currently means renderable/mesh pipeline shape in older paths, which conflicts with bindless object data ABI signature. |
 | `RenderWorkKind` / `kind` | Delete from opaque batching path | A runtime kind tag models the old union DTO. Opaque geometry should use typed candidate/batch structures instead. |
 
@@ -307,18 +352,22 @@ RenderBatchAnalysis
 
 The exact C++ names can differ, but the behavior must be explicit:
 
-- every input item is either covered by one batch or has one diagnostic;
+- every `RenderDrawInput` is either rejected during preparation with one
+  diagnostic or produces a prepared candidate;
+- every prepared candidate is either covered by one batch or has one diagnostic;
 - no draw is silently skipped;
-- diagnostics preserve item index, pass, object signature, material signature,
-  object data signature, material pipeline signature, RenderPathNode context,
-  derived PipelineKey when available, and split/rejection reason;
-- stats expose item count, batch count, indirect-capable draw count,
-  unsupported draw count, and fallback-observed count.
+- diagnostics preserve input draw index, pass, material/source identity, object
+  data signature, material pipeline signature, RenderPathNode context, prepared
+  mesh/draw/material index/range when available, derived PipelineKey when
+  available, and split/rejection reason;
+- stats expose input draw count, prepared candidate count, batch count,
+  indirect-capable draw count, unsupported draw count, and
+  fallback-observed count.
 
 Positive validation requires:
 
 - `fallback-observed == 0`;
-- no uncovered draw items;
+- no uncovered input draws or prepared candidates;
 - unsupported counts are zero except in tests that intentionally construct
   unsupported inputs.
 
@@ -369,10 +418,10 @@ causes:
 
 - `material-pipeline-signature-mismatch`;
 - `object-data-signature-mismatch`;
-- `missing-material-ref-index`;
-- `missing-draw-record-index`;
-- `invalid-material-ref-index`;
-- `invalid-draw-record-index`;
+- `source-material-ref-unresolved`;
+- `object-draw-record-unresolved`;
+- `invalid-source-material-ref`;
+- `invalid-draw-record`;
 - `missing-mesh-range`;
 - `invalid-mesh-range`;
 - `zero-index-count`;
@@ -421,7 +470,7 @@ The Helmet smoke proves:
 - converted Helmet material-source scene loads;
 - opaque RenderPathGraph path is used;
 - final source-variant shader reflection is used;
-- opaque draw items enter indirect batches;
+- prepared opaque draw candidates enter indirect batches;
 - Vulkan backend submits indirect draw for the opaque pass;
 - output is non-black;
 - fallback-observed count is zero;
@@ -445,21 +494,23 @@ Add failing tests before implementation:
 - old mesh-derived `objectSignature` cannot split opaque bindless batches;
 - different vertex buffers or object topology cannot become permanent opaque
   batch split keys;
-- zero index count, zero instance count, missing material ref, missing draw
-  record, and invalid indices produce diagnostics instead of silent skips;
-- every item is covered or diagnosed.
+- zero index count, zero instance count, unresolved source material ref,
+  unresolved draw record, and invalid prepared indices produce diagnostics
+  instead of silent skips;
+- every input draw is rejected during preparation or produces a prepared
+  candidate, and every prepared candidate is covered or diagnosed.
 
 ### Same Source Batching
 
 Construct same-source material instances with different parameter values and
-texture slots. They must share the compatible opaque batch when
-the object data signature and material pipeline signature match.
+texture slots. Their prepared draw candidates must share the compatible opaque
+batch when the object data signature and material pipeline signature match.
 
 ### Split Diagnostics
 
 Construct mismatches for object data signature, material pipeline signature, and
 invalid table/range data. Assert the exact split or rejection reasons and
-preserved item identities.
+preserved input/prepared identities.
 
 ### Backend Indirect Submission
 
