@@ -147,7 +147,7 @@ LX_core::IblEnvironmentResources makeSmallIblEnvironmentResources() {
       LX_core::StringID("EquirectangularMap"));
   resources.equirectangularMap->setDirty();
   resources.environmentUbo =
-      std::make_unique<LX_core::EnvironmentData>(0.0f, 4.0f);
+      std::make_unique<LX_core::EnvironmentData>(1.0f, 4.0f);
   return resources;
 }
 

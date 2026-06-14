@@ -180,14 +180,15 @@ FrameGraph 只负责保证 *每条 pass 都被处理一次* 这一条简单不�
 
 /*
 @source_analysis.section collectAllPipelineBuildDescs：跨 pass 全局 PipelineKey 去重
-这是 FrameGraph 面向 backend helper pipeline 预构建的输出：把所有 pass 中
-仍合法存在的非材质 direct helper / compute work item 汇总成一份去重后的
-`PipelineBuildDesc` 列表。它不是 realtime material-source geometry 的正向
-pipeline 枚举入口。
+这是 FrameGraph 面向 backend pipeline 预构建的输出：把所有 pass 中仍合法存在的
+direct helper / compute work item，以及已经成功编译的 material-source
+`RenderBatchAnalysis` batch pipeline desc，汇总成一份去重后的 `PipelineBuildDesc`
+列表。material-source geometry 的 desc 只从 batch identity 与
+`RenderPathNodeContext` 派生，不回读旧 per-item DTO。
 
-去重粒度仍是 `PipelineKey`。RenderWorkQueue 内层只看单 queue 的 helper items；
-FrameGraph 外层只整理跨 pass 重复 helper pipeline。RenderBatch 正向几何路径
-不经由这两层 `RenderWorkItem` 去重。
+去重粒度仍是 `PipelineKey`。RenderWorkQueue 内层先做单 queue 去重，FrameGraph
+外层再整理跨 pass 重复 pipeline；RenderBatch 正向几何路径不经由
+`RenderWorkItem` 去重。
 
 REQ-073-c 之后，`PipelineKey` 只由 MaterialTypeVariant 和 RenderPathNode
 signature 组成；不同 target 是否分裂 pipeline 由 RenderPathNode 的 attachment /

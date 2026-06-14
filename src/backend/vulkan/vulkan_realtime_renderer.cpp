@@ -1190,6 +1190,7 @@ public:
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
+    m_skyboxHelperQueue.clearItems();
     m_scene->resources().beginRenderResourceScope();
     const bool deferredMode = m_scene->realtimeRenderSettings().mode ==
                               LX_core::SceneRealtimeRenderMode::Deferred;
@@ -1364,6 +1365,7 @@ public:
     for (auto &pass : m_frameGraph.getPasses()) {
       syncRenderUploadPlan(pass.queue);
     }
+    syncRenderUploadPlan(m_skyboxHelperQueue);
     resourceManager().collectGarbage();
 
     // Explicit pipeline preparation happens only after scene resources,
@@ -1388,6 +1390,9 @@ public:
         break;
       }
     }
+    requiresSharedBufferSync =
+        requiresSharedBufferSync ||
+        uploadPlanRequiresSharedHostBufferSync(m_skyboxHelperQueue);
 
     if (requiresSharedBufferSync) {
       // These buffers are single shared allocations, not per-frame slices.
@@ -1399,6 +1404,7 @@ public:
     for (auto &pass : m_frameGraph.getPasses()) {
       syncRenderUploadPlan(pass.queue);
     }
+    syncRenderUploadPlan(m_skyboxHelperQueue);
     resourceManager().collectGarbage();
   }
 
@@ -1545,6 +1551,7 @@ public:
       total += pass.queue.nodeData().drawInputs.size();
       total += pass.queue.getItems().size();
     }
+    total += m_skyboxHelperQueue.getItems().size();
     return total;
   }
 
@@ -2175,6 +2182,9 @@ private:
 
     auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
     submitBindlessQueue(pass.queue, pass.name, cmd);
+    if (pass.name == LX_core::Pass_Forward) {
+      submitDirectHelperQueue(m_skyboxHelperQueue, pass.name, cmd);
+    }
   }
 
   void submitDirectHelperQueue(const LX_core::RenderWorkQueue &queue,
@@ -2545,8 +2555,11 @@ private:
         item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
-        graphPass.queue.addItem(std::move(item));
-        graphPass.queue.sort();
+        // Skybox is a direct fullscreen helper, but Forward geometry is a
+        // material-source batch queue. Keep the helper in a separate lane so
+        // mixed-queue rejection remains strict.
+        m_skyboxHelperQueue.addItem(std::move(item));
+        m_skyboxHelperQueue.sort();
         return;
       }
     }
@@ -2829,8 +2842,11 @@ private:
   }
 
   void preparePipelinesForLoadedScene() {
-    const std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
+    std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
         m_frameGraph.collectAllPipelineBuildDescs();
+    for (auto desc : m_skyboxHelperQueue.collectUniquePipelineBuildDescs()) {
+      pipelineDescs.push_back(std::move(desc));
+    }
     resourceManager().preloadPipelines(pipelineDescs);
   }
 
@@ -3408,6 +3424,7 @@ private:
   VulkanSwapchainUniquePtr m_swapchain = nullptr;
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
+  LX_core::RenderWorkQueue m_skyboxHelperQueue{};
   LX_core::CompiledFrameGraph m_compiledFrameGraph{};
   std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
       m_offscreenFramebuffers;
