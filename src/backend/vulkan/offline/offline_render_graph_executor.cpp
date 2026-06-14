@@ -37,7 +37,9 @@ OfflineRenderGraphExecutor::OfflineRenderGraphExecutor(
 
 OfflineGraphExecutionResult
 OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
-                                    const CompiledFrameGraph &compiledGraph) {
+                                    const CompiledFrameGraph &compiledGraph,
+                                    const std::vector<RenderWorkQueue>
+                                        &passQueues) {
   const auto &graphPasses = graph.getPasses();
   const auto &compiledPasses = compiledGraph.getPasses();
   if (graphPasses.empty()) {
@@ -46,24 +48,33 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
   if (graphPasses.size() != compiledPasses.size()) {
     throw std::runtime_error("offline render graph pass count mismatch");
   }
+  if (graphPasses.size() != passQueues.size()) {
+    throw std::runtime_error("offline render graph queue count mismatch");
+  }
 
   OfflineGraphExecutionResult result;
-  for (usize passIndex = 0; passIndex < graphPasses.size(); ++passIndex) {
-    const FramePass &pass = graphPasses[passIndex];
+  for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    const usize sourcePassIndex = compiledPasses[passIndex].sourcePassIndex;
+    if (sourcePassIndex >= graphPasses.size() ||
+        sourcePassIndex >= passQueues.size()) {
+      throw std::runtime_error("offline render graph source pass mismatch");
+    }
+    const FramePass &pass = graphPasses[sourcePassIndex];
+    const RenderWorkQueue &queue = passQueues[sourcePassIndex];
     if (pass.name != compiledPasses[passIndex].name) {
       throw std::runtime_error("offline render graph pass order mismatch");
     }
-    const RenderUploadPlan uploadPlan = buildRenderUploadPlan(pass.queue);
+    const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
     for (const auto &resource : uploadPlan.resources) {
       m_resourceManager.syncResource(m_commandManager, resource);
     }
 
-    if (pass.queue.getItems().empty()) {
+    if (queue.getItems().empty()) {
       continue;
     }
 
     auto cmd = m_commandManager.beginSingleTimeCommands();
-    for (const RenderWorkItem &item : pass.queue.getItems()) {
+    for (const RenderWorkItem &item : queue.getItems()) {
       if (item.domain != RenderDomain::Offline ||
           item.kind != RenderWorkKind::ComputeDispatch) {
         throw std::runtime_error(

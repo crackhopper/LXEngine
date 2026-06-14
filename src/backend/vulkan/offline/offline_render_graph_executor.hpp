@@ -2,9 +2,12 @@
 
 #include "core/rhi/descriptor_resource_ref.hpp"
 
+#include <vector>
+
 namespace LX_core {
 class FrameGraph;
 class CompiledFrameGraph;
+class RenderWorkQueue;
 } // namespace LX_core
 
 namespace LX_core::backend {
@@ -26,7 +29,8 @@ public:
                              VulkanResourceManager &resourceManager);
 
   [[nodiscard]] OfflineGraphExecutionResult
-  execute(const FrameGraph &graph, const CompiledFrameGraph &compiledGraph);
+  execute(const FrameGraph &graph, const CompiledFrameGraph &compiledGraph,
+          const std::vector<RenderWorkQueue> &passQueues);
 
 private:
   VulkanDevice &m_device;

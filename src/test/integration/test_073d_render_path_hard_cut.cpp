@@ -393,7 +393,9 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
     const auto compilePos = body.find("m_frameGraph.compile()");
     const auto attachResourcesPos =
         body.find("attachFrameGraphSampledResources()");
-    const auto uploadSyncPos = body.find("syncRenderUploadPlan(pass.queue)");
+    const auto staleUploadSyncPos =
+        body.find("syncRenderUploadPlan(pass.queue)");
+    const auto uploadSyncPos = body.find("syncRenderUploadPlan(queue)");
     const auto collectGarbagePos =
         body.find("resourceManager().collectGarbage();");
     const auto prepareCallPos = body.find("preparePipelinesForLoadedScene();");
@@ -402,9 +404,14 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
     EXPECT(attachResourcesPos != std::string_view::npos,
            rendererLabel +
                " initScene must attach sampled resources before preparation");
+    EXPECT(staleUploadSyncPos == std::string_view::npos,
+           rendererLabel +
+               " initScene must not sync upload plans from FramePass-owned "
+               "queues");
     EXPECT(uploadSyncPos != std::string_view::npos,
            rendererLabel +
-               " initScene must sync upload plans before preparation");
+               " initScene must sync external render work queues before "
+               "preparation");
     EXPECT(collectGarbagePos != std::string_view::npos,
            rendererLabel +
                " initScene must collect garbage before pipeline preparation");
@@ -432,24 +439,32 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
          rendererLabel + " must define preparePipelinesForLoadedScene()");
   if (prepareFunctionBody.has_value()) {
     const std::string_view body = *prepareFunctionBody;
-    const auto collectDescsPos =
+    const auto staleCollectDescsPos =
         body.find("m_frameGraph.collectAllPipelineBuildDescs()");
+    const auto queueCollectDescsPos =
+        body.find("queue.collectUniquePipelineBuildDescs()");
+    const auto queueStoragePos = body.find("m_framePassQueues");
     const auto preloadPipelinesPos =
         body.find("resourceManager().preloadPipelines(pipelineDescs)");
-    EXPECT(collectDescsPos != std::string_view::npos,
+    EXPECT(staleCollectDescsPos == std::string_view::npos,
+           rendererLabel +
+               " preparePipelinesForLoadedScene() must not collect pipeline "
+               "descs from FrameGraph");
+    EXPECT(queueStoragePos != std::string_view::npos &&
+               queueCollectDescsPos != std::string_view::npos,
            rendererLabel +
                " preparePipelinesForLoadedScene() must collect "
-               "PipelineBuildDesc values from the FrameGraph");
+               "PipelineBuildDesc values from external render work queues");
     EXPECT(preloadPipelinesPos != std::string_view::npos,
            rendererLabel +
                " preparePipelinesForLoadedScene() must preload collected "
                "pipeline descriptions");
-    if (collectDescsPos != std::string_view::npos &&
+    if (queueCollectDescsPos != std::string_view::npos &&
         preloadPipelinesPos != std::string_view::npos) {
-      EXPECT(collectDescsPos < preloadPipelinesPos,
+      EXPECT(queueCollectDescsPos < preloadPipelinesPos,
              rendererLabel +
-                 " preparePipelinesForLoadedScene() must collect FrameGraph "
-                 "PipelineBuildDesc values before preloading pipelines");
+                 " preparePipelinesForLoadedScene() must collect external "
+                 "queue PipelineBuildDesc values before preloading pipelines");
     }
   }
 }

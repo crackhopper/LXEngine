@@ -333,6 +333,16 @@ StringID testRenderPathNodeSignature(StringID passName,
   return getFramePassRenderPathNodeSignature(pass);
 }
 
+RenderWorkQueue buildQueueForPass(const Scene &scene, StringID passName,
+                                  const RenderTarget &target = RenderTarget{},
+                                  std::optional<RenderPathGeometryContract>
+                                      geometryContract = std::nullopt) {
+  RenderWorkQueue queue;
+  queue.build(RenderWorkBuildContext::realtime(scene), passName, target,
+              testRenderPathNodeSignature(passName, target), geometryContract);
+  return queue;
+}
+
 bool throwsInvalidArgument(const std::function<void()> &fn,
                            const std::string &needle) {
   try {
@@ -351,14 +361,12 @@ void testSingleRenderableSinglePass() {
   auto r = makeRenderable();
   auto scene = makeSceneWithDefaultCamera(r);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward);
 
-  auto infos = fg.collectAllPipelineBuildDescs();
+  auto infos = queue.collectUniquePipelineBuildDescs();
   EXPECT(infos.empty(),
          "Task 2 realtime geometry no longer emits per-draw build infos");
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
          "queue has exactly one draw input");
 }
 
@@ -368,13 +376,11 @@ void testDuplicateRenderablesDedupe() {
   auto scene = makeSceneWithDefaultCamera(r1);
   scene->addRenderable(r2);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward);
 
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 2,
+  EXPECT(queue.nodeData().drawInputs.size() == 2,
          "two draw inputs in queue");
-  auto infos = fg.collectAllPipelineBuildDescs();
+  auto infos = queue.collectUniquePipelineBuildDescs();
   EXPECT(infos.empty(),
          "Task 2 realtime geometry defers pipeline build info derivation");
 }
@@ -385,11 +391,9 @@ void testDifferentVariantKeepsTwo() {
   auto scene = makeSceneWithDefaultCamera(r1);
   scene->addRenderable(r2);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward);
 
-  auto infos = fg.collectAllPipelineBuildDescs();
+  auto infos = queue.collectUniquePipelineBuildDescs();
   EXPECT(infos.empty(),
          "Task 2 realtime geometry defers variant pipeline build info "
          "derivation");
@@ -399,11 +403,9 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
   auto node = makeMeshOverlayRenderable();
   auto scene = makeSceneWithDefaultCamera(node);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward);
 
-  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  const auto &drawInputs = queue.nodeData().drawInputs;
   EXPECT(drawInputs.size() == 1,
          "mesh overlay renderable should enter queue as a draw input");
   if (drawInputs.empty()) {
@@ -425,7 +427,7 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
     }
   }
 
-  const auto infos = fg.collectAllPipelineBuildDescs();
+  const auto infos = queue.collectUniquePipelineBuildDescs();
   EXPECT(infos.empty(),
          "Task 2 realtime geometry defers mesh overlay build desc derivation");
 }
@@ -446,12 +448,10 @@ void testFrameGraphCompileAcceptsColorWriteThenSampleRead() {
       FramePass{Pass_Forward,
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {FrameGraphWrite{offscreen}}});
   graph.addPass(FramePass{
       Pass_DebugOverlay,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(offscreen.name)},
       {FrameGraphWrite{swapColor}}});
 
@@ -469,12 +469,10 @@ void testFrameGraphCompilePreservesSampledReadBindingName() {
       FramePass{Pass_Shadow,
                 RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
                 {},
-                {},
                 {FrameGraphWrite{shadowDepth}}});
   graph.addPass(FramePass{
       Pass_Forward,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(shadowDepth.name, StringID("ShadowMap0"))},
       {}});
 
@@ -495,13 +493,11 @@ void testFrameGraphCompileAcceptsPostProcessSceneColorFlow() {
       FramePass{Pass_Forward,
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
                 {},
-                {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("hdr.color"))}}});
   graph.addPass(FramePass{
       Pass_PostProcess,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("SceneColor"))},
       {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
           StringID("swapchain.color"))}}});
@@ -547,30 +543,25 @@ void testFrameGraphCompileAcceptsBloomPostProcessChain() {
       FramePass{Pass_Forward,
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {FrameGraphWrite{hdr}}});
   graph.addPass(
       FramePass{Pass_BloomThreshold,
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {FrameGraphRead::sampled(hdr.name, StringID("SceneColor"))},
                 {FrameGraphWrite{threshold}}});
   graph.addPass(FramePass{
       Pass_BloomBlurH,
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
       {FrameGraphRead::sampled(threshold.name, StringID("BloomSource"))},
       {FrameGraphWrite{blurH}}});
   graph.addPass(
       FramePass{Pass_BloomBlurV,
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {FrameGraphRead::sampled(blurH.name, StringID("BloomSource"))},
                 {FrameGraphWrite{blur}}});
   graph.addPass(FramePass{
       Pass_PostProcess,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(hdr.name, StringID("SceneColor")),
        FrameGraphRead::sampled(blur.name, StringID("BloomColor"))},
       {FrameGraphWrite{swapchain}}});
@@ -600,14 +591,12 @@ void testFrameGraphCompileSortsPassesBySourceTargetDag() {
   graph.addPass(FramePass{
       StringID("ToneMapping"),
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(StringID("ldr.color"), StringID("SceneColor"))},
       {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
           StringID("swapchain.color"))}}});
   graph.addPass(
       FramePass{StringID("Forward"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {FrameGraphRead::sampled(StringID("camera.ubo")),
                  FrameGraphRead::sampled(StringID("geometry.vertex")),
                  FrameGraphRead::sampled(StringID("material.bsdf"))},
@@ -616,7 +605,6 @@ void testFrameGraphCompileSortsPassesBySourceTargetDag() {
   graph.addPass(FramePass{
       StringID("Exposure"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("HdrColor"))},
       {FrameGraphWrite{
           FrameGraphResourceRef::colorAttachment(StringID("ldr.color"))}}});
@@ -646,7 +634,6 @@ void testFrameGraphCompileRejectsSelfProducedRead() {
   graph.addPass(FramePass{
       StringID("Feedback"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("InputColor"))},
       {FrameGraphWrite{
           FrameGraphResourceRef::colorAttachment(StringID("hdr.color"))}}});
@@ -671,13 +658,11 @@ void testFrameGraphCompileAllowsReadModifyWriteWithEarlierProducer() {
   graph.addPass(
       FramePass{StringID("OpaqueBase"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {FrameGraphRead::sampled(StringID("camera.ubo"))},
                 {blendHdr}});
   graph.addPass(FramePass{
       StringID("TransparentBlend"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-      {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("SceneColor"))},
       {blendHdr}});
 
@@ -700,7 +685,6 @@ void testFrameGraphCompileRejectsImportedWriteTarget() {
       FramePass{StringID("BadImportedWriter"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("camera.ubo"))}}});
 
@@ -720,7 +704,6 @@ void testFrameGraphCompileRejectsInvalidWriteMode() {
   graph.addPass(
       FramePass{StringID("BadWriteMode"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                                      StringID("hdr.color")),
@@ -743,14 +726,12 @@ void testFrameGraphCompileRejectsMixedDuplicateWriteMode() {
       FramePass{StringID("BlendWriter"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                                      StringID("hdr.color")),
                                  std::string{"blend"}}}});
   graph.addPass(
       FramePass{StringID("AppendWriter"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                                      StringID("hdr.color")),
@@ -778,7 +759,6 @@ void testFrameGraphCompileRejectsSamePassDuplicateTarget() {
       FramePass{StringID("DuplicateInOnePass"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {blendHdr, blendHdr}});
 
   const auto compiled = graph.compile(GraphResourceRegistry::makeDefault());
@@ -798,14 +778,12 @@ void testFrameGraphCompileOrdersLegalDuplicateWritersByStableOrder() {
   FramePass late{StringID("LateBlend"),
                  RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                  {},
-                 {},
                  {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                                       StringID("hdr.color")),
                                   std::string{"blend"}}}};
   late.stableOrder = 20;
   FramePass early{StringID("EarlyBlend"),
                   RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                  {},
                   {},
                   {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                                        StringID("hdr.color")),
@@ -838,19 +816,16 @@ void testFrameGraphCompileReaderWaitsForAllLegalDuplicateWriters() {
       FramePass{StringID("BaseHdr"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
                 {},
-                {},
                 {blendHdr}});
   graph.addPass(FramePass{
       StringID("Composite"),
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-      {},
       {FrameGraphRead::sampled(StringID("hdr.color"), StringID("SceneColor"))},
       {FrameGraphWrite{
           FrameGraphResourceRef::colorAttachment(StringID("ldr.color"))}}});
   graph.addPass(
       FramePass{StringID("ExtraHdr"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {},
                 {blendHdr}});
 
@@ -876,7 +851,6 @@ void testFrameGraphCompileRejectsKnownSourceWithoutProducer() {
   graph.addPass(
       FramePass{StringID("KnownMissingSource"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                {},
                 {FrameGraphRead::sampled(StringID("custom.unwritten"),
                                          StringID("MissingInput"))},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
@@ -899,7 +873,6 @@ void testFrameGraphCompileReportsUnknownSource() {
   graph.addPass(
       FramePass{StringID("UnknownSource"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                {},
                 {FrameGraphRead::sampled(StringID("freeform.input"))},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("ldr.color"))}}});
@@ -921,7 +894,6 @@ void testFrameGraphCompileReportsUnknownTarget() {
       FramePass{StringID("UnknownTarget"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
                 {},
-                {},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("freeform.output"))}}});
 
@@ -941,14 +913,12 @@ void testFrameGraphCompileReportsResourceCycle() {
   graph.addPass(
       FramePass{StringID("ReadLdrWriteHdr"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                {},
                 {FrameGraphRead::sampled(StringID("ldr.color"))},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("hdr.color"))}}});
   graph.addPass(
       FramePass{StringID("ReadHdrWriteLdr"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                {},
                 {FrameGraphRead::sampled(StringID("hdr.color"))},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("ldr.color"))}}});
@@ -968,14 +938,12 @@ void testFrameGraphCompileReportsResourceCycle() {
 void testFrameGraphCompileReportsReversePhaseDependencyCycle() {
   FramePass pre{StringID("PreReadsHdr"),
                 RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                {},
                 {FrameGraphRead::sampled(StringID("hdr.color"))},
                 {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                     StringID("ldr.color"))}}};
   pre.phase = FrameGraphPhase::PreEffect;
   FramePass material{StringID("MaterialWritesHdr"),
                      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float),
-                     {},
                      {},
                      {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
                          StringID("hdr.color"))}}};
@@ -1159,6 +1127,37 @@ void testFrameGraphBuildPlanPreservesRenderPathGraphMetadata() {
          "FramePass should preserve depth write state");
   EXPECT(pass.renderState.depthOp == CompareOp::Always,
          "FramePass should preserve depth compare op");
+}
+
+void testFramePassCarriesInputContractAndCompileStaysGraphOnly() {
+  RenderPassNode node;
+  node.id = "PostProcess";
+  node.shaderUri = ResourceUri("post_process");
+  node.stage = RenderPassStage::Raster;
+  node.dispatch = RenderPassDispatch::Fullscreen;
+  node.input.kind = RenderPassInputKind::FullscreenTriangle;
+  node.sources = {"hdr.color"};
+  node.targets = {"swapchain.color"};
+  node.renderState.cullMode = CullMode::None;
+  node.renderState.depthTestEnable = false;
+  node.renderState.depthWriteEnable = false;
+  node.renderState.depthOp = CompareOp::Always;
+
+  RenderPathGraph graphAsset;
+  graphAsset.name = "InputGraph";
+  graphAsset.passes.push_back(node);
+  graphAsset.passes.push_back(makeRenderPassNode(
+      "Forward", {"scene.camera", "geometry.vertex", "material.bsdf"},
+      {"hdr.color"}));
+
+  FrameGraph graph =
+      buildFrameGraphFromRenderPathGraph(graphAsset,
+                                         GraphResourceRegistry::makeDefault());
+  EXPECT(graph.getPasses().front().input.kind ==
+             RenderPassInputKind::FullscreenTriangle,
+         "FramePass should retain input contract");
+  EXPECT(graph.compile().isValid(),
+         "FrameGraph compile should remain graph-only");
 }
 
 void testFrameGraphBuildPlanRejectsIncompleteRenderPathPass() {
@@ -1601,7 +1600,6 @@ void testFrameGraphCompileReportsMissingRead() {
   graph.addPass(FramePass{
       Pass_Forward,
       RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float),
-      {},
       {FrameGraphRead::sampled(StringID("missing.depth"))},
       {FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
           StringID("swapchain.color"))}}});
@@ -1623,11 +1621,9 @@ void testFrameGraphCompileReportsDuplicateWrite() {
   graph.addPass(FramePass{Pass_Forward,
                           RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
                           {},
-                          {},
                           {FrameGraphWrite{duplicate}}});
   graph.addPass(FramePass{Pass_DebugOverlay,
                           RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
-                          {},
                           {},
                           {FrameGraphWrite{duplicate}}});
 
@@ -1647,7 +1643,6 @@ void testFrameGraphCompileReportsUnnamedWrite() {
   graph.addPass(FramePass{Pass_Forward,
                           RenderTargetDesc::offscreenColor(ImageFormat::RGBA8),
                           {},
-                          {},
                           {FrameGraphWrite{FrameGraphResourceRef{
                               StringID{}, FrameGraphAttachmentKind::Color}}}});
 
@@ -1663,14 +1658,18 @@ void testFrameGraphCompileReportsUnnamedWrite() {
 void testBuildFromSceneIsIdempotent() {
   auto r = makeRenderable();
   auto scene = makeSceneWithDefaultCamera(r);
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
 
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
-  fg.build(LX_core::RenderWorkBuildContext::realtime(
-      *scene)); // second call should clear + refill, not accumulate
+  RenderWorkQueue queue;
+  queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{},
+              testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+              std::nullopt);
+  queue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+              RenderTarget{},
+              testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+              std::nullopt); // second call should clear + refill, not accumulate
 
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
          "build clears previous draw inputs on re-entry");
 }
 
@@ -1681,16 +1680,12 @@ void testPassFilterExcludesNonMatching() {
   auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.addPass(FramePass{Pass_Shadow, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue forwardQueue = buildQueueForPass(*scene, Pass_Forward);
+  RenderWorkQueue shadowQueue = buildQueueForPass(*scene, Pass_Shadow);
 
-  const auto &passes = fg.getPasses();
-  EXPECT(passes.size() == 2, "two passes configured");
-  EXPECT(passes[0].queue.nodeData().drawInputs.size() == 2,
+  EXPECT(forwardQueue.nodeData().drawInputs.size() == 2,
          "Forward pass: both renderables match");
-  EXPECT(passes[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(shadowQueue.nodeData().drawInputs.size() == 1,
          "Shadow pass: only rA supports shadow");
 }
 
@@ -1741,16 +1736,12 @@ void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
   auto scene = Scene::create(rA);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Shadow,
-                       RenderTargetDesc::offscreenDepth(ImageFormat::D32Float),
-                       {},
-                       {},
-                       {FrameGraphWrite{FrameGraphResourceRef::depthAttachment(
-                           StringID("shadow.depth"))}}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue =
+      buildQueueForPass(*scene, Pass_Shadow,
+                        RenderTarget{RenderTargetDesc::offscreenDepth(
+                            ImageFormat::D32Float)});
 
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
          "Shadow pass should include caster even without a target-matching "
          "camera");
 }
@@ -1869,17 +1860,29 @@ void testMultiPassRebuildIsIdempotent() {
   auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.addPass(FramePass{Pass_Shadow, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
-  fg.build(LX_core::RenderWorkBuildContext::realtime(
-      *scene)); // second call must clear + refill, not accumulate.
+  RenderWorkQueue forwardQueue;
+  forwardQueue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+                     RenderTarget{},
+                     testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+                     std::nullopt);
+  forwardQueue.build(RenderWorkBuildContext::realtime(*scene), Pass_Forward,
+                     RenderTarget{},
+                     testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
+                     std::nullopt);
 
-  const auto &passes = fg.getPasses();
-  EXPECT(passes[0].queue.nodeData().drawInputs.size() == 2,
+  RenderWorkQueue shadowQueue;
+  shadowQueue.build(RenderWorkBuildContext::realtime(*scene), Pass_Shadow,
+                    RenderTarget{},
+                    testRenderPathNodeSignature(Pass_Shadow, RenderTarget{}),
+                    std::nullopt);
+  shadowQueue.build(RenderWorkBuildContext::realtime(*scene), Pass_Shadow,
+                    RenderTarget{},
+                    testRenderPathNodeSignature(Pass_Shadow, RenderTarget{}),
+                    std::nullopt);
+
+  EXPECT(forwardQueue.nodeData().drawInputs.size() == 2,
          "Forward pass still has 2 draw inputs after rebuild");
-  EXPECT(passes[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(shadowQueue.nodeData().drawInputs.size() == 1,
          "Shadow pass still has 1 draw input after rebuild");
 }
 
@@ -1887,19 +1890,16 @@ void testCollectAcrossMultiplePasses() {
   auto r = makeRenderable();
   auto scene = makeSceneWithDefaultCamera(r);
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  // Same pass name repeated would produce identical PipelineKey for the same
-  // template; exercise the cross-pass dedup path by adding the same pass twice.
-  fg.addPass(FramePass{Pass_Forward, {}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue firstQueue = buildQueueForPass(*scene, Pass_Forward);
+  RenderWorkQueue secondQueue = buildQueueForPass(*scene, Pass_Forward);
 
-  auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.empty(),
-         "Task 2 realtime geometry defers cross-pass pipeline build infos");
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(firstQueue.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers first queue pipeline build infos");
+  EXPECT(secondQueue.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers second queue pipeline build infos");
+  EXPECT(firstQueue.nodeData().drawInputs.size() == 1,
          "first pass receives one draw input");
-  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(secondQueue.nodeData().drawInputs.size() == 1,
          "second pass receives one draw input");
 }
 
@@ -1914,17 +1914,18 @@ void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
   scene->addCamera(makeCameraWithTarget(RenderTarget{targetA}));
   scene->addCamera(makeCameraWithTarget(RenderTarget{targetB}));
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, targetA, {}});
-  fg.addPass(FramePass{Pass_Forward, targetB, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queueA =
+      buildQueueForPass(*scene, Pass_Forward, RenderTarget{targetA});
+  RenderWorkQueue queueB =
+      buildQueueForPass(*scene, Pass_Forward, RenderTarget{targetB});
 
-  const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.empty(),
-         "Task 2 realtime geometry defers target-specific build descs");
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(queueA.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers first target build descs");
+  EXPECT(queueB.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers second target build descs");
+  EXPECT(queueA.nodeData().drawInputs.size() == 1,
          "first target pass receives one draw input");
-  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(queueB.nodeData().drawInputs.size() == 1,
          "second target pass receives one draw input");
 }
 
@@ -1937,17 +1938,18 @@ void testFrameGraphDedupesExactSameTargetBuildDescs() {
   target.sampleCount = 4;
   scene->addCamera(makeCameraWithTarget(RenderTarget{target}));
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue firstQueue =
+      buildQueueForPass(*scene, Pass_Forward, RenderTarget{target});
+  RenderWorkQueue secondQueue =
+      buildQueueForPass(*scene, Pass_Forward, RenderTarget{target});
 
-  const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.empty(),
-         "Task 2 realtime geometry defers exact-target build descs");
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(firstQueue.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers first exact-target build descs");
+  EXPECT(secondQueue.collectUniquePipelineBuildDescs().empty(),
+         "Task 2 realtime geometry defers second exact-target build descs");
+  EXPECT(firstQueue.nodeData().drawInputs.size() == 1,
          "first exact-target pass receives one draw input");
-  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(secondQueue.nodeData().drawInputs.size() == 1,
          "second exact-target pass receives one draw input");
 }
 
@@ -1960,11 +1962,9 @@ void testVisibilityMaskFiltersRenderables() {
   scene->addRenderable(hidden);
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward, target);
 
-  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  const auto &drawInputs = queue.nodeData().drawInputs;
   EXPECT(drawInputs.size() == 1,
          "only mask-visible renderable enters queue");
   if (drawInputs.size() == 1) {
@@ -1983,11 +1983,9 @@ void testVisibilityMaskOrsMatchingCameraMasks() {
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x2u));
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward, target);
 
-  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 2,
+  EXPECT(queue.nodeData().drawInputs.size() == 2,
          "matching cameras OR culling masks before renderable filtering");
 }
 
@@ -2006,11 +2004,9 @@ void testVisibilityFilteringKeepsSceneResources() {
          "camera resources remain target-driven even when one renderable is "
          "hidden");
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward, target);
 
-  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  const auto &drawInputs = queue.nodeData().drawInputs;
   EXPECT(drawInputs.size() == 1, "hidden renderable stays filtered");
   if (drawInputs.size() == 1) {
     EXPECT(drawInputs[0].debugId == visible->getDebugId(),
@@ -2210,11 +2206,9 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   EXPECT(scene->getCombinedCameraCullingMask(target) == 0x1u,
          "inactive camera mask should not contribute to combined culling mask");
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, target, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue queue = buildQueueForPass(*scene, Pass_Forward, target);
 
-  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  const auto &drawInputs = queue.nodeData().drawInputs;
   EXPECT(drawInputs.size() == 1,
          "inactive camera should not widen renderable visibility filtering");
 }
@@ -2226,16 +2220,9 @@ void testEditorProjectedShadowPassKeepsCharacterCaster() {
   auto light = makeLightWithPasses({Pass_Forward, Pass_Shadow});
   attachLightNode(scene, light, "shadow_light");
 
-  FrameGraph fg;
-  fg.addPass(FramePass{Pass_Forward, RenderTarget{}, {}});
-  fg.addPass(FramePass{Pass_Shadow, RenderTarget{}, {}});
-  fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
+  RenderWorkQueue shadowQueue = buildQueueForPass(*scene, Pass_Shadow);
 
-  EXPECT(fg.getPasses()[0].name == Pass_Forward,
-         "Forward pass renders before projected shadows");
-  EXPECT(fg.getPasses()[1].name == Pass_Shadow,
-         "Shadow pass renders as overlay after Forward");
-  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+  EXPECT(shadowQueue.nodeData().drawInputs.size() == 1,
          "character caster appears in Shadow queue as a draw input");
 }
 
@@ -2332,6 +2319,7 @@ int main() {
   testFrameGraphCompileOrdersSamePhaseAndStableOrderByOriginalIndex();
   testFrameGraphBuildPlanConsumesRenderPathGraph();
   testFrameGraphBuildPlanPreservesRenderPathGraphMetadata();
+  testFramePassCarriesInputContractAndCompileStaysGraphOnly();
   testFrameGraphBuildPlanRejectsIncompleteRenderPathPass();
   testDefaultForwardRenderPathGraphPassSetValidation();
   testDefaultRenderPathGraphOrderComesFromSourceTargetDag();

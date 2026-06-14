@@ -6,6 +6,8 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "backend/vulkan/offline/offline_compute_shader.hpp"
 #include "backend/vulkan/offline/offline_render_graph_executor.hpp"
+#include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "core/offline/offline_render_work_graph.hpp"
 #include "core/utils/env.hpp"
@@ -14,6 +16,9 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace LX_core::backend::offline {
 
@@ -50,18 +55,36 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     }
     FrameGraph renderGraph =
         LX_core::offline::createOfflineRenderFrameGraph(job.output);
-    renderGraph.build(LX_core::RenderWorkBuildContext::offline(job));
     const CompiledFrameGraph compiledGraph = renderGraph.compile();
     if (!compiledGraph.isValid()) {
       throw std::runtime_error(compiledGraph.errorText());
     }
 
-    resourceManager->preloadPipelines(
-        renderGraph.collectAllPipelineBuildDescs());
+    std::vector<RenderWorkQueue> passQueues(renderGraph.getPasses().size());
+    for (usize passIndex = 0; passIndex < renderGraph.getPasses().size();
+         ++passIndex) {
+      const FramePass &pass = renderGraph.getPasses()[passIndex];
+      passQueues[passIndex].build(
+          LX_core::RenderWorkBuildContext::offline(job), pass.name,
+          RenderTarget{pass.target},
+          LX_core::getFramePassRenderPathNodeSignature(pass),
+          pass.input.geometry, pass.renderingMode, pass.attachments);
+    }
+
+    std::unordered_set<PipelineKey, PipelineKey::Hash> seenPipelines;
+    std::vector<PipelineBuildDesc> pipelineDescs;
+    for (const RenderWorkQueue &queue : passQueues) {
+      for (auto desc : queue.collectUniquePipelineBuildDescs()) {
+        if (seenPipelines.insert(desc.key).second) {
+          pipelineDescs.push_back(std::move(desc));
+        }
+      }
+    }
+    resourceManager->preloadPipelines(pipelineDescs);
     OfflineRenderGraphExecutor executor(*device, *commandManager,
                                         *resourceManager);
     const OfflineGraphExecutionResult execution =
-        executor.execute(renderGraph, compiledGraph);
+        executor.execute(renderGraph, compiledGraph, passQueues);
 
     LX_core::offline::OfflineReadbackImage image;
     image.width = job.output.width;

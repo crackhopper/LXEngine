@@ -2,6 +2,7 @@
 #include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/offline/offline_render_job.hpp"
 #include "core/offline/offline_render_validation.hpp"
@@ -376,7 +377,7 @@ void testOfflinePbrEmissiveTextureMatchesRealtimeSemantics() {
   const std::string shaderSource = readTextFile(shaderPath);
   EXPECT(!shaderSource.empty(),
          "offline PBR shader source should be readable for semantic test");
-  EXPECT(shaderSource.find("pbrInput.emissive = max(surface.emissive") !=
+  EXPECT(shaderSource.find("bsdfInput.emissive = max(surface.emissive") !=
              std::string::npos,
          "offline PBR emissive should come from the material accessor surface");
   EXPECT(shaderSource.find("material.emissiveTexture") == std::string::npos,
@@ -508,26 +509,25 @@ void testOfflinePbrDirectShaderUsesMaterialAccessorSurface() {
   EXPECT(shaderSource.find("vec3 baseColor = max(surface.baseColor") !=
              std::string::npos,
          "offline PBR shader should read base color from accessor surface");
-  EXPECT(shaderSource.find("pbrInput.metallic = clamp(surface.metallic") !=
+  EXPECT(shaderSource.find("bsdfInput.metallic = clamp(surface.metallic") !=
              std::string::npos,
          "offline PBR shader should read metallic from accessor surface");
-  EXPECT(shaderSource.find("pbrInput.roughness = clamp(surface.roughness") !=
+  EXPECT(shaderSource.find("bsdfInput.roughness = clamp(surface.roughness") !=
              std::string::npos,
          "offline PBR shader should read roughness from accessor surface");
-  EXPECT(shaderSource.find("pbrInput.ao = clamp(surface.ao") !=
+  EXPECT(shaderSource.find("bsdfInput.ao = clamp(surface.ao") !=
              std::string::npos,
          "offline PBR shader should read AO from accessor surface");
-  EXPECT(shaderSource.find("pbrInput.emissive = max(surface.emissive") !=
+  EXPECT(shaderSource.find("bsdfInput.emissive = max(surface.emissive") !=
              std::string::npos,
          "offline PBR shader should read emissive from accessor surface");
   EXPECT(shaderSource.find("vec3 N = normalize(surface.normal)") !=
              std::string::npos,
          "offline PBR shader should read shading normal from accessor "
          "surface");
-  EXPECT(shaderSource.find("lxPbrLayeredClearcoatDirectLight") !=
+  EXPECT(shaderSource.find("lxEvaluateBsdf(bsdfInput)") !=
              std::string::npos,
-         "offline PBR shader should use the shared layered clearcoat direct "
-         "lighting helper");
+         "offline PBR shader should use the shared BSDF evaluation path");
   EXPECT(shaderSource.find("material.baseColorTexture") == std::string::npos,
          "offline PBR pass shader should not directly read legacy material "
          "record texture fields");
@@ -829,13 +829,22 @@ void expectInvalidOfflineJobThrows(const offline::OfflineRenderJob &job,
   return job;
 }
 
+[[nodiscard]] RenderWorkQueue buildOfflineQueueForPass(
+    const FramePass &pass, offline::OfflineRenderJob &job) {
+  RenderWorkQueue queue;
+  queue.build(RenderWorkBuildContext::offline(job), pass.name,
+              RenderTarget{pass.target},
+              getFramePassRenderPathNodeSignature(pass),
+              pass.input.geometry, pass.renderingMode, pass.attachments);
+  return queue;
+}
+
 void testOfflineRenderWorkGraphBuildsRayTracePass() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
   job.output.width = 17;
   job.output.height = 9;
 
   FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-  graph.build(LX_core::RenderWorkBuildContext::offline(job));
   EXPECT(graph.getPasses().size() == 1,
          "offline default graph should have one ray trace pass");
   if (graph.getPasses().empty()) {
@@ -845,13 +854,14 @@ void testOfflineRenderWorkGraphBuildsRayTracePass() {
   const FramePass &pass = graph.getPasses().front();
   EXPECT(pass.name == Pass_OfflineRayTrace,
          "offline graph pass should use OfflineRayTrace identity");
-  EXPECT(pass.queue.getItems().size() == 1,
+  RenderWorkQueue queue = buildOfflineQueueForPass(pass, job);
+  EXPECT(queue.getItems().size() == 1,
          "offline ray trace pass should submit one compute work item");
-  if (pass.queue.getItems().empty()) {
+  if (queue.getItems().empty()) {
     return;
   }
 
-  const RenderWorkItem &item = pass.queue.getItems().front();
+  const RenderWorkItem &item = queue.getItems().front();
   EXPECT(item.domain == RenderDomain::Offline,
          "offline work item should mark offline domain");
   EXPECT(item.kind == RenderWorkKind::ComputeDispatch,
@@ -878,15 +888,17 @@ void testOfflineRenderWorkGraphUsesJobComputeShader() {
   job.offlineShader = shader;
 
   FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-  graph.build(LX_core::RenderWorkBuildContext::offline(job));
   EXPECT(!graph.getPasses().empty(),
          "offline graph should have pass when built with job shader");
-  if (graph.getPasses().empty() ||
-      graph.getPasses().front().queue.getItems().empty()) {
+  if (graph.getPasses().empty()) {
     return;
   }
-  const RenderWorkItem &item =
-      graph.getPasses().front().queue.getItems().front();
+  RenderWorkQueue queue = buildOfflineQueueForPass(graph.getPasses().front(),
+                                                   job);
+  if (queue.getItems().empty()) {
+    return;
+  }
+  const RenderWorkItem &item = queue.getItems().front();
   EXPECT(item.shaderInfo == shader,
          "offline work item should carry compute shader from job");
 }
@@ -960,10 +972,18 @@ void testOfflineWorkItemCarriesUnifiedSceneTextureArray() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
 
   FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-  graph.build(LX_core::RenderWorkBuildContext::offline(job));
+  if (graph.getPasses().empty()) {
+    EXPECT(false, "offline graph should have a pass");
+    return;
+  }
+  RenderWorkQueue queue = buildOfflineQueueForPass(graph.getPasses().front(),
+                                                   job);
+  if (queue.getItems().empty()) {
+    EXPECT(false, "offline queue should have a compute work item");
+    return;
+  }
 
-  const RenderWorkItem &item =
-      graph.getPasses().front().queue.getItems().front();
+  const RenderWorkItem &item = queue.getItems().front();
   const auto resource = std::find_if(
       item.descriptorResources.begin(), item.descriptorResources.end(),
       [](const DescriptorResourceRef &candidate) {
@@ -983,10 +1003,18 @@ void testOfflineWorkItemDoesNotInjectImplicitLightOrEnvironment() {
   offline::OfflineRenderJob job = makeRenderableJobWithCamera();
 
   FrameGraph graph = offline::createOfflineRenderFrameGraph(job.output);
-  graph.build(LX_core::RenderWorkBuildContext::offline(job));
+  if (graph.getPasses().empty()) {
+    EXPECT(false, "offline graph should have a pass");
+    return;
+  }
+  RenderWorkQueue queue = buildOfflineQueueForPass(graph.getPasses().front(),
+                                                   job);
+  if (queue.getItems().empty()) {
+    EXPECT(false, "offline queue should have a compute work item");
+    return;
+  }
 
-  const RenderWorkItem &item =
-      graph.getPasses().front().queue.getItems().front();
+  const RenderWorkItem &item = queue.getItems().front();
   const GpuResourceRef frameParamsResource =
       findDescriptorResource(item, StringID("SceneFrameParams"));
   EXPECT(frameParamsResource.isValid(),

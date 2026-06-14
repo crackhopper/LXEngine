@@ -1,7 +1,6 @@
 #include "core/frame_graph/frame_graph.hpp"
 
 #include "core/frame_graph/graph_resource_registry.hpp"
-#include "core/scene/scene.hpp"
 #include <algorithm>
 #include <sstream>
 #include <unordered_map>
@@ -149,18 +148,6 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
 
 void FrameGraph::addPass(FramePass pass) {
   m_passes.push_back(std::move(pass));
-}
-
-void FrameGraph::build(const RenderWorkBuildContext &context) {
-  // REQ-009: delegate with pass.target so Scene::getSceneLevelResources
-  // can apply per-target camera filtering. Each FramePass already carries its
-  // own target; FrameGraph simply threads it through.
-  for (auto &pass : m_passes) {
-    pass.queue.build(context, pass.name, RenderTarget{pass.target},
-                     getFramePassRenderPathNodeSignature(pass),
-                     pass.input.geometry, pass.renderingMode,
-                     pass.attachments);
-  }
 }
 
 CompiledFrameGraph
@@ -395,19 +382,6 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
 
 CompiledFrameGraph FrameGraph::compile() const {
   return compile(GraphResourceRegistry::makeDefault());
-}
-
-std::vector<PipelineBuildDesc>
-FrameGraph::collectAllPipelineBuildDescs() const {
-  std::unordered_set<PipelineKey, PipelineKey::Hash> seen;
-  std::vector<PipelineBuildDesc> out;
-  for (const auto &pass : m_passes) {
-    for (auto info : pass.queue.collectUniquePipelineBuildDescs()) {
-      if (seen.insert(info.key).second)
-        out.push_back(std::move(info));
-    }
-  }
-  return out;
 }
 
 } // namespace LX_core

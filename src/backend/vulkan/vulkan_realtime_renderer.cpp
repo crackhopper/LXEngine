@@ -8,6 +8,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/frame_graph/render_validation_contract.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
@@ -50,6 +51,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 namespace {
@@ -1191,6 +1193,36 @@ public:
     return false;
   }
 
+  [[nodiscard]] LX_core::RenderWorkQueue &
+  framePassQueue(usize sourcePassIndex) {
+    if (sourcePassIndex >= m_framePassQueues.size()) {
+      throw std::runtime_error("render work queue missing for source pass");
+    }
+    return m_framePassQueues[sourcePassIndex];
+  }
+
+  [[nodiscard]] const LX_core::RenderWorkQueue &
+  framePassQueue(usize sourcePassIndex) const {
+    if (sourcePassIndex >= m_framePassQueues.size()) {
+      throw std::runtime_error("render work queue missing for source pass");
+    }
+    return m_framePassQueues[sourcePassIndex];
+  }
+
+  void rebuildFramePassQueues(
+      const LX_core::RenderWorkBuildContext &context) {
+    const auto &passes = m_frameGraph.getPasses();
+    m_framePassQueues.clear();
+    m_framePassQueues.resize(passes.size());
+    for (usize passIndex = 0; passIndex < passes.size(); ++passIndex) {
+      const LX_core::FramePass &pass = passes[passIndex];
+      m_framePassQueues[passIndex].build(
+          context, pass.name, LX_core::RenderTarget{pass.target},
+          LX_core::getFramePassRenderPathNodeSignature(pass),
+          pass.input.geometry, pass.renderingMode, pass.attachments);
+    }
+  }
+
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
   /// chosen surface format + depth format. This is the value that gets plugged
   /// into FramePass.target and also backfilled into any Camera whose m_target
@@ -1257,6 +1289,7 @@ public:
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
+    m_framePassQueues.clear();
     m_skyboxHelperQueue.clearItems();
     m_scene->resources().beginRenderResourceScope();
     const bool deferredMode = m_scene->realtimeRenderSettings().mode ==
@@ -1389,14 +1422,15 @@ public:
     //   Shadow pass to per-cascade runtime instances until RenderPathGraph can
     //   express cascade fan-out directly.
 
-    // RenderWorkQueue::build (invoked per pass below) internally:
+    // Temporary queue build (invoked per pass below) internally:
     //   - filters renderables by supportsPass(pass)
     //   - merges scene.getSceneLevelResources(pass, target) (camera UBO
     //   filtered by
     //     target, light UBO filtered by pass mask)
     //   - sorts by PipelineKey
     // There is no more side-channel camera/light UBO injection here.
-    m_frameGraph.build(LX_core::RenderWorkBuildContext::realtime(*m_scene));
+    rebuildFramePassQueues(
+        LX_core::RenderWorkBuildContext::realtime(*m_scene));
     if (deferredMode) {
       rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Deferred,
                                                  gbufferDesc);
@@ -1429,14 +1463,14 @@ public:
     // Initial resource sync for every item across every pass in the FrameGraph.
     // SceneNode::getValidatedPassData() has already synced each per-draw model
     // matrix from the node world transform while building the queue.
-    for (auto &pass : m_frameGraph.getPasses()) {
-      syncRenderUploadPlan(pass.queue);
+    for (const auto &queue : m_framePassQueues) {
+      syncRenderUploadPlan(queue);
     }
     syncRenderUploadPlan(m_skyboxHelperQueue);
     resourceManager().collectGarbage();
 
     // Explicit pipeline preparation happens only after scene resources,
-    // material source variants, FrameGraph queues, upload resources, and final
+    // material source variants, render work queues, upload resources, and final
     // shader reflection are ready. Future pipeline cache package loading
     // belongs inside this phase and must validate the same PipelineBuildDesc
     // identities.
@@ -1449,10 +1483,10 @@ public:
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     resourceManager().beginFrame(currentFrameIndex);
     bool requiresSharedBufferSync = false;
-    for (auto &pass : m_frameGraph.getPasses()) {
+    for (const auto &queue : m_framePassQueues) {
       requiresSharedBufferSync =
           requiresSharedBufferSync ||
-          uploadPlanRequiresSharedHostBufferSync(pass.queue);
+          uploadPlanRequiresSharedHostBufferSync(queue);
       if (requiresSharedBufferSync) {
         break;
       }
@@ -1468,8 +1502,8 @@ public:
       m_swapchain->waitForAllFrames();
     }
 
-    for (auto &pass : m_frameGraph.getPasses()) {
-      syncRenderUploadPlan(pass.queue);
+    for (const auto &queue : m_framePassQueues) {
+      syncRenderUploadPlan(queue);
     }
     syncRenderUploadPlan(m_skyboxHelperQueue);
     resourceManager().collectGarbage();
@@ -1614,9 +1648,9 @@ public:
 
   [[nodiscard]] usize frameGraphItemCount() const {
     usize total = 0;
-    for (const auto &pass : m_frameGraph.getPasses()) {
-      total += pass.queue.nodeData().drawInputs.size();
-      total += pass.queue.getItems().size();
+    for (const auto &queue : m_framePassQueues) {
+      total += queue.nodeData().drawInputs.size();
+      total += queue.getItems().size();
     }
     total += m_skyboxHelperQueue.getItems().size();
     return total;
@@ -2308,8 +2342,9 @@ private:
       return;
     }
 
-    auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
-    submitBindlessQueue(pass.queue, pass.name, cmd);
+    const auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
+    auto &queue = framePassQueue(sourcePassIndex);
+    submitBindlessQueue(queue, pass.name, cmd);
     if (pass.name == LX_core::Pass_Forward) {
       submitDirectHelperQueue(m_skyboxHelperQueue, pass.name, cmd);
     }
@@ -2501,7 +2536,9 @@ private:
     item.materialSignature = materialSignature;
     item.materialTypeVariant = materialTypeVariant;
 
-    for (auto &graphPass : m_frameGraph.getPasses()) {
+    auto &graphPasses = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < graphPasses.size(); ++passIndex) {
+      auto &graphPass = graphPasses[passIndex];
       if (graphPass.name == item.pass) {
         item.renderPathNodeSignature =
             LX_core::getFramePassRenderPathNodeSignature(graphPass);
@@ -2509,8 +2546,9 @@ private:
         item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
-        graphPass.queue.addItem(std::move(item));
-        graphPass.queue.sort();
+        auto &queue = framePassQueue(passIndex);
+        queue.addItem(std::move(item));
+        queue.sort();
         return;
       }
     }
@@ -2594,7 +2632,9 @@ private:
     item.materialSignature = materialSignature;
     item.materialTypeVariant = materialTypeVariant;
 
-    for (auto &graphPass : m_frameGraph.getPasses()) {
+    auto &graphPasses = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < graphPasses.size(); ++passIndex) {
+      auto &graphPass = graphPasses[passIndex];
       if (graphPass.name == LX_core::Pass_DeferredLighting) {
         item.renderPathNodeSignature =
             LX_core::getFramePassRenderPathNodeSignature(graphPass);
@@ -2602,8 +2642,9 @@ private:
         item.attachments = graphPass.attachments;
         item.pipelineKey = LX_core::PipelineKey::build(
             item.materialTypeVariant, item.renderPathNodeSignature);
-        graphPass.queue.addItem(std::move(item));
-        graphPass.queue.sort();
+        auto &queue = framePassQueue(passIndex);
+        queue.addItem(std::move(item));
+        queue.sort();
         return;
       }
     }
@@ -2700,17 +2741,19 @@ private:
     }
     const LX_core::RenderTarget defaultCameraTarget{};
     const LX_core::RenderTarget renderTarget{targetDesc};
-    for (auto &pass : m_frameGraph.getPasses()) {
+    auto &passes = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < passes.size(); ++passIndex) {
+      auto &pass = passes[passIndex];
       if (pass.name == passName) {
-        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
-                             *m_scene,
-                             LX_core::RenderWorkBuildContext::RealtimeOptions{
-                                 .sceneResourceTarget = defaultCameraTarget,
-                             }),
-                         passName, renderTarget,
-                         LX_core::getFramePassRenderPathNodeSignature(pass),
-                         pass.input.geometry, pass.renderingMode,
-                         pass.attachments);
+        framePassQueue(passIndex).build(
+            LX_core::RenderWorkBuildContext::realtime(
+                *m_scene,
+                LX_core::RenderWorkBuildContext::RealtimeOptions{
+                    .sceneResourceTarget = defaultCameraTarget,
+                }),
+            passName, renderTarget,
+            LX_core::getFramePassRenderPathNodeSignature(pass),
+            pass.input.geometry, pass.renderingMode, pass.attachments);
         return;
       }
     }
@@ -2723,9 +2766,12 @@ private:
     }
     const LX_core::RenderTarget defaultCameraTarget{};
     const LX_core::RenderTarget debugRenderTarget{debugTarget};
-    for (auto &pass : m_frameGraph.getPasses()) {
+    auto &passes = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < passes.size(); ++passIndex) {
+      auto &pass = passes[passIndex];
       if (pass.name == LX_core::Pass_DebugOverlay) {
-        pass.queue.clearItems();
+        auto &queue = framePassQueue(passIndex);
+        queue.clearItems();
         const auto sceneResources = m_scene->getSceneLevelResources(
             LX_core::Pass_DebugOverlay, defaultCameraTarget);
         const LX_core::VisibilityLayerMask visibleMask =
@@ -2795,9 +2841,9 @@ private:
                   .target = debugRenderTarget,
                   .sceneResources = sceneResources,
               });
-          pass.queue.addItem(std::move(item));
+          queue.addItem(std::move(item));
         }
-        pass.queue.sort();
+        queue.sort();
         return;
       }
     }
@@ -2942,7 +2988,9 @@ private:
     }
     const auto mainLightIdentity = mainLight.getBackendCacheIdentity();
     u32 cascadeIndex = 0;
-    for (auto &pass : m_frameGraph.getPasses()) {
+    auto &passes = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < passes.size(); ++passIndex) {
+      auto &pass = passes[passIndex];
       if (pass.name != LX_core::Pass_Shadow) {
         continue;
       }
@@ -2955,7 +3003,8 @@ private:
         continue;
       }
       const LX_core::DescriptorResourceRef cascadeResource{*snapshot};
-      for (auto &item : pass.queue.getItems()) {
+      auto &queue = framePassQueue(passIndex);
+      for (auto &item : queue.getItems()) {
         for (auto &resource : item.descriptorResources) {
           if (resource.isResource() && resource.resource().isValid() &&
               resource.resource().getBackendCacheIdentity() ==
@@ -2964,24 +3013,34 @@ private:
           }
         }
       }
-      pass.queue.replaceNodeContextSceneResourceByIdentity(mainLightIdentity,
-                                                           cascadeResource);
+      queue.replaceNodeContextSceneResourceByIdentity(mainLightIdentity,
+                                                      cascadeResource);
       ++cascadeIndex;
     }
   }
 
   void preparePipelinesForLoadedScene() {
-    std::vector<LX_core::PipelineBuildDesc> pipelineDescs =
-        m_frameGraph.collectAllPipelineBuildDescs();
-    for (auto desc : m_skyboxHelperQueue.collectUniquePipelineBuildDescs()) {
-      pipelineDescs.push_back(std::move(desc));
+    std::unordered_set<LX_core::PipelineKey, LX_core::PipelineKey::Hash>
+        seenPipelines;
+    std::vector<LX_core::PipelineBuildDesc> pipelineDescs;
+    const auto appendQueuePipelineDescs =
+        [&](const LX_core::RenderWorkQueue &queue) {
+          for (auto desc : queue.collectUniquePipelineBuildDescs()) {
+            if (seenPipelines.insert(desc.key).second) {
+              pipelineDescs.push_back(std::move(desc));
+            }
+          }
+        };
+    for (const auto &queue : m_framePassQueues) {
+      appendQueuePipelineDescs(queue);
     }
+    appendQueuePipelineDescs(m_skyboxHelperQueue);
     resourceManager().preloadPipelines(pipelineDescs);
   }
 
   void attachFrameGraphSampledResources() {
-    const auto appendReadToGraphPass =
-        [this](LX_core::FramePass &graphPass,
+    const auto appendReadToQueue =
+        [this](LX_core::RenderWorkQueue &queue,
                const LX_core::FrameGraphRead &read) {
           if (read.bindingName == LX_core::StringID{}) {
             return;
@@ -2990,7 +3049,7 @@ private:
               read.resource, read.bindingName);
           const auto resourceRef =
               m_scene->resources().addRenderGpuResource(std::move(resource));
-          for (auto &item : graphPass.queue.getItems()) {
+          for (auto &item : queue.getItems()) {
             item.descriptorResources.emplace_back(resourceRef.get());
           }
         };
@@ -3001,7 +3060,7 @@ private:
       if (compiledPass.sourcePassIndex >= graphPasses.size()) {
         continue;
       }
-      auto &graphPass = graphPasses[compiledPass.sourcePassIndex];
+      auto &queue = framePassQueue(compiledPass.sourcePassIndex);
       bool hasBloomColor = false;
       std::optional<LX_core::FrameGraphRead> sceneColorRead;
       for (const auto &read : compiledPass.reads) {
@@ -3012,13 +3071,13 @@ private:
             read.bindingName == LX_core::StringID("SceneColor")) {
           sceneColorRead = read;
         }
-        appendReadToGraphPass(graphPass, read);
+        appendReadToQueue(queue, read);
       }
       if (compiledPass.name == LX_core::Pass_PostProcess && !hasBloomColor &&
           sceneColorRead.has_value()) {
         LX_core::FrameGraphRead bloomFallback = *sceneColorRead;
         bloomFallback.bindingName = LX_core::StringID("BloomColor");
-        appendReadToGraphPass(graphPass, bloomFallback);
+        appendReadToQueue(queue, bloomFallback);
       }
     }
   }
@@ -3553,6 +3612,7 @@ private:
   VulkanSwapchainUniquePtr m_swapchain = nullptr;
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
+  std::vector<LX_core::RenderWorkQueue> m_framePassQueues{};
   LX_core::RenderWorkQueue m_skyboxHelperQueue{};
   LX_core::CompiledFrameGraph m_compiledFrameGraph{};
   std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>

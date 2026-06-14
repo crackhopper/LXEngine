@@ -5,8 +5,8 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
@@ -87,15 +87,12 @@ int main() {
       return 1;
     }
 
-    // FrameGraph collection should also produce exactly this one helper info.
-    LX_core::FrameGraph fg;
-    LX_core::FramePass helperPass;
-    helperPass.name = LX_core::Pass_PostProcess;
-    helperPass.queue.addItem(item);
-    fg.addPass(std::move(helperPass));
-    auto infos = fg.collectAllPipelineBuildDescs();
+    // Direct queue collection should also produce exactly this one helper info.
+    LX_core::RenderWorkQueue helperQueue;
+    helperQueue.addItem(item);
+    auto infos = helperQueue.collectUniquePipelineBuildDescs();
     if (infos.size() != 1) {
-      std::cerr << "FAIL: frame graph produced " << infos.size()
+      std::cerr << "FAIL: render work queue produced " << infos.size()
                 << " infos, expected 1\n";
       return 1;
     }
