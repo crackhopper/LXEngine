@@ -1719,7 +1719,7 @@ void testForwardQueuePreservesVisibleRenderableDrawInputs() {
 
   const auto hasDebugId = [&drawInputs](StringID debugId) {
     return std::any_of(drawInputs.begin(), drawInputs.end(),
-                       [debugId](const RenderDrawInput &input) {
+                       [debugId](const RenderQueueDrawInput &input) {
                          return input.debugId == debugId;
                        });
   };
@@ -2031,12 +2031,12 @@ void testCompatibleRenderablesDoNotRequireIblResources() {
   const auto &drawInputs = queue.nodeData().drawInputs;
   const auto sawFirst = std::any_of(
       drawInputs.begin(), drawInputs.end(), [debugId = first->getDebugId()](
-                                           const RenderDrawInput &input) {
+                                           const RenderQueueDrawInput &input) {
         return input.debugId == debugId;
       });
   const auto sawSecond = std::any_of(
       drawInputs.begin(), drawInputs.end(), [debugId = second->getDebugId()](
-                                           const RenderDrawInput &input) {
+                                           const RenderQueueDrawInput &input) {
         return input.debugId == debugId;
       });
 

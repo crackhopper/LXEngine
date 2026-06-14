@@ -174,7 +174,7 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
         BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
     const ObjectHandle objectHandle = fixture.table.registerObject(object);
 
-    fixture.queue.addDrawInput(RenderDrawInput{
+    fixture.queue.addDrawInput(RenderQueueDrawInput{
         .inputIndex = i,
         .object = objectHandle,
         .mesh = mesh,
@@ -522,7 +522,7 @@ void testDistinctMaterialInstancesWithSameSignatureShareBatch() {
     object.worldBounds =
         BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
     const ObjectHandle objectHandle = table.registerObject(object);
-    queue.addDrawInput(RenderDrawInput{
+    queue.addDrawInput(RenderQueueDrawInput{
         .inputIndex = i,
         .object = objectHandle,
         .mesh = mesh,
@@ -573,7 +573,7 @@ void testDifferentMaterialTypeSignaturesSplitBatches() {
     object.worldBounds =
         BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
     const ObjectHandle objectHandle = table.registerObject(object);
-    queue.addDrawInput(RenderDrawInput{.inputIndex = i,
+    queue.addDrawInput(RenderQueueDrawInput{.inputIndex = i,
                                        .object = objectHandle,
                                        .mesh = mesh,
                                        .material = material,
@@ -670,7 +670,7 @@ void testGlobalGeometryIndirectCommandsDoNotDoubleApplyVertexOffset() {
     object.worldBounds =
         BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
     const ObjectHandle objectHandle = table.registerObject(object);
-    queue.addDrawInput(RenderDrawInput{
+    queue.addDrawInput(RenderQueueDrawInput{
         .inputIndex = i,
         .object = objectHandle,
         .mesh = meshes[i],
@@ -715,7 +715,7 @@ void testDrawInputIdentityIsPreservedInDiagnostics() {
   queue.setNodeContext(RenderPathNodeContext{
       .pass = StringID("Forward"),
       .renderPathNodeSignature = StringID("bindless.forward.opaque")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 42,
       .debugId = StringID("helmet.explicitInputIndex"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -734,7 +734,7 @@ void testDrawInputIdentityIsPreservedInDiagnostics() {
 void testLegacyRejectedPreparationStatsAreNotUnsupported() {
   SceneResourceTable table;
   RenderWorkQueue queue;
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .debugId = StringID("helmet.legacyRejectedStats"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -762,7 +762,7 @@ void testClearItemsResetsNodeContextAndCachedAnalysis() {
   queue.setNodeContext(RenderPathNodeContext{
       .pass = StringID("Forward"),
       .renderPathNodeSignature = StringID("bindless.forward.opaque")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .debugId = StringID("helmet.resetInput"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -787,7 +787,7 @@ void testDrawInputMutationInvalidatesCachedAnalysis() {
   queue.setNodeContext(RenderPathNodeContext{
       .pass = StringID("Forward"),
       .renderPathNodeSignature = StringID("bindless.forward.opaque")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .debugId = StringID("helmet.cachedInput"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -796,7 +796,7 @@ void testDrawInputMutationInvalidatesCachedAnalysis() {
   EXPECT(!queue.lastBatchAnalysis().diagnostics.empty(),
          "compiled analysis should be cached");
 
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 1,
       .debugId = StringID("helmet.newInput"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -812,7 +812,7 @@ void testStalePreparationRejectsNewDrawInputs() {
                             .materialTypeSignature =
                                 StringID("standard-pbr-opaque")});
 
-  fixture.queue.addDrawInput(RenderDrawInput{
+  fixture.queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 1,
       .debugId = StringID("helmet.unpreparedInput"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});

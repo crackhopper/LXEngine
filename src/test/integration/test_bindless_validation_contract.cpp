@@ -214,7 +214,7 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
         BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
     const ObjectHandle objectHandle = fixture.table.registerObject(object);
 
-    fixture.queue.addDrawInput(RenderDrawInput{
+    fixture.queue.addDrawInput(RenderQueueDrawInput{
         .inputIndex = i,
         .object = objectHandle,
         .mesh = mesh,
@@ -292,7 +292,7 @@ void testDecisionRejectsMixedDirectHelperAndMaterialDrawInputs() {
   RenderWorkItem item = makeLegacyDirectRasterValidationItem(vertex, index);
   item.directRaster.purpose = DirectRasterPassPurpose::FullscreenPostProcess;
   queue.addItem(std::move(item));
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .debugId = StringID("mixed.directHelper.materialSource"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
@@ -558,7 +558,7 @@ void testZeroIndexInputProducesDiagnostic() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .mesh = meshHandle,
@@ -638,7 +638,7 @@ void testMissingMaterialMappingDoesNotFallBackToDrawMaterialIndex() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .material = material,
@@ -717,7 +717,7 @@ void testInvisibleObjectProducesZeroInstanceDiagnostic() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .material = material,
@@ -791,7 +791,7 @@ void testMappedObjectIndexMissingObjectRowProducesUnresolvedDiagnostic() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .debugId = StringID("helmet.missingUploadedObjectRow"),
@@ -832,7 +832,7 @@ void testMismatchedSourceMaterialHandleRejectsPreparation() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = objectHandle,
       .mesh = mesh,
@@ -888,7 +888,7 @@ void testMissingMeshRangeDiagnosticPreservesIndices() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .debugId = StringID("helmet.missingMeshRange"),
@@ -950,7 +950,7 @@ void testInvalidSourceMaterialRefRowPreservesIndices() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .debugId = StringID("helmet.invalidSourceRefRow"),
@@ -1025,7 +1025,7 @@ void testMissingSourceStorageRowProducesInvalidSourceMaterialRef() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .material = material,
@@ -1090,7 +1090,7 @@ void testMissingGlobalGeometryRangePreservesIndices() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  queue.addDrawInput(RenderDrawInput{
+  queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = object,
       .debugId = StringID("helmet.missingGlobalGeometry"),
@@ -1131,7 +1131,7 @@ void testMissingDrawRecordInputProducesDiagnostic() {
                                  .colorFormat = ImageFormat::BGRA8,
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
-  fixture.queue.addDrawInput(RenderDrawInput{
+  fixture.queue.addDrawInput(RenderQueueDrawInput{
       .inputIndex = 0,
       .object = ObjectHandle{},
       .mesh = MeshHandle{},

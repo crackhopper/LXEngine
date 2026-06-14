@@ -1482,7 +1482,7 @@ bsdf:
                                  .depthFormat = ImageFormat::D32Float},
       .objectDataSignature = StringID("BindlessObjectData.v1")});
   for (usize i = 0; i < objects.size(); ++i) {
-    queue.addDrawInput(RenderDrawInput{
+    queue.addDrawInput(RenderQueueDrawInput{
         .inputIndex = i,
         .object = objects[i],
         .mesh = mesh,

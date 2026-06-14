@@ -175,7 +175,7 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
 
   std::unordered_set<usize> drawInputIds;
   drawInputIds.reserve(drawInputs.size());
-  for (const RenderDrawInput &drawInput : drawInputs) {
+  for (const RenderQueueDrawInput &drawInput : drawInputs) {
     drawInputIds.insert(drawInput.inputIndex);
   }
 
@@ -248,7 +248,7 @@ validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
   }
   result.coveredItemCount = coveredInputIds.size();
 
-  for (const RenderDrawInput &drawInput : drawInputs) {
+  for (const RenderQueueDrawInput &drawInput : drawInputs) {
     if (coveredInputIds.find(drawInput.inputIndex) != coveredInputIds.end()) {
       continue;
     }

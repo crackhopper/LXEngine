@@ -27,6 +27,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_render_resource_parsers
   test_default_forward_render_path_graph_source
   test_default_deferred_render_path_graph_source
+  test_render_work_compiler
   test_frame_graph_registry
   test_scene_resource_abstraction
   test_scene_resource_upload_view_v2
@@ -245,6 +246,13 @@ endif()
 
 if(TARGET test_render_resource_parsers)
   target_compile_definitions(test_render_resource_parsers
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_render_work_compiler)
+  target_compile_definitions(test_render_work_compiler
     PRIVATE
     LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
   )

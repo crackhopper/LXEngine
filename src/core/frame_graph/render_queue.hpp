@@ -27,7 +27,7 @@ enum class RenderBatchDiagnosticReason {
   LegacyInputRejected,
 };
 
-struct RenderDrawInput final {
+struct RenderQueueDrawInput final {
   usize inputIndex = 0;
   ObjectHandle object;
   MeshHandle mesh;
@@ -128,7 +128,7 @@ struct RenderBatchDiagnostic final {
 };
 
 struct RenderPathNodeData final {
-  std::vector<RenderDrawInput> drawInputs;
+  std::vector<RenderQueueDrawInput> drawInputs;
   std::vector<PreparedRenderDrawCandidate> preparedCandidates;
   std::vector<RenderBatchDiagnostic> preparationDiagnostics;
   bool preparationValid = false;
@@ -151,7 +151,7 @@ struct RenderBatchAnalysis final {
 @source_analysis.section RenderWorkQueue：RenderPathNode 级 draw 输入与 batch analysis
 收口 RenderWorkQueue 是 per-node/per-pass 的，不是全局的。realtime geometry 的
 正向数据由 `RenderPathNodeContext` + `RenderPathNodeData` 表达：上游只写入
-handle/ref 级 `RenderDrawInput`，typed object/draw/material/mesh index 由后续
+handle/ref 级 `RenderQueueDrawInput`，typed object/draw/material/mesh index 由后续
 preparation 通过 `SceneResourceTableUploadView` 解析。
 
 `compileIndirectBatches()` 不再返回旧的 vector batch，而是返回
@@ -168,7 +168,7 @@ public:
   usize replaceNodeContextSceneResourceByIdentity(
       ResourceCacheIdentity oldIdentity,
       const DescriptorResourceRef &replacement);
-  void addDrawInput(RenderDrawInput input);
+  void addDrawInput(RenderQueueDrawInput input);
   void prepareDrawInputs(const SceneResourceTableUploadView &uploadView);
 
   void sort();
@@ -242,7 +242,7 @@ RenderBatchCompiler 的兼容性键。
    `supportsPass(pass)`、`getVisibilityLayerMask() & visibleMask != 0`、
    `getValidatedPassData(pass)` 返回非空。三者同时满足才入队。
 
-对 realtime geometry，入队结果是 `RenderDrawInput`，不是 descriptor-resource 绑定好的
+对 realtime geometry，入队结果是 `RenderQueueDrawInput`，不是 descriptor-resource 绑定好的
 `RenderWorkItem`。scene-level resources 仍由调用边界传入，但真实 table/range 解析推迟到
 `prepareDrawInputs()`。`build` 自身不做增量 — 每次调用都先 `clearItems()`，重建语义优先于
 增量正确性。

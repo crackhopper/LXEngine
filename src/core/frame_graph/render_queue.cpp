@@ -22,7 +22,7 @@ namespace LX_core {
 namespace {
 
 [[nodiscard]] RenderBatchDiagnostic makePreparationDiagnostic(
-    const RenderPathNodeContext &context, const RenderDrawInput &input,
+    const RenderPathNodeContext &context, const RenderQueueDrawInput &input,
     const RenderBatchDiagnosticReason reason,
     const u32 drawRecordIndex = u32_max,
     const u32 materialRefIndex = u32_max, const u32 meshIndex = u32_max) {
@@ -314,7 +314,7 @@ resolveCandidateInstanceCount(const SceneGpuObjectRecord &object) {
 }
 
 [[nodiscard]] std::optional<PreparedRenderDrawCandidate> prepareDrawCandidate(
-    const RenderPathNodeContext &context, const RenderDrawInput &input,
+    const RenderPathNodeContext &context, const RenderQueueDrawInput &input,
     const SceneResourceTableUploadView &view,
     std::vector<RenderBatchDiagnostic> &diagnostics) {
   if (!context.backendIndirectSupported) {
@@ -606,7 +606,7 @@ usize RenderWorkQueue::replaceNodeContextSceneResourceByIdentity(
   return replacementCount;
 }
 
-void RenderWorkQueue::addDrawInput(RenderDrawInput input) {
+void RenderWorkQueue::addDrawInput(RenderQueueDrawInput input) {
   m_nodeData.drawInputs.push_back(std::move(input));
   invalidatePreparedDrawData(m_nodeData);
   m_lastBatchAnalysis = RenderBatchAnalysis{};
@@ -617,7 +617,7 @@ void RenderWorkQueue::prepareDrawInputs(
   m_nodeData.preparedCandidates.clear();
   m_nodeData.preparationDiagnostics.clear();
   if (!m_context.has_value()) {
-    for (const RenderDrawInput &input : m_nodeData.drawInputs) {
+    for (const RenderQueueDrawInput &input : m_nodeData.drawInputs) {
       RenderPathNodeContext emptyContext;
       m_nodeData.preparationDiagnostics.push_back(makePreparationDiagnostic(
           emptyContext, input, RenderBatchDiagnosticReason::LegacyInputRejected));
@@ -628,7 +628,7 @@ void RenderWorkQueue::prepareDrawInputs(
     return;
   }
 
-  for (const RenderDrawInput &input : m_nodeData.drawInputs) {
+  for (const RenderQueueDrawInput &input : m_nodeData.drawInputs) {
     std::vector<RenderBatchDiagnostic> diagnostics;
     std::optional<PreparedRenderDrawCandidate> candidate =
         prepareDrawCandidate(*m_context, input, uploadView, diagnostics);
@@ -727,7 +727,7 @@ RenderBatchAnalysis RenderWorkQueue::compileIndirectBatches() const {
   }
   if (!m_nodeData.preparationValid ||
       m_nodeData.preparedInputCount != m_nodeData.drawInputs.size()) {
-    for (const RenderDrawInput &drawInput : m_nodeData.drawInputs) {
+    for (const RenderQueueDrawInput &drawInput : m_nodeData.drawInputs) {
       analysis.diagnostics.push_back(makePreparationDiagnostic(
           analysis.context, drawInput,
           RenderBatchDiagnosticReason::GlobalGeometryTableMissing));
@@ -878,7 +878,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
     mergePipelineFacts(*m_context,
                        makeRenderBatchPipelineFacts(
                            validatedData, batchVertexLayout, nodeTopology));
-    addDrawInput(RenderDrawInput{
+    addDrawInput(RenderQueueDrawInput{
         .inputIndex = m_nodeData.drawInputs.size(),
         .object = validatedData.objectHandle,
         .mesh = mesh,
