@@ -47,6 +47,15 @@ struct RenderBatchPipelineFacts final {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
 };
 
+struct RenderBatchGeometryResources final {
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
+
+  [[nodiscard]] bool isValid() const {
+    return vertexBuffer.isValid() && indexBuffer.isValid();
+  }
+};
+
 struct RenderPathNodeContext final {
   StringID pass;
   StringID renderPathNodeSignature;
@@ -55,6 +64,7 @@ struct RenderPathNodeContext final {
   std::vector<RenderPathAttachmentContract> attachments;
   RenderTargetDesc target;
   DescriptorResourceList sceneResources;
+  RenderBatchGeometryResources batchGeometryResources;
   std::vector<RenderBatchPipelineFacts> pipelineFacts;
   StringID objectDataSignature = StringID("BindlessObjectData.v1");
   bool backendIndirectSupported = true;

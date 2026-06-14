@@ -68,6 +68,12 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
     }
   }
   if (queue.nodeContext().has_value()) {
+    appendUniqueResource(plan.resources, seenResources,
+                         queue.nodeContext()->batchGeometryResources
+                             .vertexBuffer);
+    appendUniqueResource(plan.resources, seenResources,
+                         queue.nodeContext()->batchGeometryResources
+                             .indexBuffer);
     for (const DescriptorResourceRef &resource :
          queue.nodeContext()->sceneResources) {
       appendUniqueDescriptorResource(plan.resources, seenResources, resource);

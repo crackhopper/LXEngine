@@ -513,6 +513,49 @@ void VulkanCommandBuffer::bindSceneBindlessResources(
       pipeline);
 }
 
+void VulkanCommandBuffer::bindRenderBatchGeometry(
+    VulkanResourceManager &resourceManager,
+    const RenderBatchGeometryResources &geometry) {
+  if (!geometry.vertexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry missing global vertex buffer");
+  }
+  if (!geometry.indexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry missing global index buffer");
+  }
+  if (geometry.vertexBuffer.getType() != ResourceType::VertexBuffer) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry vertex resource is not a vertex buffer");
+  }
+  if (geometry.indexBuffer.getType() != ResourceType::IndexBuffer) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry index resource is not an index buffer");
+  }
+
+  auto vertexBuffer =
+      resourceManager.getBuffer(geometry.vertexBuffer.getBackendCacheIdentity());
+  if (!vertexBuffer.has_value()) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry global vertex buffer was not uploaded");
+  }
+  auto indexBuffer =
+      resourceManager.getBuffer(geometry.indexBuffer.getBackendCacheIdentity());
+  if (!indexBuffer.has_value()) {
+    throw std::runtime_error(
+        "bindRenderBatchGeometry global index buffer was not uploaded");
+  }
+
+  VkBuffer vertexHandle = vertexBuffer->get().getHandle();
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(m_handle, 0, 1, &vertexHandle, offsets);
+  vkCmdBindIndexBuffer(m_handle, indexBuffer->get().getHandle(), 0,
+                       VK_INDEX_TYPE_UINT32);
+
+  m_renderBatchGeometryBound = true;
+  ++m_renderBatchSubmissionStats.boundBatchGeometryCount;
+}
+
 void VulkanCommandBuffer::executeDirectRasterPassItem(
     const RenderWorkItem &item) {
   if (item.kind != RenderWorkKind::DirectRasterPass) {
@@ -543,6 +586,7 @@ void VulkanCommandBuffer::executeDirectRasterPassItem(
       directRaster.firstIndex, directRaster.vertexOffset,
       directRaster.drawRecordIndex == u32_max ? 0u
                                               : directRaster.drawRecordIndex);
+  ++m_renderBatchSubmissionStats.submittedDirectIndexedDrawCount;
 }
 
 void VulkanCommandBuffer::executeComputeDispatchItem(
@@ -573,6 +617,11 @@ void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
 void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {
   if (batch.commands.empty()) {
     return;
+  }
+  if (!m_renderBatchGeometryBound) {
+    throw std::runtime_error(
+        "executeRenderBatch requires bindRenderBatchGeometry before indirect "
+        "draw submission");
   }
   if (batch.commandCount != 0 &&
       batch.commandCount != static_cast<u32>(batch.commands.size())) {
@@ -605,6 +654,8 @@ void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {
       m_renderBatchSubmissionStats.submittedIndirectBatchCount == 0;
   ++m_renderBatchSubmissionStats.compilerBatchCountConsumed;
   ++m_renderBatchSubmissionStats.submittedIndirectBatchCount;
+  m_renderBatchSubmissionStats.submittedIndexedIndirectCommandCount +=
+      batch.commands.size();
   m_renderBatchSubmissionStats.submittedIndirectDrawCount +=
       batch.commands.size();
   if (firstSubmittedBatch ||

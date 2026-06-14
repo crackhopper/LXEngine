@@ -2302,6 +2302,8 @@ private:
             "render batch analysis produced no accepted batches for pass " +
             LX_core::GlobalStringTable::get().toDebugString(passName));
       }
+      cmd.bindRenderBatchGeometry(resourceManager(),
+                                  analysis.context.batchGeometryResources);
       for (const LX_core::RenderBatch &batch : analysis.batches) {
         auto pipeline =
             resourceManager().getOrCreatePipeline(batch, analysis.context);

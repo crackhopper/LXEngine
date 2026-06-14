@@ -3,6 +3,8 @@
 #include "core/asset/render_effect.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/offline/offline_scene_storage_resources.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
 #include "core/scene/scene_resource_table_upload_view.hpp"
@@ -69,36 +71,21 @@ VertexLayout filterVertexLayoutToShaderInputsForBatch(
 }
 
 RenderBatchPipelineFacts
-makeRenderBatchPipelineFacts(const ValidatedRenderablePassData &data) {
+makeRenderBatchPipelineFacts(const ValidatedRenderablePassData &data,
+                             const VertexLayout &nodeVertexLayout,
+                             const PrimitiveTopology nodeTopology) {
   if (!data.shaderInfo) {
     throw std::logic_error("RenderBatch pipeline facts require shaderInfo");
   }
-  if (!data.vertexBuffer.isValid()) {
-    throw std::logic_error("RenderBatch pipeline facts require vertexBuffer");
-  }
-  if (!data.indexBuffer.isValid()) {
-    throw std::logic_error("RenderBatch pipeline facts require indexBuffer");
-  }
-
-  try {
-    const auto &vertexBuffer =
-        dynamic_cast<const IVertexBuffer &>(data.vertexBuffer.get());
-    const auto &indexBuffer =
-        dynamic_cast<const IndexBuffer &>(data.indexBuffer.get());
-    return RenderBatchPipelineFacts{
-        .materialTypeSignature = data.materialTypeSignature,
-        .shaderProgram = data.shaderProgram,
-        .shaderInfo = data.shaderInfo,
-        .renderState = data.renderState,
-        .vertexLayout = filterVertexLayoutToShaderInputsForBatch(
-            vertexBuffer.getLayout(), *data.shaderInfo),
-        .topology = indexBuffer.getTopology(),
-    };
-  } catch (const std::bad_cast &) {
-    throw std::logic_error(
-        "RenderBatch pipeline facts require Vulkan-compatible vertex/index "
-        "resources");
-  }
+  return RenderBatchPipelineFacts{
+      .materialTypeSignature = data.materialTypeSignature,
+      .shaderProgram = data.shaderProgram,
+      .shaderInfo = data.shaderInfo,
+      .renderState = data.renderState,
+      .vertexLayout = filterVertexLayoutToShaderInputsForBatch(
+          nodeVertexLayout, *data.shaderInfo),
+      .topology = nodeTopology,
+  };
 }
 
 bool samePipelineFacts(const RenderBatchPipelineFacts &a,
@@ -128,6 +115,120 @@ void mergePipelineFacts(RenderPathNodeContext &context,
         "pipeline facts; use a distinct material type signature instead of a "
         "backend split key");
   }
+}
+
+[[nodiscard]] const SceneGpuAttributeStreamRecord *findMeshAttributeStream(
+    const SceneResourceTableUploadView &view, const SceneGpuMeshRecord &mesh,
+    const u32 semantic) {
+  for (u32 i = 0; i < mesh.attributeStreamCount; ++i) {
+    const u32 streamIndex = mesh.attributeStreamOffset + i;
+    if (streamIndex >= view.attributeStreams.size()) {
+      break;
+    }
+    const SceneGpuAttributeStreamRecord &stream =
+        view.attributeStreams[streamIndex];
+    if (stream.semantic == semantic) {
+      return &stream;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] Vec4f readMeshAttributeValue(
+    const SceneResourceTableUploadView &view, const SceneGpuMeshRecord &mesh,
+    const u32 semantic, const u32 localVertexIndex, const Vec4f &fallback) {
+  const SceneGpuAttributeStreamRecord *stream =
+      findMeshAttributeStream(view, mesh, semantic);
+  if (stream == nullptr || localVertexIndex >= stream->valueCount) {
+    return fallback;
+  }
+  const u32 valueIndex = stream->valueOffset + localVertexIndex;
+  if (valueIndex >= view.attributeValues.size()) {
+    return fallback;
+  }
+  return view.attributeValues[valueIndex];
+}
+
+[[nodiscard]] u32 resolveMeshVertexEnd(
+    const SceneResourceTableUploadView &view, const usize meshIndex) {
+  if (meshIndex >= view.meshes.size()) {
+    return static_cast<u32>(view.positions.size());
+  }
+  const u32 vertexOffset = view.meshes[meshIndex].vertexOffset;
+  u32 vertexEnd = static_cast<u32>(view.positions.size());
+  for (usize i = 0; i < view.meshes.size(); ++i) {
+    if (i == meshIndex) {
+      continue;
+    }
+    const u32 candidateOffset = view.meshes[i].vertexOffset;
+    if (candidateOffset > vertexOffset && candidateOffset < vertexEnd) {
+      vertexEnd = candidateOffset;
+    }
+  }
+  return vertexEnd;
+}
+
+[[nodiscard]] std::vector<VertexPosNormalUvBone>
+buildBatchGeometryVertices(const SceneResourceTableUploadView &view) {
+  std::vector<VertexPosNormalUvBone> vertices;
+  vertices.reserve(view.positions.size());
+  for (const Vec4f &position : view.positions) {
+    vertices.emplace_back(
+        Vec3f{position.x, position.y, position.z},
+        Vec3f{0.0f, 0.0f, 1.0f}, Vec2f{0.0f, 0.0f},
+        Vec4f{1.0f, 0.0f, 0.0f, 1.0f}, Vec4i{0, 0, 0, 0},
+        Vec4f{1.0f, 0.0f, 0.0f, 0.0f});
+  }
+
+  for (usize meshIndex = 0; meshIndex < view.meshes.size(); ++meshIndex) {
+    const SceneGpuMeshRecord &mesh = view.meshes[meshIndex];
+    if (mesh.vertexOffset >= vertices.size()) {
+      continue;
+    }
+    const u32 vertexEnd =
+        std::min(resolveMeshVertexEnd(view, meshIndex),
+                 static_cast<u32>(vertices.size()));
+    for (u32 vertexIndex = mesh.vertexOffset; vertexIndex < vertexEnd;
+         ++vertexIndex) {
+      const u32 localVertexIndex = vertexIndex - mesh.vertexOffset;
+      const Vec4f normal = readMeshAttributeValue(
+          view, mesh, kSceneGpuAttributeSemanticNormal0, localVertexIndex,
+          Vec4f{0.0f, 0.0f, 1.0f, 0.0f});
+      const Vec4f uv = readMeshAttributeValue(
+          view, mesh, kSceneGpuAttributeSemanticUv0, localVertexIndex,
+          Vec4f{0.0f, 0.0f, 0.0f, 0.0f});
+      const Vec4f tangent = readMeshAttributeValue(
+          view, mesh, kSceneGpuAttributeSemanticTangent0, localVertexIndex,
+          Vec4f{1.0f, 0.0f, 0.0f, 1.0f});
+
+      VertexPosNormalUvBone &vertex = vertices[vertexIndex];
+      vertex.normal = Vec3f{normal.x, normal.y, normal.z};
+      vertex.uv = Vec2f{uv.x, uv.y};
+      vertex.tangent = tangent;
+    }
+  }
+
+  return vertices;
+}
+
+[[nodiscard]] RenderBatchGeometryResources makeRenderBatchGeometryResources(
+    const SceneResourceTable &resources,
+    const SceneResourceTableUploadView &uploadView,
+    const PrimitiveTopology topology) {
+  if (uploadView.positions.empty() || uploadView.indices.empty()) {
+    return {};
+  }
+
+  std::vector<VertexPosNormalUvBone> vertices =
+      buildBatchGeometryVertices(uploadView);
+  std::vector<u32> indices(uploadView.indices.begin(), uploadView.indices.end());
+
+  RenderBatchGeometryResources geometry;
+  geometry.vertexBuffer = resources.addRenderGpuResource(
+      VertexBuffer<VertexPosNormalUvBone>::createUnique(std::move(vertices)));
+  geometry.indexBuffer = resources.addRenderGpuResource(
+      IndexBuffer::createUnique(std::move(indices), topology));
+  return geometry;
 }
 
 template <typename Entry, typename Handle>
@@ -680,6 +781,11 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
                                     VisibilityLayerMask visibleMask,
                                     std::optional<Vec3f> cameraEye) {
   clearItems();
+  const PrimitiveTopology nodeTopology =
+      geometryContract.has_value() ? geometryContract->topology
+                                   : PrimitiveTopology::TriangleList;
+  const VertexLayout &batchVertexLayout =
+      VertexPosNormalUvBone::getLayout();
   setNodeContext(RenderPathNodeContext{
       .pass = pass,
       .renderPathNodeSignature = renderPathNodeSignature,
@@ -691,6 +797,9 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       .objectDataSignature = StringID("BindlessObjectData.v1"),
       .backendIndirectSupported = true,
   });
+
+  const SceneResourceTableUploadView uploadView =
+      scene.resources().buildUploadView();
 
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
@@ -714,7 +823,9 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       }
     }
     validateNodeGeometryContract(scene, mesh, geometryContract);
-    mergePipelineFacts(*m_context, makeRenderBatchPipelineFacts(validatedData));
+    mergePipelineFacts(*m_context,
+                       makeRenderBatchPipelineFacts(
+                           validatedData, batchVertexLayout, nodeTopology));
     addDrawInput(RenderDrawInput{
         .inputIndex = m_nodeData.drawInputs.size(),
         .object = validatedData.objectHandle,
@@ -728,7 +839,11 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
 
   (void)sceneResources;
   (void)cameraEye;
-  prepareDrawInputs(scene.resources().buildUploadView());
+  prepareDrawInputs(uploadView);
+  if (m_context.has_value()) {
+    m_context->batchGeometryResources = makeRenderBatchGeometryResources(
+        scene.resources(), uploadView, nodeTopology);
+  }
 }
 
 } // namespace LX_core

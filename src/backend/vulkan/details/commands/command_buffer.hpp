@@ -10,6 +10,7 @@
 
 namespace LX_core {
 struct RenderBatch;
+struct RenderBatchGeometryResources;
 struct RenderPathNodeContext;
 } // namespace LX_core
 
@@ -23,6 +24,9 @@ class VulkanBuffer;
 
 struct VulkanRenderBatchSubmissionStats final {
   usize compilerBatchCountConsumed = 0;
+  usize boundBatchGeometryCount = 0;
+  usize submittedDirectIndexedDrawCount = 0;
+  usize submittedIndexedIndirectCommandCount = 0;
   usize submittedIndirectBatchCount = 0;
   usize submittedIndirectDrawCount = 0;
   u32 firstCommandOffset = 0;
@@ -74,6 +78,8 @@ public:
   void bindSceneBindlessResources(VulkanResourceManager &resourceManager,
                                   VulkanPipelineRef pipeline,
                                   const RenderPathNodeContext &context);
+  void bindRenderBatchGeometry(VulkanResourceManager &resourceManager,
+                               const RenderBatchGeometryResources &geometry);
 
   void executeWorkItem(const RenderWorkItem &item);
   void executeRenderBatch(const RenderBatch &batch);
@@ -137,6 +143,7 @@ private:
       nullptr;
   std::vector<std::unique_ptr<VulkanBuffer>> m_ownedIndirectBuffers;
   VulkanRenderBatchSubmissionStats m_renderBatchSubmissionStats;
+  bool m_renderBatchGeometryBound = false;
 };
 
 using VulkanCommandBufferUniquePtr = std::unique_ptr<VulkanCommandBuffer>;

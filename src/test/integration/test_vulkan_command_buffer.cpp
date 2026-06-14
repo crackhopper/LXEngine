@@ -19,6 +19,7 @@
 #include <vulkan/vulkan.h>
 
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 int main() {
@@ -99,23 +100,12 @@ int main() {
       return 1;
     }
 
-    cmdBufferMgr->beginFrame(0);
-    auto cmd = cmdBufferMgr->allocateBuffer();
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
-    vkBeginCommandBuffer(cmd->getHandle(), &beginInfo);
-
-    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
-                         extent, renderPass.getClearValues());
-    cmd->setViewport(extent.width, extent.height);
-    cmd->setScissor(extent.width, extent.height);
-    cmd->bindPipeline(pipeline);
-
-    cmd->bindResources(*resourceManager, pipeline, renderItem);
-    cmd->executeWorkItem(renderItem);
+    LX_core::RenderBatchGeometryResources batchGeometry;
+    batchGeometry.vertexBuffer = LX_core::GpuResourceRef{*vertexBufferPtr};
+    batchGeometry.indexBuffer = LX_core::GpuResourceRef{*indexBufferPtr};
+    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.vertexBuffer);
+    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.indexBuffer);
+    resourceManager->collectGarbage();
 
     LX_core::RenderBatch batch;
     batch.commandOffset = 7;
@@ -137,16 +127,67 @@ int main() {
     };
     batch.commandCount = static_cast<u32>(batch.commands.size());
 
+    cmdBufferMgr->beginFrame(0);
+    auto unboundBatchCmd = cmdBufferMgr->allocateBuffer();
+
+    VkCommandBufferBeginInfo unboundBeginInfo{};
+    unboundBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(unboundBatchCmd->getHandle(), &unboundBeginInfo);
+    unboundBatchCmd->beginRenderPass(renderPass.getHandle(),
+                                     framebuffer->getHandle(), extent,
+                                     renderPass.getClearValues());
+    unboundBatchCmd->setViewport(extent.width, extent.height);
+    unboundBatchCmd->setScissor(extent.width, extent.height);
+    unboundBatchCmd->bindPipeline(pipeline);
+
+    bool rejectedMissingBatchGeometry = false;
+    try {
+      unboundBatchCmd->executeRenderBatch(batch);
+    } catch (const std::runtime_error &) {
+      rejectedMissingBatchGeometry = true;
+    }
+    unboundBatchCmd->endRenderPass();
+    vkEndCommandBuffer(unboundBatchCmd->getHandle());
+
+    if (!rejectedMissingBatchGeometry) {
+      std::cerr << "executeRenderBatch accepted an indirect draw without "
+                   "explicit batch geometry binding\n";
+      return 1;
+    }
+
+    auto cmd = cmdBufferMgr->allocateBuffer();
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+    vkBeginCommandBuffer(cmd->getHandle(), &beginInfo);
+
+    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
+                         extent, renderPass.getClearValues());
+    cmd->setViewport(extent.width, extent.height);
+    cmd->setScissor(extent.width, extent.height);
+    cmd->bindPipeline(pipeline);
+
+    cmd->bindRenderBatchGeometry(*resourceManager, batchGeometry);
     cmd->executeRenderBatch(batch);
     const auto batchStats = cmd->getRenderBatchSubmissionStats();
     if (batchStats.compilerBatchCountConsumed != 1 ||
+        batchStats.boundBatchGeometryCount != 1 ||
+        batchStats.submittedDirectIndexedDrawCount != 0 ||
+        batchStats.submittedIndexedIndirectCommandCount != 2 ||
         batchStats.submittedIndirectBatchCount != 1 ||
         batchStats.submittedIndirectDrawCount != 2 ||
         batchStats.firstCommandOffset != 7 ||
         batchStats.lastCommandOffset != 8 ||
         batchStats.fallbackObservedCount != 0) {
       std::cerr << "RenderBatch submission stats mismatch: consumed="
-                << batchStats.compilerBatchCountConsumed << " batches="
+                << batchStats.compilerBatchCountConsumed
+                << " geometryBinds=" << batchStats.boundBatchGeometryCount
+                << " directDraws=" << batchStats.submittedDirectIndexedDrawCount
+                << " indexedIndirectCommands="
+                << batchStats.submittedIndexedIndirectCommandCount
+                << " batches="
                 << batchStats.submittedIndirectBatchCount
                 << " draws=" << batchStats.submittedIndirectDrawCount
                 << " first=" << batchStats.firstCommandOffset
