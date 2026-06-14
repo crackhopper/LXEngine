@@ -1,6 +1,8 @@
 # REQ-073-d: RenderPath Shader URI Migration And Terminology Hard Cut
 
-> 2026-06-13 拆分：本 REQ 从原 `REQ-073-c` 拆出，只负责把默认 shader URI 和术语从旧 `techniques/...` 硬切到 `render_paths/...`。`REQ-073-c` 先建立 material source shader variant / final reflection / pipeline identity，本 REQ 在这个基础上迁移默认 asset、resolver、测试和 rejection diagnostics。
+> 2026-06-13 拆分：本 REQ 从原 `REQ-073-c` 拆出，负责把默认 shader URI 和术语从旧 `techniques/...` 硬切到 `render_paths/...`。`REQ-073-c` 先建立 material source shader variant / final reflection / pipeline identity，本 REQ 在这个基础上迁移默认 asset、resolver、测试和 rejection diagnostics。
+>
+> 2026-06-14 范围修正：本 REQ 同时承接已经由 `REQ-073-a/b/c` 建好的 realtime material source 正向路径硬切。旧 runtime material pass 注入、旧 resolver alias、旧 Forward/Deferred shader tree 和旧正向测试不再保留；更宽的 draw/descriptor fallback 清理仍由 `REQ-073-f` 处理。
 
 ## 背景
 
@@ -16,8 +18,9 @@
 1. 默认 RenderPathGraph / shader asset 使用 `render_paths/...` URI。
 2. shader resolver 支持 `render_paths/...` 到 `assets/shaders/glsl/render_paths/...` 的解析。
 3. 默认 realtime shader 源迁移到 `assets/shaders/glsl/render_paths/Forward/` 和 `assets/shaders/glsl/render_paths/Deferred/`。
-4. 旧 `techniques/...` 只能出现在 legacy negative test、历史文档或显式 rejection diagnostic 中。
+4. 旧 `techniques/...` 不再作为 realtime 正向代码、asset、shader source tree 或普通测试 fixture 出现；rejection/audit 测试只能构造旧 token 并断言失败。
 5. 文档、asset、parser diagnostic 和测试名使用 RenderPath / pass shader 术语，不再把 pass shader 称为 material-local technique。
+6. 默认场景资源加载完成后，显式进入 pipeline preparation 阶段；当前实现预构建 pipeline，后续 cache load 也必须放在这个阶段并验证 identity。
 
 ## 承接自 073-a / 073-b / 073-c 的未完成项
 
@@ -31,7 +34,7 @@
 
 - 不实现 material source shader variant；由 `REQ-073-c` 处理。
 - 不要求 raster work item 全部进入 indirect batch；由 `REQ-073-e` 处理。
-- 不删除 realtime 旧 draw/descriptor fallback；由 `REQ-073-f` 处理。
+- 不删除更宽的 realtime 旧 draw/descriptor fallback；由 `REQ-073-f` 处理。但 `REQ-073-a/b/c` 正向路径相关的旧 runtime pass 注入、旧 shader URI fallback 和旧正向测试由本 REQ 删除。
 - 不处理 OfflineRT 默认配置入口硬切；由 `REQ-073-g` / `REQ-073-h` 处理。
 - 不实现 package、BC7 或 pipeline cache blob。
 
@@ -102,6 +105,26 @@ migrated validation profile SHALL 输出可审计 diagnostics：
 
 无法解析或遇到 legacy URI 时必须停止渲染准备，不能隐藏为 fallback shader。
 
+### R6: Runtime Hard Cut For Completed Material Source Path
+
+默认 realtime runtime SHALL NOT 在场景加载后补造旧 Forward PBR material pass。
+
+要求：
+
+- 删除 old Forward PBR material-pass injection helper。
+- material-source draw 必须来自 RenderPathGraph + material source variant resolution。
+- strict material-source validation 要求 final shader reflection、`MaterialTypeVariant`、`RenderPathNodeSignature`、`PipelineKey` 和 shader 真实声明的 typed scene indices。
+- `SceneMaterialRefs` 只在 shader 反射声明该 binding 时要求 typed source ref index，不能把“没有 SceneMaterials”当成旧 fallback 推断。
+
+### R7: Explicit Pipeline Preparation
+
+加载场景资源、解析 RenderPathGraph、完成 material source variants、构建 FrameGraph、同步 upload plan 后，renderer SHALL 明确调用一次 pipeline preparation。
+
+要求：
+
+- 当前阶段收集 `FrameGraph::collectAllPipelineBuildDescs()` 并调用 `resourceManager().preloadPipelines(...)`。
+- 后续 package/cache load 进入同一 preparation 阶段；cache hit 仍需验证 material type variant、RenderPathNode signature、shader/reflection identity、render state、rendering mode 和 attachment contract。
+
 ## 测试
 
 ### T1: Default Asset URI Migration
@@ -123,6 +146,22 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 ### T5: Shader Build Tree
 
 运行 shader build target，断言 default realtime shader 从 `render_paths/...` 编译；旧 `techniques/...` 不再是 default build 成功条件。
+
+### T6: Runtime And Pipeline Preparation Audit
+
+审计 renderer runtime：
+
+- 不再包含旧 Forward material pass 注入 helper。
+- `initScene` 在 FrameGraph compile、sampled resource attachment、upload plan sync、garbage collection 后调用 pipeline preparation。
+- pipeline preparation 收集 FrameGraph pipeline build desc 并 preload pipelines。
+
+### T7: Strict Material Source Validation
+
+构造 migrated raster draw：
+
+- 缺失 final material source identity 时 strict validation 失败。
+- shader 声明 `SceneMaterialRefs` 但缺失 typed source ref index 时失败。
+- shader 未声明 `SceneMaterialRefs` 时不再靠 absence of `SceneMaterials` 推断旧 fallback。
 
 ## 修改范围
 
@@ -153,4 +192,35 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 
 ## 实施状态
 
-未实施。
+已实施（2026-06-14）。
+
+主要实现：
+
+- 新增共享 RenderPath shader URI resolver，`render_paths/...` 为 realtime 正向 namespace，`techniques/...` 失败并输出迁移 diagnostic。
+- Forward / Deferred realtime shader source tree 迁移到 `assets/shaders/glsl/render_paths/...`，旧 `assets/shaders/glsl/techniques/Forward` 和 `Deferred` 删除；`OfflineRT` 保持给 `REQ-073-g/h`。
+- 默认 RenderPathGraph asset、shader build、parser/source-variant tests 迁移到 `render_paths/...`。
+- 删除旧 runtime Forward PBR material pass 注入。
+- renderer 增加 `preparePipelinesForLoadedScene()`，在加载场景资源和 FrameGraph/upload 同步完成后显式进行 pipeline preparation。
+- strict material-source validation 增加 final shader / material type variant / RenderPath node signature / pipeline key 检查，并删除旧 `SceneMaterialRefs` fallback 推断。
+- 删除旧 material-local technique 负例和 071g 中对 `defaultTechnique` 的白名单；073-d 审计测试不再在 `src`/`assets` 保留旧实时路径/旧字段字面量。
+
+实现提交：
+
+- `a4542fc7` Add 073-d render path hard cut tests
+- `ef001e41` Add RenderPath shader URI resolver
+- `e22dd451` Migrate realtime shaders to render_paths
+- `1fbcd1c7` Migrate RenderPath graph tests to render_paths
+- `bf261079` Remove legacy realtime material pass injection
+- `82153218` Name post-load pipeline preparation phase
+- `be25bc21` Harden material source preparation validation
+- `29e3cde0` Delete legacy render path audit fixtures
+
+验证记录：
+
+- `ninja -C build test_073d_render_path_hard_cut test_bindless_validation_contract test_material_v2_resource_dependencies test_default_material_asset_audit test_render_resource_parsers test_render_path_graph_pass_contract test_material_source_variant_pipeline test_shader_compiler test_vulkan_shader test_pipeline_build_info test_pipeline_cache test_gltf_scene_asset_loader` 通过。
+- focused tests 通过：`test_073d_render_path_hard_cut`、`test_bindless_validation_contract`、`test_material_v2_resource_dependencies`、`test_default_material_asset_audit`、`test_render_resource_parsers`、`test_render_path_graph_pass_contract`、`test_material_source_variant_pipeline`、`test_shader_compiler`、`test_pipeline_build_info`、`test_gltf_scene_asset_loader`。
+- `xvfb-run -a ./build/src/test/test_pipeline_cache` 通过。
+- `xvfb-run -a ./build/src/test/test_vulkan_shader` 通过。
+- `rg -n "defaultTechnique|techniques/Forward|techniques/Deferred|techniques:" src assets` 无输出。
+- `find assets/shaders/glsl/techniques -maxdepth 1 -type d -print` 只剩 `assets/shaders/glsl/techniques` 和 `assets/shaders/glsl/techniques/OfflineRT`。
+- `ctest --output-on-failure -L auto -LE requires_video_device` 重新构建后 69 项中 67 项通过；剩余失败为 `test_071g_legacy_boundary_removal`（071-g 全局旧材质 token：`MaterialUBO`、glTF factor 字段）和 `test_offline_gpu_scene`（OfflineRT shader/material-source 后续范围）。
