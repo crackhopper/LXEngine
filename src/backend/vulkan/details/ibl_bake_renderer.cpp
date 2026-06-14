@@ -2,7 +2,6 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_template.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
 #include "core/math/mat.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -402,11 +401,22 @@ BakeWorkItem makeFullscreenBakeItem(const std::string &shaderName,
 void syncBakeItemResources(VulkanResourceManager &resourceManager,
                            VulkanCommandBufferManager &cmdBufferManager,
                            const RenderWorkItem &item) {
-  RenderWorkQueue queue;
-  queue.addItem(item);
-  const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
-  for (const auto &resource : uploadPlan.resources) {
-    resourceManager.syncResource(cmdBufferManager, resource);
+  resourceManager.syncResource(cmdBufferManager,
+                               item.directRaster.vertexBuffer);
+  resourceManager.syncResource(cmdBufferManager, item.directRaster.indexBuffer);
+  for (const DescriptorResourceRef &resource : item.descriptorResources) {
+    if (resource.isTextureArray()) {
+      for (const TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid()) {
+          resourceManager.syncResource(cmdBufferManager,
+                                       GpuResourceRef{texture.get()});
+        }
+      }
+      continue;
+    }
+    if (resource.resource().isValid()) {
+      resourceManager.syncResource(cmdBufferManager, resource.resource());
+    }
   }
 }
 

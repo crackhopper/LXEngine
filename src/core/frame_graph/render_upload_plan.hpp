@@ -1,8 +1,9 @@
 #pragma once
 
-#include "core/frame_graph/render_queue.hpp"
-#include "core/rhi/descriptor_resource_ref.hpp"
+#include "core/frame_graph/render_input.hpp"
+#include "core/scene/scene.hpp"
 
+#include <memory>
 #include <vector>
 
 namespace LX_core {
@@ -13,6 +14,7 @@ struct RenderUploadPlan final {
 };
 
 [[nodiscard]] RenderUploadPlan
-buildRenderUploadPlan(const RenderWorkQueue &queue);
+buildRenderUploadPlan(const std::vector<std::unique_ptr<RenderInput>> &inputs,
+                      const std::vector<RenderInputDesc> &descs);
 
 } // namespace LX_core

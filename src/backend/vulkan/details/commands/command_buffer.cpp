@@ -476,12 +476,74 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
 }
 
+void VulkanCommandBuffer::bindResourcesWithLayout(
+    VulkanResourceManager &resourceManager,
+    const std::vector<ShaderResourceBinding> &bindings,
+    const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
+    const RenderInput &input, const RenderInputDesc &desc) {
+  bindDescriptorResourcesWithLayout(resourceManager, bindings, pipelineLayout,
+                                    bindPoint, desc.bindingPlan.descriptors,
+                                    desc.pass, desc.pipelineKey,
+                                    "bindResources(RenderInputDesc)");
+
+  if (bindPoint != VK_PIPELINE_BIND_POINT_GRAPHICS) {
+    return;
+  }
+
+  bindRenderInputGeometry(resourceManager, input);
+}
+
+void VulkanCommandBuffer::bindRenderInputGeometry(
+    VulkanResourceManager &resourceManager, const RenderInput &input) {
+  const auto *draw = dynamic_cast<const RenderDrawInput *>(&input);
+  if (draw == nullptr ||
+      draw->source == RenderDrawInputSource::FullscreenTriangle) {
+    return;
+  }
+
+  if (!draw->vertexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) scene draw missing vertex buffer");
+  }
+  auto vbOpt =
+      resourceManager.getBuffer(draw->vertexBuffer.getBackendCacheIdentity());
+  if (!vbOpt) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) vertex buffer was not uploaded");
+  }
+  VkBuffer vbHandle = vbOpt->get().getHandle();
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(m_handle, 0, 1, &vbHandle, offsets);
+
+  if (!draw->indexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) scene draw missing index buffer");
+  }
+  auto ibOpt =
+      resourceManager.getBuffer(draw->indexBuffer.getBackendCacheIdentity());
+  if (!ibOpt) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) index buffer was not uploaded");
+  }
+  vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
+                       VK_INDEX_TYPE_UINT32);
+}
+
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanGraphicsPipeline &pipeline,
                                         const RenderWorkItem &item) {
   bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
                           pipeline.getLayout(), VK_PIPELINE_BIND_POINT_GRAPHICS,
                           item);
+}
+
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanGraphicsPipeline &pipeline,
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
+  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
+                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          input, desc);
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
@@ -493,10 +555,29 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanComputePipeline &pipeline,
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
+  bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
+                          pipeline.getLayout(), VK_PIPELINE_BIND_POINT_COMPUTE,
+                          input, desc);
+}
+
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanPipelineRef pipeline,
                                         const RenderWorkItem &item) {
   std::visit([this, &resourceManager, &item](
                  auto ref) { bindResources(resourceManager, ref.get(), item); },
+             pipeline);
+}
+
+void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
+                                        VulkanPipelineRef pipeline,
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
+  std::visit([this, &resourceManager, &input, &desc](auto ref) {
+    bindResources(resourceManager, ref.get(), input, desc);
+  },
              pipeline);
 }
 
@@ -619,6 +700,39 @@ void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
     throw std::runtime_error("Unspecified RenderWorkKind cannot be executed");
   }
   throw std::runtime_error("unknown RenderWorkKind");
+}
+
+void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
+                                             const RenderInputDesc &desc) {
+  if (!desc.accepted()) {
+    return;
+  }
+
+  if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
+    if (draw->source == RenderDrawInputSource::FullscreenTriangle) {
+      vkCmdDraw(m_handle, 3, 1, 0, 0);
+      return;
+    }
+
+    for (const RenderDrawCommand &command : draw->drawCommands) {
+      if (command.indexCount == 0 || command.instanceCount == 0) {
+        continue;
+      }
+      vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
+                       command.firstIndex, command.vertexOffset,
+                       command.firstInstance);
+      ++m_renderBatchSubmissionStats.submittedDirectIndexedDrawCount;
+    }
+    return;
+  }
+
+  if (const auto *compute = dynamic_cast<const RenderComputeInput *>(&input)) {
+    vkCmdDispatch(m_handle, compute->groupCountX, compute->groupCountY,
+                  compute->groupCountZ);
+    return;
+  }
+
+  throw std::runtime_error("executeRenderInput received unknown input type");
 }
 
 void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {

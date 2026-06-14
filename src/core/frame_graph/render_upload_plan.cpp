@@ -2,6 +2,7 @@
 
 #include "core/asset/texture.hpp"
 
+#include <memory>
 #include <unordered_set>
 
 namespace LX_core {
@@ -48,35 +49,37 @@ void appendUniqueDescriptorResource(
   resources.push_back(resource.resource());
 }
 
+void appendTypedInputResources(std::vector<GpuResourceRef> &resources,
+                               std::unordered_set<ResourceCacheIdentity> &seen,
+                               const RenderInput &input) {
+  if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
+    appendUniqueResource(resources, seen, draw->vertexBuffer);
+    appendUniqueResource(resources, seen, draw->indexBuffer);
+  }
+}
+
 } // namespace
 
-RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
+RenderUploadPlan
+buildRenderUploadPlan(const std::vector<std::unique_ptr<RenderInput>> &inputs,
+                      const std::vector<RenderInputDesc> &descs) {
   RenderUploadPlan plan;
   std::unordered_set<ResourceCacheIdentity> seenResources;
 
-  for (const RenderWorkItem &item : queue.getItems()) {
-    plan.domain = item.domain;
-    if (item.kind == RenderWorkKind::DirectRasterPass) {
-      appendUniqueResource(plan.resources, seenResources,
-                           item.directRaster.vertexBuffer);
-      appendUniqueResource(plan.resources, seenResources,
-                           item.directRaster.indexBuffer);
+  for (const RenderInputDesc &desc : descs) {
+    if (!desc.accepted()) {
+      continue;
     }
-
-    for (const DescriptorResourceRef &resource : item.descriptorResources) {
-      appendUniqueDescriptorResource(plan.resources, seenResources, resource);
-    }
-  }
-  if (queue.nodeContext().has_value()) {
-    appendUniqueResource(plan.resources, seenResources,
-                         queue.nodeContext()->batchGeometryResources
-                             .vertexBuffer);
-    appendUniqueResource(plan.resources, seenResources,
-                         queue.nodeContext()->batchGeometryResources
-                             .indexBuffer);
     for (const DescriptorResourceRef &resource :
-         queue.nodeContext()->sceneResources) {
+         desc.bindingPlan.descriptors) {
       appendUniqueDescriptorResource(plan.resources, seenResources, resource);
+    }
+    for (const GpuResourceRef &resource : desc.resourceDependencies) {
+      appendUniqueResource(plan.resources, seenResources, resource);
+    }
+    if (desc.inputIndex < inputs.size() && inputs[desc.inputIndex]) {
+      appendTypedInputResources(plan.resources, seenResources,
+                                *inputs[desc.inputIndex]);
     }
   }
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "core/asset/render_effect.hpp"
+#include "core/asset/shader.hpp"
+#include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/scene.hpp"
 
 #include <functional>
@@ -15,10 +18,20 @@ struct OfflineRenderJob;
 
 class RenderWorkBuildContext final {
 public:
+  struct PassPreparationFacts final {
+    StringID pass;
+    StringID pipelineVariantKey;
+    ShaderProgramSet shaderProgram;
+    IShaderSharedPtr shaderInfo;
+    RenderState renderState;
+    DescriptorResourceList descriptorResources;
+  };
+
   struct RealtimeOptions final {
     std::optional<RenderTarget> sceneResourceTarget;
     std::optional<CameraResource> cameraResource;
     std::optional<VisibilityLayerMask> visibleMask;
+    std::vector<PassPreparationFacts> passPreparationFacts;
   };
 
   [[nodiscard]] static RenderWorkBuildContext realtimeEmpty();
@@ -32,6 +45,8 @@ public:
   [[nodiscard]] bool hasRealtimeScene() const;
   [[nodiscard]] const Scene &realtimeScene() const;
   [[nodiscard]] const RealtimeOptions &realtimeOptions() const;
+  [[nodiscard]] std::optional<std::reference_wrapper<const PassPreparationFacts>>
+  findPassPreparationFacts(StringID pass) const;
   [[nodiscard]] offline::OfflineRenderJob &offlineJob() const;
 
 private:

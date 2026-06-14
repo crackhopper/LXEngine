@@ -5,7 +5,7 @@
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/frame_graph/frame_graph.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
+#include "core/frame_graph/render_queue.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -37,6 +37,25 @@ findPipelineBuildDesc(const std::vector<PipelineBuildDesc> &descs,
     throw std::runtime_error("offline render graph missing pipeline build desc");
   }
   return *it;
+}
+
+void syncDescriptorResources(VulkanResourceManager &resourceManager,
+                             VulkanCommandBufferManager &commandManager,
+                             const DescriptorResourceList &resources) {
+  for (const DescriptorResourceRef &resource : resources) {
+    if (resource.isTextureArray()) {
+      for (const TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid()) {
+          resourceManager.syncResource(commandManager,
+                                       GpuResourceRef{texture.get()});
+        }
+      }
+      continue;
+    }
+    if (resource.resource().isValid()) {
+      resourceManager.syncResource(commandManager, resource.resource());
+    }
+  }
 }
 
 } // namespace
@@ -76,9 +95,9 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
     if (pass.name != compiledPasses[passIndex].name) {
       throw std::runtime_error("offline render graph pass order mismatch");
     }
-    const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
-    for (const auto &resource : uploadPlan.resources) {
-      m_resourceManager.syncResource(m_commandManager, resource);
+    for (const RenderWorkItem &item : queue.getItems()) {
+      syncDescriptorResources(m_resourceManager, m_commandManager,
+                              item.descriptorResources);
     }
 
     if (queue.getItems().empty()) {

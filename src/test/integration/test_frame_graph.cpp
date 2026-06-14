@@ -2045,15 +2045,20 @@ void testCompatibleRenderablesDoNotRequireIblResources() {
 }
 
 void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
-  RenderWorkItem item;
-  item.domain = RenderDomain::Realtime;
-  item.kind = RenderWorkKind::DirectRasterPass;
-  item.directRaster.purpose = DirectRasterPassPurpose::TestOnlyNonMaterial;
   auto vertexBuffer = VertexBuffer<VertexPos>::createUnique(
       std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
   auto indexBuffer = IndexBuffer::createUnique({0u, 1u, 2u});
-  item.directRaster.vertexBuffer = GpuResourceRef{*vertexBuffer};
-  item.directRaster.indexBuffer = GpuResourceRef{*indexBuffer};
+  auto input = std::make_unique<RenderDrawInput>();
+  input->source = RenderDrawInputSource::SceneRenderable;
+  input->pass = Pass_Forward;
+  input->debugId = StringID("upload_plan_raster_input");
+  input->inputIndex = 0;
+  input->vertexBuffer = GpuResourceRef{*vertexBuffer};
+  input->indexBuffer = GpuResourceRef{*indexBuffer};
+  input->drawCommands.push_back(RenderDrawCommand{
+      .indexCount = static_cast<u32>(indexBuffer->indexCount()),
+      .instanceCount = 1,
+  });
 
   static const ShaderResourceBinding materialBinding{
       .name = "UploadPlanParams",
@@ -2066,13 +2071,21 @@ void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
   auto uploadPlanParams =
       std::make_shared<ParameterBuffer>(StringID("UploadPlanParams"),
                                         materialBinding);
-  item.descriptorResources.emplace_back(*uploadPlanParams);
-  item.descriptorResources.emplace_back(*uploadPlanParams);
 
-  RenderWorkQueue queue;
-  queue.addItem(std::move(item));
+  RenderInputDesc desc;
+  desc.status = RenderInputStatus::Accepted;
+  desc.inputIndex = 0;
+  desc.pass = input->pass;
+  desc.debugId = input->debugId;
+  desc.bindingPlan.descriptors.emplace_back(*uploadPlanParams);
+  desc.bindingPlan.descriptors.emplace_back(*uploadPlanParams);
+  desc.resourceDependencies.push_back(GpuResourceRef{*uploadPlanParams});
 
-  const RenderUploadPlan plan = buildRenderUploadPlan(queue);
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  inputs.push_back(std::move(input));
+  std::vector<RenderInputDesc> descs{desc};
+
+  const RenderUploadPlan plan = buildRenderUploadPlan(inputs, descs);
   EXPECT(plan.resources.size() == 3, "upload plan should include unique "
                                      "vertex, index, and descriptor resources");
 }

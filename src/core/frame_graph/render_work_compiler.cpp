@@ -119,6 +119,11 @@ void appendDescriptorResourceDependencies(std::vector<GpuResourceRef> &out,
   }
 }
 
+void appendDescriptorResources(DescriptorResourceList &out,
+                               const DescriptorResourceList &resources) {
+  out.insert(out.end(), resources.begin(), resources.end());
+}
+
 [[nodiscard]] std::optional<VertexLayout>
 vertexLayoutFromResource(const GpuResourceRef &resource) {
   if (!resource.isValid()) {
@@ -217,6 +222,33 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
   return scene.getSceneLevelResources(pass.name, sceneResourceTarget);
 }
 
+void applyPassPreparationFacts(
+    DrawPreparationFacts &facts,
+    const RenderWorkBuildContext::PassPreparationFacts &passFacts) {
+  if (passFacts.pipelineVariantKey.id != 0) {
+    facts.pipelineVariantKey = passFacts.pipelineVariantKey;
+  }
+  facts.shaderProgram = passFacts.shaderProgram;
+  facts.shaderInfo = passFacts.shaderInfo ? passFacts.shaderInfo
+                                          : passFacts.shaderProgram.shader;
+  facts.renderState = passFacts.renderState;
+  appendDescriptorResources(facts.descriptorResources,
+                            passFacts.descriptorResources);
+}
+
+void applyPassPreparationFacts(
+    ComputePreparationFacts &facts,
+    const RenderWorkBuildContext::PassPreparationFacts &passFacts) {
+  if (passFacts.pipelineVariantKey.id != 0) {
+    facts.pipelineVariantKey = passFacts.pipelineVariantKey;
+  }
+  facts.shaderProgram = passFacts.shaderProgram;
+  facts.shaderInfo = passFacts.shaderInfo ? passFacts.shaderInfo
+                                          : passFacts.shaderProgram.shader;
+  appendDescriptorResources(facts.descriptorResources,
+                            passFacts.descriptorResources);
+}
+
 [[nodiscard]] DrawPreparationFacts collectDrawPreparationFacts(
     const FramePass &pass, const RenderWorkBuildContext &context,
     const RenderDrawInput &draw, RenderInputDesc &desc) {
@@ -230,6 +262,14 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
   }
   if (const auto topology = topologyFromResource(draw.indexBuffer)) {
     facts.topology = *topology;
+  }
+
+  const auto passFacts = context.findPassPreparationFacts(pass.name);
+  if (draw.source == RenderDrawInputSource::FullscreenTriangle) {
+    if (passFacts.has_value()) {
+      applyPassPreparationFacts(facts, passFacts->get());
+    }
+    return facts;
   }
 
   if (draw.source != RenderDrawInputSource::SceneRenderable ||
@@ -282,7 +322,7 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
     facts.topology = pass.input.geometry->topology;
   }
 
-  facts.descriptorResources = buildSceneDescriptorResources(
+  DescriptorResourceList sceneDescriptorResources = buildSceneDescriptorResources(
       SceneDescriptorResourceContext{
           .scene = context.realtimeScene(),
           .renderable = data,
@@ -290,15 +330,25 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
           .target = RenderTarget(pass.target),
           .sceneResources = collectSceneLevelResourcesForPass(context, pass),
       });
+  if (passFacts.has_value()) {
+    appendDescriptorResources(facts.descriptorResources,
+                              passFacts->get().descriptorResources);
+  }
+  appendDescriptorResources(facts.descriptorResources,
+                            sceneDescriptorResources);
 
   return facts;
 }
 
 [[nodiscard]] ComputePreparationFacts
 collectComputePreparationFacts(const FramePass &pass,
+                               const RenderWorkBuildContext &context,
                                const RenderComputeInput &compute) {
   ComputePreparationFacts facts;
   facts.pipelineVariantKey = fallbackPipelineVariant(pass, compute);
+  if (const auto passFacts = context.findPassPreparationFacts(pass.name)) {
+    applyPassPreparationFacts(facts, passFacts->get());
+  }
   return facts;
 }
 
@@ -326,11 +376,13 @@ void fillPreparedFacts(const FramePass &pass,
   }
 }
 
-void fillPreparedFacts(const FramePass &pass, const RenderComputeInput &compute,
+void fillPreparedFacts(const FramePass &pass,
+                       const RenderWorkBuildContext &context,
+                       const RenderComputeInput &compute,
                        RenderInputDesc &desc) {
   (void)compute;
   const ComputePreparationFacts facts =
-      collectComputePreparationFacts(pass, compute);
+      collectComputePreparationFacts(pass, context, compute);
   desc.pipelineKey = makePipelineKey(pass, facts.pipelineVariantKey);
   desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts);
   desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
@@ -411,8 +463,14 @@ descriptorBindingName(const DescriptorResourceRef &descriptor) {
     if (isValidTextureArrayDescriptor(descriptor)) {
       return true;
     }
-    return descriptor.isResource() && descriptor.resource().isValid() &&
-           descriptor.resource().getType() == ResourceType::CombinedImageSampler;
+    if (!descriptor.isResource() || !descriptor.resource().isValid()) {
+      return false;
+    }
+    if (descriptor.resource().getType() == ResourceType::CombinedImageSampler) {
+      return true;
+    }
+    return dynamic_cast<const FrameGraphSampledResource *>(
+               &descriptor.resource().get()) != nullptr;
   default:
     return true;
   }
@@ -571,6 +629,18 @@ resolveVisibleMask(const Scene &scene, const FramePass &pass,
 void fillSceneDrawCommand(const Scene &scene,
                           const ValidatedRenderablePassData &validatedData,
                           RenderDrawInput &draw) {
+  if (draw.indexBuffer.isValid()) {
+    const auto *indexBuffer =
+        dynamic_cast<const IndexBuffer *>(&draw.indexBuffer.get());
+    if (indexBuffer != nullptr && indexBuffer->indexCount() > 0) {
+      draw.drawCommands.push_back(RenderDrawCommand{
+          .indexCount = static_cast<u32>(indexBuffer->indexCount()),
+          .instanceCount = 1,
+      });
+      return;
+    }
+  }
+
   if (draw.mesh.isValid()) {
     const auto mesh = scene.resources().resolve(draw.mesh);
     if (mesh.has_value() && mesh->get().getIndexCount() > 0) {
@@ -580,17 +650,6 @@ void fillSceneDrawCommand(const Scene &scene,
           .firstIndex = mesh->get().getIndexOffset(),
       });
       return;
-    }
-  }
-
-  if (draw.indexBuffer.isValid()) {
-    const auto *indexBuffer =
-        dynamic_cast<const IndexBuffer *>(&draw.indexBuffer.get());
-    if (indexBuffer != nullptr && indexBuffer->indexCount() > 0) {
-      draw.drawCommands.push_back(RenderDrawCommand{
-          .indexCount = static_cast<u32>(indexBuffer->indexCount()),
-          .instanceCount = 1,
-      });
     }
   }
 }
@@ -715,14 +774,6 @@ geometryContractMatches(const FramePass &pass,
   if (!pass.input.geometry.has_value()) {
     return true;
   }
-  if (draw.mesh.isValid() && context.hasRealtimeScene()) {
-    const Scene &scene = context.realtimeScene();
-    const auto mesh = scene.resources().resolve(draw.mesh);
-    if (mesh.has_value()) {
-      return mesh->get().getIndexBuffer().getTopology() ==
-             pass.input.geometry->topology;
-    }
-  }
   if (draw.indexBuffer.isValid()) {
     const auto *indexBuffer =
         dynamic_cast<const IndexBuffer *>(&draw.indexBuffer.get());
@@ -730,6 +781,14 @@ geometryContractMatches(const FramePass &pass,
       return true;
     }
     return indexBuffer->getTopology() == pass.input.geometry->topology;
+  }
+  if (draw.mesh.isValid() && context.hasRealtimeScene()) {
+    const Scene &scene = context.realtimeScene();
+    const auto mesh = scene.resources().resolve(draw.mesh);
+    if (mesh.has_value()) {
+      return mesh->get().getIndexBuffer().getTopology() ==
+             pass.input.geometry->topology;
+    }
   }
   return true;
 }
@@ -889,7 +948,7 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
       }
     } else if (const auto *compute =
                    dynamic_cast<const RenderComputeInput *>(&input)) {
-      fillPreparedFacts(pass, *compute, desc);
+      fillPreparedFacts(pass, context, *compute, desc);
       if (pass.input.kind == RenderPassInputKind::ComputeDispatch) {
         validateComputeDesc(pass, *compute, desc);
       } else {

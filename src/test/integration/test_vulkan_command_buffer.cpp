@@ -5,11 +5,13 @@
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
+#include "core/frame_graph/render_work_compiler.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 
 #include "core/utils/filesystem_tools.hpp"
@@ -33,6 +35,145 @@ bool isKnownEnvironmentSetupFailure(const std::string_view message) {
              std::string_view::npos ||
          message.find("Failed to create Vulkan surface handle") !=
              std::string_view::npos;
+}
+
+bool recordRejectedRenderInputNoop(
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+    const LX_core::RenderDrawInput &drawInput) {
+  auto cmd = cmdBufferMgr.allocateBuffer();
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  if (vkBeginCommandBuffer(cmd->getHandle(), &beginInfo) != VK_SUCCESS) {
+    std::cerr << "Failed to begin rejected render input command buffer\n";
+    return false;
+  }
+
+  LX_core::RenderInputDesc rejectedDesc;
+  rejectedDesc.status = LX_core::RenderInputStatus::Rejected;
+  rejectedDesc.inputIndex = drawInput.inputIndex;
+  rejectedDesc.pass = drawInput.pass;
+  rejectedDesc.debugId = drawInput.debugId;
+  cmd->executeRenderInput(drawInput, rejectedDesc);
+
+  if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+    std::cerr << "Failed to end rejected render input command buffer\n";
+    return false;
+  }
+  return true;
+}
+
+bool recordFullscreenTriangleWithoutGeometry(
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
+    LX_core::backend::VulkanResourceManager &resourceManager,
+    LX_core::backend::VulkanRenderPass &renderPass,
+    LX_core::backend::VulkanFrameBuffer &framebuffer, VkExtent2D extent,
+    LX_core::backend::VulkanPipelineRef pipeline,
+    const LX_core::RenderInput &input, const LX_core::RenderInputDesc &desc) {
+  auto cmd = cmdBufferMgr.allocateBuffer();
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  if (vkBeginCommandBuffer(cmd->getHandle(), &beginInfo) != VK_SUCCESS) {
+    std::cerr << "Failed to begin fullscreen render input command buffer\n";
+    return false;
+  }
+  cmd->beginRenderPass(renderPass.getHandle(), framebuffer.getHandle(), extent,
+                       renderPass.getClearValues());
+  cmd->setViewport(extent.width, extent.height);
+  cmd->setScissor(extent.width, extent.height);
+  cmd->bindPipeline(pipeline);
+  cmd->bindResources(resourceManager, pipeline, input, desc);
+  cmd->executeRenderInput(input, desc);
+
+  cmd->endRenderPass();
+  if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+    std::cerr << "Failed to end fullscreen render input command buffer\n";
+    return false;
+  }
+  return true;
+}
+
+struct PreparedFullscreenWork final {
+  std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
+  std::vector<LX_core::RenderInputDesc> descs;
+};
+
+PreparedFullscreenWork buildCompilerPreparedFullscreenWork() {
+  constexpr const char *kShaderName = "ibl_brdf_lut";
+  std::vector<LX_core::ShaderStageCode> stages{
+      LX_test::loadTestShaderStage(kShaderName, "vert.spv",
+                                   LX_core::ShaderStage::Vertex),
+      LX_test::loadTestShaderStage(kShaderName, "frag.spv",
+                                   LX_core::ShaderStage::Fragment),
+  };
+  auto shader = std::make_shared<LX_infra::CompiledShader>(
+      stages, LX_infra::ShaderReflector::reflect(stages),
+      LX_infra::ShaderReflector::reflectVertexInputs(stages), kShaderName);
+
+  LX_core::FramePass pass;
+  pass.name = LX_core::Pass_PostProcess;
+  pass.stage = LX_core::RenderPassStage::Raster;
+  pass.dispatch = LX_core::RenderPassDispatch::Fullscreen;
+  pass.input.kind = LX_core::RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = LX_core::ResourceUri(kShaderName);
+
+  LX_core::RenderWorkBuildContext::PassPreparationFacts facts;
+  facts.pass = pass.name;
+  facts.pipelineVariantKey = LX_core::StringID("vulkan_test_fullscreen");
+  facts.shaderProgram.shaderName = kShaderName;
+  facts.shaderProgram.shader = shader;
+  facts.shaderInfo = shader;
+  facts.renderState.cullMode = LX_core::CullMode::None;
+  facts.renderState.depthTestEnable = false;
+  facts.renderState.depthWriteEnable = false;
+
+  LX_core::RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(std::move(facts));
+
+  LX_core::Scene scene("vulkan_fullscreen_compiler_scene");
+  const LX_core::RenderWorkBuildContext context =
+      LX_core::RenderWorkBuildContext::realtime(scene, std::move(options));
+  LX_core::RenderWorkCompiler compiler;
+  PreparedFullscreenWork work;
+  compiler.buildInputs(pass, context, work.inputs);
+  work.descs = compiler.prepare(pass, context, work.inputs);
+  if (work.inputs.size() != 1u || work.descs.size() != 1u ||
+      !work.descs.front().accepted()) {
+    throw std::runtime_error(
+        "compiler did not produce accepted fullscreen Vulkan test desc");
+  }
+  return work;
+}
+
+bool recordComputeDispatchInput(
+    LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr) {
+  auto cmd = cmdBufferMgr.allocateBuffer();
+  VkCommandBufferBeginInfo beginInfo{};
+  beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  if (vkBeginCommandBuffer(cmd->getHandle(), &beginInfo) != VK_SUCCESS) {
+    std::cerr << "Failed to begin compute render input command buffer\n";
+    return false;
+  }
+
+  LX_core::RenderComputeInput computeInput;
+  computeInput.pass = LX_core::StringID("vulkan_test_compute_pass");
+  computeInput.debugId = LX_core::StringID("vulkan_test_compute_input");
+  computeInput.inputIndex = 0;
+  computeInput.groupCountX = 2;
+  computeInput.groupCountY = 3;
+  computeInput.groupCountZ = 1;
+
+  LX_core::RenderInputDesc computeDesc;
+  computeDesc.status = LX_core::RenderInputStatus::Accepted;
+  computeDesc.inputIndex = computeInput.inputIndex;
+  computeDesc.pass = computeInput.pass;
+  computeDesc.debugId = computeInput.debugId;
+  cmd->executeRenderInput(computeInput, computeDesc);
+
+  if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+    std::cerr << "Failed to end compute render input command buffer\n";
+    return false;
+  }
+  return true;
 }
 
 } // namespace
@@ -96,23 +237,36 @@ int main() {
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create(
         {0u, 1u, 2u, 0u, 1u, 2u, 0u, 2u, 1u});
-    auto renderItem = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+    auto renderInput = LX_test::makeMinimalRenderDrawInputForVulkanTests(
         *vertexBufferPtr, *indexBufferPtr);
 
     // Sync all CPU-side resources to GPU.
-    LX_core::RenderWorkQueue uploadQueue;
-    uploadQueue.addItem(renderItem);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto renderDesc =
+        LX_test::makeAcceptedRenderInputDescForVulkanTests(pipelineDesc,
+                                                           renderInput);
+    std::vector<std::unique_ptr<LX_core::RenderInput>> uploadInputs;
+    uploadInputs.push_back(std::make_unique<LX_core::RenderDrawInput>(
+        renderInput));
+    std::vector<LX_core::RenderInputDesc> uploadDescs{renderDesc};
     const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(uploadQueue);
+        LX_core::buildRenderUploadPlan(uploadInputs, uploadDescs);
     for (const auto &resource : uploadPlan.resources) {
       resourceManager->syncResource(*cmdBufferMgr, resource);
     }
     resourceManager->collectGarbage();
 
-    auto pipelineDesc =
-        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
-            *vertexBufferPtr, *indexBufferPtr);
-    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
+    auto pipeline = resourceManager->getOrCreatePipeline(renderDesc);
+    PreparedFullscreenWork fullscreenWork =
+        buildCompilerPreparedFullscreenWork();
+    const LX_core::RenderInput &fullscreenInput =
+        *fullscreenWork.inputs.front();
+    const LX_core::RenderInputDesc &fullscreenDesc =
+        fullscreenWork.descs.front();
+    auto fullscreenPipeline =
+        resourceManager->getOrCreatePipeline(fullscreenDesc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {
@@ -120,59 +274,17 @@ int main() {
       return 1;
     }
 
-    LX_core::RenderBatchGeometryResources batchGeometry;
-    batchGeometry.vertexBuffer = LX_core::GpuResourceRef{*vertexBufferPtr};
-    batchGeometry.indexBuffer = LX_core::GpuResourceRef{*indexBufferPtr};
-    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.vertexBuffer);
-    resourceManager->syncResource(*cmdBufferMgr, batchGeometry.indexBuffer);
-    resourceManager->collectGarbage();
-
-    LX_core::RenderBatch batch;
-    batch.commandOffset = 7;
-    batch.commands = {
-        LX_core::IndexedIndirectDrawCommand{
-            .indexCount = 3,
-            .instanceCount = 1,
-            .firstIndex = 0,
-            .vertexOffset = 0,
-            .firstInstance = 11,
-        },
-        LX_core::IndexedIndirectDrawCommand{
-            .indexCount = 6,
-            .instanceCount = 1,
-            .firstIndex = 3,
-            .vertexOffset = 0,
-            .firstInstance = 12,
-        },
-    };
-    batch.commandCount = static_cast<u32>(batch.commands.size());
-
     cmdBufferMgr->beginFrame(0);
     commandRecordingStarted = true;
-    auto unboundBatchCmd = cmdBufferMgr->allocateBuffer();
-
-    VkCommandBufferBeginInfo unboundBeginInfo{};
-    unboundBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(unboundBatchCmd->getHandle(), &unboundBeginInfo);
-    unboundBatchCmd->beginRenderPass(renderPass.getHandle(),
-                                     framebuffer->getHandle(), extent,
-                                     renderPass.getClearValues());
-    unboundBatchCmd->setViewport(extent.width, extent.height);
-    unboundBatchCmd->setScissor(extent.width, extent.height);
-    unboundBatchCmd->bindPipeline(pipeline);
-
-    bool rejectedMissingBatchGeometry = false;
-    try {
-      unboundBatchCmd->executeRenderBatch(batch);
-    } catch (const std::runtime_error &) {
-      rejectedMissingBatchGeometry = true;
+    if (!recordRejectedRenderInputNoop(*cmdBufferMgr, renderInput)) {
+      return 1;
     }
-    unboundBatchCmd->endRenderPass();
-    vkEndCommandBuffer(unboundBatchCmd->getHandle());
-
-    if (!rejectedMissingBatchGeometry) {
-      std::cerr << "executeRenderBatch accepted an indirect draw without "
-                   "explicit batch geometry binding\n";
+    if (!recordFullscreenTriangleWithoutGeometry(
+            *cmdBufferMgr, *resourceManager, renderPass, *framebuffer, extent,
+            fullscreenPipeline, fullscreenInput, fullscreenDesc)) {
+      return 1;
+    }
+    if (!recordComputeDispatchInput(*cmdBufferMgr)) {
       return 1;
     }
 
@@ -189,33 +301,8 @@ int main() {
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
     cmd->bindPipeline(pipeline);
-
-    cmd->bindRenderBatchGeometry(*resourceManager, batchGeometry);
-    cmd->executeRenderBatch(batch);
-    const auto batchStats = cmd->getRenderBatchSubmissionStats();
-    if (batchStats.compilerBatchCountConsumed != 1 ||
-        batchStats.boundBatchGeometryCount != 1 ||
-        batchStats.submittedDirectIndexedDrawCount != 0 ||
-        batchStats.submittedIndexedIndirectCommandCount != 2 ||
-        batchStats.submittedIndirectBatchCount != 1 ||
-        batchStats.submittedIndirectDrawCount != 2 ||
-        batchStats.firstCommandOffset != 7 ||
-        batchStats.lastCommandOffset != 8 ||
-        batchStats.fallbackObservedCount != 0) {
-      std::cerr << "RenderBatch submission stats mismatch: consumed="
-                << batchStats.compilerBatchCountConsumed
-                << " geometryBinds=" << batchStats.boundBatchGeometryCount
-                << " directDraws=" << batchStats.submittedDirectIndexedDrawCount
-                << " indexedIndirectCommands="
-                << batchStats.submittedIndexedIndirectCommandCount
-                << " batches="
-                << batchStats.submittedIndirectBatchCount
-                << " draws=" << batchStats.submittedIndirectDrawCount
-                << " first=" << batchStats.firstCommandOffset
-                << " last=" << batchStats.lastCommandOffset
-                << " fallback=" << batchStats.fallbackObservedCount << "\n";
-      return 1;
-    }
+    cmd->bindResources(*resourceManager, pipeline, renderInput, renderDesc);
+    cmd->executeRenderInput(renderInput, renderDesc);
     cmd->endRenderPass();
 
     if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
@@ -223,11 +310,11 @@ int main() {
       return 1;
     }
 
-    VkCommandBuffer submittedBatchCommand = cmd->getHandle();
+    VkCommandBuffer submittedCommand = cmd->getHandle();
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &submittedBatchCommand;
+    submitInfo.pCommandBuffers = &submittedCommand;
     if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo,
                       VK_NULL_HANDLE) != VK_SUCCESS) {
       std::cerr << "Failed to submit batch command buffer\n";
@@ -261,8 +348,9 @@ int main() {
       loopCmd->setViewport(extent.width, extent.height);
       loopCmd->setScissor(extent.width, extent.height);
       loopCmd->bindPipeline(pipeline);
-      loopCmd->bindResources(*resourceManager, pipeline, renderItem);
-      loopCmd->executeWorkItem(renderItem);
+      loopCmd->bindResources(*resourceManager, pipeline, renderInput,
+                             renderDesc);
+      loopCmd->executeRenderInput(renderInput, renderDesc);
       loopCmd->endRenderPass();
       vkEndCommandBuffer(loopCmd->getHandle());
     }

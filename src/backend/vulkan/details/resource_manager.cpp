@@ -473,6 +473,11 @@ VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
   return m_pipelineCache->getOrCreatePipeline(desc, renderPass);
 }
 
+VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
+    const LX_core::RenderInputDesc &desc) {
+  return getOrCreatePipeline(desc.pipelineBuildDesc);
+}
+
 void VulkanResourceManager::preloadPipelines(
     const std::vector<LX_core::PipelineBuildDesc> &infos) {
   for (const auto &info : infos) {

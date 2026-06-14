@@ -1,4 +1,5 @@
 #include "core/frame_graph/render_input.hpp"
+#include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/render_work_compiler.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -70,6 +71,45 @@ ShaderResourceBinding makeUniformBinding(std::string name,
                                ShaderStage::Vertex,
                                {}};
 }
+
+ShaderResourceBinding makeTextureBinding(std::string name, u32 binding = 0) {
+  return ShaderResourceBinding{std::move(name),
+                               0,
+                               binding,
+                               ShaderPropertyType::Texture2D,
+                               1,
+                               0,
+                               0,
+                               ShaderStage::Fragment,
+                               {}};
+}
+
+ShaderResourceBinding makeComputeStorageBinding(std::string name,
+                                                u32 binding = 0) {
+  return ShaderResourceBinding{std::move(name),
+                               0,
+                               binding,
+                               ShaderPropertyType::StorageBuffer,
+                               1,
+                               64,
+                               0,
+                               ShaderStage::Compute,
+                               {}};
+}
+
+struct TestGpuResource final : public IGpuResource {
+  TestGpuResource(ResourceType type, StringID bindingName, u32 byteSize = 64)
+      : type(type), bindingName(bindingName), bytes(byteSize, 0) {}
+
+  ResourceType getType() const override { return type; }
+  const void *getRawData() const override { return bytes.data(); }
+  u32 getByteSize() const override { return static_cast<u32>(bytes.size()); }
+  StringID getBindingName() const override { return bindingName; }
+
+  ResourceType type;
+  StringID bindingName;
+  std::vector<u8> bytes;
+};
 
 class MateriallessRenderable final : public IRenderable {
 public:
@@ -561,6 +601,116 @@ void testComputeInputWithoutShaderFactsIsRejected() {
          "stats should count rejected compute input");
   EXPECT(desc.stats.submittedDispatchCount == 0,
          "stats should not count rejected compute input as submitted");
+}
+
+void testFullscreenDescUsesPreparedPassFactsAndGraphReads() {
+  FramePass pass;
+  pass.name = StringID("PostProcess");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = ResourceUri("post_process");
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureBinding("SceneColor")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 21}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 22}},
+      });
+  FrameGraphSampledResource sceneColor(StringID("scene.hdrColor"),
+                                       StringID("SceneColor"));
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("fullscreen.post_process.variant");
+  passFacts.shaderProgram.shaderName = "post_process";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.renderState.depthTestEnable = false;
+  passFacts.descriptorResources.emplace_back(sceneColor);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("FullscreenPreparedFactsScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "fullscreen prepared facts should produce desc");
+  if (descs.empty()) {
+    return;
+  }
+  const auto &desc = descs.front();
+  expectAcceptedDescHasBackendPipelineFacts(
+      desc, "fullscreen desc with prepared shader facts should be accepted");
+  EXPECT(desc.pipelineBuildDesc.bindings.size() == 1,
+         "fullscreen desc should carry shader reflection bindings");
+  EXPECT(hasDescriptorBindingName(desc, StringID("SceneColor")),
+         "fullscreen graph read should be in descriptor binding plan");
+  EXPECT(hasResourceDependencyBindingName(desc, StringID("SceneColor")),
+         "fullscreen graph read should be a resource dependency");
+  EXPECT(desc.stats.acceptedInputCount == 1,
+         "fullscreen stats should count accepted desc");
+  EXPECT(desc.stats.submittedDrawCount == 1,
+         "fullscreen stats should count one submitted draw command");
+}
+
+void testComputeDescUsesPreparedPassFacts() {
+  FramePass pass;
+  pass.name = StringID("ComputeProbe");
+  pass.stage = RenderPassStage::Compute;
+  pass.dispatch = RenderPassDispatch::Compute;
+  pass.input.kind = RenderPassInputKind::ComputeDispatch;
+  pass.shaderUri = ResourceUri("compute_probe");
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{
+          makeComputeStorageBinding("ComputeOutput")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Compute,
+                          std::vector<u32>{0x07230203, 31}},
+      });
+  TestGpuResource output(ResourceType::StorageBuffer,
+                         StringID("ComputeOutput"));
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("compute.probe.variant");
+  passFacts.shaderProgram.shaderName = "compute_probe";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.descriptorResources.emplace_back(output);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("ComputePreparedFactsScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "compute prepared facts should produce desc");
+  if (descs.empty()) {
+    return;
+  }
+  const auto &desc = descs.front();
+  expectAcceptedDescHasBackendPipelineFacts(
+      desc, "compute desc with prepared shader facts should be accepted");
+  EXPECT(desc.pipelineBuildDesc.type == PipelineBuildType::Compute,
+         "compute desc should carry compute pipeline build type");
+  EXPECT(hasDescriptorBindingName(desc, StringID("ComputeOutput")),
+         "compute descriptor should be in binding plan");
+  EXPECT(desc.stats.acceptedInputCount == 1,
+         "compute stats should count accepted input");
+  EXPECT(desc.stats.submittedDispatchCount == 1,
+         "compute stats should count accepted dispatch");
 }
 
 void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
@@ -1183,6 +1333,8 @@ int main() {
   testPrepareReferencesInputWithoutCopyingDrawCommands();
   testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected();
   testComputeInputWithoutShaderFactsIsRejected();
+  testFullscreenDescUsesPreparedPassFactsAndGraphReads();
+  testComputeDescUsesPreparedPassFacts();
   testSceneRenderableValidatedShaderFactsPreparePipelineDesc();
   testSceneRenderableIncludesCameraSceneResourceBinding();
   testSceneRenderableRejectsUnresolvedRequiredBinding();

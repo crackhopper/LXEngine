@@ -324,42 +324,35 @@ def require_pipeline_metadata(metadata_path: Path) -> None:
             raise RuntimeError(f"realtime metadata contains forbidden token: {token}")
 
 
-REQUIRED_RENDER_BATCH_STAT_KEYS = (
-    "compilerInputDrawCount",
-    "compilerPreparedCandidateCount",
-    "compilerBatchCount",
-    "compilerDrawCount",
-    "indirectCapableDrawCount",
-    "unsupportedDrawCount",
-    "legacyRejectedDrawCount",
-    "compilerBatchCountConsumed",
-    "boundBatchGeometryCount",
-    "submittedDirectIndexedDrawCount",
-    "submittedIndexedIndirectCommandCount",
-    "submittedIndirectBatchCount",
-    "submittedIndirectDrawCount",
-    "firstCommandOffset",
-    "lastCommandOffset",
+REQUIRED_RENDER_INPUT_STAT_KEYS = (
+    "inputCount",
+    "acceptedInputCount",
+    "rejectedInputCount",
+    "submittedDrawCount",
+    "submittedDispatchCount",
     "fallbackObservedCount",
+    "descPipelineLookupCount",
+    "descBoundInputCount",
+    "descExecutedInputCount",
 )
 
 
-def normalize_render_batch_stats(metadata: dict[str, object]) -> dict[str, int]:
-    batch_stats = metadata.get("renderBatchStats")
-    if not isinstance(batch_stats, dict):
-        raise RuntimeError("realtime metadata omitted renderBatchStats")
+def normalize_render_input_stats(metadata: dict[str, object]) -> dict[str, int]:
+    input_stats = metadata.get("renderInputStats")
+    if not isinstance(input_stats, dict):
+        raise RuntimeError("realtime metadata omitted renderInputStats")
 
     normalized: dict[str, int] = {}
-    for key, value in batch_stats.items():
+    for key, value in input_stats.items():
         if isinstance(value, bool) or type(value) is not int:
             raise RuntimeError(
-                f"realtime metadata renderBatchStats {key} is not an int"
+                f"realtime metadata renderInputStats {key} is not an int"
             )
         normalized[key] = value
 
-    for key in REQUIRED_RENDER_BATCH_STAT_KEYS:
+    for key in REQUIRED_RENDER_INPUT_STAT_KEYS:
         if key not in normalized:
-            raise RuntimeError(f"realtime metadata renderBatchStats omitted {key}")
+            raise RuntimeError(f"realtime metadata renderInputStats omitted {key}")
 
     return normalized
 
@@ -398,7 +391,7 @@ def require_output_files(
             raise RuntimeError(
                 f"metadata {dimension} does not match render result: {metadata_path}"
             )
-    payload["renderBatchStats"] = normalize_render_batch_stats(metadata)
+    payload["renderInputStats"] = normalize_render_input_stats(metadata)
     if require_pipeline_metadata_check:
         require_pipeline_metadata(metadata_path)
 

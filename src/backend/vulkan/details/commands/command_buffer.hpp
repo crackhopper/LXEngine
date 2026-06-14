@@ -1,4 +1,5 @@
 #pragma once
+#include "core/frame_graph/render_input.hpp"
 #include "core/scene/scene.hpp"
 #include "../device.hpp"
 #include "../pipelines/graphics_pipeline.hpp"
@@ -69,10 +70,19 @@ public:
                      VulkanGraphicsPipeline &pipeline,
                      const RenderWorkItem &item);
   void bindResources(VulkanResourceManager &resourceManager,
+                     VulkanGraphicsPipeline &pipeline,
+                     const RenderInput &input, const RenderInputDesc &desc);
+  void bindResources(VulkanResourceManager &resourceManager,
                      VulkanComputePipeline &pipeline,
                      const RenderWorkItem &item);
   void bindResources(VulkanResourceManager &resourceManager,
+                     VulkanComputePipeline &pipeline,
+                     const RenderInput &input, const RenderInputDesc &desc);
+  void bindResources(VulkanResourceManager &resourceManager,
                      VulkanPipelineRef pipeline, const RenderWorkItem &item);
+  void bindResources(VulkanResourceManager &resourceManager,
+                     VulkanPipelineRef pipeline, const RenderInput &input,
+                     const RenderInputDesc &desc);
   void bindSceneBindlessResources(VulkanResourceManager &resourceManager,
                                   VulkanPipelineRef pipeline,
                                   const RenderPathNodeContext &context,
@@ -81,6 +91,8 @@ public:
                                const RenderBatchGeometryResources &geometry);
 
   void executeWorkItem(const RenderWorkItem &item);
+  void executeRenderInput(const RenderInput &input,
+                          const RenderInputDesc &desc);
   void executeRenderBatch(const RenderBatch &batch);
 
   const VulkanRenderBatchSubmissionStats &
@@ -133,6 +145,15 @@ private:
                           VkPipelineLayout pipelineLayout,
                           VkPipelineBindPoint bindPoint,
                           const RenderWorkItem &item);
+  void
+  bindResourcesWithLayout(VulkanResourceManager &resourceManager,
+                          const std::vector<ShaderResourceBinding> &bindings,
+                          VkPipelineLayout pipelineLayout,
+                          VkPipelineBindPoint bindPoint,
+                          const RenderInput &input,
+                          const RenderInputDesc &desc);
+  void bindRenderInputGeometry(VulkanResourceManager &resourceManager,
+                               const RenderInput &input);
   void executeDirectRasterPassItem(const RenderWorkItem &item);
   void executeComputeDispatchItem(const RenderWorkItem &item);
 

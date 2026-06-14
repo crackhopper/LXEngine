@@ -5,6 +5,7 @@
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -136,22 +137,27 @@ void testOffscreenSubmitProbe() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto renderItem = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
+    auto renderInput = LX_test::makeMinimalRenderDrawInputForVulkanTests(
         *vertexBufferPtr, *indexBufferPtr);
 
-    LX_core::RenderWorkQueue uploadQueue;
-    uploadQueue.addItem(renderItem);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto renderDesc =
+        LX_test::makeAcceptedRenderInputDescForVulkanTests(pipelineDesc,
+                                                           renderInput);
+    std::vector<std::unique_ptr<LX_core::RenderInput>> uploadInputs;
+    uploadInputs.push_back(std::make_unique<LX_core::RenderDrawInput>(
+        renderInput));
+    std::vector<LX_core::RenderInputDesc> uploadDescs{renderDesc};
     const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(uploadQueue);
+        LX_core::buildRenderUploadPlan(uploadInputs, uploadDescs);
     for (const auto &resource : uploadPlan.resources) {
       resourceManager->syncResource(*cmdBufferMgr, resource);
     }
     resourceManager->collectGarbage();
 
-    auto pipelineDesc =
-        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
-            *vertexBufferPtr, *indexBufferPtr);
-    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
+    auto pipeline = resourceManager->getOrCreatePipeline(renderDesc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {
@@ -181,8 +187,8 @@ void testOffscreenSubmitProbe() {
       cmd->setViewport(extent.width, extent.height);
       cmd->setScissor(extent.width, extent.height);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(*resourceManager, pipeline, renderItem);
-      cmd->executeWorkItem(renderItem);
+      cmd->bindResources(*resourceManager, pipeline, renderInput, renderDesc);
+      cmd->executeRenderInput(renderInput, renderDesc);
       cmd->endRenderPass();
       cmd->end();
 

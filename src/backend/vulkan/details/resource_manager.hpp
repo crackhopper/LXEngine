@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/frame_graph/render_input.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
@@ -122,6 +123,7 @@ public:
 
   VulkanPipelineRef
   getOrCreatePipeline(const LX_core::PipelineBuildDesc &desc);
+  VulkanPipelineRef getOrCreatePipeline(const LX_core::RenderInputDesc &desc);
 
   /// Bulk preload — intended to be called once per scene init from the
   /// VulkanRenderer after building a FrameGraph.

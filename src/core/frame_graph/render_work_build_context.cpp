@@ -51,6 +51,21 @@ RenderWorkBuildContext::realtimeOptions() const {
   return m_realtimeOptions;
 }
 
+std::optional<std::reference_wrapper<
+    const RenderWorkBuildContext::PassPreparationFacts>>
+RenderWorkBuildContext::findPassPreparationFacts(StringID pass) const {
+  if (domain() != RenderDomain::Realtime) {
+    return std::nullopt;
+  }
+  for (const PassPreparationFacts &facts :
+       m_realtimeOptions.passPreparationFacts) {
+    if (facts.pass == pass) {
+      return std::cref(facts);
+    }
+  }
+  return std::nullopt;
+}
+
 offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
   if (const auto *job = std::get_if<OfflineSource>(&m_source)) {
     return job->get();
