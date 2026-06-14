@@ -5,14 +5,251 @@
 #include "core/offline/offline_scene_storage_resources.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene.hpp"
+#include "core/scene/scene_resource_table_upload_view.hpp"
 
 #include <algorithm>
+#include <iterator>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 
 namespace LX_core {
 
 namespace {
+
+[[nodiscard]] RenderBatchDiagnostic makePreparationDiagnostic(
+    const RenderPathNodeContext &context, const RenderDrawInput &input,
+    const RenderBatchDiagnosticReason reason,
+    const u32 drawRecordIndex = u32_max,
+    const u32 materialRefIndex = u32_max, const u32 meshIndex = u32_max) {
+  RenderBatchDiagnostic diagnostic;
+  diagnostic.reason = reason;
+  diagnostic.inputIndex = input.inputIndex;
+  diagnostic.pass = context.pass;
+  diagnostic.debugId = input.debugId;
+  diagnostic.objectDataSignature = context.objectDataSignature;
+  diagnostic.materialTypeSignature = input.materialTypeSignature;
+  diagnostic.drawRecordIndex = drawRecordIndex;
+  diagnostic.materialRefIndex = materialRefIndex;
+  diagnostic.meshIndex = meshIndex;
+  return diagnostic;
+}
+
+void invalidatePreparedDrawData(RenderPathNodeData &data) {
+  data.preparedCandidates.clear();
+  data.preparationDiagnostics.clear();
+  data.preparationValid = false;
+  data.preparedInputCount = 0;
+}
+
+template <typename Entry, typename Handle>
+[[nodiscard]] std::optional<u32>
+findTypedIndex(std::span<const Entry> entries, Handle handle) {
+  if (!handle.isValid()) {
+    return std::nullopt;
+  }
+  const auto it = std::find_if(
+      entries.begin(), entries.end(), [handle](const Entry &entry) {
+        return entry.handle == handle && entry.typedIndex != u32_max;
+      });
+  if (it == entries.end()) {
+    return std::nullopt;
+  }
+  return it->typedIndex;
+}
+
+[[nodiscard]] std::optional<u32>
+findObjectIndex(const SceneResourceTableUploadView &view,
+                const ObjectHandle handle) {
+  return findTypedIndex(view.objectIndexByHandle, handle);
+}
+
+[[nodiscard]] std::optional<u32>
+findMaterialIndex(const SceneResourceTableUploadView &view,
+                  const MaterialHandle handle) {
+  return findTypedIndex(view.materialIndexByHandle, handle);
+}
+
+[[nodiscard]] std::optional<u32>
+findMaterialRefIndex(const SceneResourceTableUploadView &view,
+                     const MaterialHandle handle) {
+  return findTypedIndex(view.materialRefIndexByHandle, handle);
+}
+
+[[nodiscard]] bool hasGlobalIndexRange(const SceneResourceTableUploadView &view,
+                                       const SceneGpuMeshRecord &mesh) {
+  if (mesh.indexCount == 0) {
+    return true;
+  }
+  if (mesh.indexOffset >= view.indices.size()) {
+    return false;
+  }
+  return mesh.indexCount <= view.indices.size() - mesh.indexOffset;
+}
+
+[[nodiscard]] bool hasSourceLocalRecord(
+    const SceneResourceTableUploadView &view,
+    const SceneGpuMaterialRefRecord &materialRef) {
+  if (materialRef.sourceStorageIndex >= view.sourceMaterialStorages.size()) {
+    return false;
+  }
+  const SceneSourceLocalMaterialStorageView &storage =
+      view.sourceMaterialStorages[materialRef.sourceStorageIndex];
+  if (materialRef.sourceLocalMaterialIndex >= storage.recordCount) {
+    return false;
+  }
+  if (storage.recordOffset >= view.sourceMaterialRecords.size()) {
+    return false;
+  }
+  return static_cast<usize>(storage.recordOffset) +
+             materialRef.sourceLocalMaterialIndex <
+         view.sourceMaterialRecords.size();
+}
+
+[[nodiscard]] u32
+resolveCandidateInstanceCount(const SceneGpuObjectRecord &object) {
+  return object.visible == 0 ? 0u : 1u;
+}
+
+[[nodiscard]] std::optional<PreparedRenderDrawCandidate> prepareDrawCandidate(
+    const RenderPathNodeContext &context, const RenderDrawInput &input,
+    const SceneResourceTableUploadView &view,
+    std::vector<RenderBatchDiagnostic> &diagnostics) {
+  if (!context.backendIndirectSupported) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::BackendIndirectUnsupported));
+    return std::nullopt;
+  }
+
+  const std::optional<u32> objectIndex = findObjectIndex(view, input.object);
+  if (!objectIndex.has_value()) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input,
+        RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved));
+    return std::nullopt;
+  }
+
+  const u32 drawRecordIndex = *objectIndex;
+  if (drawRecordIndex >= view.draws.size()) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::InvalidDrawRecord,
+        drawRecordIndex));
+    return std::nullopt;
+  }
+
+  const SceneGpuDrawRecord &draw = view.draws[drawRecordIndex];
+  if (draw.objectIndex != *objectIndex) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::InvalidDrawRecord,
+        drawRecordIndex));
+    return std::nullopt;
+  }
+  if (*objectIndex >= view.objects.size()) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input,
+        RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved,
+        drawRecordIndex));
+    return std::nullopt;
+  }
+
+  const u32 meshIndex = draw.meshIndex;
+  if (meshIndex >= view.meshes.size()) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::MissingMeshRange,
+        drawRecordIndex, draw.materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  const SceneGpuMeshRecord &mesh = view.meshes[meshIndex];
+  if (mesh.indexCount == 0) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::ZeroIndexCount,
+        drawRecordIndex, draw.materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+  if (!hasGlobalIndexRange(view, mesh)) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+        drawRecordIndex, draw.materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  const u32 instanceCount =
+      resolveCandidateInstanceCount(view.objects[*objectIndex]);
+  if (instanceCount == 0) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::ZeroInstanceCount,
+        drawRecordIndex, draw.materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  const std::optional<u32> materialIndex =
+      findMaterialIndex(view, input.material);
+  if (draw.materialIndex != u32_max) {
+    if (!materialIndex.has_value() || *materialIndex != draw.materialIndex) {
+      diagnostics.push_back(makePreparationDiagnostic(
+          context, input, RenderBatchDiagnosticReason::InvalidDrawRecord,
+          drawRecordIndex, draw.materialRefIndex, meshIndex));
+      return std::nullopt;
+    }
+  }
+
+  const u32 materialRefIndex = draw.materialRefIndex;
+  if (materialRefIndex == u32_max) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::SourceMaterialRefUnresolved,
+        drawRecordIndex, materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+  if (materialRefIndex >= view.materialRefs.size()) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+        drawRecordIndex, materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  const std::optional<u32> resolvedMaterialRefIndex =
+      findMaterialRefIndex(view, input.material);
+  if (!resolvedMaterialRefIndex.has_value() ||
+      *resolvedMaterialRefIndex != materialRefIndex) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+        drawRecordIndex, materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  const SceneGpuMaterialRefRecord &materialRef =
+      view.materialRefs[materialRefIndex];
+  if (materialRef.sourceStorageIndex == u32_max ||
+      materialRef.sourceLocalMaterialIndex == u32_max ||
+      !hasSourceLocalRecord(view, materialRef)) {
+    diagnostics.push_back(makePreparationDiagnostic(
+        context, input, RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+        drawRecordIndex, materialRefIndex, meshIndex));
+    return std::nullopt;
+  }
+
+  PreparedRenderDrawCandidate candidate;
+  candidate.inputIndex = input.inputIndex;
+  candidate.drawRecordIndex = drawRecordIndex;
+  candidate.objectIndex = *objectIndex;
+  if (materialIndex.has_value()) {
+    candidate.materialIndex = *materialIndex;
+  }
+  candidate.materialRefIndex = materialRefIndex;
+  candidate.sourceStorageIndex = materialRef.sourceStorageIndex;
+  candidate.sourceLocalMaterialIndex = materialRef.sourceLocalMaterialIndex;
+  candidate.meshIndex = meshIndex;
+  candidate.indexCount = mesh.indexCount;
+  candidate.firstIndex = mesh.indexOffset;
+  candidate.vertexOffset = static_cast<i32>(mesh.vertexOffset);
+  candidate.instanceCount = instanceCount;
+  candidate.objectDataSignature = context.objectDataSignature;
+  candidate.materialTypeSignature = input.materialTypeSignature;
+  candidate.debugId = input.debugId;
+  candidate.sortCenter = input.sortCenter;
+  return candidate;
+}
 
 [[nodiscard]] StringID makeNamedMaterialTypeVariant(std::string_view name,
                                                     StringID shaderSignature) {
@@ -55,6 +292,7 @@ resolveSortCameraEye(const Scene &scene,
 
 void RenderWorkQueue::addItem(RenderWorkItem item) {
   m_nonGeometryDispatchItems.push_back(std::move(item));
+  invalidatePreparedDrawData(m_nodeData);
   m_lastBatchAnalysis = RenderBatchAnalysis{};
 }
 
@@ -67,19 +305,46 @@ void RenderWorkQueue::clearItems() {
 
 void RenderWorkQueue::setNodeContext(RenderPathNodeContext context) {
   m_context = std::move(context);
+  invalidatePreparedDrawData(m_nodeData);
   m_lastBatchAnalysis = RenderBatchAnalysis{};
 }
 
 void RenderWorkQueue::addDrawInput(RenderDrawInput input) {
   m_nodeData.drawInputs.push_back(std::move(input));
+  invalidatePreparedDrawData(m_nodeData);
   m_lastBatchAnalysis = RenderBatchAnalysis{};
 }
 
 void RenderWorkQueue::prepareDrawInputs(
     const SceneResourceTableUploadView &uploadView) {
-  (void)uploadView;
   m_nodeData.preparedCandidates.clear();
   m_nodeData.preparationDiagnostics.clear();
+  if (!m_context.has_value()) {
+    for (const RenderDrawInput &input : m_nodeData.drawInputs) {
+      RenderPathNodeContext emptyContext;
+      m_nodeData.preparationDiagnostics.push_back(makePreparationDiagnostic(
+          emptyContext, input, RenderBatchDiagnosticReason::LegacyInputRejected));
+    }
+    m_nodeData.preparationValid = true;
+    m_nodeData.preparedInputCount = m_nodeData.drawInputs.size();
+    m_lastBatchAnalysis = RenderBatchAnalysis{};
+    return;
+  }
+
+  for (const RenderDrawInput &input : m_nodeData.drawInputs) {
+    std::vector<RenderBatchDiagnostic> diagnostics;
+    std::optional<PreparedRenderDrawCandidate> candidate =
+        prepareDrawCandidate(*m_context, input, uploadView, diagnostics);
+    m_nodeData.preparationDiagnostics.insert(
+        m_nodeData.preparationDiagnostics.end(),
+        std::make_move_iterator(diagnostics.begin()),
+        std::make_move_iterator(diagnostics.end()));
+    if (candidate.has_value()) {
+      m_nodeData.preparedCandidates.push_back(std::move(*candidate));
+    }
+  }
+  m_nodeData.preparationValid = true;
+  m_nodeData.preparedInputCount = m_nodeData.drawInputs.size();
   m_lastBatchAnalysis = RenderBatchAnalysis{};
 }
 
@@ -151,17 +416,20 @@ RenderBatchAnalysis RenderWorkQueue::compileIndirectBatches() const {
     analysis.context = *m_context;
   }
   analysis.stats.inputDrawCount = m_nodeData.drawInputs.size();
-  for (usize i = 0; i < m_nodeData.drawInputs.size(); ++i) {
-    const RenderDrawInput &drawInput = m_nodeData.drawInputs[i];
-    RenderBatchDiagnostic diagnostic;
-    diagnostic.reason = RenderBatchDiagnosticReason::GlobalGeometryTableMissing;
-    diagnostic.inputIndex = drawInput.inputIndex;
-    diagnostic.pass = analysis.context.pass;
-    diagnostic.debugId = drawInput.debugId;
-    diagnostic.objectDataSignature = analysis.context.objectDataSignature;
-    diagnostic.materialTypeSignature = drawInput.materialTypeSignature;
-    analysis.diagnostics.push_back(std::move(diagnostic));
+  if (!m_nodeData.preparationValid ||
+      m_nodeData.preparedInputCount != m_nodeData.drawInputs.size()) {
+    for (const RenderDrawInput &drawInput : m_nodeData.drawInputs) {
+      analysis.diagnostics.push_back(makePreparationDiagnostic(
+          analysis.context, drawInput,
+          RenderBatchDiagnosticReason::GlobalGeometryTableMissing));
+    }
+    analysis.stats.unsupportedDrawCount = analysis.diagnostics.size();
+    m_lastBatchAnalysis = analysis;
+    return analysis;
   }
+  analysis.candidates = m_nodeData.preparedCandidates;
+  analysis.diagnostics = m_nodeData.preparationDiagnostics;
+  analysis.stats.preparedCandidateCount = analysis.candidates.size();
   analysis.stats.unsupportedDrawCount = analysis.diagnostics.size();
   m_lastBatchAnalysis = analysis;
   return analysis;

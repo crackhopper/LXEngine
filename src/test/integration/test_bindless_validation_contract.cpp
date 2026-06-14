@@ -7,10 +7,12 @@
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
+#include <array>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -225,7 +227,7 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
   return fixture;
 }
 
-void testStrictContractRejectsSkeletonDrawInputs() {
+void testStrictContractRejectsUnbatchedPreparedDrawInputs() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
@@ -235,11 +237,12 @@ void testStrictContractRejectsSkeletonDrawInputs() {
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
   EXPECT(!result.ok,
-         "Task 2 skeleton should reject draw inputs until preparation exists");
+         "prepared candidates should still be rejected until Task 5 creates "
+         "coverage batches");
   EXPECT(result.coveredItemCount == 0,
-         "Task 2 skeleton should not report covered inputs");
+         "Task 4 preparation should not report covered batch inputs");
   EXPECT(result.diagnostics.size() == 2,
-         "Task 2 skeleton should diagnose every draw input");
+         "validation should diagnose every unbatched prepared draw input");
 }
 
 void testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode() {
@@ -348,36 +351,633 @@ void testMaterialV2StrictDoesNotInferMaterialRefFallback() {
          "from the absence of SceneMaterials");
 }
 
-void testZeroIndexInputProducesSkeletonDiagnostic() {
-  BatchQueueFixture fixture = makeBatchQueueFixture(
-      BatchQueueFixtureDesc{.drawCount = 1,
-                            .indexCount = 0,
-                            .materialTypeSignature =
-                                StringID("standard-pbr-opaque")});
+void testZeroIndexInputProducesDiagnostic() {
+  ObjectHandle object;
+  object.index = 4;
+  object.generation = 1;
+  MaterialHandle material;
+  material.index = 8;
+  material.generation = 1;
+  MeshHandle meshHandle;
+  meshHandle.index = 2;
+  meshHandle.generation = 1;
 
-  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 0,
+      .materialRefIndex = 0,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 0,
+  }};
+  std::array<SceneGpuMaterialRefRecord, 1> materialRefs{
+      SceneGpuMaterialRefRecord{.sourceStorageIndex = 0,
+                                .sourceLocalMaterialIndex = 0}};
+  std::array<SourceLocalMaterialRecord, 1> sourceRecords{
+      SourceLocalMaterialRecord{.sourceLocalMaterialIndex = 0}};
+  std::array<SceneSourceLocalMaterialStorageView, 1> sourceStorages{
+      SceneSourceLocalMaterialStorageView{.recordOffset = 0,
+                                          .recordCount = 1}};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
 
-  EXPECT(!analysis.ok(), "Task 2 skeleton should reject the draw");
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.materialRefs = std::span<const SceneGpuMaterialRefRecord>(materialRefs);
+  view.sourceMaterialRecords =
+      std::span<const SourceLocalMaterialRecord>(sourceRecords);
+  view.sourceMaterialStorages =
+      std::span<const SceneSourceLocalMaterialStorageView>(sourceStorages);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .mesh = meshHandle,
+      .material = material,
+      .debugId = StringID("helmet.zeroIndex"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "zero index count should reject the draw");
   EXPECT(analysis.diagnostics.size() == 1,
-         "Task 2 skeleton should produce exactly one diagnostic");
+         "zero index count should produce exactly one diagnostic");
   EXPECT(analysis.batches.empty(),
-         "Task 2 skeleton should not produce accepted batches");
+         "zero index count should not produce accepted batches");
   EXPECT(analysis.stats.unsupportedDrawCount == 1,
          "unsupported draw count should match rejected inputs");
   if (!analysis.diagnostics.empty()) {
     EXPECT(analysis.diagnostics.front().reason ==
-               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
-           "Task 2 skeleton should report missing global geometry table");
+               RenderBatchDiagnosticReason::ZeroIndexCount,
+           "zero index count diagnostic reason should be exact");
   }
 }
 
-void testMissingDrawRecordInputProducesSkeletonDiagnostic() {
+void testMissingMaterialMappingDoesNotFallBackToDrawMaterialIndex() {
+  ObjectHandle object;
+  object.index = 1;
+  object.generation = 1;
+  MaterialHandle material;
+  material.index = 7;
+  material.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = 0,
+      .meshIndex = 0,
+      .materialRefIndex = 0,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneGpuMaterialRecord, 1> materials{};
+  std::array<SceneGpuMaterialRefRecord, 1> materialRefs{
+      SceneGpuMaterialRefRecord{.sourceStorageIndex = 0,
+                                .sourceLocalMaterialIndex = 0}};
+  std::array<SourceLocalMaterialRecord, 1> sourceRecords{
+      SourceLocalMaterialRecord{.sourceLocalMaterialIndex = 0}};
+  std::array<SceneSourceLocalMaterialStorageView, 1> sourceStorages{
+      SceneSourceLocalMaterialStorageView{.recordOffset = 0,
+                                          .recordCount = 1}};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.materials = std::span<const SceneGpuMaterialRecord>(materials);
+  view.materialRefs = std::span<const SceneGpuMaterialRefRecord>(materialRefs);
+  view.sourceMaterialRecords =
+      std::span<const SourceLocalMaterialRecord>(sourceRecords);
+  view.sourceMaterialStorages =
+      std::span<const SceneSourceLocalMaterialStorageView>(sourceStorages);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .material = material,
+      .debugId = StringID("helmet.missingMaterialMapping"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(),
+         "missing material handle mapping must reject instead of falling back "
+         "to draw.materialIndex");
+  EXPECT(analysis.candidates.empty(),
+         "missing material handle mapping should not produce a candidate");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing material handle mapping should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::InvalidDrawRecord,
+           "missing material mapping with a draw material index should be an "
+           "invalid draw record");
+  }
+}
+
+void testInvisibleObjectProducesZeroInstanceDiagnostic() {
+  ObjectHandle object;
+  object.index = 2;
+  object.generation = 1;
+  MaterialHandle material;
+  material.index = 3;
+  material.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  objects[0].visible = 0;
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 0,
+      .materialRefIndex = 0,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneGpuMaterialRefRecord, 1> materialRefs{
+      SceneGpuMaterialRefRecord{.sourceStorageIndex = 0,
+                                .sourceLocalMaterialIndex = 0}};
+  std::array<SourceLocalMaterialRecord, 1> sourceRecords{
+      SourceLocalMaterialRecord{.sourceLocalMaterialIndex = 0}};
+  std::array<SceneSourceLocalMaterialStorageView, 1> sourceStorages{
+      SceneSourceLocalMaterialStorageView{.recordOffset = 0,
+                                          .recordCount = 1}};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.materialRefs = std::span<const SceneGpuMaterialRefRecord>(materialRefs);
+  view.sourceMaterialRecords =
+      std::span<const SourceLocalMaterialRecord>(sourceRecords);
+  view.sourceMaterialStorages =
+      std::span<const SceneSourceLocalMaterialStorageView>(sourceStorages);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .material = material,
+      .debugId = StringID("helmet.zeroInstance"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "zero instance count should reject the draw");
+  EXPECT(analysis.candidates.empty(),
+         "zero instance count should not produce a candidate");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "zero instance count should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::ZeroInstanceCount,
+           "zero instance count diagnostic reason should be exact");
+  }
+}
+
+void testMappedObjectIndexMissingObjectRowProducesUnresolvedDiagnostic() {
+  ObjectHandle object;
+  object.index = 5;
+  object.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 2> draws{
+      SceneGpuDrawRecord{},
+      SceneGpuDrawRecord{
+          .objectIndex = 1,
+          .materialIndex = u32_max,
+          .meshIndex = 0,
+          .materialRefIndex = 0,
+      }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneGpuMaterialRefRecord, 1> materialRefs{
+      SceneGpuMaterialRefRecord{.sourceStorageIndex = 0,
+                                .sourceLocalMaterialIndex = 0}};
+  std::array<SourceLocalMaterialRecord, 1> sourceRecords{
+      SourceLocalMaterialRecord{.sourceLocalMaterialIndex = 0}};
+  std::array<SceneSourceLocalMaterialStorageView, 1> sourceStorages{
+      SceneSourceLocalMaterialStorageView{.recordOffset = 0,
+                                          .recordCount = 1}};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 1}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.materialRefs = std::span<const SceneGpuMaterialRefRecord>(materialRefs);
+  view.sourceMaterialRecords =
+      std::span<const SourceLocalMaterialRecord>(sourceRecords);
+  view.sourceMaterialStorages =
+      std::span<const SceneSourceLocalMaterialStorageView>(sourceStorages);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .debugId = StringID("helmet.missingUploadedObjectRow"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "missing uploaded object row should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing uploaded object row should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved,
+           "mapped object index outside view.objects should be unresolved, not "
+           "an invalid draw row");
+  }
+}
+
+void testMismatchedSourceMaterialHandleRejectsPreparation() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeIndexedMesh(3));
+  const MaterialHandle materialA = table.registerMaterial(makeSourceMaterial());
+  const MaterialHandle materialB = table.registerMaterial(makeSourceMaterial());
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = materialA;
+  object.worldBounds =
+      BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+  const ObjectHandle objectHandle = table.registerObject(object);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = objectHandle,
+      .mesh = mesh,
+      .material = materialB,
+      .debugId = StringID("helmet.sourceMaterialMismatch"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(),
+         "input material handle must match the source material ref used by "
+         "the draw row");
+  EXPECT(analysis.candidates.empty(),
+         "mismatched source material handle should not produce a candidate");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "mismatched source material handle should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+           "mismatched source material handle should reject the source ref");
+    EXPECT(analysis.diagnostics.front().materialRefIndex == 0,
+           "diagnostic should preserve the draw row material ref index");
+  }
+}
+
+void testMissingMeshRangeDiagnosticPreservesIndices() {
+  ObjectHandle object;
+  object.index = 6;
+  object.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 5,
+      .materialRefIndex = 6,
+  }};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .debugId = StringID("helmet.missingMeshRange"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "missing mesh range should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing mesh range should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    const RenderBatchDiagnostic &diagnostic = analysis.diagnostics.front();
+    EXPECT(diagnostic.reason == RenderBatchDiagnosticReason::MissingMeshRange,
+           "missing mesh row should report MissingMeshRange");
+    EXPECT(diagnostic.drawRecordIndex == 0,
+           "missing mesh diagnostic should preserve draw row index");
+    EXPECT(diagnostic.materialRefIndex == 6,
+           "missing mesh diagnostic should preserve material ref index");
+    EXPECT(diagnostic.meshIndex == 5,
+           "missing mesh diagnostic should preserve unresolved mesh index");
+  }
+}
+
+void testInvalidSourceMaterialRefRowPreservesIndices() {
+  ObjectHandle object;
+  object.index = 7;
+  object.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 0,
+      .materialRefIndex = 4,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .debugId = StringID("helmet.invalidSourceRefRow"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "invalid material ref row should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "invalid material ref row should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    const RenderBatchDiagnostic &diagnostic = analysis.diagnostics.front();
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+           "invalid material ref row should report InvalidSourceMaterialRef");
+    EXPECT(diagnostic.drawRecordIndex == 0,
+           "invalid material ref diagnostic should preserve draw row index");
+    EXPECT(diagnostic.materialRefIndex == 4,
+           "invalid material ref diagnostic should preserve material ref "
+           "index");
+    EXPECT(diagnostic.meshIndex == 0,
+           "invalid material ref diagnostic should preserve mesh index");
+  }
+}
+
+void testMissingSourceStorageRowProducesInvalidSourceMaterialRef() {
+  ObjectHandle object;
+  object.index = 8;
+  object.generation = 1;
+  MaterialHandle material;
+  material.index = 2;
+  material.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 0,
+      .materialRefIndex = 0,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 0,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneGpuMaterialRefRecord, 1> materialRefs{
+      SceneGpuMaterialRefRecord{.sourceStorageIndex = 3,
+                                .sourceLocalMaterialIndex = 0}};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+  std::array<SceneResourceMaterialRefUploadIndex, 1> materialRefMappings{
+      SceneResourceMaterialRefUploadIndex{.handle = material, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.materialRefs = std::span<const SceneGpuMaterialRefRecord>(materialRefs);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+  view.materialRefIndexByHandle =
+      std::span<const SceneResourceMaterialRefUploadIndex>(materialRefMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .material = material,
+      .debugId = StringID("helmet.missingSourceStorage"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "missing source storage row should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing source storage row should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    const RenderBatchDiagnostic &diagnostic = analysis.diagnostics.front();
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::InvalidSourceMaterialRef,
+           "missing source storage row should report InvalidSourceMaterialRef");
+    EXPECT(diagnostic.drawRecordIndex == 0,
+           "missing source storage diagnostic should preserve draw row index");
+    EXPECT(diagnostic.materialRefIndex == 0,
+           "missing source storage diagnostic should preserve material ref "
+           "index");
+    EXPECT(diagnostic.meshIndex == 0,
+           "missing source storage diagnostic should preserve mesh index");
+  }
+}
+
+void testMissingGlobalGeometryRangePreservesIndices() {
+  ObjectHandle object;
+  object.index = 9;
+  object.generation = 1;
+
+  std::array<SceneGpuObjectRecord, 1> objects{};
+  std::array<SceneGpuDrawRecord, 1> draws{SceneGpuDrawRecord{
+      .objectIndex = 0,
+      .materialIndex = u32_max,
+      .meshIndex = 0,
+      .materialRefIndex = 0,
+  }};
+  std::array<SceneGpuMeshRecord, 1> meshes{SceneGpuMeshRecord{
+      .vertexOffset = 0,
+      .indexOffset = 3,
+      .indexCount = 3,
+  }};
+  std::array<u32, 3> indices{0, 1, 2};
+  std::array<SceneResourceObjectUploadIndex, 1> objectMappings{
+      SceneResourceObjectUploadIndex{.handle = object, .typedIndex = 0}};
+
+  SceneResourceTableUploadView view;
+  view.objects = std::span<const SceneGpuObjectRecord>(objects);
+  view.draws = std::span<const SceneGpuDrawRecord>(draws);
+  view.meshes = std::span<const SceneGpuMeshRecord>(meshes);
+  view.indices = std::span<const u32>(indices);
+  view.objectIndexByHandle =
+      std::span<const SceneResourceObjectUploadIndex>(objectMappings);
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = object,
+      .debugId = StringID("helmet.missingGlobalGeometry"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(view);
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "missing global geometry range should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing global geometry range should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    const RenderBatchDiagnostic &diagnostic = analysis.diagnostics.front();
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+           "out-of-range global mesh indices should report global geometry "
+           "missing");
+    EXPECT(diagnostic.drawRecordIndex == 0,
+           "global geometry diagnostic should preserve draw row index");
+    EXPECT(diagnostic.materialRefIndex == 0,
+           "global geometry diagnostic should preserve material ref index");
+    EXPECT(diagnostic.meshIndex == 0,
+           "global geometry diagnostic should preserve mesh index");
+  }
+}
+
+void testMissingDrawRecordInputProducesDiagnostic() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 1,
                             .indexCount = 3,
                             .materialTypeSignature =
                                 StringID("standard-pbr-opaque")});
   fixture.queue.clearItems();
+  fixture.queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
   fixture.queue.addDrawInput(RenderDrawInput{
       .inputIndex = 0,
       .object = ObjectHandle{},
@@ -389,31 +989,39 @@ void testMissingDrawRecordInputProducesSkeletonDiagnostic() {
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  EXPECT(!analysis.ok(), "Task 2 skeleton should reject the draw");
+  EXPECT(!analysis.ok(), "missing object/draw record should reject the draw");
   EXPECT(analysis.diagnostics.size() == 1,
-         "Task 2 skeleton should produce exactly one diagnostic");
+         "missing object/draw record should produce exactly one diagnostic");
   EXPECT(analysis.batches.empty(),
-         "Task 2 skeleton should not produce accepted batches");
+         "missing object/draw record should not produce accepted batches");
   EXPECT(analysis.stats.unsupportedDrawCount == 1,
          "unsupported draw count should match rejected inputs");
   if (!analysis.diagnostics.empty()) {
     EXPECT(analysis.diagnostics.front().reason ==
-               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
-           "Task 2 skeleton should report missing global geometry table");
+               RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved,
+           "missing object record reason should be exact");
   }
 }
 
 } // namespace
 
 int main() {
-  testStrictContractRejectsSkeletonDrawInputs();
+  testStrictContractRejectsUnbatchedPreparedDrawInputs();
   testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode();
   testStrictContractRejectsPartialCoverage();
   testMaterialV2StrictRejectsMissingFinalIdentity();
   testMaterialV2StrictRejectsMissingTypedSourceRef();
   testMaterialV2StrictDoesNotInferMaterialRefFallback();
-  testZeroIndexInputProducesSkeletonDiagnostic();
-  testMissingDrawRecordInputProducesSkeletonDiagnostic();
+  testZeroIndexInputProducesDiagnostic();
+  testMissingMaterialMappingDoesNotFallBackToDrawMaterialIndex();
+  testInvisibleObjectProducesZeroInstanceDiagnostic();
+  testMappedObjectIndexMissingObjectRowProducesUnresolvedDiagnostic();
+  testMismatchedSourceMaterialHandleRejectsPreparation();
+  testMissingMeshRangeDiagnosticPreservesIndices();
+  testInvalidSourceMaterialRefRowPreservesIndices();
+  testMissingSourceStorageRowProducesInvalidSourceMaterialRef();
+  testMissingGlobalGeometryRangePreservesIndices();
+  testMissingDrawRecordInputProducesDiagnostic();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless validation contract checks failed\n";
     return 1;

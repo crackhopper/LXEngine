@@ -361,7 +361,7 @@ void testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis() {
          "each legacy RenderWorkItem should produce a validation diagnostic");
 }
 
-void testSameSignatureInputsProduceSkeletonDiagnostics() {
+void testSameSignatureInputsProducePreparedCandidates() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
@@ -370,27 +370,60 @@ void testSameSignatureInputsProduceSkeletonDiagnostics() {
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  EXPECT(!analysis.ok(),
-         "Task 2 skeleton should reject same-signature inputs until "
-         "preparation exists");
+  EXPECT(analysis.ok(),
+         "valid same-signature inputs should prepare without diagnostics");
+  EXPECT(analysis.candidates.size() == 2,
+         "valid same-signature inputs should produce prepared candidates");
   EXPECT(analysis.batches.empty(),
-         "Task 2 skeleton should not produce accepted batches");
-  EXPECT(analysis.diagnostics.size() == 2,
-         "Task 2 skeleton should diagnose every draw input");
+         "Task 4 preparation should not merge accepted batches yet");
+  EXPECT(analysis.diagnostics.empty(),
+         "valid same-signature inputs should not keep skeleton diagnostics");
   EXPECT(analysis.stats.inputDrawCount == 2,
          "analysis stats should preserve input draw count");
-  EXPECT(analysis.stats.unsupportedDrawCount == 2,
-         "unsupported draw count should match rejected inputs");
-  for (const RenderBatchDiagnostic &diagnostic : analysis.diagnostics) {
-    EXPECT(diagnostic.reason ==
-               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
-           "Task 2 skeleton should report missing global geometry table");
+  EXPECT(analysis.stats.preparedCandidateCount == 2,
+         "prepared candidate count should match valid inputs");
+  EXPECT(analysis.stats.unsupportedDrawCount == 0,
+         "unsupported draw count should stay zero for valid preparation");
+  for (usize i = 0; i < analysis.candidates.size(); ++i) {
+    const PreparedRenderDrawCandidate &candidate = analysis.candidates[i];
+    EXPECT(candidate.inputIndex == i,
+           "candidate should preserve input draw index");
+    EXPECT(candidate.objectIndex == i,
+           "candidate should resolve object handle through upload view");
+    EXPECT(candidate.drawRecordIndex == i,
+           "candidate draw record should derive from object typed index");
+    EXPECT(candidate.meshIndex == 0,
+           "candidate should resolve the shared mesh table index");
+    EXPECT(candidate.materialIndex == u32_max,
+           "source-contract candidate should not invent a legacy material "
+           "index");
+    EXPECT(candidate.indexCount == 3,
+           "candidate should copy mesh index count from global table range");
+    EXPECT(candidate.firstIndex == 0,
+           "candidate should copy mesh first index from global table range");
+    EXPECT(candidate.vertexOffset == 0,
+           "candidate should copy mesh vertex offset from global table range");
+    EXPECT(candidate.instanceCount == 1,
+           "candidate should be prepared as one instance per draw input");
+    EXPECT(candidate.materialRefIndex == 0,
+           "candidate should resolve source material ref table index");
+    EXPECT(candidate.sourceStorageIndex == 0,
+           "candidate should resolve source material storage index");
+    EXPECT(candidate.sourceLocalMaterialIndex == 0,
+           "candidate should resolve source-local material record index");
+    EXPECT(candidate.materialTypeSignature ==
+               StringID("standard-pbr-opaque"),
+           "candidate should preserve material type signature");
+    EXPECT(candidate.objectDataSignature ==
+               StringID("BindlessObjectData.v1"),
+           "candidate should carry node object data ABI signature");
   }
   EXPECT(analysis.stats.fallbackObservedCount == 0,
          "new batch compiler must not report old fallback usage");
 }
 
 void testDrawInputIdentityIsPreservedInDiagnostics() {
+  SceneResourceTable table;
   RenderWorkQueue queue;
   queue.setNodeContext(RenderPathNodeContext{
       .pass = StringID("Forward"),
@@ -399,6 +432,7 @@ void testDrawInputIdentityIsPreservedInDiagnostics() {
       .inputIndex = 42,
       .debugId = StringID("helmet.explicitInputIndex"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(table.buildUploadView());
 
   const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
 
@@ -435,6 +469,7 @@ void testClearItemsResetsNodeContextAndCachedAnalysis() {
 }
 
 void testDrawInputMutationInvalidatesCachedAnalysis() {
+  SceneResourceTable table;
   RenderWorkQueue queue;
   queue.setNodeContext(RenderPathNodeContext{
       .pass = StringID("Forward"),
@@ -443,6 +478,7 @@ void testDrawInputMutationInvalidatesCachedAnalysis() {
       .inputIndex = 0,
       .debugId = StringID("helmet.cachedInput"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(table.buildUploadView());
   (void)queue.compileIndirectBatches();
   EXPECT(!queue.lastBatchAnalysis().diagnostics.empty(),
          "compiled analysis should be cached");
@@ -456,6 +492,39 @@ void testDrawInputMutationInvalidatesCachedAnalysis() {
          "mutating draw inputs should invalidate cached analysis");
 }
 
+void testStalePreparationRejectsNewDrawInputs() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 1,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+
+  fixture.queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 1,
+      .debugId = StringID("helmet.unpreparedInput"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+
+  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(),
+         "adding a draw input after preparation should reject stale "
+         "preparation");
+  EXPECT(analysis.candidates.empty(),
+         "stale preparation should not expose old prepared candidates");
+  EXPECT(analysis.diagnostics.size() == 2,
+         "stale preparation should diagnose every current draw input");
+  if (analysis.diagnostics.size() == 2) {
+    EXPECT(analysis.diagnostics[0].inputIndex == 0,
+           "stale preparation diagnostic should cover first input");
+    EXPECT(analysis.diagnostics[1].inputIndex == 1,
+           "stale preparation diagnostic should cover newly added input");
+  }
+  EXPECT(analysis.stats.inputDrawCount == 2,
+         "stale preparation analysis should preserve current draw count");
+  EXPECT(analysis.stats.unsupportedDrawCount == 2,
+         "stale preparation unsupported count should cover all inputs");
+}
+
 } // namespace
 
 int main() {
@@ -466,10 +535,11 @@ int main() {
   testIndirectDrawBufferHandleIsOpaque();
   testGpuResourceTableConsumesSceneBindlessUploadView();
   testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis();
-  testSameSignatureInputsProduceSkeletonDiagnostics();
+  testSameSignatureInputsProducePreparedCandidates();
   testDrawInputIdentityIsPreservedInDiagnostics();
   testClearItemsResetsNodeContextAndCachedAnalysis();
   testDrawInputMutationInvalidatesCachedAnalysis();
+  testStalePreparationRejectsNewDrawInputs();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless/indirect checks failed\n";
     return 1;

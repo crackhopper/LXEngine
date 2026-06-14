@@ -110,6 +110,8 @@ struct RenderPathNodeData final {
   std::vector<RenderDrawInput> drawInputs;
   std::vector<PreparedRenderDrawCandidate> preparedCandidates;
   std::vector<RenderBatchDiagnostic> preparationDiagnostics;
+  bool preparationValid = false;
+  usize preparedInputCount = 0;
 };
 
 struct RenderBatchAnalysis final {

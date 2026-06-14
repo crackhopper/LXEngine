@@ -436,6 +436,8 @@ private:
   mutable std::vector<SceneResourceMeshUploadIndex> m_gpuMeshIndexByHandle;
   mutable std::vector<SceneResourceMaterialUploadIndex>
       m_gpuMaterialIndexByHandle;
+  mutable std::vector<SceneResourceMaterialRefUploadIndex>
+      m_gpuMaterialRefIndexByHandle;
   mutable std::vector<SceneResourceTextureUploadIndex>
       m_gpuTextureIndexByHandle;
   mutable std::vector<SceneResourceObjectUploadIndex> m_gpuObjectIndexByHandle;
