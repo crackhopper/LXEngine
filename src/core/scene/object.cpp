@@ -626,8 +626,6 @@ void SceneNode::rebuildValidatedCache() {
         worldBounds.isValid()
             ? worldBounds.getCenter()
             : Transform::fromMat4(getWorldTransform()).translation;
-    data.objectSignature = getPipelineSignature(pass);
-    data.materialSignature = material->getPipelineSignature(pass);
     data.materialTypeVariant =
         material->getMaterialTypeVariantSignature(shaderProgram);
 

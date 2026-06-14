@@ -37,6 +37,33 @@ namespace {
 
 int failures = 0;
 
+// Negative audit: removed legacy realtime batching signatures must not return
+// to ValidatedRenderablePassData.
+template <typename T>
+concept HasValidatedObjectSignature = requires(const T &value) {
+  value.objectSignature;
+};
+
+template <typename T>
+concept HasValidatedMaterialSignature = requires(const T &value) {
+  value.materialSignature;
+};
+
+template <typename T>
+concept HasValidatedRenderPathNodeSignature = requires(const T &value) {
+  value.renderPathNodeSignature;
+};
+
+static_assert(!HasValidatedObjectSignature<ValidatedRenderablePassData>,
+              "ValidatedRenderablePassData must not preserve the old "
+              "mesh-derived realtime objectSignature batching key");
+static_assert(!HasValidatedMaterialSignature<ValidatedRenderablePassData>,
+              "ValidatedRenderablePassData must not preserve the old "
+              "material pipeline realtime batching key");
+static_assert(!HasValidatedRenderPathNodeSignature<ValidatedRenderablePassData>,
+              "RenderPathNodeSignature belongs to node context, not "
+              "per-renderable validated pass data");
+
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
     if (!(cond)) {                                                             \
@@ -384,10 +411,6 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
       EXPECT(indexBuffer->indexCount() == 6,
              "single triangle overlay should emit three line segments");
     }
-    EXPECT(passData->get().objectSignature ==
-               node->getPipelineSignature(Pass_Forward),
-           "validated object signature should match public renderable "
-           "signature");
   }
 
   const auto infos = fg.collectAllPipelineBuildDescs();

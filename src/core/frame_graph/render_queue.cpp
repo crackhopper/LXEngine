@@ -235,6 +235,8 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       .geometryContract = geometryContract,
       .attachments = std::move(attachments),
       .target = target.toDesc(),
+      .objectDataSignature = StringID("BindlessObjectData.v1"),
+      .backendIndirectSupported = true,
   });
 
   for (const auto &renderable : scene.getRenderables()) {

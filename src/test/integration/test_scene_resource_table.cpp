@@ -1268,7 +1268,7 @@ void testRealtimeSceneLevelResourcesExposeGpuMaterialTables() {
   }
 }
 
-void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
+void testRealtimeRenderQueuePreservesMaterialHandlesForPreparation() {
   auto first = SceneNode::create("first_material_node");
   first->addComponent<MeshComponent>(makeMeshBuffer());
   first->addComponent<MaterialComponent>(
@@ -1287,13 +1287,14 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
   const RenderTarget renderTarget{targetDesc};
+  const StringID renderPathNodeSignature =
+      testRenderPathNodeSignature(Pass_Forward, renderTarget);
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, renderTarget,
-      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
+      Pass_Forward, renderTarget, renderPathNodeSignature, std::nullopt);
 
   EXPECT(queue.nodeData().drawInputs.size() == 2,
          "queue should contain both material-index test draw inputs");
@@ -1302,12 +1303,19 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
   EXPECT(uploadView.materials.size() == 2,
          "upload view should contain compact SceneMaterials records");
   for (const auto &drawInput : queue.nodeData().drawInputs) {
+    EXPECT(drawInput.object.isValid(),
+           "draw input should preserve object handle for preparation");
+    EXPECT(drawInput.mesh.isValid(),
+           "draw input should preserve mesh handle for preparation");
     EXPECT(drawInput.material.isValid(),
            "draw input should preserve material handle for preparation");
+    EXPECT(drawInput.materialTypeSignature.id != 0,
+           "draw input should preserve material type signature for later "
+           "batch compatibility");
   }
 }
 
-void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
+void testRealtimeRenderQueueLeavesTypedDrawRecordIndicesInUploadView() {
   auto first = SceneNode::create("first_draw_record_node");
   first->addComponent<MeshComponent>(makeMeshBuffer());
   first->addComponent<MaterialComponent>(
@@ -1328,13 +1336,14 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
   targetDesc.role = RenderTargetRole::Swapchain;
   RenderWorkQueue queue;
   const RenderTarget renderTarget{targetDesc};
+  const StringID renderPathNodeSignature =
+      testRenderPathNodeSignature(Pass_Forward, renderTarget);
   queue.build(
       RenderWorkBuildContext::realtime(*scene,
                                        RenderWorkBuildContext::RealtimeOptions{
                                            .visibleMask = VisibilityMask_All,
                                        }),
-      Pass_Forward, renderTarget,
-      testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
+      Pass_Forward, renderTarget, renderPathNodeSignature, std::nullopt);
 
   const auto uploadView = scene->resources().buildUploadView();
   EXPECT(uploadView.objects.size() == 2,
@@ -1349,6 +1358,15 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
   }
 
   const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(analysis.context.pass == Pass_Forward,
+         "batch analysis should retain the node pass context");
+  EXPECT(analysis.context.renderPathNodeSignature == renderPathNodeSignature,
+         "batch analysis should retain the RenderPathNode context signature");
+  EXPECT(analysis.context.objectDataSignature ==
+             StringID("BindlessObjectData.v1"),
+         "batch analysis should use the bindless object data ABI signature");
+  EXPECT(analysis.context.backendIndirectSupported,
+         "realtime node context should mark backend indirect support");
   EXPECT(!analysis.ok(),
          "Task 2 skeleton should reject draw inputs until preparation exists");
   EXPECT(analysis.batches.empty(),
@@ -1364,7 +1382,7 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
   }
 }
 
-void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
+void testRealtimeRenderQueueRejectsShaderIndependentDrawInputUntilPreparation() {
   auto node = SceneNode::create("shader_independent_typed_indices");
   node->addComponent<MeshComponent>(makeMeshBuffer());
   node->addComponent<MaterialComponent>(makeGpuRecordMaterial());
@@ -2369,9 +2387,9 @@ int main() {
   testSceneRegistersRenderableComponentResources();
   testSceneRegistersCameraAndLightResources();
   testRealtimeSceneLevelResourcesExposeGpuMaterialTables();
-  testRealtimeRenderQueueWritesTypedGpuMaterialIndex();
-  testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex();
-  testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption();
+  testRealtimeRenderQueuePreservesMaterialHandlesForPreparation();
+  testRealtimeRenderQueueLeavesTypedDrawRecordIndicesInUploadView();
+  testRealtimeRenderQueueRejectsShaderIndependentDrawInputUntilPreparation();
   testSceneGpuRecordLayoutContract();
   testSceneResourceTableDoesNotExportPackedVertexUploadStream();
   testSceneGpuMaterialRecordCarriesOfflineCullMode();
