@@ -45,7 +45,8 @@ The current `REQ-073-e` code surface already has some scaffolding:
 
 - `RenderWorkQueue::compileIndirectBatches()`;
 - `RenderIndirectBatch`;
-- `drawRecordIndex` and `materialRefIndex` on `RasterDrawWorkPayload`;
+- `drawRecordIndex` and `materialRefIndex` on the current pre-batch draw
+  payload;
 - `PipelineKey::build(materialTypeVariant, renderPathNodeSignature)`;
 - Vulkan submission path that calls `compileIndirectBatches()` for bindless
   batch submission.
@@ -71,8 +72,8 @@ analysis and submission contract.
 - table-index/range based batch compatibility;
 - a diagnostic batch compiler result rather than silent skips;
 - backend indirect draw submission as the realtime opaque geometry default;
-- removal or isolation of old opaque geometry per-item success paths that the
-  new indirect path replaces;
+- deletion of old opaque geometry direct/per-item success paths that the new
+  indirect path replaces;
 - Helmet realtime smoke on the new opaque path.
 
 `073-e` excludes:
@@ -104,11 +105,10 @@ RenderPathGraph opaque node
 
 ### Work Item Readiness
 
-An opaque raster work item is indirect-ready only when all facts needed by the
-shader and backend are explicit:
+An opaque geometry draw candidate is indirect-ready only when all facts needed
+by the shader and backend are explicit:
 
-- `kind == RasterDraw`;
-- valid vertex/index or global geometry table ranges;
+- valid mesh/geometry buffer or table ranges;
 - non-zero index and instance counts;
 - populated `MaterialTypeVariant`;
 - populated `RenderPathNodeSignature`;
@@ -118,16 +118,21 @@ shader and backend are explicit:
 - valid material storage and source-local material index;
 - final shader reflection from the material-source variant.
 
+The current implementation name `RasterDraw` is only a pre-batch DTO detail. It
+is not a requirement concept and must not preserve direct draw submission as a
+successful path. After the batch compiler accepts an opaque geometry candidate,
+the backend submits it through indirect draw.
+
 Missing data is a preparation error or an unsupported diagnostic. It is not a
-reason to fall back to old per-item submission.
+reason to fall back to old direct/per-item submission.
 
 ### Batch Compatibility
 
 Opaque batch compatibility is structural, not descriptor-object based.
 
-The compatibility signature includes:
+The compatibility signature is effectively pipeline identity plus compatible
+mesh/geometry data. It includes:
 
-- render domain and work kind;
 - pass id / RenderPathNode id;
 - `MaterialTypeVariant`;
 - `RenderPathNodeSignature`;
@@ -135,6 +140,8 @@ The compatibility signature includes:
 - render target / attachment contract as already represented in the node
   signature;
 - geometry buffer/table compatibility;
+- material source signature as represented by the material type variant and
+  source-local material storage;
 - indexed indirect command layout;
 - backend indirect draw capability.
 
@@ -202,7 +209,7 @@ causes:
 - `backend-indirect-unsupported`;
 - `legacy-input-rejected`.
 
-`073-e` should not report `descriptor-resource-mismatch` for per-material
+`073-e` must not report `descriptor-resource-mismatch` for per-material
 texture/material differences. Descriptor resources may still be used to bind
 global tables and scene-level resources, but they are not the per-material batch
 key.
@@ -215,8 +222,13 @@ The Vulkan realtime opaque geometry path consumes the batch analysis:
 - rejected analysis throws with the first diagnostic and exposes full stats in
   logs/validation output;
 - successful analysis records indirect draw batches;
-- old opaque per-item geometry submission is removed or made unreachable from
-  the default material-source path.
+- old opaque direct/per-item geometry submission is deleted from the default
+  material-source path.
+
+If a low-level direct draw helper remains for unrelated debug, fullscreen, or
+test-only paths, it must be outside the opaque material-source geometry route
+and must be named/audited as non-default. It cannot be a fallback success path
+for `073-e`.
 
 The backend records enough observability for tests to prove indirect draw
 was used. The mechanism can be a submission stats object, validation log, or
@@ -269,8 +281,8 @@ item identities.
 ### Backend Indirect Submission
 
 Run the Vulkan submission path in a focused test or smoke harness and assert
-that opaque geometry uses indirect batch submission rather than per-item draw
-submission.
+that opaque geometry uses indirect batch submission rather than direct/per-item
+draw submission.
 
 ### Helmet Smoke
 
