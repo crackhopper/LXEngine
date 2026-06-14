@@ -62,7 +62,7 @@
 | material type signature | 当前 node 内对 input material 的 material signature resolver | prepared candidate 与 backend pipeline lookup |
 | typed object/draw/material/mesh index/range | preparation 通过 `SceneResourceTableUploadView` 解析 `RenderDrawInput` 生成 | prepared candidate validation 与 indirect command generation |
 | `PreparedRenderDrawCandidate` | preparation output | sort policy 与 batch merge |
-| `RenderBatchAnalysis` | batch compiler output | Vulkan indirect submission 与 diagnostics/tests |
+| `RenderBatchAnalysis` | batch compiler output | Vulkan geometry submission 的唯一正向输入，以及 diagnostics/tests |
 
 任何字段如果不是当前阶段能产出的事实，就不能被放进该阶段的输入结构。
 
@@ -150,17 +150,20 @@ RenderPathNodeData
 
 不得把 `descriptor-resource-mismatch`、`vertex-layout-mismatch`、`topology-mismatch`、`target-mismatch`、`geometry-buffer-mismatch` 作为 realtime geometry 的永久 split reason。`DescriptorResourceList` equality 是旧实现审计项，不是需求模型。
 
-### R6: Backend Indirect Submission Hard Cut
+### R6: Backend Batch Consumption Hard Cut
 
-Vulkan realtime geometry 默认路径 SHALL 消费 `RenderBatchAnalysis` 并提交 indirect draw。
+Vulkan realtime geometry 默认路径 SHALL 消费 `RenderBatchAnalysis.batches` 并提交 indirect draw。backend 不能只旁路生成 analysis 做 diagnostics，然后渲染时继续走旧 draw payload。
 
 要求：
 
 - empty queue 正常返回。
 - rejected analysis 输出首个 diagnostic，并保留完整 stats。
-- successful analysis 记录 indirect draw batches。
+- successful analysis 只从 accepted batches 记录 indirect draw commands。
+- backend command recording 不得重新读取 `RenderDrawInput`、旧 `RenderWorkItem` 或 per-item raster payload 来提交 material-source geometry。
+- backend command recording 不得重新做一套可能与 `RenderBatchCompiler` 漂移的 compatibility grouping。
 - old direct/per-item geometry submission 不得作为 material-source geometry 的 fallback success path。
 - 如果低层 direct draw helper 因 debug/fullscreen/test-only 保留，必须命名为非默认路径，且 rg audit 中列出 allowlist。
+- submission observability 至少暴露 compiler batch count consumed、submitted indirect batch count、submitted indirect draw count，以及 first/last indirect command range 或等价 batch coverage identity。
 
 ### R7: Duplicate Concept Hard Cut
 
@@ -183,7 +186,7 @@ Helmet realtime smoke SHALL 验证：
 - opaque RenderPathGraph path is used。
 - final source-variant shader reflection is used。
 - prepared draw candidates enter `RenderBatchCompiler`。
-- Vulkan backend records indirect draw submission。
+- Vulkan backend records indirect draw submission from the compiler-produced batch analysis。
 - output non-black。
 - `fallback-observed == 0`。
 - no skipped draw is treated as success。
@@ -212,11 +215,11 @@ Helmet realtime smoke SHALL 验证：
 
 ### T4: Backend Indirect Submission
 
-运行 Vulkan focused test 或 smoke harness，断言 realtime opaque geometry 使用 indirect batch submission，而不是 direct/per-item draw submission。
+运行 Vulkan focused test 或 smoke harness，断言 realtime geometry 使用 compiler-produced `RenderBatchAnalysis.batches` 提交 indirect draw，而不是 direct/per-item draw submission。测试必须在 backend 忽略 `RenderBatchAnalysis.batches`、提交旧 per-item raster payload，或从 raw draw inputs 重新分组时失败。
 
 ### T5: Helmet Smoke
 
-运行低分辨率 Helmet realtime smoke，断言非黑图、batch/draw/pipeline stats、indirect-capable draw count、`fallback-observed == 0`。
+运行低分辨率 Helmet realtime smoke，断言非黑图、batch/draw/pipeline stats、backend consumed batch count、submitted indirect batch/draw count、indirect-capable draw count、`fallback-observed == 0`。
 
 ### T6: rg Hard Cut Audit
 

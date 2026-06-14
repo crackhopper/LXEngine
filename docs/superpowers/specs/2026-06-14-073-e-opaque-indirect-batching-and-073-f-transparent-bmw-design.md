@@ -177,7 +177,7 @@ hierarchy. Its purpose is to make data provenance explicit:
 | material type signature | Material signature resolver for the input material in the current node | Prepared candidate and backend pipeline lookup |
 | typed object/draw/material/mesh indices and ranges | Preparation, by resolving `RenderDrawInput` through `SceneResourceTableUploadView` | Prepared candidate validation and indirect command generation |
 | `PreparedRenderDrawCandidate` | Preparation output after all required table facts are explicit | Sort policy and batch merge |
-| `RenderBatchAnalysis` | Batch compiler output | Vulkan indirect submission and diagnostics/tests |
+| `RenderBatchAnalysis` | Batch compiler output | Sole positive input to Vulkan geometry submission and diagnostics/tests |
 
 This table is the implementation guardrail: a field cannot be added to an input
 structure unless that input stage is the stage that can actually know it.
@@ -379,6 +379,12 @@ The exact C++ names can differ, but the behavior must be explicit:
   indirect-capable draw count, unsupported draw count, and
   fallback-observed count.
 
+The analysis must be a real submission artifact, not only a diagnostic side
+channel. Its `batches` carry the batch ordinal, pipeline/material type
+signature, object data signature, indirect command range, and prepared draw
+coverage needed by backend submission tests to prove which compiler output was
+rendered.
+
 Positive validation requires:
 
 - `fallback-observed == 0`;
@@ -456,14 +462,20 @@ It also must not report permanent split reasons such as
 RenderPathNode/global geometry contract or invalid inputs that should fail
 preparation.
 
-### Vulkan Submission
+### Backend Batch Consumption
 
-The Vulkan realtime opaque geometry path consumes the batch analysis:
+The Vulkan realtime geometry path consumes `RenderBatchAnalysis.batches` as the
+only successful geometry draw source:
 
 - empty queue returns normally;
 - rejected analysis throws with the first diagnostic and exposes full stats in
   logs/validation output;
-- successful analysis records indirect draw batches;
+- successful analysis records indirect draw commands from the accepted batches;
+- backend command recording must not re-read `RenderDrawInput`, old
+  `RenderWorkItem`, or per-item raster payloads to submit material-source
+  geometry after batch analysis succeeds;
+- backend command recording must not run its own compatibility grouping that can
+  diverge from `RenderBatchCompiler`;
 - old opaque direct/per-item geometry submission is deleted from the default
   material-source path.
 
@@ -472,9 +484,18 @@ test-only paths, it must be outside the opaque material-source geometry route
 and must be named/audited as non-default. It cannot be a fallback success path
 for `073-e`.
 
-The backend records enough observability for tests to prove indirect draw
-was used. The mechanism can be a submission stats object, validation log, or
-test hook, but it must not rely only on source grep.
+The backend records enough observability for tests to prove the submitted
+drawcalls are the compiler-produced batches. The mechanism can be a submission
+stats object, validation log, or test hook, but it must expose at least:
+
+- compiler batch count consumed by the backend;
+- submitted indirect batch count;
+- submitted indirect draw count;
+- first/last indirect command range or equivalent batch coverage identity.
+
+Positive validation must assert those values match the `RenderBatchAnalysis`
+returned by the queue for the rendered node. It must not rely only on source
+grep or on "an indirect draw happened somewhere".
 
 ## Helmet Smoke
 
@@ -486,7 +507,8 @@ The Helmet smoke proves:
 - opaque RenderPathGraph path is used;
 - final source-variant shader reflection is used;
 - prepared opaque draw candidates enter indirect batches;
-- Vulkan backend submits indirect draw for the opaque pass;
+- Vulkan backend submits indirect draw for the opaque pass by consuming the
+  compiler-produced batch analysis;
 - output is non-black;
 - fallback-observed count is zero;
 - no skipped draw is treated as success.
@@ -531,8 +553,10 @@ preserved input/prepared identities.
 ### Backend Indirect Submission
 
 Run the Vulkan submission path in a focused test or smoke harness and assert
-that opaque geometry uses indirect batch submission rather than direct/per-item
-draw submission.
+that geometry uses the exact compiler-produced indirect batch analysis rather
+than direct/per-item draw submission. The test must fail if the backend ignores
+`RenderBatchAnalysis.batches`, submits old per-item raster payloads, or rebuilds
+a separate grouping from raw draw inputs.
 
 ### Helmet Smoke
 
