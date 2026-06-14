@@ -582,6 +582,30 @@ void RenderWorkQueue::setNodeContext(RenderPathNodeContext context) {
   m_lastBatchAnalysis = RenderBatchAnalysis{};
 }
 
+usize RenderWorkQueue::replaceNodeContextSceneResourceByIdentity(
+    const ResourceCacheIdentity oldIdentity,
+    const DescriptorResourceRef &replacement) {
+  if (!m_context.has_value()) {
+    return 0;
+  }
+
+  usize replacementCount = 0;
+  for (DescriptorResourceRef &resource : m_context->sceneResources) {
+    if (!resource.isResource() || !resource.resource().isValid()) {
+      continue;
+    }
+    if (resource.resource().getBackendCacheIdentity() != oldIdentity) {
+      continue;
+    }
+    resource = replacement;
+    ++replacementCount;
+  }
+  if (replacementCount > 0) {
+    m_lastBatchAnalysis = RenderBatchAnalysis{};
+  }
+  return replacementCount;
+}
+
 void RenderWorkQueue::addDrawInput(RenderDrawInput input) {
   m_nodeData.drawInputs.push_back(std::move(input));
   invalidatePreparedDrawData(m_nodeData);
@@ -679,6 +703,19 @@ RenderWorkQueue::collectUniquePipelineBuildDescs() const {
     if (!seen.insert(item.pipelineKey).second)
       continue;
     out.push_back(PipelineBuildDesc::fromRenderWorkItem(item));
+  }
+  const RenderBatchAnalysis analysis = compileIndirectBatches();
+  if (!analysis.ok()) {
+    return out;
+  }
+  out.reserve(out.size() + analysis.batches.size());
+  for (const RenderBatch &batch : analysis.batches) {
+    PipelineBuildDesc desc =
+        PipelineBuildDesc::fromRenderBatch(batch, analysis.context);
+    if (!seen.insert(desc.key).second) {
+      continue;
+    }
+    out.push_back(std::move(desc));
   }
   return out;
 }

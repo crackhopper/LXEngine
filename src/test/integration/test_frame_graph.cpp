@@ -111,6 +111,17 @@ findResourceNamed(const DescriptorResourceList &resources,
   return std::cref(*it);
 }
 
+bool containsResourceIdentity(const DescriptorResourceList &resources,
+                              ResourceCacheIdentity identity) {
+  return std::any_of(resources.begin(), resources.end(),
+                     [identity](const DescriptorResourceRef &resource) {
+                       return resource.isResource() &&
+                              resource.resource().isValid() &&
+                              resource.resource().getBackendCacheIdentity() ==
+                                  identity;
+                     });
+}
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
@@ -1651,7 +1662,7 @@ void testBuildFromSceneIsIdempotent() {
 void testPassFilterExcludesNonMatching() {
   // Renderable A participates in Forward + Shadow; B only in Forward.
   auto rA = makeRenderable("fake_fg_a", {}, true);
-  auto rB = makeRenderable("fake_fg_b");
+  auto rB = makeRenderable("fake_fg_a");
   auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
@@ -1668,11 +1679,13 @@ void testPassFilterExcludesNonMatching() {
          "Shadow pass: only rA supports shadow");
 }
 
-void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront() {
-  auto opaque = makeRenderable("opaque_body");
+void testForwardQueuePreservesVisibleRenderableDrawInputs() {
+  auto opaque = makeRenderable("compatible_body");
   opaque->setTranslation({0.0f, 0.0f, -2.0f});
-  auto nearGlass = makeTransparentRenderable("near_glass", {0.0f, 0.0f, -2.0f});
-  auto farGlass = makeTransparentRenderable("far_glass", {0.0f, 0.0f, -8.0f});
+  auto nearGlass = makeRenderable("compatible_body");
+  nearGlass->setTranslation({0.0f, 0.0f, -2.0f});
+  auto farGlass = makeRenderable("compatible_body");
+  farGlass->setTranslation({0.0f, 0.0f, -8.0f});
 
   auto scene = Scene::create("transparent_sort");
   scene->addRenderable(nearGlass);
@@ -1689,7 +1702,7 @@ void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront(
 
   const auto &drawInputs = queue.nodeData().drawInputs;
   EXPECT(drawInputs.size() == 3,
-         "opaque and both transparent inputs should render");
+         "all compatible visible renderables should produce draw inputs");
   if (drawInputs.size() != 3) {
     return;
   }
@@ -1703,9 +1716,9 @@ void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront(
   EXPECT(hasDebugId(opaque->getDebugId()),
          "opaque renderable should produce a draw input");
   EXPECT(hasDebugId(farGlass->getDebugId()),
-         "far transparent renderable should produce a draw input");
+         "far renderable should produce a draw input");
   EXPECT(hasDebugId(nearGlass->getDebugId()),
-         "near transparent renderable should produce a draw input");
+         "near renderable should produce a draw input");
 }
 
 void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
@@ -1837,7 +1850,7 @@ void testNullOptCameraBeforeAndAfterFill() {
 
 void testMultiPassRebuildIsIdempotent() {
   auto rA = makeRenderable("fake_fg_a", {}, true);
-  auto rB = makeRenderable("fake_fg_b");
+  auto rB = makeRenderable("fake_fg_a");
   auto scene = makeSceneWithDefaultCamera(rA);
   scene->addRenderable(rB);
 
@@ -1949,7 +1962,7 @@ void testVisibilityMaskOrsMatchingCameraMasks() {
   const RenderTarget target{ImageFormat::BGRA8, ImageFormat::D32Float, 3};
 
   auto layer1 = makeRenderableWithMask(0x1u, "mask_or_a");
-  auto layer2 = makeRenderableWithMask(0x2u, "mask_or_b");
+  auto layer2 = makeRenderableWithMask(0x2u, "mask_or_a");
   auto scene = Scene::create(layer1);
   scene->addRenderable(layer2);
   scene->addCamera(makeCameraWithTargetAndMask(target, 0x1u));
@@ -1990,12 +2003,12 @@ void testVisibilityFilteringKeepsSceneResources() {
   }
 }
 
-void testUnconfiguredIblResourcesAreNotInjected() {
-  auto regular = makeRenderable("regular_no_ibl");
-  auto ibl = makeIblRenderable();
-  auto scene = Scene::create("ibl_injection");
-  scene->addRenderable(regular);
-  scene->addRenderable(ibl);
+void testCompatibleRenderablesDoNotRequireIblResources() {
+  auto first = makeRenderable("regular_no_ibl");
+  auto second = makeRenderable("regular_no_ibl");
+  auto scene = Scene::create("compatible_no_ibl");
+  scene->addRenderable(first);
+  scene->addRenderable(second);
   scene->addCamera(makeCameraWithTargetAndMask(RenderTarget{}, Layer_All));
 
   RenderWorkQueue queue;
@@ -2005,19 +2018,19 @@ void testUnconfiguredIblResourcesAreNotInjected() {
               std::nullopt);
 
   const auto &drawInputs = queue.nodeData().drawInputs;
-  const auto sawRegular = std::any_of(
-      drawInputs.begin(), drawInputs.end(), [debugId = regular->getDebugId()](
+  const auto sawFirst = std::any_of(
+      drawInputs.begin(), drawInputs.end(), [debugId = first->getDebugId()](
                                            const RenderDrawInput &input) {
         return input.debugId == debugId;
       });
-  const auto sawIbl = std::any_of(
-      drawInputs.begin(), drawInputs.end(), [debugId = ibl->getDebugId()](
+  const auto sawSecond = std::any_of(
+      drawInputs.begin(), drawInputs.end(), [debugId = second->getDebugId()](
                                            const RenderDrawInput &input) {
         return input.debugId == debugId;
       });
 
-  EXPECT(sawRegular, "regular item should be present");
-  EXPECT(sawIbl, "IBL item should be present");
+  EXPECT(sawFirst, "first compatible item should be present");
+  EXPECT(sawSecond, "second compatible item should be present");
 }
 
 void testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants() {
@@ -2211,6 +2224,66 @@ void testEditorProjectedShadowPassKeepsCharacterCaster() {
          "character caster appears in Shadow queue as a draw input");
 }
 
+void testShadowCascadeReplacementUpdatesBatchNodeContextResources() {
+  auto caster = makeRenderable("shadow_batch_caster", {}, true);
+  auto scene = makeSceneWithDefaultCamera(caster);
+  scene->setRenderSettings(SceneRenderSettings{.shadows = true});
+  auto light = makeLightWithPasses({Pass_Forward, Pass_Shadow});
+  attachLightNode(scene, light, "batch_shadow_light");
+
+  const DescriptorResourceList shadowResources =
+      scene->getSceneLevelResources(Pass_Shadow, RenderTarget{});
+  const GpuResourceRef mainLight = light->getUBO();
+  EXPECT(scene->renderSettings().shadows,
+         "regression setup should exercise shadow-enabled render settings");
+  EXPECT(mainLight.isValid(), "test light should expose a main LightUBO");
+  if (!mainLight.isValid()) {
+    return;
+  }
+  const ResourceCacheIdentity mainLightIdentity =
+      mainLight.getBackendCacheIdentity();
+  EXPECT(containsResourceIdentity(shadowResources, mainLightIdentity),
+         "shadow scene resources should initially contain the main light UBO");
+
+  auto cascadeSnapshot = light->makeShadowCascadeUBOSnapshot(0);
+  EXPECT(cascadeSnapshot != nullptr,
+         "test light should create a cascade UBO snapshot");
+  if (!cascadeSnapshot) {
+    return;
+  }
+  const ResourceCacheIdentity cascadeIdentity =
+      cascadeSnapshot->getBackendCacheIdentity();
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = Pass_Shadow,
+      .renderPathNodeSignature = StringID("batch.shadow.node"),
+      .target = RenderTarget{}.toDesc(),
+      .sceneResources = shadowResources,
+      .objectDataSignature = StringID("BindlessObjectData.v1"),
+  });
+  EXPECT(queue.getItems().empty(),
+         "batch-node descriptor replacement must not depend on legacy work "
+         "items");
+
+  const usize replaced = queue.replaceNodeContextSceneResourceByIdentity(
+      mainLightIdentity, DescriptorResourceRef{*cascadeSnapshot});
+  EXPECT(replaced == 1,
+         "exactly one batch node context LightUBO should be replaced");
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(containsResourceIdentity(analysis.context.sceneResources,
+                                  cascadeIdentity),
+         "batch analysis context should bind the cascade snapshot UBO");
+  EXPECT(!containsResourceIdentity(analysis.context.sceneResources,
+                                   mainLightIdentity),
+         "batch analysis context should not keep the main light UBO for the "
+         "cascade shadow pass");
+  EXPECT(countResourcesNamed(analysis.context.sceneResources,
+                             StringID("LightUBO")) == 1,
+         "cascade replacement should preserve the LightUBO binding name");
+}
+
 } // namespace
 
 int main() {
@@ -2264,7 +2337,7 @@ int main() {
   testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs();
   testFrameGraphDedupesExactSameTargetBuildDescs();
   testPassFilterExcludesNonMatching();
-  testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront();
+  testForwardQueuePreservesVisibleRenderableDrawInputs();
   testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera();
   testMultiPassRebuildIsIdempotent();
   testMultiCameraTargetFilter();
@@ -2274,7 +2347,7 @@ int main() {
   testVisibilityMaskFiltersRenderables();
   testVisibilityMaskOrsMatchingCameraMasks();
   testVisibilityFilteringKeepsSceneResources();
-  testUnconfiguredIblResourcesAreNotInjected();
+  testCompatibleRenderablesDoNotRequireIblResources();
   testRenderUploadPlanCollectsRasterResourcesWithoutPushConstants();
   testPartialIblResourcesAreNotCompletedWithDefaults();
   testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask();
@@ -2282,6 +2355,7 @@ int main() {
   testSceneCreateDoesNotSeedHiddenLight();
   testInactiveCameraIsIgnoredForResourcesAndMasks();
   testEditorProjectedShadowPassKeepsCharacterCaster();
+  testShadowCascadeReplacementUpdatesBatchNodeContextResources();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

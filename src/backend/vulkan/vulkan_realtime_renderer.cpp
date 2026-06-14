@@ -2812,15 +2812,18 @@ private:
         ++cascadeIndex;
         continue;
       }
+      const LX_core::DescriptorResourceRef cascadeResource{*snapshot};
       for (auto &item : pass.queue.getItems()) {
         for (auto &resource : item.descriptorResources) {
           if (resource.isResource() && resource.resource().isValid() &&
               resource.resource().getBackendCacheIdentity() ==
                   mainLightIdentity) {
-            resource = LX_core::DescriptorResourceRef{*snapshot};
+            resource = cascadeResource;
           }
         }
       }
+      pass.queue.replaceNodeContextSceneResourceByIdentity(mainLightIdentity,
+                                                           cascadeResource);
       ++cascadeIndex;
     }
   }

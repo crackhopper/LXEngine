@@ -165,6 +165,9 @@ public:
   void addItem(RenderWorkItem item);
   void clearItems();
   void setNodeContext(RenderPathNodeContext context);
+  usize replaceNodeContextSceneResourceByIdentity(
+      ResourceCacheIdentity oldIdentity,
+      const DescriptorResourceRef &replacement);
   void addDrawInput(RenderDrawInput input);
   void prepareDrawInputs(const SceneResourceTableUploadView &uploadView);
 
@@ -219,9 +222,10 @@ private:
 
 /*
 @source_analysis.section collectUniquePipelineBuildDescs：预构建去重
-这一步暂时只覆盖非 geometry dispatch items。realtime geometry 的 pipeline lookup
-将从 `RenderBatchAnalysis` 的 batch identity 与 node context 派生，不再由 per-draw
-`RenderWorkItem` 去重驱动。
+预构建入口同时覆盖非 geometry dispatch items 与已经成功编译的 material-source
+batch。batch 路径只从 `RenderBatchAnalysis` 的 batch identity 与 node context
+派生 `PipelineBuildDesc`，不会回读 per-draw `RenderWorkItem` 或改变
+RenderBatchCompiler 的兼容性键。
 */
 
 /*

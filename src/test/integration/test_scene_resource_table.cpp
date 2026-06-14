@@ -1608,6 +1608,20 @@ void testRealtimeRenderQueueBatchesSourceMaterialsByNormalizedType() {
                analysis.candidates[1].materialRefIndex,
            "fixture should exercise distinct source material refs");
   }
+  const std::vector<PipelineBuildDesc> preloadDescs =
+      queue.collectUniquePipelineBuildDescs();
+  EXPECT(preloadDescs.size() == 1,
+         "valid material-source batches should contribute one preloadable "
+         "pipeline build desc");
+  if (!preloadDescs.empty() && !analysis.batches.empty()) {
+    EXPECT(preloadDescs.front().key ==
+               analysis.batches.front().derivedPipelineKey,
+           "preload desc should use the compiler-derived batch pipeline key");
+    EXPECT(preloadDescs.front().type == PipelineBuildType::Graphics,
+           "material-source batch preload desc should be a graphics pipeline");
+    EXPECT(preloadDescs.front().target.role == RenderTargetRole::Swapchain,
+           "preload desc should preserve the node render target");
+  }
 }
 
 void testRealtimeRenderQueueRejectsShaderIndependentDrawInputUntilBatching() {
