@@ -26,6 +26,13 @@ struct VulkanFrameGraphAttachmentDumpResult final {
 };
 
 struct VulkanRealtimeRenderBatchStats final {
+  usize compilerInputDrawCount = 0;
+  usize compilerPreparedCandidateCount = 0;
+  usize compilerBatchCount = 0;
+  usize compilerDrawCount = 0;
+  usize indirectCapableDrawCount = 0;
+  usize unsupportedDrawCount = 0;
+  usize legacyRejectedDrawCount = 0;
   usize compilerBatchCountConsumed = 0;
   usize boundBatchGeometryCount = 0;
   usize submittedDirectIndexedDrawCount = 0;

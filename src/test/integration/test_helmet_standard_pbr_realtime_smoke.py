@@ -73,8 +73,20 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(int(stats.get("litPixelCount", 0)), 64)
         self.assertGreaterEqual(float(stats.get("averageLuminance", 0.0)), 0.001)
         batch_stats = payload["renderBatchStats"]
-        compiler_batch_count = self._required_int_stat(
+        compiler_input_draw_count = self._required_int_stat(
+            batch_stats, "compilerInputDrawCount"
+        )
+        compiler_prepared_candidate_count = self._required_int_stat(
+            batch_stats, "compilerPreparedCandidateCount"
+        )
+        compiler_batch_count_consumed = self._required_int_stat(
             batch_stats, "compilerBatchCountConsumed"
+        )
+        compiler_batch_count = self._required_int_stat(
+            batch_stats, "compilerBatchCount"
+        )
+        compiler_draw_count = self._required_int_stat(
+            batch_stats, "compilerDrawCount"
         )
         submitted_batch_count = self._required_int_stat(
             batch_stats, "submittedIndirectBatchCount"
@@ -85,13 +97,55 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         fallback_count = self._required_int_stat(
             batch_stats, "fallbackObservedCount"
         )
+        indirect_capable_draw_count = self._required_int_stat(
+            batch_stats, "indirectCapableDrawCount"
+        )
+        indexed_indirect_command_count = self._required_int_stat(
+            batch_stats, "submittedIndexedIndirectCommandCount"
+        )
+        direct_indexed_draw_count = self._required_int_stat(
+            batch_stats, "submittedDirectIndexedDrawCount"
+        )
+        unsupported_draw_count = self._required_int_stat(
+            batch_stats, "unsupportedDrawCount"
+        )
+        legacy_rejected_draw_count = self._required_int_stat(
+            batch_stats, "legacyRejectedDrawCount"
+        )
+        first_command_offset = self._required_int_stat(
+            batch_stats, "firstCommandOffset"
+        )
+        last_command_offset = self._required_int_stat(
+            batch_stats, "lastCommandOffset"
+        )
         self.assertGreater(compiler_batch_count, 0)
+        self.assertGreater(compiler_input_draw_count, 0)
+        self.assertEqual(
+            compiler_input_draw_count,
+            compiler_prepared_candidate_count,
+        )
+        self.assertEqual(
+            compiler_prepared_candidate_count,
+            compiler_draw_count,
+        )
+        self.assertEqual(compiler_draw_count, indirect_capable_draw_count)
         self.assertEqual(
             compiler_batch_count,
+            compiler_batch_count_consumed,
+        )
+        self.assertEqual(
+            compiler_batch_count_consumed,
             submitted_batch_count,
         )
+        self.assertGreater(indirect_capable_draw_count, 0)
+        self.assertEqual(indirect_capable_draw_count, submitted_draw_count)
+        self.assertEqual(indexed_indirect_command_count, submitted_draw_count)
         self.assertGreater(submitted_draw_count, 0)
+        self.assertEqual(direct_indexed_draw_count, 0)
+        self.assertEqual(unsupported_draw_count, 0)
+        self.assertEqual(legacy_rejected_draw_count, 0)
         self.assertEqual(fallback_count, 0)
+        self.assertLessEqual(first_command_offset, last_command_offset)
         self.assertTrue(payload.get("cpuSrgbPngPath"))
         self.assertTrue(payload.get("metadataPath"))
 
@@ -124,12 +178,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                 metadata={
                     "width": 4,
                     "height": 4,
-                    "renderBatchStats": {
-                        "compilerBatchCountConsumed": 1,
-                        "submittedIndirectBatchCount": 1,
-                        "submittedIndirectDrawCount": 2,
-                        "fallbackObservedCount": 0,
-                    },
+                    "renderBatchStats": self._full_render_batch_stats(),
                 },
             )
 
@@ -144,12 +193,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
 
             self.assertEqual(
                 result["renderBatchStats"],
-                {
-                    "compilerBatchCountConsumed": 1,
-                    "submittedIndirectBatchCount": 1,
-                    "submittedIndirectDrawCount": 2,
-                    "fallbackObservedCount": 0,
-                },
+                self._full_render_batch_stats(),
             )
             for value in result["renderBatchStats"].values():
                 self.assertIsInstance(value, int)
@@ -161,38 +205,29 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             ("non-dict stats", []),
             (
                 "missing key",
-                {
-                    "compilerBatchCountConsumed": 1,
-                    "submittedIndirectBatchCount": 1,
-                    "fallbackObservedCount": 0,
-                },
+                self._full_render_batch_stats("submittedIndirectDrawCount"),
+            ),
+            (
+                "missing first offset",
+                self._full_render_batch_stats("firstCommandOffset"),
+            ),
+            (
+                "missing compiler coverage",
+                self._full_render_batch_stats("compilerDrawCount"),
             ),
             (
                 "string value",
-                {
-                    "compilerBatchCountConsumed": "1",
-                    "submittedIndirectBatchCount": 1,
-                    "submittedIndirectDrawCount": 1,
-                    "fallbackObservedCount": 0,
-                },
+                self._full_render_batch_stats(
+                    compilerBatchCountConsumed="1"
+                ),
             ),
             (
                 "float value",
-                {
-                    "compilerBatchCountConsumed": 1,
-                    "submittedIndirectBatchCount": 1.9,
-                    "submittedIndirectDrawCount": 1,
-                    "fallbackObservedCount": 0,
-                },
+                self._full_render_batch_stats(submittedIndirectBatchCount=1.9),
             ),
             (
                 "bool value",
-                {
-                    "compilerBatchCountConsumed": 1,
-                    "submittedIndirectBatchCount": True,
-                    "submittedIndirectDrawCount": 1,
-                    "fallbackObservedCount": 0,
-                },
+                self._full_render_batch_stats(submittedIndirectBatchCount=True),
             ),
         ]
 
@@ -242,6 +277,33 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertIsInstance(value, int)
         self.assertNotIsInstance(value, bool)
         return value
+
+    @staticmethod
+    def _full_render_batch_stats(
+        omit_key: str = "", **overrides: object
+    ) -> dict[str, object]:
+        stats: dict[str, object] = {
+            "compilerInputDrawCount": 2,
+            "compilerPreparedCandidateCount": 2,
+            "compilerBatchCount": 1,
+            "compilerDrawCount": 2,
+            "indirectCapableDrawCount": 2,
+            "unsupportedDrawCount": 0,
+            "legacyRejectedDrawCount": 0,
+            "compilerBatchCountConsumed": 1,
+            "boundBatchGeometryCount": 1,
+            "submittedDirectIndexedDrawCount": 0,
+            "submittedIndexedIndirectCommandCount": 2,
+            "submittedIndirectBatchCount": 1,
+            "submittedIndirectDrawCount": 2,
+            "firstCommandOffset": 0,
+            "lastCommandOffset": 1,
+            "fallbackObservedCount": 0,
+        }
+        stats.update(overrides)
+        if omit_key:
+            del stats[omit_key]
+        return stats
 
     @staticmethod
     def _write_minimal_render_result(

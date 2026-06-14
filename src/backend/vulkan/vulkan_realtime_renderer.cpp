@@ -823,6 +823,20 @@ void writeRealtimeProfileMetadata(
   out << "    ]\n"
       << "  },\n"
       << "  \"renderBatchStats\": {\n"
+      << "    \"compilerInputDrawCount\": "
+      << result.renderBatchStats.compilerInputDrawCount << ",\n"
+      << "    \"compilerPreparedCandidateCount\": "
+      << result.renderBatchStats.compilerPreparedCandidateCount << ",\n"
+      << "    \"compilerBatchCount\": "
+      << result.renderBatchStats.compilerBatchCount << ",\n"
+      << "    \"compilerDrawCount\": "
+      << result.renderBatchStats.compilerDrawCount << ",\n"
+      << "    \"indirectCapableDrawCount\": "
+      << result.renderBatchStats.indirectCapableDrawCount << ",\n"
+      << "    \"unsupportedDrawCount\": "
+      << result.renderBatchStats.unsupportedDrawCount << ",\n"
+      << "    \"legacyRejectedDrawCount\": "
+      << result.renderBatchStats.legacyRejectedDrawCount << ",\n"
       << "    \"compilerBatchCountConsumed\": "
       << result.renderBatchStats.compilerBatchCountConsumed << ",\n"
       << "    \"boundBatchGeometryCount\": "
@@ -2193,6 +2207,18 @@ public:
         .metadataPath = outputDir / (outputStem + ".json"),
         .renderBatchStats =
             VulkanRealtimeRenderBatchStats{
+                .compilerInputDrawCount =
+                    profileBatchAnalysis.stats.inputDrawCount,
+                .compilerPreparedCandidateCount =
+                    profileBatchAnalysis.stats.preparedCandidateCount,
+                .compilerBatchCount = profileBatchAnalysis.stats.batchCount,
+                .compilerDrawCount = profileBatchAnalysis.stats.drawCount,
+                .indirectCapableDrawCount =
+                    profileBatchAnalysis.stats.indirectCapableDrawCount,
+                .unsupportedDrawCount =
+                    profileBatchAnalysis.stats.unsupportedDrawCount,
+                .legacyRejectedDrawCount =
+                    profileBatchAnalysis.stats.legacyRejectedDrawCount,
                 .compilerBatchCountConsumed =
                     commandBufferStats.compilerBatchCountConsumed,
                 .boundBatchGeometryCount =
@@ -2208,7 +2234,8 @@ public:
                 .firstCommandOffset = commandBufferStats.firstCommandOffset,
                 .lastCommandOffset = commandBufferStats.lastCommandOffset,
                 .fallbackObservedCount =
-                    commandBufferStats.fallbackObservedCount,
+                    std::max(profileBatchAnalysis.stats.fallbackObservedCount,
+                             commandBufferStats.fallbackObservedCount),
             },
         .width = output.width,
         .height = output.height,

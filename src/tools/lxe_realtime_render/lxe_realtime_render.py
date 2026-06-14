@@ -325,9 +325,21 @@ def require_pipeline_metadata(metadata_path: Path) -> None:
 
 
 REQUIRED_RENDER_BATCH_STAT_KEYS = (
+    "compilerInputDrawCount",
+    "compilerPreparedCandidateCount",
+    "compilerBatchCount",
+    "compilerDrawCount",
+    "indirectCapableDrawCount",
+    "unsupportedDrawCount",
+    "legacyRejectedDrawCount",
     "compilerBatchCountConsumed",
+    "boundBatchGeometryCount",
+    "submittedDirectIndexedDrawCount",
+    "submittedIndexedIndirectCommandCount",
     "submittedIndirectBatchCount",
     "submittedIndirectDrawCount",
+    "firstCommandOffset",
+    "lastCommandOffset",
     "fallbackObservedCount",
 )
 
