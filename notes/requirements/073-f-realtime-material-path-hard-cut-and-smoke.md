@@ -1,184 +1,180 @@
-# REQ-073-f: Realtime Material Path Hard Cut And Smoke
+# REQ-073-f: Transparent BMW Material Path And Smoke
 
-> 2026-06-13 顺延：原 `REQ-073-e` 因 `REQ-073-c` 进一步拆出 URI migration 而顺延为本 REQ。本 REQ 是 realtime material path 的 clean gate。`REQ-073-b` 提供数据基础，`REQ-073-c` 完成 shader variant，`REQ-073-d` 完成 URI/术语硬切，`REQ-073-e` 完成 indirect batching。本文件只负责删除/隔离旧 realtime fallback，并用 Helmet/BMW smoke 证明默认路径不能再绕过 Material v3 source contract。
+> 2026-06-14 重新收束：旧 realtime material fallback hard cut 已前移到 `REQ-073-d` 和 `REQ-073-e`。本 REQ 不再清理 073a/b/c 的旧兼容路径；它只在 073e 的 node-level batching / indirect submission 模型上扩展 transparent sorting/batching、glass material、BMW converter/shader 覆盖和 BMW realtime smoke。
 
 ## 背景
 
-在 foundation、shader variant 和 indirect batching 都落地后，系统仍可能保留这些旧入口：
+`REQ-073-e` 会让 realtime geometry 默认路径使用：
 
-- 旧共享 `MaterialUBO` / `SceneGpuMaterialRecord` 作为 PBR 参数真相。
-- per-material descriptor 或 non-bindless per-item draw fallback。
-- material-local technique / defaultTechnique。
-- `techniques/...` shader URI 默认路径。
-- debug color、默认材质、跳过 draw 等“看似能渲染”的隐藏兜底。
+- `RenderPathNodeContext` / `RenderPathNodeData`
+- `RenderDrawCandidate`
+- `RenderBatchCompiler`
+- `RenderBatchAnalysis`
+- object data signature + material pipeline signature
+- Vulkan indirect draw submission
 
-这些路径如果继续存在，会让 Helmet/BMW smoke 和后续 package 序列化证明的是混合状态，而不是干净 Material v3 + RenderPathGraph + bindless/indirect 默认路径。
-
-## 承接自 073-a / 073-b 的未完成项
-
-| 来源 | 本 REQ 承接内容 | 为什么属于 073-f |
-|---|---|---|
-| `REQ-073-a` T3 / T4 / T5 | shader 实际采样 factor × texture，并通过默认纹理后输出非全黑或明确诊断 | source record packing 和默认 texture slot 已在 073-a/b 建立；只有 clean realtime 默认路径能证明 shader 采样不是旧 fallback |
-| `REQ-073-a` T9 | Helmet/BMW 低分辨率 realtime 非全黑 validation | 视觉 smoke 必须等 source storage、shader variant 和 indirect/bindless path 都成立后执行，否则会把旧路径误判为成功 |
-| `REQ-073-b` 未完成项 | 删除旧 realtime `SceneGpuMaterialRecord` / per-material descriptor / non-bindless fallback | 073-b 为过渡保留旧字段不再作为 Material v3 真相；本 REQ 是删除或隔离旧默认成功路径的 clean gate |
-| `REQ-073-b` 未完成项 | realtime smoke 使用 `render_paths/...`、bindless/indirect stats 和 source-reflected material records 证明新路径 | 这些验收必须在 073-c/d/e 后进行，否则无法判断失败来自 shader variant、URI 迁移、batch、table 还是视觉内容 |
+BMW M6 相比 Helmet 多出透明/玻璃相关材质。透明物体不能简单按 batch locality 任意重排；它们需要先满足 back-to-front depth ordering，再在相邻 compatible candidates 间合批。因此 transparent batching 应该是 073e 通用 compiler 的 policy 扩展，而不是 BMW-only shortcut 或第二套 renderer。
 
 ## 目标
 
-1. realtime 默认路径只消费 source-reflected material storage 和 bindless-ready tables。
-2. 删除或隔离旧 `MaterialUBO` PBR truth、per-material descriptor、non-bindless draw fallback。
-3. 删除默认路径中的 material-local technique / defaultTechnique / `techniques/...` URI。
-4. 无法渲染时 fail-fast 并输出诊断，不用 debug 色、默认材质或跳过 draw 隐藏问题。
-5. Helmet 和 BMW M6 realtime smoke 输出非全黑或明确 unsupported diagnostic；失败不得进入 OfflineRT / package 后续阶段。
+1. 增加 transparent RenderPathGraph pass / RenderPathNode contract。
+2. 在 073e 的 `RenderBatchCompiler` 模型上实现 transparent sort policy。
+3. transparent candidates 先按 depth back-to-front 排序，再只合并相邻且 batch signature 相同的 candidates。
+4. 支持 BMW 中需要的 glass material contract、converter 参数、source-local material storage 和 shader variant。
+5. BMW converter 遇到目前未建模但 BMW 存在的材质时，要么显式支持，要么 fail-fast diagnostic；不能回退 debug/default/opaque approximation。
+6. BMW realtime smoke 输出非全黑，或对明确未支持 feature 输出可解释 diagnostic；不得使用旧 fallback。
 
 ## 非目标
 
-- 不实现 material storage foundation；由 `REQ-073-b` 处理。
-- 不实现 shader variant；由 `REQ-073-c` 处理。
-- 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
-- 不实现 indirect batching；由 `REQ-073-e` 处理。
-- 不处理 OfflineRT config hard cut；由 `REQ-073-h` 处理。
-- 不实现 package、BC7、pipeline cache blob 或 offline/realtime 等价阈值。
+- 不重新打开 073e opaque batching 架构。
+- 不引入透明专用的第二套 batch compiler。
+- 不实现 package、BC7、pipeline cache serialization。
+- 不处理 OfflineRT compute path；由 `REQ-073-g` / `REQ-073-h` 处理。
+- 不做 offline/realtime 图像等价阈值；由 `REQ-075-a` 处理。
 
 ## 需求
 
-### R1: Remove Old Material Truth From Realtime Default Path
+### R1: Transparent RenderPathGraph Pass
 
-realtime 默认路径 SHALL 不再把旧共享 `MaterialUBO` / `SceneGpuMaterialRecord` 当作 PBR 参数真相。
-
-要求：
-
-- Forward / Deferred PBR shader 只通过 Material Accessor ABI 读取材质。
-- upload path 的正向验证只读取 source-reflected material record。
-- `REQ-073-b` 如果为了过渡仍保留旧 material span 或 legacy shadow index，本 REQ 必须把它从 realtime 默认成功路径中删除或隔离到 named legacy rejection/audit。
-- ordinary positive tests 不得以旧 `MaterialUBO` 字段作为成功条件。
-
-### R2: Remove Per-material Descriptor Fallback
-
-realtime 默认路径 SHALL 删除或隔离 per-material descriptor 和 non-bindless per-item draw fallback。
-
-规则：
-
-- geometry pass descriptor resources 来自 global texture/sampler/material/object/draw/mesh tables。
-- 缺 bindless table、缺 default texture slot、缺 source-local material index 时必须 fail-fast。
-- 不允许自动回退到 per-material descriptor 后继续通过 smoke。
-
-### R3: Remove Material-local Technique Boundary
-
-Material v3 默认路径 SHALL 不再读取 material-local technique / defaultTechnique 作为渲染结构真相。
+RenderPathGraph SHALL 显式声明 transparent pass。
 
 要求：
 
-- pass/shader 来源来自 RenderPathGraph。
-- material 只声明 `bsdf.source` 和参数。
-- `techniques/...` 不能出现在 default assets、positive tests 或 migrated validation profile 的 shader URI 中。
-- old technique token 只允许出现在 legacy negative test、历史需求文档或 rejection diagnostic。
+- transparent pass 有独立 pass id / RenderPathNode。
+- pass contract 明确 shader URI、sources、targets、attachments、geometry contract、render state 和 blending。
+- transparent pass 选择不能来自 material name、implicit alpha heuristic 或 converter-side shortcut。
+- 不支持的透明材质必须 fail-fast，不得塞进 opaque pass 近似渲染。
 
-### R4: Fail-fast Rendering Diagnostics
+### R2: Transparent Sort Policy
 
-当默认路径无法渲染时 SHALL 停止并输出诊断。
+transparent node SHALL 使用 073e 的 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler`。
 
-禁止：
+排序/合批规则：
 
-- 静默切换 debug material。
-- 输出固定 debug 色伪装成功。
-- 跳过不可渲染 draw 后仍报告 smoke 通过。
-- 把 unsupported source 当作黑色材质继续渲染。
+```text
+transparent:
+  collect RenderDrawCandidate[]
+  sort back-to-front by camera depth
+  merge only adjacent candidates with the same batch signature
+```
 
-diagnostics 至少包含：
+batch signature 仍是：
 
-- scene / asset URI。
-- render path / pass id。
-- material source URI / signature。
-- pipeline key。
-- missing table / unsupported capability / invalid index / shader reflection failure 的具体原因。
+```text
+object data signature + material pipeline signature
+```
 
-### R5: Helmet Realtime Smoke
+不得引入 `TransparentBatchCompiler`、`OpaqueBatchCompiler` 或其它与 `RenderBatchCompiler` 并行的 public compiler。
 
-Helmet validation SHALL 使用 Material v3 source contract 默认路径完成 realtime smoke。
+### R3: Glass Material Contract
 
-最低验收：
+BMW glass material SHALL 显式映射为 Material v3 source contract。
 
-- 输出非全黑。
-- diagnostics 证明使用 source-reflected material records。
-- diagnostics 证明使用 `render_paths/...` shader URI。
-- diagnostics 证明没有 per-material descriptor fallback。
-- material source / pipeline / batch / draw stats 可见。
+最低支持：
 
-### R6: BMW M6 Realtime Smoke
+- transmission / opacity 或当前 glass shader 需要的等价参数。
+- roughness / tint / IOR 等 BMW 中出现且 shader 会消费的参数。
+- texture slot 和 factor 都进入 source-local material storage。
+- shader reflection 使用 final material-source variant。
 
-BMW M6 validation SHALL 使用 PBRT converter 输出的 Material v3 contract material 完成 realtime smoke。
+如果某个 BMW material source 暂不支持，converter 必须输出 unsupported diagnostic，并保证该 draw 不进入 positive smoke 的成功路径。
 
-最低验收：
+### R4: Transparent Shader Variant
 
-- 输出非全黑；或
-- 对当前明确不支持的 material source / feature fail-fast 并输出 unsupported diagnostic。
+transparent pass shader SHALL 使用 `render_paths/...` URI 和 Material v3 accessor ABI。
 
-无论哪种情况，都不得回退到旧 material truth、debug material、旧 shader URI 或跳过 draw 的隐藏路径。
+要求：
 
-### R7: Audit Tightening
+- 不使用 `techniques/...`。
+- 不读取旧 `MaterialUBO` / `SceneGpuMaterialRecord` PBR truth。
+- 不使用 per-material descriptor fallback。
+- 不因 texture presence 或材质参数值拆 batch；这些差异通过 table index/source-local storage 表达。
 
-新增或强化 audit：
+### R5: BMW Converter Coverage
 
-- realtime default path 不读取旧 `MaterialUBO` PBR 参数。
-- production default path 不创建 per-material descriptor fallback。
-- default assets 不使用 `techniques/...` shader URI。
-- positive tests 不依赖 material-local technique/defaultTechnique。
-- smoke test 日志中 fallback / unsupported draw count 必须为 0；明确 unsupported source 的负向测试除外。
+BMW converter SHALL 处理 BMW 中实际出现的材质类别。
+
+要求：
+
+- glass 材质映射到 explicit source contract。
+- unsupported material feature 有 material/source/parameter 级 diagnostic。
+- converter 不得把未知材质静默替换为 opaque/default/debug material。
+- conversion output 的 positive fixture 只引用 `render_paths/...` 和 Material v3 source contract。
+
+### R6: BMW Realtime Smoke
+
+BMW realtime smoke SHALL 验证：
+
+- converted BMW scene loads。
+- opaque pass 继续走 073e indirect batching。
+- transparent pass 显式存在并执行。
+- transparent candidates depth sorted。
+- adjacent compatible transparent candidates may batch。
+- glass material shader/source storage 被实际使用。
+- output non-black，或明确 unsupported diagnostic。
+- fallback-observed count 为 0。
 
 ## 测试
 
-### T1: Legacy Material Truth Audit
+### T1: Transparent Pass Contract
 
-rg/audit 正向路径，断言旧 `MaterialUBO` / old shared material record 只出现在 legacy rejection、历史文档或明确兼容层中。
+解析 BMW/forward render path，断言 transparent pass 显式存在，且 pass contract 包含 shader URI、blend state、target/attachment 和 geometry contract。
 
-### T2: Bindless-only Realtime Path
+### T2: Transparent Sorting
 
-构造小场景，断言 Forward / Deferred geometry pass 只从 global tables 绑定资源；缺任一 required table 时 fail-fast。
+构造多个透明对象，断言排序为 back-to-front。相同 batch signature 但排序后不相邻的对象不得跨越中间对象合批。
 
-### T3: Technique Boundary Rejection
+### T3: Transparent Adjacent Batching
 
-构造 material-local technique/defaultTechnique 和 `techniques/...` shader URI fixture，断言 migrated validation profile 拒绝它们。
+构造 depth order 中相邻且 batch signature 相同的透明对象，断言它们可以进入同一 indirect batch。
 
-### T4: No Hidden Fallback
+### T4: Glass Material Conversion
 
-覆盖 unsupported material source、缺 shader variant、缺 texture slot、invalid material index，断言不能输出 debug 色或跳过 draw 后通过。
+用 BMW 中的 glass material fixture 跑 converter，断言参数进入 Material v3 source-local storage，final shader reflection 能看到对应 accessors。
 
-### T5: Helmet Realtime Smoke
+### T5: Unsupported Material Diagnostic
 
-运行 Helmet 低分辨率 realtime smoke，断言非全黑，并校验 source-reflected material、render_paths URI、bindless/indirect stats。
+构造 BMW 中存在但本 REQ 不支持的 material feature，断言 converter 或 validation fail-fast，不能替换成 default/debug/opaque material。
 
-### T6: BMW M6 Realtime Smoke
+### T6: BMW Realtime Smoke
 
-运行 BMW M6 低分辨率 realtime smoke，断言非全黑或明确 unsupported diagnostic；两者都不能触发旧 fallback。
+运行低分辨率 BMW realtime smoke，断言非黑图或明确 unsupported diagnostic，并校验 opaque/transparent batch stats、glass usage、`fallback-observed == 0`。
 
-### T7: Build And Parser Tests
+### T7: rg Concept Drift Audit
 
-运行 shader compiler、render resource parser、SceneResourceTable upload view、RenderWorkQueue 和 headless auto validation 相关测试，确保普通正向 fixture 不再依赖旧路径。
+实现完成报告必须包含 rg 审计：
+
+```bash
+rg -n "OpaqueBatch|OpaqueGeometry|OpaqueIndirect|TransparentBatchCompiler" src/core src/backend src/test
+rg -n "techniques/|MaterialUBO|SceneGpuMaterialRecord|defaultTechnique|material-local technique" assets src/core src/backend src/infra src/test
+rg -n "debug material|default material|opaque approximation|fallback-observed" src/core src/backend src/infra src/test
+```
+
+ordinary positive tests 和 production path 不得保留这些 token 作为成功路径。允许的 negative audit / diagnostic hit 必须在完成报告中列出。
 
 ## 修改范围
 
-- realtime renderer submission / descriptor path
-- `RenderWorkQueue` fallback boundary
-- `SceneResourceTable` upload / diagnostics
-- Forward / Deferred PBR shader and tests
-- default RenderPathGraph assets
-- Helmet / BMW validation tests and diagnostics
-- legacy audit tests
+- `assets/render_paths/*.render-path.yaml`
+- transparent/glass shaders under `assets/shaders/glsl/render_paths/`
+- BMW converter and material mapping code
+- `RenderWorkQueue` transparent node sort policy usage
+- `RenderBatchCompiler` transparent policy tests
+- SceneResourceTable material/source storage coverage
+- BMW realtime smoke and diagnostics
 
 ## 边界与约束
 
-- 不保留两个可通过的 realtime 默认入口。
-- 不用 debug 色、默认材质或跳过 draw 隐藏不可渲染问题。
-- 不用 path/name substring 选择 strictness；strictness 来自 validation profile/property。
-- 不把 package、BC7、pipeline cache 或 OfflineRT hard cut 塞入本 REQ。
+- 不留下 opaque-only / transparent-only 两套 compiler。
+- 不通过 material name 或 alpha heuristic 选择 pass。
+- 不用旧 material truth、per-material descriptor、debug/default material 或 skipped draw 证明 smoke 成功。
+- 不把 package / BC7 / pipeline cache 工作提前塞入本 REQ。
 
 ## 依赖
 
-- `REQ-073-b`: Material storage and bindless upload foundation。
-- `REQ-073-c`: Material source shader variant boundary。
+- `REQ-073-b`: bindless-ready material/object/draw/mesh tables。
+- `REQ-073-c`: material source shader variant and final shader reflection。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
-- `REQ-073-e`: Indirect material batching and diagnostics。
+- `REQ-073-e`: RenderPathNode batching, diagnostics and indirect submission。
 
 ## 后续工作
 

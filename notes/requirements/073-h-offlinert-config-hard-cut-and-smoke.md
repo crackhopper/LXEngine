@@ -1,6 +1,6 @@
 # REQ-073-h: OfflineRT Config Hard Cut And Smoke
 
-> 2026-06-13 顺延：本 REQ 原为 `REQ-073-g`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-h`，紧跟 `REQ-073-g`。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-g`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-h`，紧跟 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 的 offline hard cut 依赖 `REQ-073-g` 的 compute graph path 和 `REQ-073-e` 的 node-level queue model，而不是旧版 073f 范围。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。
 
 ## 背景
 
@@ -22,12 +22,12 @@
 |---|---|---|
 | `REQ-073-a` 未完成项 | OfflineRT 默认入口 hard cut 和 smoke | 073-a 的 accessor ABI 不是入口硬切；旧 provider / hardcoded frame graph 必须等 073-g graph compute path 可运行后再删除 |
 | `REQ-073-b` 未完成项 | 删除 OfflineRT provider/framegraph bridge，禁止用旧 side channel 证明 material source 可渲染 | 073-b 只保证 source records 可进入 offline 相关测试；默认 CLI/integrator 入口是否干净由本 REQ 判定 |
-| `REQ-073-f` clean gate 传递项 | Helmet/BMW offline smoke 不得回退旧 material truth、旧 shader URI 或 pass injection | package 前必须证明 realtime 和 offline 默认路径都面对同一套 canonical SceneResourceTable / RenderPathGraph 状态 |
+| `REQ-073-e` / `REQ-073-g` 传递项 | Helmet/BMW offline smoke 不得回退旧 material truth、旧 shader URI 或 pass injection | package 前必须证明 realtime 和 offline 默认路径都面对同一套 canonical SceneResourceTable / RenderPathGraph 状态 |
 
 ## 目标
 
 1. 删除 OfflineRT 默认路径中的 shader/provider/pass/framegraph 硬编码。
-2. 让 offline 默认路径只能从 RenderPathGraph 创建 FrameGraph 和 compute work item。
+2. 让 offline 默认路径只能从 RenderPathGraph 创建 FrameGraph 和 compute node data。
 3. 迁移 OfflineRT shader URI 到 `render_paths/...`。
 4. 收窄 offline 相关 legacy token audit allowlist。
 5. 用 Helmet/BMW smoke 证明 offline direct render 仍可用。
@@ -74,7 +74,7 @@
 
 要求：
 
-- compute work item 由 `FramePass.stage`、`FramePass.dispatch` 和 compute pass metadata 决定。
+- compute node data 由 `FramePass.stage`、`FramePass.dispatch` 和 compute pass metadata 决定。
 - pass 名只作为 identity/diagnostic，不作为创建 compute item 的唯一条件。
 - unsupported compute pass 输出明确 diagnostic。
 
@@ -183,7 +183,8 @@ BMW M6 OfflineRT direct render：
 ## 依赖
 
 - `REQ-073-g`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-f`: realtime material path hard cut and smoke。
+- `REQ-073-e`: RenderPathNode batching, diagnostics and indirect submission。
+- `REQ-073-f`: transparent BMW material path and smoke。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
 
 ## 后续工作

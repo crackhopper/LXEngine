@@ -1,6 +1,6 @@
 # REQ-073-g: OfflineRT RenderPathGraph Compute Path
 
-> 2026-06-13 顺延：本 REQ 原为 `REQ-073-f`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-g`，位于 `REQ-073-f` realtime clean gate 之后、`REQ-074-a` 之前。目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-f`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 位于 `REQ-073-e` 的 RenderWorkQueue node-level 数据模型之后、`REQ-074-a` 之前。目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。
 
 ## 背景
 
@@ -16,7 +16,7 @@
 - `assets/render_paths/` 没有 `offline_ray_tracer.render-path.yaml`。
 - offline integrator 直接调用 `createOfflineRenderFrameGraph(output)` 生成单 pass FrameGraph。
 - `lxe_offline_render` / `OfflineSceneLoader` 通过 `OfflineShaderProvider` 注入 `techniques/OfflineRT/offline_pbr_direct_ray`。
-- `RenderWorkQueue` 通过 `Pass_OfflineRayTrace` 名字创建 compute item。
+- `RenderWorkQueue` 通过 `Pass_OfflineRayTrace` 名字创建 compute work，仍未使用 node-level context/data。
 - RenderPass parser 虽然认识 compute pass，但仍无条件要求 `renderState`，这会把 compute pass 写成伪 raster pass。
 
 因此，本 REQ 的核心不是重新实现 offline renderer，而是把 offline 的 shader/pass/work-item 来源改为 RenderPathGraph，让 offline 和 realtime 共享同一条 scene/resource/graph/pipeline 组织方式。
@@ -25,7 +25,7 @@
 
 | 来源 | 本 REQ 承接内容 | 为什么属于 073-g |
 |---|---|---|
-| `REQ-073-a` 未完成项 | OfflineRT 默认配置入口从硬编码 pass/shader 迁移到 RenderPathGraph compute path 的第一段 | 073-a 只证明 Offline PBR direct shader 可使用 Material Accessor ABI；配置入口需要 RenderPathGraph compute pass、FrameGraph 和 work item 支撑 |
+| `REQ-073-a` 未完成项 | OfflineRT 默认配置入口从硬编码 pass/shader 迁移到 RenderPathGraph compute path 的第一段 | 073-a 只证明 Offline PBR direct shader 可使用 Material Accessor ABI；配置入口需要 RenderPathGraph compute pass、FrameGraph 和 node data 支撑 |
 | `REQ-073-b` 未完成项 | OfflineRT graph compute path 使用 source records / SceneResourceTable upload view 作为资源来源 | 073-b 已让 offline Material v2 测试使用 source records，但默认 OfflineRT 仍有独立 provider/framegraph bridge |
 | `REQ-073-c` / `REQ-073-d` 传递项 | OfflineRT shader URI 使用 `render_paths/OfflineRT/...`，并走 material source variant | OfflineRT direct shader 同样需要 final variant shader reflection，不能继续用 `techniques/OfflineRT/...` 或裸 base shader |
 
@@ -34,7 +34,7 @@
 1. 增加 `OfflineRT` 的 RenderPathGraph asset。
 2. 让 RenderPass contract 按 stage/dispatch 区分 raster 和 compute pass。
 3. 让 offline integrator 从 RenderPathGraph 构建 FrameGraph。
-4. 让 offline compute work item 从 FramePass / pass contract 生成，而不是从 pass 名字硬编码生成。
+4. 让 offline compute work 从 FramePass / pass contract 和 node-level context/data 生成，而不是从 pass 名字硬编码生成。
 5. 保留现有 compute pipeline backend 创建路径，不引入第二套 pipeline 系统。
 6. 让 offline 默认路径使用 realtime 同源 scene parsing、SceneResourceTable 和 resource dependency validation。
 
@@ -137,17 +137,17 @@ OfflineRT SHALL 使用 `buildFrameGraphFromRenderPathGraph()` 或同一套 Rende
 - output width/height、sample count、integrator 参数等仍来自 offline render profile。
 - shader 由 RenderPathGraph pass 的 shader URI 解析，不由 `OfflineShaderProvider` 注入。
 
-### R5: Config-Driven Offline Compute Work Item
+### R5: Config-Driven Offline Compute Work
 
-`RenderWorkQueue` SHALL 根据 `FramePass.stage == Compute` 和 `FramePass.dispatch == Compute` 生成 offline compute work item。
+`RenderWorkQueue` SHALL 根据 `FramePass.stage == Compute` 和 `FramePass.dispatch == Compute` 生成 offline compute work，并复用 `REQ-073-e` 建立的 node-level queue data model。
 
 要求：
 
-- 不再通过 `pass == Pass_OfflineRayTrace` 决定是否创建 work item。
+- 不再通过 `pass == Pass_OfflineRayTrace` 决定是否创建 compute work。
 - shaderInfo 来自 FramePass / resolved RenderPathGraph shader payload。
 - compute group count 来自 compute block 的 `dispatchFrom` 和 `localSize`。
 - descriptor resources 来自 pass sources / SceneResourceTable upload view / offline storage resources。
-- `objectSignature`、`materialSignature` 和 `PipelineKey` 来自 compute pass 的结构事实，例如 shader URI、compute storage layout、SceneResourceTable upload layout、output target signature、offline profile variant；不能继续硬编码成临时字符串。
+- compute pipeline signature 和 derived `PipelineKey` 来自 compute pass 的结构事实，例如 shader URI、compute storage layout、SceneResourceTable upload layout、output target signature、offline profile variant；不能继续硬编码成临时字符串。
 
 ### R6: Shared Scene Parsing And SceneResourceTable
 
@@ -166,7 +166,7 @@ OfflineRT compute pipeline SHALL 继续复用 backend pipeline 创建和 cache �
 
 要求：
 
-- `PipelineBuildDesc::fromRenderWorkItem()` 能表达 compute dispatch pipeline。
+- pipeline build desc collection 能表达 compute dispatch pipeline，不依赖 old union-like `RenderWorkItem` geometry DTO。
 - `FrameGraph::collectAllPipelineBuildDescs()` 能收集 OfflineRT compute pipeline desc。
 - Vulkan offline executor 继续通过 `resourceManager.getOrCreatePipeline(item)` 获取 pipeline。
 - 不引入 `OfflinePipelineFactory`、`OfflineGraph` 或第二套 public graph/contract 系统。
@@ -214,12 +214,12 @@ OfflineRT 默认路径 SHALL 输出可审计 diagnostics：
 - compute metadata 进入 FramePass。
 - compile 阶段能识别缺失 source/target resource。
 
-### T4: Config-Driven Offline Work Item
+### T4: Config-Driven Offline Work
 
 使用小场景构建 offline FrameGraph，断言：
 
-- RenderWorkQueue 生成 `RenderWorkKind::ComputeDispatch`。
-- work item shader 来自 graph pass。
+- RenderWorkQueue 根据 compute FramePass 生成 compute node data。
+- compute node data 的 shader 来自 graph pass。
 - group count 来自 output resolution 和 local size。
 - descriptor resources 来自 SceneResourceTable upload view。
 - pipeline key 不依赖 hardcoded `OfflinePrimaryRayCompute` 字符串。
@@ -253,6 +253,7 @@ offline render graph collect pipeline descs，断言 compute pipeline desc 可�
 - 不让 `techniques/...` 成为新的默认路径。
 - 不接受未消费的 parser allowlist 字段。
 - 不为 offline 引入第二套 public graph 或 pipeline build 系统。
+- 不重新引入 `RenderWorkKind` / `.kind` 作为 node data routing 方案。
 - 任何过渡 bridge 必须在代码或 diagnostics 中标记，并交给 `REQ-073-h` 删除。
 
 ## 依赖

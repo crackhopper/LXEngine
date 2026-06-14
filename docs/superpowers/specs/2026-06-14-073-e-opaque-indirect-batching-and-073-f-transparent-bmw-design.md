@@ -78,7 +78,7 @@ opaque batching concept.
 
 `073-e` includes:
 
-- opaque Forward/Deferred geometry work item readiness for indirect draw;
+- opaque Forward/Deferred geometry draw candidate readiness for indirect draw;
 - table-index/range based batch compatibility;
 - a diagnostic batch compiler result rather than silent skips;
 - backend indirect draw submission as the realtime opaque geometry default;
@@ -322,6 +322,46 @@ Positive validation requires:
 - unsupported counts are zero except in tests that intentionally construct
   unsupported inputs.
 
+### Hard Cut And rg Audit
+
+`073-e` is not allowed to leave a second successful realtime geometry batching
+or submission model beside the `RenderPathNodeContext` / `RenderPathNodeData` /
+`RenderBatchCompiler` path.
+
+Implementation must delete or isolate all duplicate concepts that can still
+submit realtime geometry successfully:
+
+- old union-like `RenderWorkItem` geometry routing;
+- `RenderWorkKind` / `kind` / `RasterDraw` / `RasterBatch` as geometry batch
+  concepts;
+- opaque-only parallel classes such as `OpaqueBatch*`, `OpaqueGeometry*`, or
+  `OpaqueIndirect*`;
+- descriptor-resource equality as a batch compatibility check;
+- target, attachment, topology, vertex layout, or geometry buffer identity as
+  per-draw batch split keys;
+- direct/per-item geometry submission as a successful fallback after the new
+  indirect path exists.
+
+Any surviving helper for unrelated debug, fullscreen, compute, or negative-test
+paths must be explicitly named outside realtime material-source geometry. It
+cannot be reachable as a positive geometry fallback.
+
+Implementation completion must include rg audits. The exact commands may be
+split by file scope, but they must prove no ordinary production or positive-test
+hit remains for the deleted geometry concepts:
+
+```bash
+rg -n "OpaqueBatch|OpaqueGeometry|OpaqueIndirect" src/core src/backend src/test
+rg -n "RenderWorkKind|RasterDraw|RasterBatch|\\.kind\\b" src/core src/backend src/test
+rg -n "DescriptorResourceList|sameDescriptorResources|descriptor-resource-mismatch" src/core src/backend src/test
+rg -n "vertex-layout-mismatch|topology-mismatch|target-mismatch|geometry-buffer-mismatch" src/core src/backend src/test
+rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
+```
+
+Allowed hits must be narrow and named in the completion report, such as negative
+legacy audits or non-geometry compute/debug paths. Broad allowlists are not
+acceptable.
+
 ### Split Reasons
 
 Diagnostics use a constrained reason vocabulary so tests can assert exact
@@ -486,6 +526,8 @@ the active requirement is aligned to:
 - batch compiler tests pass;
 - invalid-index and no-silent-skip diagnostics pass;
 - descriptor equality no longer splits same-source per-material differences;
+- hard-cut rg audits prove there is no second successful realtime geometry
+  batching/submission path;
 - backend indirect submission is proven;
 - Helmet realtime smoke passes on the new path;
 - `073-f` remains scoped to transparent/BMW follow-up.

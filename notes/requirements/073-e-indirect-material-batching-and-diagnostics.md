@@ -1,175 +1,230 @@
-# REQ-073-e: Indirect Material Batching And Diagnostics
+# REQ-073-e: RenderPathNode Indirect Batching And Diagnostics
 
-> 2026-06-13 顺延：原 `REQ-073-d` 因 `REQ-073-c` 进一步拆出 URI migration 而顺延为本 REQ。本 REQ 只负责让 realtime geometry pass 使用 source-reflected material records 和 bindless tables 进入 indirect / batched submission，并输出可解释的拆分诊断。
+> 2026-06-14 现状校准：`REQ-073-d` 正在执行 `techniques/...` 到 `render_paths/...` 的 URI / 术语硬切。本 REQ 的正向路径 SHALL 以 `REQ-073-d` 完成后的 RenderPathGraph shader URI、RenderPathNodeSignature 和 legacy URI rejection 作为输入前提；不得继续依赖 `assets/shaders/glsl/techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧兼容测试 fixture。
+>
+> 2026-06-14 设计收束：本 REQ 负责把 realtime geometry 默认路径切到 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler` / `RenderBatchAnalysis` 模型，并删除旧双轨。`REQ-073-f` 只负责 transparent/BMW follow-up，不再承担 073e 的 fallback cleanup。
 
 ## 背景
 
-`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table，并证明 backend/GPU resource table 能建立对应 slot/staging；`REQ-073-c` 会让 pass shader 和 pipeline identity 使用 material source variant；`REQ-073-d` 会把默认 shader URI 和术语硬切到 `render_paths/...`。此时 renderer 才有足够结构事实把 draw submission 从“每材质 descriptor / 每 item fallback”推进到按兼容签名分批的 indirect path。
+`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 已把 material source variant 和 RenderPathNode pipeline identity 建立起来；`REQ-073-d` 负责把 shader URI 与术语硬切到 RenderPathGraph。此时 realtime geometry 可以从 object + mesh + bound material 生成 draw candidate，再按 batch signature 走 indirect submission。
 
-本 REQ 的核心是 batching 和 diagnostics，不负责最终删除旧 fallback。最终硬切和视觉 smoke 由 `REQ-073-f` 完成。
-
-## 承接自 073-a / 073-b 的未完成项
-
-| 来源 | 本 REQ 承接内容 | 为什么属于 073-e |
-|---|---|---|
-| `REQ-073-a` T7 / T10 | 同 source 不因材质参数值或贴图存在性拆 batch 的 renderer 级验证 | source signature 已在合同层成立，但 batch 是否错误拆分只能在 RenderWorkQueue 消费最终 shader variant 和 bindless table 后验证 |
-| `REQ-073-b` 未完成项 | RenderWorkQueue / geometry pass 默认消费 bindless table 并生成 indirect-capable work item | 073-b 已证明 table/staging 可上传；本 REQ 负责让实时提交路径真正消费这些 table |
-| `REQ-073-b` 未完成项 | material source、batch、pipeline、draw 的集中 diagnostics profile | upload/backend diagnostics 只能说明数据表存在；batch/pipeline/draw 归因必须由 RenderWorkQueue 和 geometry pass 输出 |
-| `REQ-073-a` / `REQ-073-b` Helmet/BMW 验证前置 | Helmet/BMW batching stats | 最终视觉 smoke 属于 073-f；本 REQ 先提供 material source、batch、pipeline、draw count 和 split reason，便于 073-f 判断失败原因 |
+当前代码已有 `RenderWorkQueue::compileIndirectBatches()`、`RenderIndirectBatch`、typed `drawRecordIndex` / `materialRefIndex` 和 `PipelineKey::build(materialTypeVariant, renderPathNodeSignature)`，但这只是过渡实现。它仍可能把旧 `RenderWorkItem` DTO、`RenderWorkKind` / `RasterDraw` / `RasterBatch`、`DescriptorResourceList` equality、target/geometry buffer identity 或 direct/per-item submission 当作成功路径。本 REQ 要把这些双轨全部硬切掉或隔离到非默认、非 realtime geometry 的命名路径。
 
 ## 目标
 
-1. Forward / Deferred geometry pass 默认生成 indirect-capable render work。
-2. RenderWorkQueue 按真实结构签名分组，不按 material instance 字符串或 texture 存在性分组。
-3. RenderWorkItem 只携带 source-local material index、object/draw/mesh offsets 等 table index。
-4. 诊断每个不能合批或不能 indirect 的原因。
-5. Helmet/BMW validation 可以看到 material source、batch、pipeline 和 draw count 统计。
+1. `RenderWorkQueue` 成为 RenderPathNode 级 work owner，内部数据模型收敛为 `RenderPathNodeContext` + `RenderPathNodeData`。
+2. `RenderPathNodeData` 携带 `RenderDrawCandidate[]`，每个 candidate 只保存 typed object/draw/material/mesh index/range、object data signature、material pipeline signature、indirect draw counts/offsets 和必要 sort data。
+3. `RenderBatchCompiler` 作为通用 compiler，按 context 的 sort policy 排序，再合并相邻 compatible candidates。
+4. opaque geometry batch signature 只由 object data signature + material pipeline signature 决定。
+5. backend realtime geometry 默认提交走 Vulkan indirect draw；旧 direct/per-item geometry 成功路径删除或命名隔离，不能作为 fallback。
+6. diagnostics 和 stats 覆盖每个 draw candidate：成功 batch、明确 split、明确 rejection，不能静默跳过。
+7. Helmet realtime smoke 只验证 073e 的 opaque indirect path；BMW/glass/transparent 留给 073f。
 
 ## 非目标
 
 - 不实现 material storage / backend table upload foundation；由 `REQ-073-b` 处理。
 - 不实现 shader source variant；由 `REQ-073-c` 处理。
 - 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
-- 不删除 realtime 旧 fallback；由 `REQ-073-f` 处理。
-- 不要求 Helmet/BMW 最终视觉验收；由 `REQ-073-f` 处理。
-- 不处理 OfflineRT compute work item；由 `REQ-073-g` 处理。
+- 不实现 transparent pass、transparent sorting、glass material、BMW converter/shader/smoke；由 `REQ-073-f` 处理。
+- 不处理 OfflineRT compute path；由 `REQ-073-g` 处理。
+- 不实现 package、BC7、pipeline cache serialization 或 offline/realtime equivalence。
 
 ## 需求
 
-### R1: Indirect-capable Geometry Work Items
+### R1: RenderPathNode Queue Data Model
 
-Forward / Deferred geometry pass SHALL 从 SceneResourceTable upload view 创建 indirect-capable work item。
+`RenderWorkQueue` SHALL 保持为 per-node/per-pass work owner，但不得继续把 realtime geometry 表达成 old union-like `RenderWorkItem`。
 
-work item 至少引用：
+目标数据模型：
 
-| 字段 | 说明 |
+| 概念 | 说明 |
 |---|---|
-| pass id / RenderPath | pass identity |
-| material source signature | source-reflected material storage 选择 |
-| source-local material index | material record index |
-| object table index | transform / visibility / mesh reference |
-| draw table range | draw command range |
-| mesh/geometry table range | vertex/index/attribute stream range |
-| pipeline key | variant shader + render state + target + layout |
+| `RenderPathNodeContext` | pass identity、rendering mode、sort policy、render state defaults、target/attachment contract、geometry contract、object data ABI resolver、material signature resolver、global geometry table view、backend indirect capability |
+| `RenderPathNodeData` | 当前 node 的 `RenderDrawCandidate[]` |
+| `RenderDrawCandidate` | object/draw indices、mesh table range、material ref/source-local material indices、object data signature、material pipeline signature、indirect draw counts/offsets、sort data |
+| `RenderBatchCompiler` | 通用 batch compiler，不带 `Opaque` 前缀 |
+| `RenderBatchAnalysis` | batches、diagnostics、stats |
 
-规则：
+`target`、attachments、render-state defaults 和 pass identity 是 node context，不复制到每个 candidate 上参与 batch 比较。
 
-- work item 不保存 backend descriptor object pointer。
-- work item 不保存旧 `MaterialUBO` bytes。
-- material URI / material name / texture id 不作为 batch key。
+### R2: Draw Candidate Readiness
 
-### R2: Batch Compatibility Signature
+opaque geometry node 内的 draw candidate 只有在以下事实显式可用时才 indirect-ready：
 
-RenderWorkQueue SHALL 使用兼容签名分 batch。
+- valid mesh / geometry table range。
+- non-zero index count 和 instance count。
+- object data signature 已解析；当前 bindless 阶段为单一稳定值，例如 `BindlessObjectData.v1`。
+- material pipeline signature 已解析。
+- shader 消费 `SceneDraws` / `SceneObjects` 时有 typed draw/object index。
+- shader 消费 source-local material data 时有 typed material ref 和 source-local material index。
+- material storage 存在且 index/range 合法。
+- final shader reflection 来自 material-source variant。
 
-最低签名：
+缺失数据 SHALL 形成 preparation error 或 batch diagnostic，不得回退 direct/per-item draw。
 
-- RenderPath / pass id。
-- render target signature。
-- vertex / mesh input layout signature。
-- material source signature。
-- shader source variant identity。
-- pipeline key。
-- global geometry buffer compatibility。
-- draw command layout。
+### R3: Batch Compatibility
+
+batch compatibility SHALL 在一个 `RenderPathNodeContext` 内判断。两个 draw candidate 可合批，当且仅当：
+
+```text
+object data signature == object data signature
+material pipeline signature == material pipeline signature
+```
+
+不得作为 batch split key：
+
+- `PipelineKey` 独立比较结果。
+- `RenderPathNodeSignature` per-draw 拷贝。
+- old mesh-derived `objectSignature`。
+- material URI、material name、material 参数值、texture presence、texture id。
+- per-material descriptor object identity 或 `DescriptorResourceList` equality。
+- vertex layout、object topology、target/attachment、geometry buffer identity。
+- old `MaterialUBO` / `SceneGpuMaterialRecord` PBR payload identity。
+- `techniques/...` shader URI。
+
+不同材质参数值或不同 texture slot 在 object data signature 和 material pipeline signature 相同时 SHALL 进入同一 batch。
+
+### R4: Generic Batch Compiler Flow
+
+`RenderBatchCompiler` SHALL 使用同一流程支持 opaque 和未来 transparent node：
+
+```text
+RenderPathNodeData
+  -> validate candidate readiness
+  -> apply RenderPathNodeContext sort policy
+  -> merge contiguous candidates with the same batch signature
+  -> return RenderBatchAnalysis
+```
+
+073e 只实现 opaque policy：opaque 可以为了 batch locality 排序/聚合，因为深度顺序不是语义约束。073f 在同一模型上补 transparent depth sort 和 adjacent-compatible merge。
+
+### R5: Diagnostics And Stats
+
+`RenderBatchAnalysis` SHALL 保证：
+
+- 每个 input candidate 要么被一个 batch 覆盖，要么有一个 diagnostic。
+- 没有 draw 被静默跳过。
+- diagnostics 至少包含 item index、pass/node context、object data signature、material pipeline signature、material/source identity、mesh/draw/material index/range、derived PipelineKey when available、split/rejection reason。
+- stats 至少包含 item count、batch count、draw count、indirect-capable draw count、unsupported draw count、legacy-rejected draw count、fallback-observed count。
+- positive validation 中 `fallback-observed == 0`。
+
+合法 split/rejection reason 词表：
+
+- `object-data-signature-mismatch`
+- `material-pipeline-signature-mismatch`
+- `missing-material-ref-index`
+- `missing-draw-record-index`
+- `invalid-material-ref-index`
+- `invalid-draw-record-index`
+- `missing-mesh-range`
+- `invalid-mesh-range`
+- `zero-index-count`
+- `zero-instance-count`
+- `global-geometry-table-missing`
+- `backend-indirect-unsupported`
+- `legacy-input-rejected`
+
+不得把 `descriptor-resource-mismatch`、`vertex-layout-mismatch`、`topology-mismatch`、`target-mismatch`、`geometry-buffer-mismatch` 作为 realtime opaque geometry 的永久 split reason。
+
+### R6: Backend Indirect Submission Hard Cut
+
+Vulkan realtime geometry 默认路径 SHALL 消费 `RenderBatchAnalysis` 并提交 indirect draw。
 
 要求：
 
-- 同 source / 不同 material 参数值的对象可以进入同一 batch。
-- 常量-only 材质和 texture-backed 材质可以进入同一 batch，只要 source signature 相同。
-- mesh/geometry table 暂时不能合并时必须输出拆分原因。
+- empty queue 正常返回。
+- rejected analysis 输出首个 diagnostic，并保留完整 stats。
+- successful analysis 记录 indirect draw batches。
+- old direct/per-item geometry submission 不得作为 material-source geometry 的 fallback success path。
+- 如果低层 direct draw helper 因 debug/fullscreen/test-only 保留，必须命名为非默认路径，且 rg audit 中列出 allowlist。
 
-### R3: Bindless Descriptor Consumption
+### R7: Duplicate Concept Hard Cut
 
-geometry pass descriptor resources SHALL 来自 global bindless-ready tables。
+本 REQ 完成时 SHALL 不存在第二套可成功提交 realtime geometry 的 batch/submission 概念。
 
-要求：
+必须删除或命名隔离：
 
-- texture、sampler、material storage、object、draw、mesh/geometry tables 可从 work item 追踪；这些 table/slot/staging 由 `REQ-073-b` 建立，本 REQ 负责让 RenderWorkQueue 和 geometry pass 默认消费它们。
-- per-material descriptor 不能作为 indirect path 的成功条件。
-- 如果 geometry pass 所需 table/staging 缺失或与 work item 不匹配，必须输出 unsupported diagnostic，而不是静默回退。
+- old union-like `RenderWorkItem` geometry routing。
+- `RenderWorkKind` / `.kind` / `RasterDraw` / `RasterBatch` 作为 geometry batch 概念。
+- `OpaqueBatch*`、`OpaqueGeometry*`、`OpaqueIndirect*` 等 opaque-only 并行类。
+- `DescriptorResourceList` equality 作为 batch compatibility。
+- target/attachment/topology/vertex layout/geometry buffer identity 作为 per-draw split key。
+- direct/per-item geometry submission fallback。
 
-### R4: Split Diagnostics
+### R8: Helmet Opaque Smoke
 
-RenderWorkQueue SHALL 对每个 batch 和每个 split 输出 diagnostics。
+Helmet realtime smoke SHALL 验证：
 
-最低内容：
-
-- pass id。
-- material source signature。
-- material count / object count / draw count。
-- pipeline key。
-- batch compatibility signature。
-- split reason：target、pipeline、vertex layout、geometry buffer、unsupported source、missing table、backend capability 等。
-
-### R5: Fail-fast Invalid Indexes
-
-source-local material index、object index、draw range、mesh range 无效时 SHALL fail-fast。
-
-禁止：
-
-- clamp 到 0。
-- 使用默认材质继续渲染。
-- 跳过 draw 后把结果当作通过。
-
-### R6: Validation Stats
-
-validation profile SHALL 暴露 realtime batching stats：
-
-- material source count。
-- pipeline count。
-- batch count。
-- draw count。
-- indirect-capable draw count。
-- fallback / unsupported draw count 和原因。
-
-这些统计供 `REQ-073-f` 的视觉 smoke 判断问题归因。
+- converted Helmet scene loads through Material v3 source contract。
+- opaque RenderPathGraph path is used。
+- final source-variant shader reflection is used。
+- draw candidates enter `RenderBatchCompiler`。
+- Vulkan backend records indirect draw submission。
+- output non-black。
+- `fallback-observed == 0`。
+- no skipped draw is treated as success。
 
 ## 测试
 
-### T1: Same Source Batch
+### T1: Batch Compiler Characterization
 
-构造同 source、不同参数值、不同 texture 的多个对象，断言它们共享 material signature，并进入同一 compatible batch。
+新增 failing tests：
 
-### T2: Different Source Split
+- current descriptor-resource equality split 被证明为旧行为。
+- `RenderWorkKind` / `.kind` / `RasterDraw` / `RasterBatch` 不属于 geometry batch contract。
+- current bindless object data signature 是单一稳定值，参与 batch signature。
+- old mesh-derived `objectSignature` 不能拆 opaque bindless batch。
+- 不同 vertex buffer、topology、target/attachment 或 geometry buffer identity 不能成为永久 split key。
+- zero index/instance、missing/invalid material/draw/mesh index/range 输出 diagnostic。
+- 每个 input candidate 都 covered or diagnosed。
 
-构造不同 material source 的对象，断言它们产生不同 batch / pipeline key，并输出 source signature split diagnostic。
+### T2: Same Signature Batching
 
-### T3: Texture Presence Does Not Split
+构造同 object data signature、同 material pipeline signature、不同材质参数值和 texture slot 的多个 draw，断言进入同一 batch。
 
-常量 `Kd` 和贴图 `Kd` 的材质在同 pass / target / vertex layout 下不因 texture presence 拆 batch。
+### T3: Split Diagnostics
 
-### T4: Index-only Work Item
+构造 object data signature mismatch、material pipeline signature mismatch 和 invalid table/range data，断言 exact reason 和 item identity。
 
-断言 RenderWorkItem 保存 table index / range，不保存旧 `MaterialUBO` bytes 或 per-material descriptor pointer。
+### T4: Backend Indirect Submission
 
-### T5: Invalid Index Negative
+运行 Vulkan focused test 或 smoke harness，断言 realtime opaque geometry 使用 indirect batch submission，而不是 direct/per-item draw submission。
 
-覆盖无效 source-local material index、object index、draw range、mesh range，断言 fail-fast 且输出明确 diagnostic。
+### T5: Helmet Smoke
 
-### T6: Batch Diagnostics
+运行低分辨率 Helmet realtime smoke，断言非黑图、batch/draw/pipeline stats、indirect-capable draw count、`fallback-observed == 0`。
 
-构造 target、pipeline、vertex layout、geometry buffer 等拆分场景，断言 diagnostics 能说明每个 split reason。
+### T6: rg Hard Cut Audit
 
-### T7: Helmet/BMW Stats
+实现完成报告必须包含以下 rg 审计。命令可以按文件范围拆分，但普通 production / positive test hit 必须为 0；任何剩余 hit 必须是 named negative audit 或非 geometry debug/compute allowlist。
 
-运行 Helmet/BMW 低分辨率或 headless validation stats，断言输出 material source、batch、pipeline、draw 和 unsupported reason 统计。视觉正确性不在本 REQ 判定。
+```bash
+rg -n "OpaqueBatch|OpaqueGeometry|OpaqueIndirect" src/core src/backend src/test
+rg -n "RenderWorkKind|RasterDraw|RasterBatch|\\.kind\\b" src/core src/backend src/test
+rg -n "DescriptorResourceList|sameDescriptorResources|descriptor-resource-mismatch" src/core src/backend src/test
+rg -n "vertex-layout-mismatch|topology-mismatch|target-mismatch|geometry-buffer-mismatch" src/core src/backend src/test
+rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
+```
 
 ## 修改范围
 
 - `src/core/frame_graph/render_queue.*`
-- `src/core/frame_graph/render_work_item*`
+- new or renamed queue-owned node data / batch analysis types
 - `src/core/scene/scene_resource_table*`
 - `src/core/scene/scene_gpu_records.*`
 - Vulkan realtime submission / descriptor binding path consuming `REQ-073-b` tables
 - validation diagnostics and tests
+- Helmet realtime smoke harness
+- legacy input rejection audit from `REQ-073-d` handoff
 
 ## 边界与约束
 
 - 不写按 material source/type 的 shader runtime branch。
-- 不因贴图存在性拆 pipeline 或 batch。
-- 不用旧 `MaterialUBO` 或 per-material descriptor 证明 indirect path 成功。
-- 暂时保留 fallback 时必须有 named diagnostic，不能把 fallback 伪装成 indirect。
+- 不因贴图存在性、材质值、material URI、material name 拆 pipeline 或 batch。
+- 不用旧 `MaterialUBO`、`SceneGpuMaterialRecord` PBR truth 或 per-material descriptor 证明 indirect path 成功。
+- 不使用 `techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧 shader source tree 作为正向 batching 输入。
+- 不保留两个可通过的 realtime geometry 默认入口。
+- 不用 path/name substring 选择 strictness；strictness 来自 validation profile/property。
 
 ## 依赖
 
@@ -179,7 +234,7 @@ validation profile SHALL 暴露 realtime batching stats：
 
 ## 后续工作
 
-- `REQ-073-f`: Realtime material path hard cut and smoke。
+- `REQ-073-f`: Transparent sorting/batching, glass material support, BMW converter/shader coverage and BMW realtime smoke。
 - `REQ-073-g`: OfflineRT RenderPathGraph compute path。
 
 ## 实施状态
