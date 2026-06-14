@@ -67,8 +67,8 @@ But the current batch compiler is still transitional:
 - tests still contain a positive expectation that descriptor changes split
   indirect batches.
 
-`073-e` replaces that transitional behavior with a first-class opaque batch
-analysis and submission contract. It also removes the current
+`073-e` replaces that transitional behavior with a first-class node-level batch
+analysis and submission contract for opaque geometry. It also removes the current
 `RenderWorkKind`/`kind` concept from the opaque geometry path. `kind` is an implementation
 artifact of the old "one union-like RenderWorkItem for every possible
 submission" model; it is not a rendering contract and must not survive as an
@@ -107,47 +107,75 @@ RenderPathGraph opaque node
   -> final source-variant shader reflection
   -> object data signature + material pipeline signature for this node
   -> SceneResourceTableUploadView
-  -> OpaqueGeometryDrawCandidate with typed material/draw/object/mesh indices
-  -> OpaqueBatchCompiler
+  -> RenderWorkQueue builds RenderPathNodeContext + RenderPathNodeData
+  -> RenderBatchCompiler
        batches or rejects with diagnostics
   -> Vulkan indirect draw submission
 ```
 
-`OpaqueBatchCompiler` must not consume the old `RenderWorkItem` shape directly.
-Its input model is:
+`RenderWorkQueue` remains the owner of per-node work. `073-e` changes the shape
+of that work from the old union-like `RenderWorkItem` DTO to a node-scoped data
+model that the queue can hand to a generic batch compiler:
 
 ```text
-OpaqueBatchContext
-  render path node/pass context
+RenderPathNodeContext
+  render path node/pass identity
+  rendering mode and sort policy
+  render state defaults
+  target/attachment contract
+  geometry contract
   object data ABI resolver
   material signature resolver
   global geometry table view
   backend indirect capability
 
-OpaqueGeometryDrawCandidate[]
-  object/draw indices
-  mesh table range
-  material ref/source-local material indices
-  object data signature
-  material pipeline signature
-  indirect draw counts and offsets
+RenderPathNodeData
+  RenderDrawCandidate[]
+    object/draw indices
+    mesh table range
+    material ref/source-local material indices
+    object data signature
+    material pipeline signature
+    indirect draw counts and offsets
+    sort data when the node policy needs it
 ```
 
 `target`, attachments, render-state defaults, and pass identity are context for
 the node that is currently being compiled. They are not fields copied onto each
-candidate for comparison. If a candidate builder only has object, mesh, and
+draw candidate for comparison. If a candidate builder only has object, mesh, and
 bound material facts, that is sufficient for batching once the object data
 signature, material pipeline signature, and mesh table range are resolved.
+
+The compiler itself should not be named or structured as an opaque-only class.
+`073-e` implements the opaque policy first, but `073-f` should be able to reuse
+the same `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler`
+shape for transparent nodes, changing only the node policy such as depth sort
+and contiguous-compatible merge rules.
+
+The generic compiler flow is:
+
+```text
+RenderPathNodeData
+  -> validate candidate readiness
+  -> apply RenderPathNodeContext sort policy
+  -> merge contiguous candidates with the same batch signature
+  -> return RenderBatchAnalysis
+```
+
+For `073-e`, the opaque node policy can sort/group for batch locality because
+opaque depth order is not the semantic constraint. For `073-f`, transparent
+nodes must sort by depth first, and only adjacent candidates with the same batch
+signature may merge after that sort.
 
 If the current implementation only has per-mesh `GpuResourceRef` vertex/index
 buffers at this point, `073-e` must first register/resolve them into the global
 geometry table or reject the candidate with `global-geometry-table-missing`. It
 must not compare those resource identities to decide batch compatibility.
 
-### Work Item Readiness
+### Draw Candidate Readiness
 
-An opaque geometry draw candidate is indirect-ready only when all facts needed
-by the shader and backend are explicit:
+A draw candidate in an opaque geometry node is indirect-ready only when all
+facts needed by the shader and backend are explicit:
 
 - valid mesh/geometry table ranges;
 - non-zero index and instance counts;
@@ -160,10 +188,10 @@ by the shader and backend are explicit:
 
 The current implementation names `RenderWorkKind`, `kind`, `RasterDraw`, and
 `RasterBatch` are old submission DTO details. They are not requirement concepts.
-The opaque geometry route should move to explicit types such as
-`OpaqueGeometryDrawCandidate` and `OpaqueIndirectBatch`, or equivalent names.
-After the batch compiler accepts an opaque geometry candidate, the backend
-submits it through indirect draw.
+The geometry route should move to explicit node-level context/data plus draw
+candidate structures under `RenderWorkQueue`. It must not introduce an
+opaque-only parallel hierarchy. After the batch compiler accepts a draw
+candidate, the backend submits it through indirect draw.
 
 Missing data is a preparation error or an unsupported diagnostic. It is not a
 reason to fall back to old direct/per-item submission.
@@ -194,8 +222,8 @@ exactly when their object data signature and material pipeline signature match.
 The object data signature is not the old mesh-derived `objectSignature`. It is
 the shader-visible object/draw table ABI signature: which object/draw records,
 buffers, and accessors the selected shader expects. For the current bindless
-opaque path this value is intentionally singular, for example
-`BindlessOpaqueObjectData.v1`. It is still part of the batch/pipeline identity
+path this value is intentionally singular, for example
+`BindlessObjectData.v1`. It is still part of the batch/pipeline identity
 so future static/skinned/meshlet/other object data ABI variants do not need
 another identity redesign.
 
@@ -251,8 +279,8 @@ with a diagnostic. It must not become a permanent batch key.
 
 | Concept | `073-e` status | Reason |
 |---|---|---|
-| object data signature | Opaque batch key and pipeline identity axis | It represents the shader-visible bindless object/draw table ABI. Current value is singular; future ABI variants can split intentionally. |
-| material pipeline signature | Opaque batch key and pipeline identity axis | It selects the final source-variant shader/pipeline for the current opaque node. |
+| object data signature | Batch key and pipeline identity axis | It represents the shader-visible bindless object/draw table ABI. Current value is singular; future ABI variants can split intentionally. |
+| material pipeline signature | Batch key and pipeline identity axis | It selects the final source-variant shader/pipeline for the current node. |
 | RenderPathNode/pass context | Batch compiler scope, not a split key | Pass state, target, topology, and attachment contract are fixed before candidates are compared. |
 | `PipelineKey` | Derived backend lookup value, not an independent batch key | Backend may need it to fetch/create the PSO, but batching should derive it from object data signature, material pipeline signature, and node context instead of comparing a second identity that can drift. |
 | `RenderPathNodeSignature` | Current pipeline-cache implementation detail, not a per-draw batch key | The node signature belongs to the pass context. It must not be copied onto every draw as a reason to split. |
@@ -266,12 +294,12 @@ with a diagnostic. It must not become a permanent batch key.
 
 ### Batch Compiler Result
 
-`compileIndirectBatches()` must stop returning only
-`std::vector<RenderIndirectBatch>`. The batching API must return an analysis
-object such as:
+`RenderWorkQueue::compileIndirectBatches()` should remain the queue-owned entry
+point, but it must stop returning only `std::vector<RenderIndirectBatch>`. The
+queue-owned batching API must return an analysis object such as:
 
 ```text
-RenderIndirectBatchAnalysis
+RenderBatchAnalysis
   batches
   diagnostics
   stats
@@ -373,7 +401,7 @@ Add failing tests before implementation:
   per-material resource differences;
 - `RenderWorkKind` / `kind` is not part of the opaque batch contract;
 - current bindless object data signature is a single stable value and is part
-  of the opaque batch signature;
+  of the batch signature;
 - old mesh-derived `objectSignature` cannot split opaque bindless batches;
 - different vertex buffers or object topology cannot become permanent opaque
   batch split keys;
