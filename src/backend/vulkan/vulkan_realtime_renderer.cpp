@@ -546,6 +546,39 @@ makePipelineIdentityDebug(const LX_core::RenderWorkItem &item) {
   return out;
 }
 
+[[nodiscard]] PipelineIdentityDebug makePipelineIdentityDebug(
+    const LX_core::RenderBatch &batch,
+    const LX_core::RenderPathNodeContext &context) {
+  PipelineIdentityDebug out;
+  out.materialTypeVariant = debugString(batch.materialTypeSignature);
+  out.renderPathNodeSignature = debugString(context.renderPathNodeSignature);
+  out.pipelineKey = debugString(batch.derivedPipelineKey.id);
+
+  const auto factsIt = std::find_if(
+      context.pipelineFacts.begin(), context.pipelineFacts.end(),
+      [&batch](const LX_core::RenderBatchPipelineFacts &facts) {
+        return facts.materialTypeSignature == batch.materialTypeSignature;
+      });
+  if (factsIt == context.pipelineFacts.end()) {
+    return out;
+  }
+
+  out.materialTypeVariant =
+      debugString(factsIt->shaderProgram.getPipelineSignature()) +
+      " materialType=" + debugString(batch.materialTypeSignature);
+  out.shaderName =
+      factsIt->shaderProgram.shaderName.empty()
+          ? (factsIt->shaderInfo ? factsIt->shaderInfo->getShaderName()
+                                  : std::string{})
+          : factsIt->shaderProgram.shaderName;
+  if (factsIt->shaderInfo) {
+    for (const auto &binding : factsIt->shaderInfo->getReflectionBindings()) {
+      out.finalShaderReflection.push_back(binding.name);
+    }
+  }
+  return out;
+}
+
 [[nodiscard]] u32
 countCameraResources(const LX_core::DescriptorResourceList &resources) {
   u32 count = 0;
@@ -788,6 +821,26 @@ void writeRealtimeProfileMetadata(
     out << "\n";
   }
   out << "    ]\n"
+      << "  },\n"
+      << "  \"renderBatchStats\": {\n"
+      << "    \"compilerBatchCountConsumed\": "
+      << result.renderBatchStats.compilerBatchCountConsumed << ",\n"
+      << "    \"boundBatchGeometryCount\": "
+      << result.renderBatchStats.boundBatchGeometryCount << ",\n"
+      << "    \"submittedDirectIndexedDrawCount\": "
+      << result.renderBatchStats.submittedDirectIndexedDrawCount << ",\n"
+      << "    \"submittedIndexedIndirectCommandCount\": "
+      << result.renderBatchStats.submittedIndexedIndirectCommandCount << ",\n"
+      << "    \"submittedIndirectBatchCount\": "
+      << result.renderBatchStats.submittedIndirectBatchCount << ",\n"
+      << "    \"submittedIndirectDrawCount\": "
+      << result.renderBatchStats.submittedIndirectDrawCount << ",\n"
+      << "    \"firstCommandOffset\": "
+      << result.renderBatchStats.firstCommandOffset << ",\n"
+      << "    \"lastCommandOffset\": "
+      << result.renderBatchStats.lastCommandOffset << ",\n"
+      << "    \"fallbackObservedCount\": "
+      << result.renderBatchStats.fallbackObservedCount << "\n"
       << "  }\n"
       << "}\n";
 }
@@ -1951,7 +2004,7 @@ public:
     outputCameraResource.proj =
         LX_core::makeCameraProjectionMatrix(outputProjection);
     outputCameraResource.cullingMask = outputCullingMask;
-    outputCameraResource.active = sourceCamera.active;
+    outputCameraResource.active = true;
     const auto outputCameraView = outputCameraResource.view;
     const auto outputCameraProj = outputCameraResource.proj;
 
@@ -1976,6 +2029,26 @@ public:
         "realtime.profile." + basePath.generic_string() + "." +
         std::to_string(output.width) + "x" + std::to_string(output.height);
 
+    const char *forwardGraphAsset = kDefaultForwardRenderPathGraphAsset;
+    const LX_core::RenderPathGraph forwardRenderPathGraph =
+        loadRenderPathGraphAsset(forwardGraphAsset, LX_core::RenderPath::Forward);
+    resolveMaterialSourceVariantsOrThrow(*m_scene, forwardRenderPathGraph,
+                                          LX_core::ResourceUri(forwardGraphAsset));
+    LX_core::FrameGraph forwardGraph =
+        LX_core::buildFrameGraphFromRenderPathGraph(
+            forwardRenderPathGraph, LX_core::GraphResourceRegistry::makeDefault());
+    const auto forwardPassIt = std::find_if(
+        forwardGraph.getPasses().begin(), forwardGraph.getPasses().end(),
+        [](const LX_core::FramePass &pass) {
+          return pass.name == LX_core::Pass_Forward;
+        });
+    if (forwardPassIt == forwardGraph.getPasses().end()) {
+      throw std::runtime_error(
+          "realtime profile output default graph has no Forward pass");
+    }
+    LX_core::FramePass forwardPass = *forwardPassIt;
+    forwardPass.target = targetDesc;
+
     LX_core::RenderWorkQueue queue;
     queue.build(LX_core::RenderWorkBuildContext::realtime(
                     *m_scene,
@@ -1985,15 +2058,23 @@ public:
                             outputCullingMask & ~LX_core::Layer_EditorOverlay,
                     }),
                 LX_core::Pass_Forward, target,
-                transientRenderPathNodeSignature(LX_core::Pass_Forward,
-                                                 target),
-                std::nullopt);
+                forwardPass.renderPathNodeSignature, forwardPass.geometry,
+                forwardPass.renderingMode, forwardPass.attachments);
     const auto &drawInputs = queue.nodeData().drawInputs;
     if (drawInputs.empty()) {
       throw std::runtime_error(
           "realtime profile output produced no draw inputs");
     }
     debugInfo.drawItemCount = static_cast<u32>(drawInputs.size());
+    const LX_core::RenderBatchAnalysis profileBatchAnalysis =
+        queue.compileIndirectBatches();
+    if (profileBatchAnalysis.ok()) {
+      for (const LX_core::RenderBatch &batch : profileBatchAnalysis.batches) {
+        debugInfo.pipelineIdentity.push_back(
+            makePipelineIdentityDebug(batch, profileBatchAnalysis.context));
+      }
+    }
+    syncRenderUploadPlan(queue);
 
     const VkExtent2D extent{output.width, output.height};
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -2090,6 +2171,7 @@ public:
                            depthAttachment.texture->getHandle(),
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            depthReadback->getHandle(), 1, &depthRegion);
+    const auto commandBufferStats = cmd->getRenderBatchSubmissionStats();
     commandBufferManager().endSingleTimeCommands(std::move(cmd),
                                                  device().getGraphicsQueue());
 
@@ -2109,6 +2191,25 @@ public:
         .pipelineSrgbPngPath = {},
         .depthDebugPath = outputDir / (outputStem + "-depth.bmp"),
         .metadataPath = outputDir / (outputStem + ".json"),
+        .renderBatchStats =
+            VulkanRealtimeRenderBatchStats{
+                .compilerBatchCountConsumed =
+                    commandBufferStats.compilerBatchCountConsumed,
+                .boundBatchGeometryCount =
+                    commandBufferStats.boundBatchGeometryCount,
+                .submittedDirectIndexedDrawCount =
+                    commandBufferStats.submittedDirectIndexedDrawCount,
+                .submittedIndexedIndirectCommandCount =
+                    commandBufferStats.submittedIndexedIndirectCommandCount,
+                .submittedIndirectBatchCount =
+                    commandBufferStats.submittedIndirectBatchCount,
+                .submittedIndirectDrawCount =
+                    commandBufferStats.submittedIndirectDrawCount,
+                .firstCommandOffset = commandBufferStats.firstCommandOffset,
+                .lastCommandOffset = commandBufferStats.lastCommandOffset,
+                .fallbackObservedCount =
+                    commandBufferStats.fallbackObservedCount,
+            },
         .width = output.width,
         .height = output.height,
     };

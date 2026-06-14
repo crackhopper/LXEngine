@@ -854,6 +854,8 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
   for (const auto &renderable : scene.getRenderables()) {
     if (!renderable)
       continue;
+    if (pass == Pass_DebugOverlay && renderable->isDebugOnlyRenderable())
+      continue;
     if (renderable->isDebugOnlyRenderable() && pass != Pass_DebugOverlay)
       continue;
     if (!renderable->supportsPass(pass))

@@ -358,6 +358,9 @@ def require_output_files(
             raise RuntimeError(
                 f"metadata {dimension} does not match render result: {metadata_path}"
             )
+    batch_stats = metadata.get("renderBatchStats")
+    if isinstance(batch_stats, dict):
+        payload["renderBatchStats"] = batch_stats
     if require_pipeline_metadata_check:
         require_pipeline_metadata(metadata_path)
 
@@ -404,6 +407,105 @@ def prepare_smoke_project(
         json.dumps(project_document, indent=2), encoding="utf-8"
     )
     return project_root
+
+
+def prepare_bootstrap_project(root: Path, project_name: str) -> Path:
+    project_root = root / "data" / "projects" / f"{project_name}_bootstrap"
+    if project_root.exists():
+        shutil.rmtree(project_root)
+    scenes_dir = project_root / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    scene_rel = Path("scenes") / "bootstrap.scene.yaml"
+    (project_root / scene_rel).write_text(
+        """scene:
+  name: Realtime Render Bootstrap
+  gameplayCameraPath: /bootstrap_cam
+  environment:
+    enabled: false
+    intensity: 0.0
+    skyboxEnabled: false
+  rendering:
+    shadows: false
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: bootstrap_camera
+      name: bootstrap_cam
+      transform:
+        translation: [0.0, 0.0, 3.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 45.0
+        aspect: 1.0
+        nearPlane: 0.1
+        farPlane: 20.0
+        cullingMask: 4294967295
+""",
+        encoding="utf-8",
+    )
+    project_document = {
+        "schema": "lxe.project.v1",
+        "id": f"{project_name}_bootstrap",
+        "displayName": f"{project_name}_bootstrap",
+        "activeScene": scene_rel.as_posix(),
+        "scenes": [{"id": "bootstrap", "path": scene_rel.as_posix()}],
+        "assetRoots": ["."],
+    }
+    (project_root / "project.yaml").write_text(
+        json.dumps(project_document, indent=2), encoding="utf-8"
+    )
+    return project_root
+
+
+def snapshot_file(path: Path) -> bytes | None:
+    return path.read_bytes() if path.exists() else None
+
+
+def restore_file(path: Path, data: bytes | None) -> None:
+    if data is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+class PreservedEditorRuntimeState:
+    def __init__(self, root: Path, bootstrap_project: Path):
+        self.root = root
+        self.bootstrap_project = bootstrap_project
+        self.state_paths = [
+            root / "data" / "lxe_editor" / "editor_data.yaml",
+            root / "data" / "lxe_editor" / "runtime_state.yaml",
+            root / "data" / "lxe_editor" / "api_token.txt",
+        ]
+        self.snapshots: dict[Path, bytes | None] = {}
+
+    def __enter__(self) -> "PreservedEditorRuntimeState":
+        self.snapshots = {path: snapshot_file(path) for path in self.state_paths}
+        editor_data_path = self.state_paths[0]
+        editor_data_path.parent.mkdir(parents=True, exist_ok=True)
+        editor_data_path.write_text(
+            "version: 1\n"
+            f"lastProject: {self.bootstrap_project}\n"
+            "consoleHistory: []\n",
+            encoding="utf-8",
+        )
+        self.state_paths[1].unlink(missing_ok=True)
+        self.state_paths[2].unlink(missing_ok=True)
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        for path, data in self.snapshots.items():
+            restore_file(path, data)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -466,6 +568,7 @@ def main(argv: list[str]) -> int:
     project_root = prepare_smoke_project(
         root, args.project_name, scene_path, args.scene_id
     )
+    bootstrap_project = prepare_bootstrap_project(root, args.project_name)
 
     api_port = int(args.api_port)
     if api_port <= 0:
@@ -485,53 +588,56 @@ def main(argv: list[str]) -> int:
     ]
     launch_args = ["xvfb-run", "-a", *editor_args] if args.xvfb else editor_args
 
-    process = subprocess.Popen(
-        launch_args,
-        cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    token: str | None = None
-    try:
-        wait_for_health(process, args.api_host, api_port, args.timeout_sec)
-        token = wait_for_token(token_path, args.timeout_sec)
+    with PreservedEditorRuntimeState(root, bootstrap_project):
+        process = subprocess.Popen(
+            launch_args,
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        token: str | None = None
+        try:
+            wait_for_health(process, args.api_host, api_port, args.timeout_sec)
+            token = wait_for_token(token_path, args.timeout_sec)
 
-        editor_command(
-            args.api_host,
-            api_port,
-            token,
-            f"project open {quote_command_token(str(project_root))}",
-            args.timeout_sec,
-        )
-        wait_until_scene_loaded(
-            args.api_host, api_port, token, args.timeout_sec
-        )
-        wait_until_profile_visible(
-            args.api_host, api_port, token, args.profile, args.timeout_sec
-        )
-        response = editor_command(
-            args.api_host,
-            api_port,
-            token,
-            f"realtime-render run {quote_command_token(args.profile)}",
-            args.timeout_sec,
-        )
-        structured = response.get("structuredJson", "")
-        if not isinstance(structured, str) or not structured:
-            raise RuntimeError("realtime-render run did not return structured output")
-        payload = require_output_files(
-            root,
-            structured,
-            args.require_nonblack,
-            args.min_lit_pixels,
-            args.min_average_luminance,
-            args.require_pipeline_metadata,
-        )
-        print(json.dumps(payload, sort_keys=True))
-        return 0
-    finally:
-        stop_editor(process, args.api_host, api_port, token, timeout_sec=5.0)
+            editor_command(
+                args.api_host,
+                api_port,
+                token,
+                f"project open {quote_command_token(str(project_root))}",
+                args.timeout_sec,
+            )
+            wait_until_scene_loaded(
+                args.api_host, api_port, token, args.timeout_sec
+            )
+            wait_until_profile_visible(
+                args.api_host, api_port, token, args.profile, args.timeout_sec
+            )
+            response = editor_command(
+                args.api_host,
+                api_port,
+                token,
+                f"realtime-render run {quote_command_token(args.profile)}",
+                args.timeout_sec,
+            )
+            structured = response.get("structuredJson", "")
+            if not isinstance(structured, str) or not structured:
+                raise RuntimeError(
+                    "realtime-render run did not return structured output"
+                )
+            payload = require_output_files(
+                root,
+                structured,
+                args.require_nonblack,
+                args.min_lit_pixels,
+                args.min_average_luminance,
+                args.require_pipeline_metadata,
+            )
+            print(json.dumps(payload, sort_keys=True))
+            return 0
+        finally:
+            stop_editor(process, args.api_host, api_port, token, timeout_sec=5.0)
 
 
 if __name__ == "__main__":

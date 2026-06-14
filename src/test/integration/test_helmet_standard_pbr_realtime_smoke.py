@@ -70,6 +70,16 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         stats = payload.get("imageStats", {})
         self.assertGreaterEqual(int(stats.get("litPixelCount", 0)), 64)
         self.assertGreaterEqual(float(stats.get("averageLuminance", 0.0)), 0.001)
+        batch_stats = payload.get("renderBatchStats", {})
+        self.assertGreater(
+            int(batch_stats.get("compilerBatchCountConsumed", 0)), 0
+        )
+        self.assertEqual(
+            int(batch_stats.get("compilerBatchCountConsumed", 0)),
+            int(batch_stats.get("submittedIndirectBatchCount", -1)),
+        )
+        self.assertGreater(int(batch_stats.get("submittedIndirectDrawCount", 0)), 0)
+        self.assertEqual(int(batch_stats.get("fallbackObservedCount", -1)), 0)
         self.assertTrue(payload.get("cpuSrgbPngPath"))
         self.assertTrue(payload.get("metadataPath"))
 
