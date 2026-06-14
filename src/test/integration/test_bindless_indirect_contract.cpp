@@ -117,6 +117,29 @@ MeshBufferUniquePtr makeIndexedMesh(u32 indexCount) {
       ->cloneUnique();
 }
 
+GeometryStorageSharedPtr makeTwoTriangleGeometryStorage() {
+  auto vertices = std::vector<SceneVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+      {{2.0f, 0.0f, 0.0f}},
+      {{3.0f, 0.0f, 0.0f}},
+      {{2.0f, 1.0f, 0.0f}},
+  };
+  auto indices = std::vector<u32>{0, 1, 2, 3, 4, 5};
+  auto vb = VertexBuffer<SceneVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return GeometryStorage::create(vb, ib);
+}
+
+MeshBufferUniquePtr makeTriangleMeshSlice(GeometryStorageSharedPtr storage,
+                                          u32 vertexOffset, u32 indexOffset) {
+  return MeshBuffer::create(
+             std::move(storage), vertexOffset, indexOffset, 3, 3,
+             BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
+      ->cloneUnique();
+}
+
 struct BatchQueueFixtureDesc final {
   usize drawCount = 0;
   u32 indexCount = 0;
@@ -621,6 +644,71 @@ void testDifferentObjectDataSignaturesSplitBatches() {
   }
 }
 
+void testGlobalGeometryIndirectCommandsDoNotDoubleApplyVertexOffset() {
+  SceneResourceTable table;
+  GeometryStorageSharedPtr storage = makeTwoTriangleGeometryStorage();
+  const MeshHandle firstMesh =
+      table.registerMesh(makeTriangleMeshSlice(storage, 0, 0));
+  const MeshHandle secondMesh =
+      table.registerMesh(makeTriangleMeshSlice(storage, 3, 3));
+  const MaterialHandle material = table.registerMaterial(makeSourceMaterial());
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  const MeshHandle meshes[] = {firstMesh, secondMesh};
+  for (usize i = 0; i < 2; ++i) {
+    ObjectResource object;
+    object.mesh = meshes[i];
+    object.material = material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = table.registerObject(object);
+    queue.addDrawInput(RenderDrawInput{
+        .inputIndex = i,
+        .object = objectHandle,
+        .mesh = meshes[i],
+        .material = material,
+        .debugId = StringID("helmet.globalGeometryVertexOffset"),
+        .materialTypeSignature = StringID("standard-pbr-opaque")});
+  }
+
+  queue.prepareDrawInputs(table.buildUploadView());
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "two global geometry mesh slices should compile into indirect "
+         "batches");
+  EXPECT(analysis.batches.size() == 1,
+         "two mesh slices with same object/material signatures should share "
+         "one batch");
+  if (!analysis.batches.empty()) {
+    const RenderBatch &batch = analysis.batches.front();
+    EXPECT(batch.commands.size() == 2,
+           "batch should contain both mesh slice draw commands");
+    if (batch.commands.size() >= 2) {
+      EXPECT(batch.commands[0].firstIndex == 0,
+             "first mesh slice should use the first global index range");
+      EXPECT(batch.commands[0].indexCount == 3,
+             "first mesh slice should keep its index count");
+      EXPECT(batch.commands[0].vertexOffset == 0,
+             "first mesh slice should not add a vertex offset");
+      EXPECT(batch.commands[1].firstIndex == 3,
+             "second mesh slice should use the second global index range");
+      EXPECT(batch.commands[1].indexCount == 3,
+             "second mesh slice should keep its index count");
+      EXPECT(batch.commands[1].vertexOffset == 0,
+             "global indices already include the second mesh vertex offset");
+    }
+  }
+}
+
 void testDrawInputIdentityIsPreservedInDiagnostics() {
   SceneResourceTable table;
   RenderWorkQueue queue;
@@ -764,6 +852,7 @@ int main() {
   testDistinctMaterialInstancesWithSameSignatureShareBatch();
   testDifferentMaterialTypeSignaturesSplitBatches();
   testDifferentObjectDataSignaturesSplitBatches();
+  testGlobalGeometryIndirectCommandsDoNotDoubleApplyVertexOffset();
   testDrawInputIdentityIsPreservedInDiagnostics();
   testLegacyRejectedPreparationStatsAreNotUnsupported();
   testClearItemsResetsNodeContextAndCachedAnalysis();

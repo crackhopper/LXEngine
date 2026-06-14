@@ -2309,7 +2309,8 @@ private:
             resourceManager().getOrCreatePipeline(batch, analysis.context);
         cmd.bindPipeline(pipeline);
         cmd.bindSceneBindlessResources(resourceManager(), pipeline,
-                                       analysis.context);
+                                       analysis.context,
+                                       batch.derivedPipelineKey);
         cmd.executeRenderBatch(batch);
       }
       return;

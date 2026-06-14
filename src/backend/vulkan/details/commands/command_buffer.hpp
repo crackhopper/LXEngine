@@ -77,7 +77,8 @@ public:
                      VulkanPipelineRef pipeline, const RenderWorkItem &item);
   void bindSceneBindlessResources(VulkanResourceManager &resourceManager,
                                   VulkanPipelineRef pipeline,
-                                  const RenderPathNodeContext &context);
+                                  const RenderPathNodeContext &context,
+                                  PipelineKey pipelineKey = {});
   void bindRenderBatchGeometry(VulkanResourceManager &resourceManager,
                                const RenderBatchGeometryResources &geometry);
 

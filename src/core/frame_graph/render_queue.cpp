@@ -88,11 +88,24 @@ makeRenderBatchPipelineFacts(const ValidatedRenderablePassData &data,
   };
 }
 
+bool sameBackendShaderFacts(const RenderBatchPipelineFacts &a,
+                            const RenderBatchPipelineFacts &b) {
+  if (a.shaderProgram.shaderName != b.shaderProgram.shaderName) {
+    return false;
+  }
+  if (!a.shaderInfo || !b.shaderInfo) {
+    return a.shaderInfo == b.shaderInfo;
+  }
+  return a.shaderInfo->getProgramHash() == b.shaderInfo->getProgramHash() &&
+         a.shaderInfo->getReflectionBindings() ==
+             b.shaderInfo->getReflectionBindings() &&
+         a.shaderInfo->getVertexInputs() == b.shaderInfo->getVertexInputs();
+}
+
 bool samePipelineFacts(const RenderBatchPipelineFacts &a,
                        const RenderBatchPipelineFacts &b) {
   return a.materialTypeSignature == b.materialTypeSignature &&
-         a.shaderProgram.getPipelineSignature() ==
-             b.shaderProgram.getPipelineSignature() &&
+         sameBackendShaderFacts(a, b) &&
          a.renderState.getPipelineSignature() ==
              b.renderState.getPipelineSignature() &&
          a.vertexLayout == b.vertexLayout && a.topology == b.topology;
@@ -431,7 +444,7 @@ resolveCandidateInstanceCount(const SceneGpuObjectRecord &object) {
   candidate.meshIndex = meshIndex;
   candidate.indexCount = mesh.indexCount;
   candidate.firstIndex = mesh.indexOffset;
-  candidate.vertexOffset = static_cast<i32>(mesh.vertexOffset);
+  candidate.vertexOffset = 0;
   candidate.instanceCount = instanceCount;
   candidate.objectDataSignature = context.objectDataSignature;
   candidate.materialTypeSignature = input.materialTypeSignature;
@@ -840,7 +853,10 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
   (void)sceneResources;
   (void)cameraEye;
   prepareDrawInputs(uploadView);
-  if (m_context.has_value()) {
+  if (m_context.has_value() && !m_nodeData.preparedCandidates.empty()) {
+    // Current realtime batches bind a queue-local fixed-function geometry view.
+    // Sharing this at scene scope is an optimization; empty/rejected queues do
+    // not need duplicate resources for correctness.
     m_context->batchGeometryResources = makeRenderBatchGeometryResources(
         scene.resources(), uploadView, nodeTopology);
   }

@@ -549,7 +549,9 @@ bool VulkanDevice::checkRequiredDeviceFeatureSupport(VkPhysicalDevice device) {
   features.pNext = &descriptorIndexingFeatures;
   vkGetPhysicalDeviceFeatures2(device, &features);
 
-  return descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing ==
+  return features.features.multiDrawIndirect == VK_TRUE &&
+         features.features.drawIndirectFirstInstance == VK_TRUE &&
+         descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing ==
              VK_TRUE &&
          dynamicRenderingFeatures.dynamicRendering == VK_TRUE;
 }
@@ -684,6 +686,8 @@ void VulkanDevice::createLogicalDevice() {
   VkPhysicalDeviceFeatures2 deviceFeatures{};
   deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
   deviceFeatures.pNext = &descriptorIndexingFeatures;
+  deviceFeatures.features.multiDrawIndirect = VK_TRUE;
+  deviceFeatures.features.drawIndirectFirstInstance = VK_TRUE;
 
   // Create logical device
   VkDeviceCreateInfo deviceCreateInfo{};
@@ -724,6 +728,15 @@ void VulkanDevice::createLogicalDevice() {
 
   // Create descriptor manager with device reference
   m_descriptorManager = VulkanDescriptorManager::create(*this);
+}
+
+u32 VulkanDevice::getMaxDrawIndirectCount() const {
+  if (m_physicalDevice == VK_NULL_HANDLE) {
+    return 0;
+  }
+  VkPhysicalDeviceProperties properties{};
+  vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+  return properties.limits.maxDrawIndirectCount;
 }
 
 u32 VulkanDevice::findMemoryTypeIndex(u32 typeFilter,

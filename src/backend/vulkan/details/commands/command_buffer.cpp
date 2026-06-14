@@ -13,6 +13,7 @@
 #include "../resource_manager.hpp"
 #include <array>
 #include <functional>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
@@ -495,9 +496,9 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
 
 void VulkanCommandBuffer::bindSceneBindlessResources(
     VulkanResourceManager &resourceManager, VulkanPipelineRef pipeline,
-    const RenderPathNodeContext &context) {
+    const RenderPathNodeContext &context, PipelineKey pipelineKey) {
   std::visit(
-      [this, &resourceManager, &context](auto ref) {
+      [this, &resourceManager, &context, pipelineKey](auto ref) {
         auto &pipelineObject = ref.get();
         using PipelineObject =
             std::remove_reference_t<decltype(pipelineObject)>;
@@ -508,7 +509,7 @@ void VulkanCommandBuffer::bindSceneBindlessResources(
         bindDescriptorResourcesWithLayout(
             resourceManager, pipelineObject.getBindings(),
             pipelineObject.getLayout(), bindPoint, context.sceneResources,
-            context.pass, PipelineKey{}, "bindSceneBindlessResources");
+            context.pass, pipelineKey, "bindSceneBindlessResources");
       },
       pipeline);
 }
@@ -623,6 +624,10 @@ void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {
         "executeRenderBatch requires bindRenderBatchGeometry before indirect "
         "draw submission");
   }
+  if (batch.commands.size() > std::numeric_limits<u32>::max()) {
+    throw std::runtime_error(
+        "executeRenderBatch received too many indirect commands");
+  }
   if (batch.commandCount != 0 &&
       batch.commandCount != static_cast<u32>(batch.commands.size())) {
     throw std::runtime_error(
@@ -637,10 +642,27 @@ void VulkanCommandBuffer::executeRenderBatch(const RenderBatch &batch) {
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   indirectBuffer->uploadData(batch.commands.data(), byteSize);
 
-  vkCmdDrawIndexedIndirect(
-      m_handle, indirectBuffer->getHandle(), 0,
-      static_cast<u32>(batch.commands.size()),
-      sizeof(IndexedIndirectDrawCommand));
+  const u32 maxDrawIndirectCount = m_device.getMaxDrawIndirectCount();
+  if (maxDrawIndirectCount == 0) {
+    throw std::runtime_error(
+        "executeRenderBatch requires nonzero maxDrawIndirectCount");
+  }
+
+  const u32 totalCommandCount = static_cast<u32>(batch.commands.size());
+  u32 submittedCommandOffset = 0;
+  while (submittedCommandOffset < totalCommandCount) {
+    const u32 remainingCommandCount =
+        totalCommandCount - submittedCommandOffset;
+    const u32 chunkCommandCount =
+        remainingCommandCount < maxDrawIndirectCount ? remainingCommandCount
+                                                     : maxDrawIndirectCount;
+    const VkDeviceSize chunkByteOffset =
+        sizeof(IndexedIndirectDrawCommand) * submittedCommandOffset;
+    vkCmdDrawIndexedIndirect(
+        m_handle, indirectBuffer->getHandle(), chunkByteOffset,
+        chunkCommandCount, sizeof(IndexedIndirectDrawCommand));
+    submittedCommandOffset += chunkCommandCount;
+  }
 
   auto &retainedBuffers =
       m_retainedIndirectBuffers == nullptr ? m_ownedIndirectBuffers

@@ -20,10 +20,26 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
+
+namespace {
+
+bool isKnownEnvironmentSetupFailure(const std::string_view message) {
+  return message.find("No available video device") != std::string_view::npos ||
+         message.find("Failed to find GPUs with Vulkan support") !=
+             std::string_view::npos ||
+         message.find("Failed to find a suitable GPU") !=
+             std::string_view::npos ||
+         message.find("Failed to create Vulkan surface handle") !=
+             std::string_view::npos;
+}
+
+} // namespace
 
 int main() {
   expSetEnvVK();
+  bool commandRecordingStarted = false;
   try {
     auto success = initializeRuntimeAssetRoot();
     if (!success) {
@@ -78,7 +94,8 @@ int main() {
         V({5.0f, -5.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f},
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
-    auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
+    auto indexBufferPtr = LX_core::IndexBuffer::create(
+        {0u, 1u, 2u, 0u, 1u, 2u, 0u, 2u, 1u});
     auto renderItem = LX_test::makeMinimalDirectRasterHelperItemForVulkanTests(
         *vertexBufferPtr, *indexBufferPtr);
 
@@ -128,6 +145,7 @@ int main() {
     batch.commandCount = static_cast<u32>(batch.commands.size());
 
     cmdBufferMgr->beginFrame(0);
+    commandRecordingStarted = true;
     auto unboundBatchCmd = cmdBufferMgr->allocateBuffer();
 
     VkCommandBufferBeginInfo unboundBeginInfo{};
@@ -197,7 +215,22 @@ int main() {
     }
     cmd->endRenderPass();
 
-    vkEndCommandBuffer(cmd->getHandle());
+    if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
+      std::cerr << "Failed to end batch command buffer\n";
+      return 1;
+    }
+
+    VkCommandBuffer submittedBatchCommand = cmd->getHandle();
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &submittedBatchCommand;
+    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo,
+                      VK_NULL_HANDLE) != VK_SUCCESS) {
+      std::cerr << "Failed to submit batch command buffer\n";
+      return 1;
+    }
+    vkQueueWaitIdle(device->getGraphicsQueue());
 
     auto &descriptorMgr = device->getDescriptorManager();
     const auto descriptorFootprint = [&descriptorMgr](const u32 frameCount) {
@@ -244,7 +277,11 @@ int main() {
 
     return 0;
   } catch (const std::exception &e) {
-    std::cerr << "SKIP VulkanCommandBuffer test: " << e.what() << "\n";
-    return 0;
+    if (!commandRecordingStarted && isKnownEnvironmentSetupFailure(e.what())) {
+      std::cerr << "SKIP VulkanCommandBuffer test: " << e.what() << "\n";
+      return 0;
+    }
+    std::cerr << "FAIL VulkanCommandBuffer test: " << e.what() << "\n";
+    return 1;
   }
 }
