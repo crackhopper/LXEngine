@@ -1,6 +1,6 @@
 # REQ-073-h: OfflineRT Config Hard Cut And Smoke
 
-> 2026-06-13 顺延：本 REQ 原为 `REQ-073-g`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-h`，紧跟 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 的 offline hard cut 依赖 `REQ-073-g` 的 compute graph path 和 `REQ-073-e` 的 node-level queue model，而不是旧版 073f 范围。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-g`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-h`，紧跟 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 的 offline hard cut 依赖 `REQ-073-g` 的 compute graph path 和 `REQ-073-e` 的 node-level queue model，而不是旧版 073f 范围。它负责删除 OfflineRT 旧硬编码入口，并用 Helmet/BMW smoke 验证 offline 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph 和统一 pipeline 创建路径工作。2026-06-14 再整理时，本 REQ 吸收已归档 `REQ-054-a` 中 `offlineShader` / old config bridge 的删除要求。
 
 ## 背景
 
@@ -23,6 +23,7 @@
 | `REQ-073-a` 未完成项 | OfflineRT 默认入口 hard cut 和 smoke | 073-a 的 accessor ABI 不是入口硬切；旧 provider / hardcoded frame graph 必须等 073-g graph compute path 可运行后再删除 |
 | `REQ-073-b` 未完成项 | 删除 OfflineRT provider/framegraph bridge，禁止用旧 side channel 证明 material source 可渲染 | 073-b 只保证 source records 可进入 offline 相关测试；默认 CLI/integrator 入口是否干净由本 REQ 判定 |
 | `REQ-073-e` / `REQ-073-g` 传递项 | Helmet/BMW offline smoke 不得回退旧 material truth、旧 shader URI 或 pass injection | package 前必须证明 realtime 和 offline 默认路径都面对同一套 canonical SceneResourceTable / RenderPathGraph 状态 |
+| 已归档 `REQ-054-a` | 删除 `offlineShader`、old config bridge 和 offline framegraph side-channel | 054-a 的“实时/离线拆分”已由当前 renderer foundation 和 offline namespace 基本实现；剩余会污染默认路径的兼容桥由本 REQ 清理 |
 
 ## 目标
 
@@ -123,6 +124,7 @@ smoke 失败时不得进入 `REQ-074-a`。
 - production 默认路径不再正向调用 `ensureOfflineRayTracePass`。
 - production/default assets 不再使用 `techniques/OfflineRT`。
 - ordinary positive tests 不再把旧 provider/pass injection 当作成功路径。
+- `VulkanRenderer` facade、`VulkanRealtimeRenderer` 和 editor realtime path 不得新增 offline branch 或 `offlineShader` compatibility branch。
 
 ## 测试
 

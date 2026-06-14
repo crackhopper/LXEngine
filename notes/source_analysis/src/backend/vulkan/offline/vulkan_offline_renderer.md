@@ -1,102 +1,42 @@
-# Vulkan Offline Renderer：从 SceneResourceTable 到 Compute Readback
+# Vulkan Offline Renderer：从 Scene IR 到 Compute Readback
 
 本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页把 offline renderer 当成一条独立实验管线来读，入口是
 [src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
-关注的问题是：为什么离线渲染不直接复用 realtime FrameGraph，而是先把
-scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 compute shader 的 indexed storage buffer。
+关注的问题是：为什么离线渲染不直接复用 realtime draw item，而是把
+scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 compute shader 的 storage buffer。
 
 可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
-`.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineSceneLoader`、
-`SceneResourceTableUploadView`、`SceneSoftwareBvh`、`VulkanOfflineRenderer`、
-`SoftwareComputeOfflineIntegrator` 和 `OfflineImageWriter` 的分层里。
+`.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineRenderJob`、
+`OfflineSceneLoader`、`offline_scene_storage_resources`、`SoftwareComputeOfflineIntegrator`
+和 `VulkanOfflineRenderer` 的分层里。
 
 源码入口：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
 
 关联源码：
 
 - [offline_render_job.hpp](../../../../src/core/offline/offline_render_job.hpp)
-- [scene_gpu_records.hpp](../../../../src/core/scene/scene_gpu_records.hpp)
-- [software_bvh.hpp](../../../../src/core/raytracing/software_bvh.hpp)
+- [offline_scene_storage_resources.hpp](../../../../src/core/offline/offline_scene_storage_resources.hpp)
 - [offline_scene_loader.hpp](../../../../src/infra/offline/offline_scene_loader.hpp)
-- [software_compute_offline_integrator.hpp](../../../../src/backend/vulkan/offline/software_compute_offline_integrator.hpp)
+- [software_compute_offline_integrator.hpp](../../../../../src/backend/vulkan/offline/software_compute_offline_integrator.hpp)
 
 ## vulkan_offline_renderer.hpp
 
 源码位置：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
 
-### VulkanOfflineRenderer 是离线 integrator 协调入口
+### VulkanOfflineRenderer 是离线积分器协调入口
 
 `VulkanOfflineRenderer` 是离线渲染实验场当前的 Vulkan 后端入口。它接收
-`OfflineRenderJob`，先按 `OfflineRenderSettings.integrator` 选择显式 integrator。
-当前 `software-compute` integrator 初始化 headless `VulkanDevice`，创建 compute
-pipeline，上传 unified scene/BVH/frame params buffers，dispatch compute shader，再把
-线性 float RGBA readback 回 CPU。
+`OfflineRenderJob`，先做 core 层 job 校验，再根据显式 integrator 名称选择离线
+积分器。具体 headless Vulkan device、compute pipeline、buffer 上传、dispatch 和
+readback 生命周期由被选中的 integrator 管理。
 
-它故意不复用 realtime `FrameGraph`、swapchain 和 draw item，因为离线 renderer 的
-目标是可复现实验、ground truth 对比和 path tracing 迭代。共享点放在更低层：
-Vulkan device、buffer、command manager、shader 编译产物和 core/infra 的 scene
-输入链路。
-
-## offline_render_job.hpp
-
-源码位置：[offline_render_job.hpp](../../../../src/core/offline/offline_render_job.hpp)
-
-### SceneResourceTable 是离线实验室的标准样品
-
-`SceneResourceTable` 是实时 scene 文档和离线 integrator 之间的隔离层。
-实时渲染需要 `SceneNode`、component、FrameGraph、material pass 和 editor
-状态；离线渲染只需要相机、几何、材质、光源、环境以及可复现实验参数。
-
-因此 `OfflineRenderJob` 只组合 `SceneResourceTable`、output profile、offline
-settings 和输出路径；它不携带 Vulkan 句柄，也不复用实时 `RenderingItem`。
-`.scene.yaml` 中能够离线计算的事实由 `OfflineSceneLoader` 注册进 table，让 CPU
-packing、path tracing shader 和输出模块可以独立演进。
-
-## offline_scene_loader.hpp
-
-源码位置：[offline_scene_loader.hpp](../../../../src/infra/offline/offline_scene_loader.hpp)
-
-### Loader 把 editor 文档翻译成离线输入
-
-`OfflineSceneLoader` 位于 `infra`，因为它同时理解 scene YAML 文档、
-资产 URI 解析和 core 层 `SceneResourceTable`。它的职责不是渲染，也不是保存
-editor 状态，而是把可见 mesh instance、材质参数、相机、方向光和环境配置
-整理成离线 renderer 可消费的紧凑数据。
-
-这个边界让 `lxe_offline_render` CLI 不依赖 `src/demos/lxe_editor/`。
-后续支持 glTF、HDR environment、albedo texture 或 bake cache 时，优先扩展
-loader/resolver 到 `SceneResourceTable` 的这条输入链路，而不是让 Vulkan offline renderer
-反向读取 editor 数据结构。
-
-## scene_gpu_records.hpp / software_bvh.hpp
-
-源码位置：[scene_gpu_records.hpp](../../../../src/core/scene/scene_gpu_records.hpp)、
-[software_bvh.hpp](../../../../src/core/raytracing/software_bvh.hpp)
-
-### Upload view 固定共享资源到 shader buffer 的合同
-
-`SceneResourceTable::buildUploadView()` 从 table 导出 compute shader 可以直接读取的
-std430 storage buffer。它保留
-vertex/index/mesh/primitive/object/material 的索引关系，ray hit 后可以用
-barycentric 坐标插值 normal 和 uv。
-
-这层也是未来 path tracing 扩展最容易出错的边界：新增材质参数、纹理索引、
-light buffer 或 AOV 输出时，必须同步修改 C++ struct、GLSL struct、descriptor
-layout 和 `test_offline_gpu_scene` 的 layout contract。
-
-### SceneSoftwareBvh 是当前 shader 的 primitive 遍历索引
-
-`SceneSoftwareBvh` 在 CPU 上为 primitive buffer 构建一棵紧凑 BVH，然后把节点
-上传给 compute shader。当前节点布局把 bounds、left/first 和 packed
-right/primitiveCount 放进两个 `vec4`，保持 32 字节 std430 合同。
-
-这不是最终高性能加速结构，而是 MVP 的可验证起点。它让离线 renderer 先拥有
-closest-hit 查询、shadow ray 查询和后续 path tracing 的基础空间索引；未来可以
-替换 split 策略、实例层 BVH 或 Vulkan hardware ray tracing，但 shader 与测试必须
-同步迁移节点编码。
+它和 realtime 路径复用 core `FrameGraph` / `RenderWorkItem` / resource table
+输入链路；差异收敛在 integrator 的执行目标和 Vulkan headless 管线。离线渲染会在
+job 的 `SceneResourceTable` 内建立 render-scope storage/output 资源，所以 render
+入口接收可变 job，而不是把临时资源塞进独立旁路。
 
 <!-- SOURCE_ANALYSIS:EXTRA -->
 

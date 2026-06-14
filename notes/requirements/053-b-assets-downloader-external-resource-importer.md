@@ -419,13 +419,15 @@ assets-downloader 不直接编辑最终场景。它提供 cache 资产，`lxe-ed
 
 ## 后续工作
 
-- `REQ-053-a` 与本 REQ 可并行推进；scene/profile 侧通过统一资产 URI 消费 cache 资产。
-- `REQ-054-b` 使用 cache 中 HDR/environment/model 作为 offline demo 输入。
-- `REQ-056-a` 使用 cache 中 PBR texture set 验证材质质量。
-- `REQ-057-a` 使用 cache 中高质量 demo 资产输出最终离线 ray tracing reference 图。
+- 当前 scene/profile 侧通过统一资产 URI 消费 cache 资产。
+- 当前 Vulkan compute offline renderer 已可使用 cache 中的 scene/model/HDR 资产作为输入。
+- PBR/Material v3 纹理质量验证由 `REQ-073-*` 与 `REQ-075-a` 承接。
+- `REQ-076-a` 使用 cache 中高质量 demo 资产输出最终离线 ray tracing reference 图。
 - 未来 editor AssetRegistry 可复用 cache metadata。
 
 ## 实施状态
+
+2026-06-14 复核：保留 active。assets-downloader MVP 已可用，但本 REQ 的自动解压、完整 Asset Browser、外部 scene 转换、缩略图/搜索/热重载仍未完成。
 
 已实现首版 MVP：
 

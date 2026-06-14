@@ -132,16 +132,16 @@ texture 路径比 buffer 多了一层 staging，流程是：
 
 ## 一次完整的上传链路
 
-拿“材质参数被修改”举例：
+拿“材质 envelope 被修改”举例：
 
-1. 调用 `MaterialInstance::setParameter(...)`
-2. 对应的 `ParameterBuffer::buffer` 被写入，并记内部 dirty
-3. `MaterialInstance::syncGpuData()` 把这些槽位转成 `IGpuResource::setDirty()`
-4. 该资源通过 `SceneNode` / `RenderWorkItem` 进入 `descriptorResources`
-5. `VulkanRenderer::uploadData()` 遍历到它，并调用 `resourceManager->syncResource(...)`
-6. `VulkanResourceManager` 发现它已存在且 dirty，于是更新对应 `VulkanBuffer`
+1. parser 或 scene override 调用 `MaterialInstance::setMaterialEnvelope(...)`
+2. `MaterialInstance` 更新 material state version，并记录资源依赖变化
+3. `SceneResourceTable::buildUploadView()` 重新打包 `SceneGpuMaterialRecord`
+4. 该上传视图进入 realtime/bindless/offline 的 storage buffer 或 descriptor resource
+5. `VulkanRenderer::uploadData()` / offline integrator 遍历到对应资源，并调用 resource manager 同步
+6. `VulkanResourceManager` 发现资源已存在且 dirty，于是更新对应 buffer
 
-相机、骨骼、纹理、几何数据虽然来源不同，但进入 backend 后都在这条统一协议上汇合。
+非 surface helper 路径仍可通过 `writeShaderBindingParameter(...)` 写 `ParameterBuffer`，但它不再是普通 surface material 的主链路。相机、骨骼、纹理、几何数据虽然来源不同，但进入 backend 后都在统一上传协议上汇合。
 
 ## 当前实现的边界
 

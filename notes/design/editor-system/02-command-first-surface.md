@@ -22,11 +22,9 @@ CommandBus 像工作台下面的一条中线。toolbar、Inspector、Scene Tree�
 命令行像一张小工单。它既要给人能读懂，也要让 API/recording 能稳定复用。
 
 ```text
-set material /helmet MaterialUBO.baseColor 0.8 0.7 0.4
-│   │        │       │                     └─ 参数值
-│   │        │       └─ 参数路径 / 字段
-│   │        └─ scene node path
-│   └─ 子命令
+set /helmet.nodeMaterial.roughness 0.35
+│   │                         └─ 参数值
+│   └─ scene node path + material 参数字段
 └─ verb
 ```
 

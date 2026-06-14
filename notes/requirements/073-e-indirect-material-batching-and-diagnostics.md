@@ -1,14 +1,26 @@
 # REQ-073-e: RenderPathNode Indirect Batching And Diagnostics
 
-> 2026-06-14 现状校准：`REQ-073-d` 正在执行 `techniques/...` 到 `render_paths/...` 的 URI / 术语硬切。本 REQ 的正向路径 SHALL 以 `REQ-073-d` 完成后的 RenderPathGraph shader URI、RenderPathNodeSignature 和 legacy URI rejection 作为输入前提；不得继续依赖 `assets/shaders/glsl/techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧兼容测试 fixture。
+> 2026-06-14 现状校准：`REQ-073-d` 已完成 `techniques/...` 到 `render_paths/...` 的 URI / 术语硬切。本 REQ 的正向路径 SHALL 以完成后的 RenderPathGraph shader URI、RenderPathNodeSignature、final source-variant shader reflection 和 legacy URI rejection 作为输入前提；不得继续依赖 `assets/shaders/glsl/techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧兼容测试 fixture。
 >
-> 2026-06-14 设计收束：本 REQ 负责把 realtime geometry 默认路径切到 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler` / `RenderBatchAnalysis` 模型，并删除旧双轨。`REQ-073-f` 只负责 transparent/BMW follow-up，不再承担 073e 的 fallback cleanup。
+> 2026-06-14 074-d 校准：`REQ-074-d` 的 package serialization / restore 完成不改变 073e 范围。073e 只消费当前 scene/resource table 暴露的 `SceneResourceTableUploadView`；不读取 package section，不引入 package restore 分支，也不处理 BC7 或 pipeline cache serialization。
+>
+> 2026-06-14 设计收束：本 REQ 负责把 realtime geometry 默认路径切到 `RenderPathNodeContext` / `RenderPathNodeData` / `RenderBatchCompiler` / `RenderBatchAnalysis` 模型，并删除旧双轨。后续非 opaque 材质/pass 支持不属于本 REQ。
 
 ## 背景
 
-`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 已把 material source variant 和 RenderPathNode pipeline identity 建立起来；`REQ-073-d` 负责把 shader URI 与术语硬切到 RenderPathGraph。此时 realtime geometry 可以从 object + mesh + bound material 生成 handle/ref-level draw input，再由 preparation 解析为 prepared candidate，最后按 batch signature 走 indirect submission。
+`REQ-073-b` 已提供 bindless-ready texture/material/object/draw/mesh table；`REQ-073-c` 已把 material source variant 和 RenderPathNode pipeline identity 建立起来；`REQ-073-d` 已把 shader URI 与术语硬切到 RenderPathGraph。此时 realtime geometry 可以从 object + mesh + bound material 生成 handle/ref-level draw input，再由 preparation 解析为 prepared candidate，最后按 batch signature 走 indirect submission。
 
-当前代码已有 `RenderWorkQueue::compileIndirectBatches()`、`RenderIndirectBatch`、typed `drawRecordIndex` / `materialRefIndex` 和 `PipelineKey::build(materialTypeVariant, renderPathNodeSignature)`，但这只是过渡实现。它仍可能把旧 `RenderWorkItem` DTO、`RenderWorkKind` / `RasterDraw` / `RasterBatch`、`DescriptorResourceList` equality、target/geometry buffer identity 或 direct/per-item submission 当作成功路径。本 REQ 要把这些双轨全部硬切掉或隔离到非默认、非 realtime geometry 的命名路径。
+当前代码已有过渡形态，但它还不是 073e 目标模型：
+
+- `src/core/frame_graph/render_queue.hpp` 仍以 `std::vector<RenderWorkItem> m_items` 作为 realtime geometry 的正向数据。
+- `RenderWorkQueue::compileIndirectBatches()` 仍返回 `std::vector<RenderIndirectBatch>`，不是带 diagnostics/stats 的 `RenderBatchAnalysis`。
+- `compileIndirectBatches()` 仍以 `RenderWorkKind::RasterDraw` 过滤，遇到缺 buffer、zero index/instance count 会静默 `continue`。
+- 当前 batch split 仍比较 `PipelineKey`、pass、target、vertex/index buffer identity 和 `DescriptorResourceList` equality。
+- Vulkan `submitBindlessQueue()` 虽然调用 `compileIndirectBatches()`，但仍用 `items[batch.sourceItemIndices[0]]` 拼回旧 `RenderWorkItem`，再走 `cmd.executeWorkItem(batchItem)`。
+- `test_bindless_indirect_contract.cpp` 仍有 descriptor identity change splits batches 的正向期望。
+- Helmet smoke 已存在，但目前只验证非黑输出和 metadata，不验证 compiler-produced batch analysis 被 backend 消费。
+
+这些现状是本 REQ 的 implementation gap，不是可延续的需求概念。
 
 ## 目标
 
@@ -19,16 +31,17 @@
 5. geometry batch signature 只由 object data signature + material type signature 决定；073e 的当前输入是 opaque material types。
 6. backend realtime geometry 默认提交走 Vulkan indirect draw；旧 direct/per-item geometry 成功路径删除或命名隔离，不能作为 fallback。
 7. diagnostics 和 stats 覆盖每个 input draw / prepared candidate：成功 batch、明确 split、明确 rejection，不能静默跳过。
-8. Helmet realtime smoke 只验证 073e 的 opaque indirect path；BMW/glass/transparent 留给 073f。
+8. Helmet realtime smoke 只验证 073e 的 opaque indirect path。
 
 ## 非目标
 
 - 不实现 material storage / backend table upload foundation；由 `REQ-073-b` 处理。
 - 不实现 shader source variant；由 `REQ-073-c` 处理。
 - 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
-- 不实现 transparent pass、transparent sorting、glass material、BMW converter/shader/smoke；由 `REQ-073-f` 处理。
-- 不处理 OfflineRT compute path；由 `REQ-073-g` 处理。
+- 不处理非 opaque material/pass 支持。
+- 不处理 OfflineRT compute path。
 - 不实现 package、BC7、pipeline cache serialization 或 offline/realtime equivalence。
+- 不新增 Helmet 以外的 realtime smoke 场景。
 
 ## 需求
 
@@ -46,7 +59,7 @@
 | `RenderBatchPreparation` | queue-owned stage/helper；使用 `SceneResourceTableUploadView` 把 input references 解析成 GPU table indices/ranges 和 indirect command payload，不是新的 public hierarchy |
 | `PreparedRenderDrawCandidate` | typed object/draw indices、typed mesh table range、typed material ref/source-local material indices、object data signature、material type signature、final shader reflection identity used for readiness、indirect draw counts/offsets、sort key |
 | `RenderBatchCompiler` | 通用 batch compiler，不带 `Opaque` 前缀 |
-| `RenderBatchAnalysis` | batches、diagnostics、stats |
+| `RenderBatchAnalysis` | batches、diagnostics、stats，是 backend geometry submission 的正向输入 |
 
 `target`、attachments、render-state defaults 和 pass identity 是 node context，不复制到每个 input/candidate 上参与 batch 比较。typed GPU table index 不允许由上游手写或从旧 `RenderWorkItem` 字段搬运；它必须由 preparation 阶段从 upload view 生成。
 
@@ -56,8 +69,8 @@
 |---|---|---|
 | `RenderPathNodeContext` | 当前 RenderPathGraph node + renderer/backend pass state | preparation、compiler、backend submission 的 node scope |
 | `RenderDrawInput` | scene/renderable traversal 中的 object、mesh/submesh、bound material reference | 只给 preparation |
-| `SceneResourceTableUploadView` | `REQ-073-b` 的 SceneResourceTable upload build | 只给 preparation 做 index/range 解析 |
-| final shader reflection | `REQ-073-c` 对当前 node 内 input material/source 的 material-source variant resolution | material signature resolver 与 readiness validation |
+| `SceneResourceTableUploadView` | 当前 `SceneResourceTable` upload build | 只给 preparation 做 index/range 解析 |
+| final shader reflection | 对当前 node 内 input material/source 的 material-source variant resolution | material signature resolver 与 readiness validation |
 | object data signature | 当前 bindless object/draw table ABI resolver | prepared candidate 与 backend pipeline lookup |
 | material type signature | 当前 node 内对 input material 的 material signature resolver | prepared candidate 与 backend pipeline lookup |
 | typed object/draw/material/mesh index/range | preparation 通过 `SceneResourceTableUploadView` 解析 `RenderDrawInput` 生成 | prepared candidate validation 与 indirect command generation |
@@ -79,7 +92,7 @@
 - material storage 存在且 index/range 合法。
 - final shader reflection 来自 material-source variant。
 
-缺失数据 SHALL 形成 preparation error 或 batch diagnostic，不得回退 direct/per-item draw。
+typed draw/object/material/mesh indices 是 preparation 输出，不是 `RenderDrawInput` 输入。缺失数据 SHALL 形成 preparation error 或 batch diagnostic，不得回退 direct/per-item draw。
 
 ### R3: Batch Compatibility
 
@@ -90,7 +103,9 @@ object data signature == object data signature
 material type signature == material type signature
 ```
 
-`RenderPathNode` 是普通 node/pass context；它通过 filters 声明支持哪些 material types。073e 的当前输入是 opaque material types。若同一 surface 需要 opaque / transparent 两套 shader/material 行为，应表达为不同 material type identity，例如 `standard-pbr-opaque` 和 `standard-pbr-transparent`；073f 再补 transparent material types、transparent sorting 和 adjacent-compatible merge。
+`RenderPathNode` 是普通 node/pass context；它通过 filters 声明支持哪些 material types。073e 的当前输入是 opaque material types。若某 surface 需要另一套 shader/material 行为，应表达为不同 material type identity；本 REQ 不实现该后续扩展。
+
+material type signature 是 material-side batching identity。需求层面它是标准化 material type identity，例如 `standard-pbr-opaque`。如果 source ABI 或 contract 差异确实选择不同的 material shader contract，这些差异属于 material type signature。pass/node identity 不属于 material type signature。
 
 不得作为 batch split key：
 
@@ -108,7 +123,7 @@ material type signature == material type signature
 
 ### R4: Generic Batch Pipeline Flow
 
-`RenderWorkQueue` 的 batch pipeline SHALL 使用同一流程支持当前 opaque material types 和未来 transparent material types：
+`RenderWorkQueue` 的 batch pipeline SHALL 使用同一流程支持当前 opaque material types：
 
 ```text
 RenderPathNodeData
@@ -120,7 +135,7 @@ RenderPathNodeData
   -> return RenderBatchAnalysis
 ```
 
-073e 只实现 opaque material type policy：可以为了 batch locality 排序/聚合，因为深度顺序不是语义约束。073f 在同一模型上补 transparent material type、depth sort 和 adjacent-compatible merge。
+073e 的 node policy 可以为了 batch locality 排序/聚合，因为 opaque material types 不以 per-draw depth order 作为语义约束。
 
 ### R5: Diagnostics And Stats
 
@@ -236,7 +251,9 @@ rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
 ## 修改范围
 
 - `src/core/frame_graph/render_queue.*`
+- `src/core/frame_graph/render_validation_contract.*`
 - new or renamed queue-owned node data / batch analysis types
+- `src/core/pipeline/pipeline_build_desc.*`
 - `src/core/scene/scene_resource_table*`
 - `src/core/scene/scene_gpu_records.*`
 - Vulkan realtime submission / descriptor binding path consuming `REQ-073-b` tables
@@ -258,12 +275,13 @@ rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
 - `REQ-073-b`: bindless-ready material/object/draw/mesh tables and backend table/staging foundation。
 - `REQ-073-c`: material source shader variant 和 final shader reflection。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
+- `REQ-074-d`: package serialization / restore may produce an equivalent resource table, but 073e only consumes the resulting `SceneResourceTableUploadView` and does not branch on package origin。
 
 ## 后续工作
 
-- `REQ-073-f`: Transparent sorting/batching, glass material support, BMW converter/shader coverage and BMW realtime smoke。
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- OfflineRT RenderPathGraph compute path。
+- Additional non-opaque material/pass batching policies on the same generic compiler model。
 
 ## 实施状态
 
-未实施。
+未实施。当前代码仍是 `RenderWorkItem` / `RenderIndirectBatch` / `compileIndirectBatches()` 过渡路径，backend 仍从 compiler 输出反向拼回旧 work item 后提交；这些都是本 REQ 的待硬切内容。

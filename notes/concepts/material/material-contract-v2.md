@@ -1,238 +1,279 @@
-# Material Contract v2：SurfaceMaterial Pure Envelope 与 RenderPathGraph 分离
+# Material Contract v2：材质定义、Contract 解析与 Pipeline 配套
 
-> 状态：设计草案，尚未实施。本页用于收敛 material v2 contract；当前可执行行为仍以 `src/` 和现有 current 概念页为准。
+材质 contract 像一张“零件规格表”：`.material` 写这一块表面需要哪些零件，`.contract.glsl` 写每个零件的类型、打包布局和 shader 入口，`RenderPathGraph` 再决定在哪条生产线上使用它。当前实现已经按这条边界运行。
 
-Material v2 的核心边界是：`SurfaceMaterial` 是 pure envelope，只描述表面/BSDF 参数和资源引用；`RenderPathGraph` 才描述 Forward、Deferred、OfflineRT 下有哪些 pass、shader、source/target 和 render state。我们不把 `baseColor / metallic / roughness` 当作唯一真相，而是把它们视作 PBRT-style surface material 的一种降级视图。
+## 当前材质定义只描述 Surface
 
-## 新命名
-
-| 名称 | 含义 |
-|---|---|
-| `SurfaceMaterial` | 应用于物体表面的 pure envelope，包含 BSDF 参数、typed resource URI、render class / tag |
-| `RenderFeature` | shadowmap、SSAO、GI、tone mapping 等算法/效果的 pure envelope，包含 feature 参数 |
-| `FeatureEnvelope` | RenderFeature 的参数表，和 material envelope 一样允许常量与资源引用 |
-| `RenderPath` | Forward、Deferred、OfflineRT 等顶层渲染框架 |
-| `RenderPathGraph` | 某个 RenderPath 的 pass DAG，声明 pass、shader、输入输出、依赖资源和 render state |
-| `RenderPassNode` | RenderPathGraph 中的单个 pass 节点 |
-| `RenderClass` | `surface.opaque`、`surface.transparent` 等分类标签，供 pass filter 使用 |
-
-因此 `.material` 文件不写 `defaultTechnique`、`techniques`、`passes`、`shader`、`renderState`、`targets` 或 `sources`。这些字段只能出现在 RenderPathGraph。
-
-## 主模型是 PBRT Surface Material
-
-材质参数层以 PBRT surface material 语义为主模型。体渲染暂不进入本轮 contract。
-
-| PBRT type | Material v2 语义 | 主要参数 | BMW-M6 用途 |
-|---|---|---|---|
-| `matte` | 哑光漫反射；`sigma = 0` 时是 Lambert，`sigma > 0` 时是 Oren-Nayar | `Kd`, `sigma` | logo 颜色、matte floor |
-| `glass` | 透明 dielectric；使用 Fresnel、透射和折射率 | `Kr`, `Kt`, `eta`, roughness | 车窗、大灯玻璃 |
-| `uber` | 通用绝缘体；diffuse + specular + optional transmission | `Kd`, `Ks`, `Kt`, `roughness`, `eta`, `opacity` | 大灯、刹车、轮胎、密封条 |
-| `metal` | conductor；用复折射率计算金属 Fresnel | `eta`, `k`, roughness | 铝制 logo、轮毂、镀铬件 |
-| `substrate` | diffuse substrate + glossy/specular lobe 的层状模型 | `Kd`, `Ks`, `uroughness`, `vroughness` | 车漆、碳纤维、地面 |
-| `fourier` | 从 `.bsdf` 文件读取测量/预计算 BSDF | `bsdffile` | 皮革 |
-| `mix` | 混合两个 named material | `namedmaterial1`, `namedmaterial2`, `amount` | 黑白皮革混合 |
-
-文件层和内部类名都应尽量对齐这些 PBRT 名称，例如 `MatteSurfaceMaterial`、`GlassSurfaceMaterial`、`UberSurfaceMaterial`、`MetalSurfaceMaterial`、`SubstrateSurfaceMaterial`、`FourierSurfaceMaterial`、`MixSurfaceMaterial`。这样从 PBRT 源文件、转换器输出、运行时代码到 shader 调试都能保持同一套术语。
-
-## 参数 Envelope
-
-所有 BSDF 参数都使用统一 envelope，不写裸 YAML 值。参数可以是常量，也可以直接引用 texture、spectrum、BSDF table 或其他 material。
+当前 `.material` 文件只允许这些根字段：`schema`、`bsdf`、`renderClass`、`tags`、`metadata`。这个 allowlist 在 `MaterialResourceParser` 中直接校验，见 `src/infra/material_loader/material_resource_parser.cpp:107`。
 
 ```yaml
 schema: lxe.material.v2
-name: CarPaint
 renderClass: surface.opaque
-
+tags: [demo]
+metadata:
+  source: hand-authored
 bsdf:
-  type: substrate
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
   parameters:
-    Kd:                         # -> SurfaceMaterialInstance 参数
-      kind: rgb                 # -> PBRT-style parameter kind
-      value: [0.4, 0.03, 0.03]
-    Ks:
-      kind: rgb
-      value: [0.3, 0.3, 0.3]
-    uroughness:
-      kind: float
-      value: 0.0005
-    vroughness:
-      kind: float
-      value: 0.00051
+    baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }
+    metallic: { kind: float, value: 1.0 }
+    roughness: { kind: float, value: 0.35 }
+    baseColorTexture:
+      kind: texture
+      valueType: rgb
+      uri: assets://models/damaged_helmet/Default_albedo.jpg
 ```
 
-| Envelope 字段 | 含义 |
-|---|---|
-| `kind` | PBRT 风格参数类型，例如 `float`、`rgb`、`spectrum`、`bool`、`string`、`texture`、`integer` |
-| `value` | 内联常量值 |
-| `uri` | 参数直接引用的资源路径，例如 texture、SPD、BSDF table |
-| `valueType` | texture 这类资源参数的逻辑值类型，例如 `rgb`、`float` |
-| `renderClass` | 可选分类标签，例如 `surface.opaque` / `surface.transparent`；不是 shader 绑定 |
+`bsdf.type` 选择材质类型；`bsdf.source` 指向 contract shader；`bsdf.parameters` 是 typed envelope。RenderPathGraph 负责 pass、shader、render state 和 targets。
 
-资源引用采用参数直接持有 URI 的形式：
+## Envelope 字段和形状
+
+Envelope 像每个参数的小表单。当前运行时只接收 `kind`、`value`、`uri`、`valueType` 四个字段；converter provenance 之类的来源信息不允许混进运行时 envelope，校验见 `src/infra/material_loader/material_resource_parser.cpp:78`。
+
+| `kind` | 数据形态 | 示例 | 约束 |
+|---|---|---|---|
+| `float` | inline value | `roughness: { kind: float, value: 0.4 }` | 必须有 float `value` |
+| `rgb` | inline 3 元数组 | `Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }` | 必须有三个 float |
+| `spectrum` | inline RGB 或资源 URI | `eta: { kind: spectrum, uri: spectra/copper_eta.spd }` | 可 inline，也可引用资源 |
+| `texture` | resource URI | `normalTexture: { kind: texture, valueType: rgb, uri: textures/n.png }` | 必须有 `uri` 和 `valueType` |
+| `integer` | inline value | `samples: { kind: integer, value: 16 }` | 当前用于 contract 扩展 |
+| `bool` | inline value | `enabled: { kind: bool, value: true }` | 当前用于 contract 扩展 |
+| `string` | inline value | `alphaMode: { kind: string, value: OPAQUE }` | `alphaMode` 会被 packer 转成 flags |
+| `materialRef` | `.material` URI | `namedmaterial1: { kind: materialRef, uri: materials/a.material }` | 用于组合材质 contract |
+| `bsdfTable` | BSDF table URI | `bsdffile: { kind: bsdfTable, uri: bsdf/fabric.bsdf }` | 用于查表型 BSDF contract |
+
+`validateEnvelopeShape(...)` 还会拒绝“既有 inline value 又有 uri”的混合写法；texture 没有 `valueType` 也会失败，见 `src/core/asset/material_parameter_envelope.cpp:16`。
+
+## Contract Shader 的 Metadata 块
+
+`.contract.glsl` 的前半段是机器可读 metadata，后半段是 shader 可 include 的实现。`standard_pbr.contract.glsl` 的开头给出了完整例子：
+
+```glsl
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: standard-pbr
+// status: supported
+// reflectionHash: standard-pbr-source-contract-v1
+// storageAbiHash: standard-pbr-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: baseColor optional rgb
+// parameter: baseColorTexture optional texture
+// storageField: baseColor vec4 parameter baseColor value default=1,1,1,1
+// storageField: baseColorTexture textureSlot parameter baseColorTexture texture defaultTexture=white
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
+// LX_MATERIAL_CONTRACT_END
+```
+
+`MaterialContractReflector` 不是完整 GLSL AST。它读取 `LX_MATERIAL_CONTRACT_BEGIN/END` 内的注释 metadata，解析 `type`、`status`、hash、parameter、storageField、BSDF function，然后再检查源码里是否真的定义了 ABI 入口，见 `src/infra/material_loader/material_contract_reflector.cpp:742`。
+
+| Metadata | 作用 | 解析结果 |
+|---|---|---|
+| `type` | contract 声明的 BSDF 类型 | `MaterialContractReflection::declaredType` |
+| `status` | 当前是否可加载 | `supported` 才能被 `.material` 接收 |
+| `reflectionHash` | 参数/contract 版本 | 参与 source signature |
+| `storageAbiHash` | packed record ABI 版本 | 参与 source signature |
+| `accessorAbiHash` | `LxMaterialSurface` accessor ABI 版本 | 参与 source signature |
+| `parameter` | 参数名、required/optional、允许的 kind | parser 校验 YAML envelope |
+| `storageField` | 参数怎样打包进 GPU record | `MaterialContractPacker` 使用 |
+| `bsdfFunction` | `lxEvaluateBsdf` / `lxSampleBsdf` 入口 | reflector 校验函数签名 |
+
+ABI 入口现在固定为：
+
+```glsl
+LxMaterialSurface lxLoadMaterialSurface(
+    uint materialIndex,
+    vec2 uv,
+    vec3 geometricNormal,
+    mat3 tangentFrame);
+
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput);
+LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput);
+```
+
+`lxLoadMaterialSurface` 把每种 contract 映射到统一的 `LxMaterialSurface`：`baseColor`、`alpha`、`metallic`、`roughness`、`normal`、`ao`、`emissive`。Forward 和 Deferred shader 只消费这个统一 surface，不直接理解每个 PBRT 参数名。
+
+## Parser 如何把文件变成 Instance
+
+`MaterialResourceParser::parse(...)` 的执行顺序是：
+
+| 步骤 | 代码事实 | 失败条件 |
+|---|---|---|
+| 读 YAML root | root 必须是 map，`schema` 必须是 `lxe.material.v2`，见 `src/infra/material_loader/material_resource_parser.cpp:437` | schema 错、root 不是 map |
+| 校验 root allowlist | 只允许 `schema/bsdf/renderClass/tags/metadata`，见 `src/infra/material_loader/material_resource_parser.cpp:107` | 未知 root field |
+| 读取 `bsdf.type/source` | `bsdf.source` 必须是非空 scalar，见 `src/infra/material_loader/material_resource_parser.cpp:474` | 没写 source、source 为空 |
+| 加载并反射 contract | `loadAndReflectMaterialContractSource(...)` 读取 `assets://` 或文件路径 | 读不到文件、metadata 不完整、ABI 函数缺失 |
+| 对齐 type/status | `contract.declaredType` 必须等于 `bsdf.type`，`status` 必须 supported，见 `src/infra/material_loader/material_resource_parser.cpp:503` | type/source 不一致、contract 不可加载 |
+| 校验参数 | YAML 中未知参数会诊断；required 参数缺失会诊断；kind 必须在 contract allowlist，见 `src/infra/material_loader/material_resource_parser.cpp:545` | 参数名或 kind 不匹配 |
+| 注册资源依赖 | texture/spectrum/materialRef/bsdfTable URI 解析成 `SceneResourceTable` dependency，见 `src/infra/material_loader/material_resource_parser.cpp:580` | URI shape 错、mix 子材质 header 不合法 |
+| 创建 instance | 写入 BSDF type、source URI/signature、reflection hash、renderClass/tags/metadata/envelope | 有任何 diagnostics 时不返回 instance |
+
+这条链路刻意 fail-fast。Parser 不会因为缺参数就偷偷补默认材质；参数必须由 contract metadata 和 envelope 共同定义。
+
+## 当前内置材质类型
+
+| 类型 | 状态 | contract 文件 | 当前用途 |
+|---|---|---|---|
+| `standard-pbr` | supported | `assets/shaders/glsl/common/materials/standard_pbr.contract.glsl` | glTF/PBR 主路径；会读取 packed source record、texture slot 和 `SceneTextures` |
+| `matte` | supported | `assets/shaders/glsl/common/materials/matte.contract.glsl` | PBRT matte envelope |
+| `uber` | supported | `assets/shaders/glsl/common/materials/uber.contract.glsl` | 通用 PBRT-style envelope；当前 `assets/materials/pbr.material` 使用它 |
+| `metal` | supported | `assets/shaders/glsl/common/materials/metal.contract.glsl` | 金属 envelope；当前 `assets/materials/pbr_gold.material` 使用它 |
+| `substrate` | supported | `assets/shaders/glsl/common/materials/substrate.contract.glsl` | 层状 diffuse/specular envelope |
+
+## 几类材质文件示例
+
+`standard-pbr` 适合带贴图资产：
 
 ```yaml
+schema: lxe.material.v2
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    metallic: { kind: float, value: 1.0 }
+    roughness: { kind: float, value: 1.0 }
+    alphaMode: { kind: string, value: OPAQUE }
+    baseColorTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_albedo.jpg }
+    metallicRoughnessTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_metalRoughness.jpg }
+    normalTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_normal.jpg }
+```
+
+`matte` 适合哑光表面：
+
+```yaml
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
+    sigma: { kind: float, value: 0.0 }
+```
+
+`metal` 可以用 spectrum URI 或 inline spectrum：
+
+```yaml
+schema: lxe.material.v2
 bsdf:
   type: metal
+  source: assets://shaders/glsl/common/materials/metal.contract.glsl
   parameters:
-    eta:
-      kind: spectrum
-      uri: spds/Al.eta.spd
-    k:
-      kind: spectrum
-      uri: spds/Al.k.spd
+    eta: { kind: spectrum, uri: spectra/copper_eta.spd }
+    k: { kind: spectrum, uri: spectra/copper_k.spd }
+    uroughness: { kind: float, value: 0.25 }
+    vroughness: { kind: float, value: 0.25 }
 ```
 
-`MaterialResourceParser` 解析这些 URI，并通过 `SceneResourceTable` 注册 spectrum、texture、bsdf-table 等依赖资源。Parser 不拥有资源，资源身份和生命周期由 `SceneResourceTable` 管理。
-
-## PBRT 默认值由 Converter 显式写入
-
-`MaterialResourceParser` 不补默认值，只校验 `.material` 是否完整。PBRT converter 负责读取默认配置文件，把 PBRT 默认值显式写入 material。
+`substrate` 适合“底色 + 高光层”的 PBRT-style 参数：
 
 ```yaml
-# pbrt-defaults.yaml
-glass:
-  Kr: { kind: rgb, value: [1, 1, 1] }
-  Kt: { kind: rgb, value: [1, 1, 1] }
-  eta: { kind: float, value: 1.5 }
-  uroughness: { kind: float, value: 0.0 }
-  vroughness: { kind: float, value: 0.0 }
+schema: lxe.material.v2
+bsdf:
+  type: substrate
+  source: assets://shaders/glsl/common/materials/substrate.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [0.4, 0.03, 0.03] }
+    Ks: { kind: rgb, value: [0.3, 0.3, 0.3] }
+    uroughness: { kind: float, value: 0.0005 }
+    vroughness: { kind: float, value: 0.00051 }
 ```
 
-转换规则保持简单：
+## Shader 如何消费 Contract
 
-| 情况 | 行为 |
-|---|---|
-| PBRT 源材质显式提供参数 | 使用源参数，并在 converter report 中记录来源 |
-| 源材质缺参数，默认配置提供参数 | 使用配置值，打印 warning，并在 converter report 中记录来源 |
-| 源材质和默认配置都缺参数 | converter fatal |
+Render pass shader 不在 `.material` 中选择。Forward PBR pass shader `assets/shaders/glsl/techniques/Forward/pbr.frag` 明确要求 resolver 注入 material contract source：
 
-默认值不硬编码在转换器代码中。配置缺失时不做更多推导。
+```glsl
+#if defined(LX_MATERIAL_CONTRACT_SOURCE)
+#include LX_MATERIAL_CONTRACT_SOURCE
+#else
+#error LX_MATERIAL_CONTRACT_SOURCE must be defined by the material shader variant
+#endif
+```
 
-## SurfaceMaterial、RenderPathGraph 与 Instance 的边界
+这段代码在 `assets/shaders/glsl/techniques/Forward/pbr.frag:7`。因此裸编译 `pbr.frag` 会失败；必须由 `MaterialSourceVariantResolver` 为每个 material type/source 生成 specialized variant。
 
-Material v2 中，`SurfaceMaterialTemplate` 不再表示 pass 结构。我们把“材质参数 contract”和“渲染流程 contract”拆开。
+进入 `main()` 后，shader 先调用 contract 提供的 accessor：
 
-| 对象 | 职责 | 不负责 |
+```glsl
+LxMaterialSurface surface =
+    lxLoadMaterialSurface(vMaterialRefIndex, vUV, geometricNormal, tangentFrame);
+```
+
+然后把统一 surface 转成 direct lighting / BSDF 输入，调用 `lxEvaluateBsdf(...)`，见 `assets/shaders/glsl/techniques/Forward/pbr.frag:60`。Deferred GBuffer shader 走同样的 include/accessor 模式，只是把结果写入 GBuffer attachment。
+
+## RenderPathGraph 怎样配套
+
+`.material` 只说 surface，RenderPathGraph 说“在哪个 pass 消费 surface”。Forward 主 graph 的 `Forward` pass 这样声明：
+
+```yaml
+- id: Forward
+  stage: raster
+  dispatch: draw
+  shader: techniques/Forward/pbr
+  filters:
+    renderClass: [surface.opaque]
+    bsdf: [matte, uber, metal, substrate, standard-pbr]
+  sources:
+    - geometry.vertex
+    - geometry.index
+    - material.bsdf
+    - scene.camera
+    - scene.lights
+  targets: [hdr.color, depth.main]
+```
+
+`filters.bsdf` 决定这个 pass 是否接受某个 material type；`sources` 中出现 `material.bsdf` 表示 shader 需要材质 envelope/storage。`RenderPassNode` 还必须声明 `stage`、`dispatch`、`rendering.attachments`、`geometry` 和 `renderState`。
+
+`MaterialSourceVariantResolver` 再做三件关键事：
+
+1. 遍历 `SceneResourceTable` 中的 material instance，按 `bsdf.type + source URI + reflection hash + source signature` 分组。
+2. 检查 pass shader 是否包含 `LX_MATERIAL_CONTRACT_SOURCE`；包含则 pass 必须声明 `material.bsdf`，不包含则不能声明 `material.bsdf`，见 `src/infra/resource_parsers/material_source_variant_resolver.cpp:344`。
+3. 对 graph filter 命中的每种 material source 编译 shader variant，并注册到 `SceneResourceTable`，见 `src/infra/resource_parsers/material_source_variant_resolver.cpp:386`。
+
+这一步解释了为什么“新增材质类型”通常要同时改 contract、material 文件和 graph filter：缺任何一环，pass 都不会获得正确的 shader variant。
+
+## Pipeline Identity 的边界
+
+Pipeline key 不看单个参数值。当前 key 只组合两部分：
+
+```text
+PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
+```
+
+实现见 `src/core/pipeline/pipeline_key.cpp:5`。
+
+| 输入 | 来源 | 包含什么 |
 |---|---|---|
-| `SurfaceMaterialTemplate` | 某个 BSDF type 的参数 schema、资源槽、CPU/GPU material data layout、校验规则 | render path、pass、shader、render state |
-| `SurfaceMaterial` | `.material` 中的 pure envelope、render class/tag、资源 URI | shader、pass、RenderPathGraph |
-| `MaterialInstance` | 某份 material 文件或 scene override 后的参数值、资源 handle、template 引用、dirty/version | 改写 template、base material 或 pass graph |
-| `RenderFeature` | 算法/效果参数 envelope，例如 shadowmap 分辨率、TAA jitter、tone mapping 参数 | pass、shader、phase、render state |
-| `RenderPathGraph` | render path 下的 pass DAG、shader、source/target、feature/material 依赖、render state | BSDF 参数默认值 |
-| `SurfaceMaterialResourceParser` | 解析 `.material`，校验 envelope，注册依赖资源，创建 base instance | 持有资源、隐式补默认值、绑定 shader |
+| `materialTypeVariant` | `MaterialInstance + ShaderProgramSet` | BSDF type、source contract、resolved shader variant |
+| `renderPathNodeSignature` | `RenderPassNode` | pass id、shader URI、stage/dispatch、render state、rendering mode、geometry、source/target、attachment contract |
 
-同一个 `MatteMaterialTemplate` 可以服务多个 material instance；这些 instance 的 `Kd` 不同，但参数 contract 相同。
+`getRenderPathNodeSignature(...)` 明确把 pass、shader、stage、dispatch、renderState、geometry、source、target、attachment 纳入签名，见 `src/core/asset/render_effect.cpp:43`。这也是为什么普通 `roughness` 改值不会重建 pipeline，而改 graph 的 shader/render state/attachment 会改变 pipeline identity。
 
-## RenderPathGraph 显式绑定 Pass 与 Shader
+## 自定义材质的当前路径
 
-Forward、Deferred、OfflineRT 不再写进 material。它们是 `RenderPath`，由 renderer/camera 选择；对应 pass graph 写在 `RenderPathGraph` 文件中。
+当前我们有两条稳定路径：
 
-```yaml
-schema: lxe.render-path-graph.v1
-name: ForwardMain
-renderPath: Forward
+| 目标 | 改哪些文件 | 是否需要 C++ |
+|---|---|---|
+| 新增一份材质资产 | 新建 `assets/materials/*.material`，复用 supported contract | 不需要 |
+| 新增一种 BSDF contract | 新建 `assets/shaders/glsl/common/materials/<type>.contract.glsl`，写 metadata 和 ABI 函数；把 graph `filters.bsdf` 加上 `<type>`；必要时新增或复用 pass shader | 通常不需要，除非新增 envelope kind、资源类型或 renderer 注入资源 |
 
-features:
-  shadow:
-    uri: effects/shadow.render-feature.yaml
+新增 contract 时最小检查清单：
 
-passes:
-  - id: ForwardOpaque
-    shader: techniques/Forward/surface_lit
-    stage: raster
-    dispatch: draw
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate]
-    sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera, scene.lights, shadow.main]
-    targets: [hdr.color.direct, depth.main]
-    renderState:
-      cullMode: None
-      depthTest: true
-      depthWrite: true
-      blendEnable: false
-```
+1. metadata 块必须有 `type/status/reflectionHash/storageAbiHash/accessorAbiHash/parameter`。
+2. `status` 先写 `supported` 之前，要确认 `lxLoadMaterialSurface`、`lxEvaluateBsdf`、`lxSampleBsdf` 符合当前签名。
+3. `storageField` 只能引用已声明 parameter，texture field 要写 `defaultTexture=white/black/flatNormal`。
+4. 新 `.material` 的 `bsdf.type` 必须和 contract `type` 一致。
+5. Graph pass 的 `filters.bsdf` 必须包含新 type；pass shader 如果 include contract source，`sources` 必须包含 `material.bsdf`。
+6. 跑 `ninja test_material_v2_parser test_material_source_contract test_material_source_variant_pipeline`，再用 `lxe_editor` 验证 scene 中 material URI、graph filter 和 shader variant 都接通。
 
-所有影响结果的字段都必须显式写出。缺 `shader`、`stage`、`dispatch`、`sources`、`targets`、完整 `renderState` 时，graph validation fail-fast。代码不根据 pass 名称隐式推导 shader、target、render state 或 render path。
+## 我们已经学会了什么
 
-## RenderFeature 也是 Pure Envelope
+Material Contract v2 把三件事拆开：`.material` 定义 surface envelope，`.contract.glsl` 定义参数和 shader ABI，`RenderPathGraph` 定义 pass/shader/render state。Parser 负责 fail-fast 解析与资源依赖注册；resolver 负责把 material source 注入 pass shader variant；pipeline key 只看 material type/source variant 和 RenderPathNode signature。
 
-不绑定具体物体的算法参数不放在 material 中。我们用 `RenderFeature` 文件表达后处理、阴影、GI、TAA 等参数。它和 SurfaceMaterial 一样不绑定 shader；真正的 pass 仍由 RenderPathGraph 声明。
+## 下一步
 
-```yaml
-schema: lxe.render-feature.v1
-name: MainShadow
-feature: shadowmap
-parameters:
-  resolution:
-    kind: integer
-    value: 2048
-  bias:
-    kind: float
-    value: 0.001
-```
-
-camera 节点引用 render path graph 和 feature：
-
-```yaml
-camera:
-  renderPath: Forward
-  renderPathGraph:
-    uri: render_paths/forward_main.render-path.yaml
-  features:
-    shadow:
-      uri: effects/shadow.render-feature.yaml
-```
-
-Forward 可以是单 pass，也可以为了 shadow/transparent/tone mapping 拆成多 pass；Deferred 是否需要 GBuffer 也由 RenderPathGraph 声明。FrameGraph 只看 graph 里的 source/target 依赖，不从 RenderPath 名称硬推结构。
-
-## 标准 Graph Target
-
-`sources` 和 `targets` 不是自由字符串，必须来自标准 graph resource registry。新增 target namespace 需要先进入 contract。
-
-| Target | 用途 |
-|---|---|
-| `depth.main` | 主深度 |
-| `gbuffer.albedo` | Deferred base color / diffuse data |
-| `gbuffer.normal` | Deferred normal / roughness data |
-| `gbuffer.material` | material id、BSDF type、参数索引等 |
-| `gbuffer.emissive` | emissive 输出 |
-| `hdr.color` | linear HDR color |
-| `ldr.color` | tone mapped LDR color |
-| `swapchain.color` | present target |
-| `shadow.main` | shadow map |
-| `environment.radiance` | 环境光照输入 |
-
-如果 pass source 没有 producer，也不是 imported resource，FrameGraph 构建失败。多个 pass 写同一个 target 时，必须由 render graph rule 显式允许 blend、append 或 overwrite，否则报错。
-
-## Scene Override 只影响 Instance
-
-scene/node override 只允许覆盖 `bsdf.parameters.*` 和 instance 运行时状态。它不能修改 `RenderPathGraph`、`passes`、`shader`、`stage`、`renderState` 或 `variants`。
-
-```yaml
-material:
-  uri: materials/CarPaint.material
-  overrides:
-    bsdf.parameters.Kd:
-      kind: rgb
-      value: [0.5, 0.02, 0.02]
-      source: scene-override
-```
-
-这样 `.material` 文件仍对应稳定的 authoring asset；editor 临时调材质只影响 `MaterialInstance`，不回写原始 material YAML。
-
-## 待继续收敛
-
-| 问题 | 当前倾向 |
-|---|---|
-| material-local intermediate target | 第一版先不支持；如果 layered material 需要多 pass，在 RenderPathGraph 引入局部 target 作用域 |
-| Deferred lighting pass 粒度 | 按 `SurfaceMaterialTemplate` / BSDF type 组织 lighting work，而不是每个 mesh 重复光照 |
-| shader 目录 | 现有 `techniques/<Forward>` 目录作为过渡可保留，但语义是 RenderPath 目录；公用 BSDF 和 direct lighting 函数放 `common/` |
-| render path graph validation | 顶层校验一个 RenderPathGraph 下所有 pass 的 shader reflection、source/target、layout 是否能被 pipeline 自动创建 |
-| 缺失 graph 支持 | 对象不渲染，打印 warning；converter 不再生成 Forward/Deferred/OfflineRT material technique |
-
-## 继续阅读
-
-- [材质系统未来路线](future-roadmap.md)
 - [从 .material 到 MaterialInstance](file-to-instance.md)
-- `docs/superpowers/specs/` 中后续落地的材质设计 spec
+- [Shader 在材质中的角色](shader.md)
+- [创建与排错自定义材质](custom-template.md)

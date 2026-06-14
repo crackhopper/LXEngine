@@ -8,39 +8,27 @@
 
 | 分组 | Shader 家族 | 当前入口 |
 |---|---|---|
-| 材质 forward | `blinnphong_0`、`pbr`、`rtr_experiment_template`、`rtr_shadertoy_quantum_core` | `.material` 文件经 `GenericMaterialLoader` 编译和反射 |
-| Shadow | `shadow_depth_only` | material 的 `Shadow` pass |
+| 材质 / surface pass | `techniques/Forward/pbr`、`techniques/Deferred/pbr_gbuffer`、`techniques/OfflineRT/offline_pbr_direct_ray` | `RenderPathGraph` pass 引用 shader URI，并消费 `material.bsdf` |
+| Material contract | `common/materials/*.contract.glsl` | `.material v2` 的 `bsdf.source`，用于参数/ABI reflection 和 source variant include |
+| Shadow | `techniques/Forward/shadow_depth_only` | RenderPathGraph 的 `Shadow` pass |
 | Debug / 诊断 | `debug_line`、`mesh_debug`、`minimal`、`texture_cube_probe` | debug draw、overlay、resize 诊断或 cubemap probe |
-| HDR 后处理 | `skybox`、`bloom_threshold`、`bloom_blur_h`、`bloom_blur_v`、`post_process` | `VulkanPostProcessBuilder` 手动装配 fullscreen material |
+| HDR 后处理 | `skybox`、`bloom_threshold`、`bloom_blur_h`、`bloom_blur_v`、`post_process` | RenderPathGraph / fullscreen pass 消费 HDR、bloom 和 post-process source |
 | IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `IblBakeRenderer` 手动创建 bake draw |
 | Offline compute | `offline_primary_ray` | `createOfflinePrimaryRayShader()` 包装为 `IShader`，再经 offline `RenderWorkItem` 进入 compute pipeline |
 | 共享片段 | `scene_lights_ubo.glsl` | GLSL include 片段，声明 scene lights UBO 结构 |
 
 ## 材质 Forward Shader
 
-这些 shader 直接决定物体表面的颜色。它们像不同的刷漆方案：同样的 mesh 进来，shader 决定我们用简化光照、PBR、实验 toon 风格，还是屏幕空间 raymarch 风格。
+这些 shader 直接决定物体表面的颜色。同样的 mesh 进来，shader 决定 surface 数据怎样进入 Forward、Deferred 或 OfflineRT 路径。
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `blinnphong_0` | `blinnphong_0.vert` / `.frag` | 当前通用 Blinn-Phong forward shader，支持无光照、光照、UV、顶点色、法线贴图、蒙皮和 CSM 阴影变体 | `CameraUBO`、`LightUBO`、`MaterialUBO`、`ShadowMap0..3`、可选 `albedoMap` / `normalMap`、可选 `Bones` |
-| `pbr` | `pbr.vert` / `.frag` | 金属/粗糙度 PBR forward shader，消费材质贴图和 scene-level IBL 资源 | `CameraUBO`、`MaterialUBO`、`LightUBO`、`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`、`EnvironmentUBO` |
-| `rtr_experiment_template` | `rtr_experiment_template.vert` / `.frag` | 自定义材质教程和 RTR 实验模板；用少量参数展示“材质 UBO -> fragment 颜色”的完整合同 | `CameraUBO`、`MaterialUBO`、`LightUBO` |
-| `rtr_shadertoy_quantum_core` | `rtr_shadertoy_quantum_core.vert` / `.frag` | 程序化 shader gallery 的 Shadertoy 风格 SDF/raymarch shader | `CameraUBO`、`ShadertoyUBO`、`iChannel0` |
+| `techniques/Forward/pbr` | `techniques/Forward/pbr.vert` / `.frag` | Forward surface pass，消费 `material.bsdf`、scene camera/light 和 HDR/depth target contract | `material.bsdf`、`scene.camera`、`scene.lights` |
+| `techniques/Deferred/pbr_gbuffer` | `techniques/Deferred/pbr_gbuffer.vert` / `.frag` | Deferred GBuffer pass，输出 surface/material 数据 | `material.bsdf`、geometry、scene camera |
+| `techniques/Deferred/deferred_lighting` | `techniques/Deferred/deferred_lighting.vert` / `.frag` | Deferred lighting fullscreen pass，读取 GBuffer 和 scene light | GBuffer targets、scene lights |
+| `common/materials/standard_pbr.contract.glsl` | contract include | standard-pbr BSDF 参数、packed source record 和 accessor ABI | `baseColor`、`metallic`、`roughness`、texture slot 等 material envelope |
 
-`blinnphong_0` 是当前变体最多的 shader。它的顶点输入会随宏收缩：`USE_LIGHTING` 打开 normal/world position 路径，`USE_UV` 打开 `inUV` 和 `albedoMap`，`USE_NORMAL_MAP` 额外要求 tangent 和 `normalMap`，`USE_SKINNING` 额外要求 bone ids/weights 和 `Bones`。这就是 `shader-reflection` 规格中特别要求 `blinnphong_0` 的 vertex input reflection 必须随变体变化的原因。
-
-`pbr` 的重点不是变体数量，而是资源归属边界。`MaterialUBO`、`albedoMap`、`normalMap`、`metallicRoughnessMap`、`aoMap`、`emissiveMap` 属于材质；`IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut`、`EnvironmentUBO` 属于 scene-level IBL。这样同一个 HDR environment 可以服务整场景，而不是写进每个 `.material`。
-
-```yaml
-shader: pbr                              # -> assets/shaders/glsl/pbr.vert/.frag
-variants:
-  HAS_METALLIC_ROUGHNESS: true           # -> 编译时启用对应 sampler2D binding
-  HAS_NORMAL_MAP: true                   # -> 顶点阶段也会输出 vTBN
-parameters:
-  MaterialUBO.baseColorFactor: [1.0, 1.0, 1.0, 1.0] # -> pbr.frag MaterialUBO
-resources:
-  normalMap: white                       # -> material-owned Texture2D
-```
+PBR shader 的重点是 source contract 和 render path contract 的组合。`.material v2` 提供 `bsdf.source` 和参数 envelope；RenderPathGraph pass 提供 shader URI、attachment、geometry、source/target 和 render state；material source resolver 负责生成会进入 `PipelineKey` 的 material type/source variant。
 
 ## Shadow Shader
 
@@ -48,7 +36,7 @@ resources:
 |---|---|---|---|
 | `shadow_depth_only` | `shadow_depth_only.vert` / `.frag` | Shadow pass 的深度写入 shader；fragment 阶段为空，因为目标只需要 depth | `ObjectPC.model`、`LightUBO.shadowViewProj`、可选 `Bones` |
 
-`shadow_depth_only.vert` 把 mesh position 乘上 model 和当前 cascade 的 `shadowViewProj`。renderer 在每次 shadow pass 前更新 `LightUBO.shadowViewProj`，所以同一份 shader 可以被不同 cascade 重复使用。开启 `USE_SKINNING` 时，它和 `blinnphong_0` 一样读取 `Bones`，保证蒙皮物体在 shadow map 里的轮廓和 forward pass 对齐。
+`shadow_depth_only.vert` 把 mesh position 乘上 model 和当前 cascade 的 `shadowViewProj`。renderer 在每次 shadow pass 前更新 `LightUBO.shadowViewProj`，所以同一份 shader 可以被不同 cascade 重复使用。开启 `USE_SKINNING` 时，它和 surface forward pass 一样读取 `Bones`，保证蒙皮物体在 shadow map 里的轮廓和主渲染 pass 对齐。
 
 ## Debug 和诊断 Shader
 
@@ -73,7 +61,7 @@ resources:
 | `bloom_blur_v` | `bloom_blur_v.vert` / `.frag` | bloom 纵向高斯近似模糊 | `BloomSource` |
 | `post_process` | `post_process.vert` / `.frag` | 合并 HDR scene color 与 bloom，执行 exposure、tone mapping 和 gamma | `SceneColor`、`BloomColor`、`PostProcessUBO` |
 
-这些 fullscreen shader 的顶点阶段通常只用 `gl_VertexIndex` 生成一个覆盖全屏的大三角形，不需要 mesh vertex buffer。它们的 reflection binding 不是由普通 `.material` 文件提供，而是在 `VulkanPostProcessBuilder` 里用 `StaticFullscreenShader` 手动声明，随后仍然走 `MaterialTemplate`、`MaterialInstance` 和 pipeline 路径。
+这些 fullscreen shader 的顶点阶段通常只用 `gl_VertexIndex` 生成一个覆盖全屏的大三角形，不需要 mesh vertex buffer。当前目标是让 PostProcess / Bloom 这类 pass 也来自 RenderPathGraph；仍保留的 builder 手写路径应被视为待硬切的执行层细节。
 
 ## IBL Bake Shader
 
@@ -92,7 +80,7 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `offline_primary_ray` | `offline_primary_ray.comp` | 离线 renderer 的 camera ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/简化高光着色，写入输出像素 buffer | set 0 binding 0..8 的 SSBO 合同 |
+| `offline_primary_ray` | `offline_primary_ray.comp` | 离线 renderer 的 camera ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/高光着色，写入输出像素 buffer | set 0 binding 0..8 的 SSBO 合同 |
 
 `offline_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧的 `createOfflinePrimaryRayShader()` 会反射 `.comp.spv`，并校验九个 binding 是否存在：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams`、`OutputPixels`。随后 `RenderWorkQueue` 为 `Pass_OfflineRayTrace` 生成 `ComputeDispatch` 类型的 `RenderWorkItem`，再由 `PipelineBuildDesc::fromRenderWorkItem` 和 `PipelineCache` 创建 compute pipeline。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/scene` 里的 `SceneGpu*` CPU 结构保持一致。
 
@@ -109,16 +97,16 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 | 改动 | 需要同步检查 |
 |---|---|
 | 新增/删除 vertex input | mesh `VertexLayout`、`ShaderReflector` 输出、`SceneNode` validation |
-| 新增 material-owned UBO 字段 | `.material parameters`、`MaterialInstance` 参数写入、std140 offset |
-| 新增 material-owned texture | `.material resources` 默认值和 binding name |
+| 新增 material contract 参数 | `.contract.glsl`、`MaterialContractReflection`、material parser/packer、`.material v2` envelope |
+| 新增 material texture 参数 | material dependency registration、`SceneResourceTable` typed handle、shader accessor |
 | 新增 system-owned binding | `shader_binding_ownership.hpp`、renderer 注入资源、descriptor set/binding |
-| 新增 variant 宏 | `.material variants`、`variantRules`、pipeline signature 和测试 fixture |
-| 修改 post/IBL fullscreen binding | `VulkanPostProcessBuilder` 或 `IblBakeRenderer` 的手写 reflection binding |
+| 新增 shader/material source variant | material source resolver、specialized `.spv`、`materialTypeVariant`、pipeline identity tests |
+| 修改 post/IBL fullscreen binding | RenderPathGraph source/target、fullscreen shader reflection、IBL bake renderer binding |
 | 修改 compute SSBO schema | `createOfflinePrimaryRayShader()` descriptor 校验、`RenderWorkQueue` offline item 构建和 `core/offline` CPU 数据结构 |
 
 ## 我们已经学会了什么
 
-内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。材质 shader 通过 reflection 连接 `.material`；post 和 IBL bake shader 由 renderer 手写 binding；offline compute shader 用 SSBO schema 连接 CPU 离线场景数据，并通过同一套 `RenderWorkItem` / `PipelineCache` 路径执行。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
+内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。surface shader 通过 material contract 和 RenderPathGraph 连接 `.material v2`；post 和 IBL bake shader 通过 fullscreen/bake source contract 消费资源；offline compute shader 用 SSBO schema 连接 `SceneResourceTableUploadView`，并通过同一套 `RenderWorkItem` / `PipelineCache` 路径执行。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
 
 ## 下一步
 

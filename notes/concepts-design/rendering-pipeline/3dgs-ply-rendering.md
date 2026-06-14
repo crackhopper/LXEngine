@@ -2,7 +2,7 @@
 
 3D Gaussian Splatting 可以理解成一盒彩色半透明的空间印章：每个印章不是三角面，而是一个带方向、尺寸、颜色和透明度的三维高斯。渲染时我们把这些印章投影到屏幕上，变成许多椭圆形 splat，再按透明度从后到前合成。
 
-这页记录 LXEngine 支持 3DGS PLY 的目标设计。当前仓库已经包含代表性样例资产和预置 scene，渲染代码仍由 `REQ-061-a` 到 `REQ-064-a` 分步落地。
+这页记录 LXEngine 支持 3DGS PLY 的目标设计。当前仓库已经包含 Voxel51 3DGS 的 assets-downloader catalog 和 cache manifest 表面，但还没有 in-git 大型 PLY、3DGS scene、loader、runtime component 或 Vulkan pass；渲染代码由 `REQ-077-a` 到 `REQ-077-d` 后置分步落地。
 
 ## PLY 在这里不是 mesh
 
@@ -21,7 +21,11 @@
 
 ## 文件字段怎样变成运行时数据
 
-样例资产位于 `assets/models/3dgs_train_sample/point_cloud.ply`。它来自 Voxel51 的 Gaussian Splatting Hugging Face 数据集，使用 Apache-2.0 许可，包含 741,883 个 Gaussian splat。
+大型样例资产来自 Voxel51 的 Gaussian Splatting Hugging Face 数据集，使用 Apache-2.0 许可，包含 741,883 个 Gaussian splat。当前仓库不提交这个 183 MB PLY，而是通过 assets-downloader 写入 cache：
+
+```text
+cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/converted/point_cloud.ply
+```
 
 ```text
 property float x/y/z          # -> GaussianSplat.position
@@ -57,7 +61,7 @@ property float rot_0..3       # -> GaussianSplat.rotation，raw quaternion
 
 ## 渲染路径
 
-首版目标是稳定显示样例场景，而不是一次实现所有论文级优化。通用 compute shader / compute pipeline 支持是 3DGS Vulkan pass 的前置能力，由 `REQ-063-a` 单独落地；3DGS 专用渲染路径在 `REQ-063-b` 消费它。
+首版目标是稳定显示样例场景，而不是一次实现所有论文级优化。通用 compute shader / compute pipeline 支持已经由 finished `REQ-063-a` 落地；3DGS 专用渲染路径在 `REQ-077-c` 消费它。
 
 ```text
 3DGS PLY
@@ -83,14 +87,14 @@ property float rot_0..3       # -> GaussianSplat.rotation，raw quaternion
 
 ## 场景预置
 
-验收入口是：
+目标 canonical scene 表面是：
 
 ```yaml
-mesh:
-  uri: assets/models/3dgs_train_sample/point_cloud.ply # -> 后续 canonical 表面会变成 gaussianSplat.uri
+gaussianSplat:
+  uri: cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/converted/point_cloud.ply
 ```
 
-当前 scene 文档表面仍以 `mesh.uri` 为主，所以预置场景先使用这个字段承载 `.ply` 路径。`REQ-062-a` 会把 canonical 表面收敛到 `gaussianSplat.uri`，并让保存后的 scene 不再把 splat 当成 mesh。
+当前 scene 文档表面仍以 `mesh.uri` 为主，尚未实现 `gaussianSplat.uri`。`REQ-077-b` 会把 canonical 表面收敛到 `gaussianSplat.uri`，并让保存后的 scene 不再把 splat 当成 mesh。
 
 ## 参考资料
 
@@ -103,8 +107,8 @@ mesh:
 
 ## 继续阅读
 
-- 3DGS 样例资产说明：`assets/models/3dgs_train_sample/README.md`
-- [REQ-061-a: 3DGS PLY Loader And CPU Resource](../../requirements/061-a-3dgs-ply-loader-and-resource.md)
-- [REQ-063-a: Compute Pipeline Foundation](../../requirements/063-a-compute-pipeline-foundation.md)
-- [REQ-063-b: 3DGS Vulkan Splat Pass](../../requirements/063-b-3dgs-vulkan-splat-pass.md)
+- assets-downloader catalog：`src/tools/assets-downloader/catalog/default.yaml`
+- [REQ-077-a: 3DGS PLY Loader And CPU Resource](../../requirements/077-a-3dgs-ply-loader-and-resource.md)
+- [REQ-063-a: Compute Pipeline Foundation](../../requirements/finished/063-a-compute-pipeline-foundation.md)
+- [REQ-077-c: 3DGS Vulkan Splat Pass](../../requirements/077-c-3dgs-vulkan-splat-pass.md)
 - [Vulkan Backend](../../subsystems/vulkan-backend.md)

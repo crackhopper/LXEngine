@@ -14,9 +14,9 @@
 |---|---|
 | `Pass_Forward` / `Pass_Shadow` / `Pass_Deferred` / `Pass_DebugOverlay` | 常量存在 |
 | `MaterialTemplate` 多 pass | 已支持 |
-| `MaterialInstance::getDescriptorResources(pass)` | 已支持 pass-aware 资源 |
+| validated pass data + scene descriptor resolver | 已支持 pass-aware 资源组装 |
 | `SceneNode` pass-level validation | 已支持 |
-| `RenderQueue::buildFromScene(scene, pass, target)` | 已支持 |
+| `RenderWorkQueue::build(context, pass, target, renderPathNodeSignature, ...)` | 已支持 |
 | `FrameGraph` | 只有 `vector<FramePass>` + 顺序构建 queue + pipeline build desc 去重 |
 | `RenderTarget` | 只有 format/sample 描述，没有实际 attachment 资源 |
 | Vulkan pass 执行 | 当前在单个 swapchain render pass 内循环所有 queue |
@@ -232,7 +232,7 @@ Lighting pass:
 > Pending。可独立优化，但不是 FrameGraph / Shadow / CSM 前置。
 
 - 使用已有 `SceneNode` world bounds。
-- `RenderQueue::buildFromScene` 在 visibility mask 后加 frustum test。
+- `RenderWorkQueue::build` 在 visibility mask 后加 frustum test。
 - 先 CPU culling；GPU-driven culling 后置到研究路线。
 
 **验收**：相机转向空处时 draw item 数明显下降。

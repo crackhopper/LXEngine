@@ -93,7 +93,7 @@ metadata 至少记录：
 
 ## 依赖
 
-- `REQ-057-a`
+- `REQ-076-a`
 - Reflection Probe Bake planned route
 
 ## 边界

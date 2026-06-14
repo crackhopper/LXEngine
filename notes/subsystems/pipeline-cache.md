@@ -24,7 +24,7 @@
 
 ## 典型数据流
 
-1. `FrameGraph` 收集 `PipelineBuildDesc`。
+1. `FrameGraph` 从各 pass 的 `RenderWorkQueue` 收集 `PipelineBuildDesc`。
 2. `PipelineCache::preload(...)` 预构建。
 3. `VulkanResourceManager::preloadPipelines(...)` 只是转发到 `PipelineCache::preload(...)`。
 4. 执行 `RenderWorkItem` 时，`VulkanResourceManager::getOrCreatePipeline(item)` 从 item 派生 build desc，再调用 `PipelineCache::getOrCreatePipeline(...)`。
@@ -36,6 +36,7 @@
 - `getOrCreate` miss 时必须可观测，方便排查 preload 漏项。
 - `preload` 必须幂等。
 - `PipelineKey` 和 `PipelineBuildDesc` 分工明确，不能混用。
+- `PipelineKey` 当前由 `MaterialTypeVariant + RenderPathNodeSignature` 组成；object/mesh 和 target 不再是独立 key 轴。
 - `getOrCreate(...)` 命中时直接返回缓存里的 `VulkanGraphicsPipeline&`；miss 时先构建 `VulkanShaderGraphicsPipeline`，再把 `unique_ptr` 放进 `m_cache`。
 - `getOrCreateCompute(...)` 命中时直接返回缓存里的 `VulkanComputePipeline&`；miss 时创建 compute pipeline，再放进 `m_computeCache`。
 - `getOrCreatePipeline(...)` 是统一入口，返回 `VulkanPipelineRef`，让 command buffer 在 bind 阶段再分发 graphics / compute。
@@ -47,6 +48,7 @@
 - `VulkanResourceManager` 对外暴露统一的 `getOrCreatePipeline(item)`，不再区分 graphics-only 和 compute-only 调用入口。
 - miss 日志会打印 `GlobalStringTable::toDebugString(info.key.id)`，用于定位是哪一类 pipeline 没被 preload 到。
 - 当前并没有单独的 eviction / LRU / 容量上限逻辑；cache 生命周期就是 renderer 生命周期内常驻。
+- attachment/target 差异应通过 RenderPathNode signature 和 `PipelineBuildDesc::attachments/target` 表达，不能重新引入独立 `TargetRender` key 轴。
 
 ## 从哪里改
 

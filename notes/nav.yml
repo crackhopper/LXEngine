@@ -16,8 +16,8 @@ nav:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md
           - YAML 与 Shader 合同: tutorial/custom-material/02-material-yaml-and-shader-contract.md
-          - 从 RTR 模板开始: tutorial/custom-material/03-start-from-rtr-template.md
-          - Gooch Shader: tutorial/custom-material/04-write-gooch-shader.md
+          - 从现有 Contract 开始: tutorial/custom-material/03-start-from-existing-contract.md
+          - Gooch Contract: tutorial/custom-material/04-write-gooch-shader.md
           - Editor 验证: tutorial/custom-material/05-verify-in-editor.md
           - 材质排错: tutorial/custom-material/06-debug-material-problems.md
       - 自定义灯光:
@@ -39,8 +39,6 @@ nav:
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
           - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
-      - Assets Downloader:
-          - 总览: tutorial/assets-downloader/index.md
       - Offline Renderer:
           - 总览: tutorial/offline-renderer/index.md
           - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
@@ -84,17 +82,17 @@ nav:
           - 内置资产目录: concepts/assets/builtin-catalog.md
       - 材质系统:
           - concepts/material/index.md
+          - Material Contract v2: concepts/material/material-contract-v2.md
           - 文件到实例: concepts/material/file-to-instance.md
-          - 模板与 Pass: concepts/material/template-blueprint.md
+          - RenderPath Pass Contract: concepts/material/render-path-pass-contract.md
           - Shader 与绑定: concepts/material/shader.md
           - 内置 Shader 清单: concepts/material/shader-catalog.md
           - 实例状态: concepts/material/material-instance.md
           - 多 Pass 如何变成 Draw: concepts/material/pass-rendering-flow.md
           - 什么是 Pipeline: concepts/material/what-is-pipeline.md
-          - 材质模板为什么会影响 Pipeline: concepts/material/template-and-pipeline.md
+          - Contract 如何影响 Pipeline: concepts/material/contract-and-pipeline.md
           - 创建与排错: concepts/material/custom-template.md
-          - 未来路线: concepts/material/future-roadmap.md
-          - Material Contract v2: concepts/material/material-contract-v2.md
+          - Hardcut 当前边界: concepts/material/hardcut-boundary.md
       - 相机细节:
           - 一次点击怎样穿过像素、NDC 和 Vulkan: concepts/camera/pixel-ndc-vulkan.md
       - 引擎循环:
@@ -148,6 +146,7 @@ nav:
       - "@temporary"
   - 相关工具:
       - tools/index.md
+      - Assets Downloader（开发中，未完成）: tools/assets-downloader.md
       - lxe_manager MCP 服务: tools/lxe-manager-mcp.md
       - Notes 工具链说明: tools/notes-tooling.md
   - Debug 复盘:

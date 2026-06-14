@@ -29,15 +29,22 @@ bindless path has one object data ABI value, but keeping it explicit prevents
 future object table/shader ABI variants from being conflated with material
 types.
 
-`REQ-073-d` is executing the hard cut for the old material/source compatibility
-surface. After `073-d`, positive realtime material-source paths must have access
-to:
+`REQ-073-d` has completed the hard cut for the old material/source
+compatibility surface. Positive realtime material-source paths now start from
+that baseline and must have access to:
 
 - `render_paths/...` shader URIs;
 - RenderPathGraph / RenderPathNode pass ownership;
 - final source-variant shader reflection;
 - `SceneResourceTableUploadView` data that can resolve typed
   material/draw/object indices during batch preparation.
+
+`REQ-074-d` package serialization/restore completion does not add a positive
+path requirement to `073-e`. `073-e` consumes the current
+`SceneResourceTableUploadView` exposed by the scene/resource table, regardless
+of whether that table was built from source assets or restored from package
+state. Package sections, BC7 payload restore, and pipeline cache serialization
+remain outside this requirement.
 
 The current `REQ-073-e` code surface already has some scaffolding:
 

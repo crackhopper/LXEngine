@@ -1,6 +1,6 @@
 # REQ-073-g: OfflineRT RenderPathGraph Compute Path
 
-> 2026-06-13 顺延：本 REQ 原为 `REQ-073-f`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 位于 `REQ-073-e` 的 RenderWorkQueue node-level 数据模型之后、`REQ-074-a` 之前。目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。
+> 2026-06-13 顺延：本 REQ 原为 `REQ-073-f`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-g`。2026-06-14 重新校准后，`REQ-073-f` 已变为 transparent/BMW follow-up；本 REQ 位于 `REQ-073-e` 的 RenderWorkQueue node-level 数据模型之后、`REQ-074-a` 之前。目标是把 OfflineRT 从代码硬编码 pass/shader 迁移到 RenderPathGraph 配置路径。2026-06-14 再整理时，本 REQ 吸收已归档 `REQ-054-a` 中“offline 默认路径不得回流 realtime renderer/facade”的边界。
 
 ## 背景
 
@@ -28,6 +28,7 @@
 | `REQ-073-a` 未完成项 | OfflineRT 默认配置入口从硬编码 pass/shader 迁移到 RenderPathGraph compute path 的第一段 | 073-a 只证明 Offline PBR direct shader 可使用 Material Accessor ABI；配置入口需要 RenderPathGraph compute pass、FrameGraph 和 node data 支撑 |
 | `REQ-073-b` 未完成项 | OfflineRT graph compute path 使用 source records / SceneResourceTable upload view 作为资源来源 | 073-b 已让 offline Material v2 测试使用 source records，但默认 OfflineRT 仍有独立 provider/framegraph bridge |
 | `REQ-073-c` / `REQ-073-d` 传递项 | OfflineRT shader URI 使用 `render_paths/OfflineRT/...`，并走 material source variant | OfflineRT direct shader 同样需要 final variant shader reflection，不能继续用 `techniques/OfflineRT/...` 或裸 base shader |
+| 已归档 `REQ-054-a` | offline renderer 与 realtime renderer / window / swapchain / GUI 保持硬边界 | RenderPathGraph 默认路径必须进入 offline namespace 和 offline executor，不能通过 `VulkanRenderer` facade 或 realtime renderer 分支绕回 |
 
 ## 目标
 
@@ -114,6 +115,8 @@ compute block 最低字段：
 - parser allowlist 中出现的字段必须进入 `RenderPassNode` 或 parser-local DTO，再被 FrameGraph / work-item build 消费。
 - compute pass 不得为了通过 parser 而填写无意义 raster `renderState`。
 - raster pass 不得携带 compute block。
+- RenderPass shader resolver API SHALL 接收结构化 `RenderPassStage`，不能只靠 pass id 或 shader URI 文本推断 stage。
+- legacy URI、missing shader、unsupported stage 的 resolver diagnostic SHALL 同时包含 RenderPathGraph asset、pass id、pass stage、shader URI 和 resolver search path。
 
 ### R3: FrameGraph From OfflineRT RenderPathGraph
 
@@ -176,13 +179,26 @@ OfflineRT compute pipeline SHALL 继续复用 backend pipeline 创建和 cache �
 OfflineRT 默认路径 SHALL 输出可审计 diagnostics：
 
 - 使用的 RenderPathGraph asset。
-- compute pass id、shader URI、dispatch group count、local size。
+- compute pass id、pass stage、shader URI、dispatch group count、local size。
 - SceneResourceTable upload view resource counts。
 - offline descriptor resource list。
 - pipeline key / pipeline preload count。
 - readback resource 名称。
+- shader URI resolver failure 必须输出 RenderPathGraph asset、pass id、pass stage、shader URI、expected namespace 和 resolver search path。
 
 如果缺少 shader、scene.bvh、offline.output、profile 或 required source，必须 fail-fast。
+
+### R9: Offline / Realtime Renderer Boundary
+
+OfflineRT 默认路径 SHALL 保持已归档 `REQ-054-a` 要求的 renderer 边界。
+
+要求：
+
+- 默认 OfflineRT path 使用 `backend::offline::VulkanOfflineRenderer` / offline integrator 和 RenderPathGraph compute pass。
+- `gpu::Renderer` / `VulkanRealtimeRenderer` / `VulkanRenderer` facade 不新增 offline render 分支。
+- headless device、readback、output writer 和 offline job 生命周期停留在 offline namespace 或显式 foundation 层。
+- realtime renderer 只可共享 backend resource manager、pipeline cache、shader compiler 等明确 foundation；不能持有 offline profile、offline output 或 offline readback 状态。
+- 如果为迁移保留 adapter，diagnostics 必须标出 owner：graph path 属于本 REQ，旧 side-channel 删除属于 `REQ-073-h`，大文件拆分属于 `REQ-076-d`。
 
 ## 测试
 
@@ -203,7 +219,7 @@ OfflineRT 默认路径 SHALL 输出可审计 diagnostics：
 - compute pass 使用 legacy/unknown field 失败。
 - raster pass 携带 compute block 失败。
 - compute pass 不再因为缺少 `renderState` 失败。
-- `techniques/OfflineRT/...` shader URI 在 migrated validation profile 下失败。
+- `techniques/OfflineRT/...` shader URI 在 migrated validation profile 下失败，diagnostic 断言包含 graph asset、pass id、pass stage、shader URI、expected `render_paths/...` namespace 和 resolver search path。
 
 ### T3: Offline FrameGraph Build
 

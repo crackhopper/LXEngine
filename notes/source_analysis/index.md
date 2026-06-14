@@ -45,7 +45,7 @@
 - [Scene：场景容器与 scene-level 资源筛选](src/core/scene/scene.md)
 - [RenderTarget：attachment 形状如何成为 target 匹配键](src/core/frame_graph/render_target.md)
 - [RenderQueue：把 scene × pass 收口成可消费的 draw 列表](src/core/frame_graph/render_queue.md)
-- [FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表](src/core/frame_graph/frame_graph.md)
+- [FrameGraph：把 scene 翻译成按 pass 组织的 RenderWorkItem 列表](src/core/frame_graph/frame_graph.md)
 - [GlobalStringTable：字符串驻留与结构化身份树](src/core/utils/string_table.md)
 - [Pipeline Identity：从结构签名到构建输入](src/core/pipeline/pipeline_identity.md)
 - [Vulkan Offline Renderer：从 Scene IR 到 Compute Readback](src/backend/vulkan/offline/vulkan_offline_renderer.md)

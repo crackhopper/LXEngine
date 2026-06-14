@@ -44,18 +44,18 @@ struct MaterialParameterValue final {
 };
 
 /*
-@source_analysis.section MaterialInstance：模板的运行时账本，而不是第二份模板
-如果说 `MaterialTemplate` 像蓝图，`MaterialInstance` 更像一本运行时账本：
-它不重新定义 pass 结构，不持有 shader 编译逻辑，也不决定 pipeline 身份；
-它负责记录“这次绘制具体要用什么参数、什么纹理、哪些 pass 处于启用状态”。
+@source_analysis.section MaterialInstance：surface envelope 的运行时账本
+`MaterialInstance` 不再只是 `MaterialTemplate` 的参数副本。071/073 之后，它同时承担
+两条边界：
 
-这个类里最容易看懂的主线有三条：
+1. surface material 主线：保存 BSDF type、material source URI/signature、contract
+   reflection、参数 envelope 和资源依赖。
+2. 过渡/非 surface helper：保留 shader-binding buffer/texture API，供 post-process、
+   procedural 或旧测试路径使用。
 
-1. 构造期：按 template 的 canonical material bindings 建立运行时数据表
-2. 写入期：按 binding/member 把值写进 buffer binding data，并标记 dirty
-3. 读取期：按 pass 视角从 canonical 资源集合里筛选 descriptor resources
-
-所以它本质上是 template 和 backend 之间的一层“实例态翻译层”。
+这条分层很重要：envelope-backed surface instance 会忽略旧 shader-binding 参数写入，
+防止 `MaterialUBO` 重新成为默认 surface truth。真正会影响 pipeline identity 的是
+material type/source variant；普通 envelope 参数值只改变材质数据和上传版本。
 */
 class MaterialInstance {
   struct Token {};
