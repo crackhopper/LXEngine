@@ -324,6 +324,39 @@ def require_pipeline_metadata(metadata_path: Path) -> None:
             raise RuntimeError(f"realtime metadata contains forbidden token: {token}")
 
 
+REQUIRED_RENDER_BATCH_STAT_KEYS = (
+    "compilerBatchCountConsumed",
+    "submittedIndirectBatchCount",
+    "submittedIndirectDrawCount",
+    "fallbackObservedCount",
+)
+
+
+def normalize_render_batch_stats(metadata: dict[str, object]) -> dict[str, int]:
+    batch_stats = metadata.get("renderBatchStats")
+    if not isinstance(batch_stats, dict):
+        raise RuntimeError("realtime metadata omitted renderBatchStats")
+
+    normalized: dict[str, int] = {}
+    for key, value in batch_stats.items():
+        if isinstance(value, bool):
+            raise RuntimeError(
+                f"realtime metadata renderBatchStats {key} is not an int"
+            )
+        try:
+            normalized[key] = int(value)
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"realtime metadata renderBatchStats {key} is not an int"
+            ) from error
+
+    for key in REQUIRED_RENDER_BATCH_STAT_KEYS:
+        if key not in normalized:
+            raise RuntimeError(f"realtime metadata renderBatchStats omitted {key}")
+
+    return normalized
+
+
 def require_output_files(
     root: Path,
     structured: str,
@@ -358,9 +391,7 @@ def require_output_files(
             raise RuntimeError(
                 f"metadata {dimension} does not match render result: {metadata_path}"
             )
-    batch_stats = metadata.get("renderBatchStats")
-    if isinstance(batch_stats, dict):
-        payload["renderBatchStats"] = batch_stats
+    payload["renderBatchStats"] = normalize_render_batch_stats(metadata)
     if require_pipeline_metadata_check:
         require_pipeline_metadata(metadata_path)
 
