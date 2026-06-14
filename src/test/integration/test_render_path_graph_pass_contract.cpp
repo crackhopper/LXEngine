@@ -37,7 +37,7 @@ name: ForwardMain
 renderPath: Forward
 passes:
   - id: ForwardOpaque
-    shader: techniques/Forward/surface_lit
+    shader: render_paths/Forward/surface_lit
     stage: raster
     sources: [geometry.vertex, material.bsdf, scene.camera]
     targets: [hdr.color]
@@ -63,17 +63,32 @@ schema: lxe.render-path-graph.v1
 name: ForwardMain
 renderPath: Forward
 features:
-  shadow:
-    uri: effects/shadow.render-feature.yaml
+  toneMapping:
+    uri: effects/tone_mapping.render-feature.yaml
 passes:
   - id: ForwardOpaque
-    shader: techniques/Forward/surface_lit
+    shader: render_paths/Forward/surface_lit
     stage: raster
     dispatch: draw
     filters:
       renderClass: [surface.opaque]
       bsdf: [matte, uber]
-    sources: [geometry.vertex, material.bsdf, scene.camera, feature.shadow]
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
+    sources: [geometry.vertex, material.bsdf, scene.camera, feature.toneMapping]
     targets: [hdr.color, depth.main]
     renderState:
       cullMode: Back
@@ -94,14 +109,14 @@ passes:
   EXPECT(graph.renderPath == RenderPath::Forward,
          "render path should parse as Forward");
   EXPECT(graph.features.size() == 1, "one feature dependency should be parsed");
-  EXPECT(graph.features.front().slot == "shadow",
+  EXPECT(graph.features.front().slot == "toneMapping",
          "feature slot should be retained");
-  EXPECT(graph.features.front().uri == "effects/shadow.render-feature.yaml",
+  EXPECT(graph.features.front().uri == "effects/tone_mapping.render-feature.yaml",
          "feature uri should be retained");
   EXPECT(graph.passes.size() == 1, "one render pass node should be parsed");
   const RenderPassNode &pass = graph.passes.front();
   EXPECT(pass.id == "ForwardOpaque", "pass id should be retained");
-  EXPECT(pass.shaderUri == "techniques/Forward/surface_lit",
+  EXPECT(pass.shaderUri == "render_paths/Forward/surface_lit",
          "shader uri should be retained");
   EXPECT(pass.stage == RenderPassStage::Raster, "stage should be raster");
   EXPECT(pass.dispatch == RenderPassDispatch::Draw,
@@ -112,7 +127,7 @@ passes:
   EXPECT(pass.filters.bsdfTypes.size() == 2 &&
              pass.filters.bsdfTypes.front() == "matte",
          "bsdf filter should be retained");
-  EXPECT(pass.sources.size() == 4 && pass.sources.back() == "feature.shadow",
+  EXPECT(pass.sources.size() == 4 && pass.sources.back() == "feature.toneMapping",
          "sources should be retained");
   EXPECT(pass.targets.size() == 2 && pass.targets.back() == "depth.main",
          "targets should be retained");
@@ -128,7 +143,7 @@ name: ForwardMain
 renderPath: Forward
 passes:
   - id: ForwardOpaque
-    shader: techniques/Forward/surface_lit
+    shader: render_paths/Forward/surface_lit
     stage: raster
     dispatch: draw
     variants:

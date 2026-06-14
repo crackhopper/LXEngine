@@ -239,9 +239,9 @@ static bool testPbrShadersUseMaterialAccessorAbi(
     std::filesystem::path path;
   } shaders[] = {
       {"Forward PBR",
-       shaderDir / "techniques" / "Forward" / "pbr.frag"},
+       shaderDir / "render_paths" / "Forward" / "pbr.frag"},
       {"Deferred GBuffer",
-       shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag"},
+       shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag"},
       {"OfflineRT direct ray",
        shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp"},
   };
@@ -305,7 +305,7 @@ static bool testVariantOnlyShaderNakedCompileFailsWithDiagnostic(
   std::cout << "========================================\n";
 
   const auto fragPath =
-      shaderDir / "techniques" / "Forward" / "pbr.frag";
+      shaderDir / "render_paths" / "Forward" / "pbr.frag";
   const auto compileResult = ShaderCompiler::compileFile(fragPath, {});
   if (compileResult.success) {
     std::cerr << "  FAIL: pbr.frag naked compile should fail without "
@@ -332,8 +332,8 @@ static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
 
   const std::vector<ShaderVariant> variants = withMaterialContractSource();
   const auto forward = ShaderCompiler::compileProgram(
-      shaderDir / "techniques" / "Forward" / "pbr.vert",
-      shaderDir / "techniques" / "Forward" / "pbr.frag", variants);
+      shaderDir / "render_paths" / "Forward" / "pbr.vert",
+      shaderDir / "render_paths" / "Forward" / "pbr.frag", variants);
   if (!forward.success) {
     std::cerr << "  FAIL: Forward material source variant compile failed: "
               << forward.errorMessage << "\n";
@@ -341,8 +341,8 @@ static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
   }
 
   const auto deferred = ShaderCompiler::compileProgram(
-      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert",
-      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag", variants);
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.vert",
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag", variants);
   if (!deferred.success) {
     std::cerr << "  FAIL: Deferred material source variant compile failed: "
               << deferred.errorMessage << "\n";
@@ -890,9 +890,9 @@ testPbrClearcoatShaderContract(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: PBR clearcoat shader compiles and reflects layered "
                "parameters\n";
   const auto vertPath =
-      shaderDir / "techniques" / "Forward" / "pbr_clearcoat.vert";
+      shaderDir / "render_paths" / "Forward" / "pbr_clearcoat.vert";
   const auto fragPath =
-      shaderDir / "techniques" / "Forward" / "pbr_clearcoat.frag";
+      shaderDir / "render_paths" / "Forward" / "pbr_clearcoat.frag";
   if (!std::filesystem::exists(vertPath) ||
       !std::filesystem::exists(fragPath)) {
     std::cerr << "  FAIL: pbr_clearcoat shader files should exist\n";
@@ -961,13 +961,13 @@ static bool
 testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: Deferred clearcoat shader GPU record contract\n";
   const auto pbrVert =
-      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.vert";
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.vert";
   const auto pbrFrag =
-      shaderDir / "techniques" / "Deferred" / "pbr_gbuffer.frag";
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag";
   const auto clearcoatVert =
-      shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.vert";
+      shaderDir / "render_paths" / "Deferred" / "pbr_clearcoat_gbuffer.vert";
   const auto clearcoatFrag =
-      shaderDir / "techniques" / "Deferred" / "pbr_clearcoat_gbuffer.frag";
+      shaderDir / "render_paths" / "Deferred" / "pbr_clearcoat_gbuffer.frag";
   if (!std::filesystem::exists(pbrVert) || !std::filesystem::exists(pbrFrag) ||
       !std::filesystem::exists(clearcoatVert) ||
       !std::filesystem::exists(clearcoatFrag)) {
@@ -990,7 +990,7 @@ static bool
 testShadowDepthOnlyUsesSceneDrawRecords(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: shadow depth vertex uses scene draw/object records\n";
   const auto vertPath =
-      shaderDir / "techniques" / "Forward" / "shadow_depth_only.vert";
+      shaderDir / "render_paths" / "Forward" / "shadow_depth_only.vert";
   if (!std::filesystem::exists(vertPath)) {
     std::cerr << "  FAIL: shadow_depth_only.vert should exist\n";
     return false;
@@ -1207,8 +1207,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  auto vertPath = shaderDir / "techniques" / "Forward" / "pbr.vert";
-  auto fragPath = shaderDir / "techniques" / "Forward" / "pbr.frag";
+  auto vertPath = shaderDir / "render_paths" / "Forward" / "pbr.vert";
+  auto fragPath = shaderDir / "render_paths" / "Forward" / "pbr.frag";
 
   if (!std::filesystem::exists(vertPath) ||
       !std::filesystem::exists(fragPath)) {

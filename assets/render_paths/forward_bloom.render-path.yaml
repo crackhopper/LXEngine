@@ -10,7 +10,7 @@ passes:
   - id: Shadow
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/shadow_depth_only
+    shader: render_paths/Forward/shadow_depth_only
     rendering:
       mode: dynamic
       attachments:
@@ -41,7 +41,7 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:

@@ -231,7 +231,7 @@ schema: lxe.render-feature.v1
 name: BadFeature
 feature: toneMapping
 pass: ToneMap
-shader: techniques/Forward/tone_map
+shader: render_paths/Forward/tone_map
 passes:
   - id: ToneMap
 renderState:
@@ -327,7 +327,7 @@ passes:
   - id: EmptySources
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:
@@ -348,7 +348,7 @@ passes:
   - id: EmptyTargets
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:
@@ -393,7 +393,7 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:
@@ -527,7 +527,7 @@ passes:
          "failed shader metadata should be interned only for diagnostics");
 }
 
-void testParserAdapterResolvesCurrentGraphShaderUriForms() {
+void testParserAdapterResolvesRenderPathShaderUriForms() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
@@ -540,7 +540,7 @@ passes:
   - id: ForwardPbr
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:
@@ -561,7 +561,7 @@ passes:
   - id: DeferredGBuffer
     stage: raster
     dispatch: draw
-    shader: techniques/Deferred/gbuffer
+    shader: render_paths/Deferred/pbr_gbuffer
     rendering:
       mode: dynamic
       attachments:
@@ -582,7 +582,7 @@ passes:
   - id: DeferredLighting
     stage: raster
     dispatch: fullscreen
-    shader: deferred_lighting
+    shader: render_paths/Deferred/deferred_lighting
     rendering:
       mode: dynamic
       attachments:
@@ -676,11 +676,11 @@ passes:
       LX_infra::SceneResourceParseContext{});
 
   EXPECT(parsed.diagnostics.empty(),
-         "current graph shader URI forms should resolve without diagnostics");
+         "RenderPath shader URI forms should resolve without diagnostics");
   EXPECT(parsed.identity.isValid(),
-         "graph with current shader URI forms should register");
+         "graph with RenderPath shader URI forms should register");
   EXPECT(table.shaderCount() == 7,
-         "each current shader URI form should register a typed shader");
+         "each RenderPath shader URI form should register a typed shader");
 
   bool rejectedUnresolvedVariant = false;
   try {
@@ -762,7 +762,7 @@ int main() {
   testRenderPathGraphRejectsUnparsedAllowedLookingFields();
   testLegacyRenderEffectSchemaIsRejectedByNewParser();
   testParserAdapterRejectsMissingGraphShaderDependency();
-  testParserAdapterResolvesCurrentGraphShaderUriForms();
+  testParserAdapterResolvesRenderPathShaderUriForms();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   if (g_failures != 0) {
     std::cerr << g_failures << " render feature parser checks failed\n";

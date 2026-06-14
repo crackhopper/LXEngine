@@ -10,7 +10,7 @@ passes:
   - id: Shadow
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/shadow_depth_only
+    shader: render_paths/Forward/shadow_depth_only
     rendering:
       mode: dynamic
       attachments:
@@ -41,7 +41,7 @@ passes:
   - id: Deferred
     stage: raster
     dispatch: draw
-    shader: techniques/Deferred/gbuffer
+    shader: render_paths/Deferred/pbr_gbuffer
     rendering:
       mode: dynamic
       attachments:
@@ -89,7 +89,7 @@ passes:
   - id: DeferredLighting
     stage: raster
     dispatch: fullscreen
-    shader: deferred_lighting
+    shader: render_paths/Deferred/deferred_lighting
     rendering:
       mode: dynamic
       attachments:

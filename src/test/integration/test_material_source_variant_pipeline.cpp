@@ -134,7 +134,7 @@ passes:
   - id: ForwardOpaque
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     filters:
       bsdf: [standard-pbr]
     rendering:
@@ -195,7 +195,7 @@ passes:
   - id: ForwardOpaque
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     sources: [geometry.vertex, geometry.index, material.bsdf, scene.camera]
     targets: [hdr.color, depth.main]
     renderState:
@@ -222,7 +222,7 @@ passes:
   - id: ForwardOpaque
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     rendering:
       mode: dynamic
       attachments:
@@ -305,7 +305,7 @@ void testStandardPbrContractReflectsRequiredFields() {
 void testVariantOnlyShaderNakedCompileFailsWithDiagnostic() {
   const std::filesystem::path shaderPath =
       std::filesystem::path(LXE_SOURCE_DIR) / "assets" / "shaders" / "glsl" /
-      "techniques" / "Forward" / "pbr.frag";
+      "render_paths" / "Forward" / "pbr.frag";
 
   const auto compiled = LX_infra::ShaderCompiler::compileFile(shaderPath);
   EXPECT(!compiled.success,
@@ -377,7 +377,7 @@ void testResolverAttachesFinalShaderVariantToSourceMaterialPass() {
   bool foundResolvedShaderVariant = false;
   for (const auto &shaderRef : uploadView.shaderResources) {
     const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
-    if (shader.uri == LX_core::ResourceUri("techniques/Forward/pbr")) {
+    if (shader.uri == LX_core::ResourceUri("render_paths/Forward/pbr")) {
       foundResolvedShaderVariant =
           shader.requiresMaterialSourceVariant &&
           shader.materialSourceVariants.size() == 1 &&
@@ -417,7 +417,7 @@ passes:
   - id: Shadow
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/shadow_depth_only
+    shader: render_paths/Forward/shadow_depth_only
     filters:
       bsdf: [standard-pbr]
     rendering:
@@ -441,7 +441,7 @@ passes:
   - id: ForwardOpaque
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     filters:
       bsdf: [standard-pbr]
     rendering:
@@ -508,13 +508,13 @@ passes:
   for (const auto &shaderRef : uploadView.shaderResources) {
     const LX_core::ShaderResourceMetadata &shader = shaderRef.get();
     if (shader.uri ==
-        LX_core::ResourceUri("techniques/Forward/shadow_depth_only")) {
+        LX_core::ResourceUri("render_paths/Forward/shadow_depth_only")) {
       foundPlainShadow =
           !shader.requiresMaterialSourceVariant &&
           shader.materialSourceVariants.empty() && shader.payload != nullptr &&
           !shader.payload->getAllStages().empty();
     }
-    if (shader.uri == LX_core::ResourceUri("techniques/Forward/pbr")) {
+    if (shader.uri == LX_core::ResourceUri("render_paths/Forward/pbr")) {
       foundForwardVariant =
           shader.requiresMaterialSourceVariant &&
           shader.materialSourceVariants.size() == 1 &&

@@ -278,7 +278,7 @@ RenderPassNode makeRenderPassNode(std::string id,
                                   std::vector<std::string> targets) {
   RenderPassNode pass;
   pass.id = std::move(id);
-  pass.shaderUri = "techniques/Forward/frame_graph_build_plan_test";
+  pass.shaderUri = "render_paths/Forward/frame_graph_build_plan_test";
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Draw;
   pass.sources = std::move(sources);

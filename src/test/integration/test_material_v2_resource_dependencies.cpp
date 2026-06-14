@@ -356,13 +356,13 @@ void testGenericMaterialLoaderRejectsMaterialLocalTechniqueFiles() {
   const fs::path materialPath =
       root / "materials" / "legacy_technique.material";
   writeFile(materialPath, R"(
-shader: techniques/Forward/pbr
+shader: render_paths/Forward/pbr
 defaultTechnique: Forward
 techniques:
   Forward:
     passes:
       Forward:
-        shader: techniques/Forward/pbr
+        shader: render_paths/Forward/pbr
         stage: raster
         dispatch: draw
         sources: [geometry.vertex, geometry.index, material.bsdf, camera.ubo]
