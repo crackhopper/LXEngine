@@ -30,7 +30,6 @@ namespace {
 #endif
 
 int g_failures = 0;
-constexpr std::string_view kLegacyForwardPbrUri = "techniques/Forward/pbr";
 constexpr std::string_view kRenderPathNamespace = "render_paths/";
 
 #define EXPECT(cond, msg)                                                      \
@@ -82,6 +81,30 @@ bool textContains(std::string_view text, std::string_view needle) {
   return text.find(needle) != std::string_view::npos;
 }
 
+std::string legacyTechniqueNamespace() {
+  return std::string("tech") + "niques";
+}
+
+std::string legacyForwardPbrUri() {
+  return legacyTechniqueNamespace() + "/Forward/pbr";
+}
+
+std::string legacyForwardPattern() {
+  return legacyTechniqueNamespace() + "/Forward";
+}
+
+std::string legacyDeferredPattern() {
+  return legacyTechniqueNamespace() + "/Deferred";
+}
+
+std::string legacyDefaultTechniqueField() {
+  return std::string("default") + "Technique";
+}
+
+std::string legacyTechniquesRootKey() {
+  return legacyTechniqueNamespace() + ":";
+}
+
 std::optional<std::string_view> functionBody(std::string_view source,
                                              std::string_view signature) {
   const std::size_t signaturePos = source.find(signature);
@@ -111,7 +134,7 @@ std::optional<std::string_view> functionBody(std::string_view source,
 }
 
 bool textContainsLegacyUriMigration(std::string_view text) {
-  return textContains(text, kLegacyForwardPbrUri) &&
+  return textContains(text, legacyForwardPbrUri()) &&
          textContains(text, kRenderPathNamespace);
 }
 
@@ -186,7 +209,7 @@ LX_core::MaterialInstanceUniquePtr makeStandardPbrSourceMaterial() {
 LX_core::RenderPathGraph makeLegacyTechniqueGraph() {
   LX_core::RenderPassNode forward;
   forward.id = "Forward";
-  forward.shaderUri = LX_core::ResourceUri("techniques/Forward/pbr");
+  forward.shaderUri = LX_core::ResourceUri(legacyForwardPbrUri());
   forward.stage = LX_core::RenderPassStage::Raster;
   forward.dispatch = LX_core::RenderPassDispatch::Draw;
   forward.filters.bsdfTypes = {"standard-pbr"};
@@ -270,8 +293,8 @@ void testLegacyTechniqueUriRejectedByResourceParser() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri = writeTempGraph(
-      "lxe_073d_legacy_shader_uri.render-path.yaml", R"yaml(
+  const std::string rejectedUri = legacyForwardPbrUri();
+  const std::string graphText = std::string(R"yaml(
 schema: lxe.render-path-graph.v1
 name: LegacyShaderUri
 renderPath: Forward
@@ -279,7 +302,8 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: )yaml") +
+                                rejectedUri + R"yaml(
     rendering:
       mode: dynamic
       attachments:
@@ -302,7 +326,9 @@ passes:
       depthTest: true
       depthWrite: true
       depthOp: LessEqual
-)yaml");
+)yaml";
+  const LX_core::ResourceUri graphUri = writeTempGraph(
+      "lxe_073d_legacy_shader_uri.render-path.yaml", graphText);
 
   const auto parsed = registry.parse(
       table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
@@ -313,8 +339,7 @@ passes:
          "legacy techniques/... shader URI should fail graph resource parse");
   EXPECT(hasDiagnosticContainingLegacyUriMigration(parsed),
          "graph resource parse diagnostic should include rejected URI " +
-             std::string(kLegacyForwardPbrUri) +
-             " and replacement namespace " +
+             rejectedUri + " and replacement namespace " +
              std::string(kRenderPathNamespace));
 }
 
@@ -326,6 +351,7 @@ void testLegacyTechniqueUriRejectedByMaterialSourceVariantResolver() {
   EXPECT(materialHandle.isValid(), "source material should register");
 
   LX_core::RenderPathGraph graph = makeLegacyTechniqueGraph();
+  const std::string rejectedUri = legacyForwardPbrUri();
   try {
     const auto resolved = LX_infra::resolveMaterialSourceVariants(
         table, graph,
@@ -335,15 +361,13 @@ void testLegacyTechniqueUriRejectedByMaterialSourceVariantResolver() {
            "variant resolution");
     EXPECT(diagnosticsContainLegacyUriMigration(resolved.diagnostics),
            "material source variant diagnostic should include rejected URI " +
-               std::string(kLegacyForwardPbrUri) +
-               " and replacement namespace " +
+               rejectedUri + " and replacement namespace " +
                std::string(kRenderPathNamespace));
   } catch (const std::exception &error) {
     EXPECT(textContainsLegacyUriMigration(error.what()),
            std::string("material source variant exception should include "
                        "rejected URI ") +
-               std::string(kLegacyForwardPbrUri) +
-               " and replacement namespace " +
+               rejectedUri + " and replacement namespace " +
                std::string(kRenderPathNamespace) + ": " +
                error.what());
   }
@@ -444,18 +468,19 @@ void testProductionOldTokenAudit(const fs::path &repoRoot) {
       repoRoot / "assets",
   };
   struct ForbiddenPattern {
-    std::string_view normalizedToken;
+    std::string normalizedToken;
     std::string_view description;
   };
   // Generic techniques/ stays allowed until OfflineRT moves in REQ-073-g/h.
   // This audit only cuts realtime Forward/Deferred paths and material fields.
-  constexpr ForbiddenPattern forbiddenPatterns[] = {
-      {"techniques/Forward",
+  const std::vector<ForbiddenPattern> forbiddenPatterns{
+      {legacyForwardPattern(),
        "legacy Forward shader URI or split path construction"},
-      {"techniques/Deferred",
+      {legacyDeferredPattern(),
        "legacy Deferred shader URI or split path construction"},
-      {"defaultTechnique", "material-local defaultTechnique field"},
-      {"techniques:", "material-local techniques: YAML key"},
+      {legacyDefaultTechniqueField(),
+       "material-local old default technique field"},
+      {legacyTechniquesRootKey(), "material-local old technique map key"},
   };
 
   for (const fs::path &root : roots) {

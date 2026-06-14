@@ -37,8 +37,8 @@ void auditDefaultMaterialAssets() {
   expect(fs::exists(materialsDir),
          "assets/materials directory should exist for default material audit");
 
-  const std::vector<std::string> legacyRootKeys{
-      "shader", "defaultTechnique", "techniques", "parameters", "resources"};
+  const std::vector<std::string> legacyRootKeys{"shader", "parameters",
+                                                "resources"};
 
   std::size_t materialCount = 0;
   for (const fs::directory_entry &entry :

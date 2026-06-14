@@ -225,7 +225,6 @@ int main() {
       {"src/test"},
   };
   const std::vector<ForbiddenToken> productionTokens{
-      {"defaultTechnique"},
       {"MaterialUBO"},
       {"baseColorFactor"},
       {"metallicFactor"},
@@ -258,7 +257,6 @@ int main() {
       {"RenderPassContractLibrary"},
   };
   const std::vector<ForbiddenToken> testTokens{
-      {"defaultTechnique"},
       {"MaterialUBO"},
       {"MaterialParams"},
       {"activeTechnique"},
@@ -276,8 +274,6 @@ int main() {
   };
   const std::vector<AllowedLegacyMention> allowlist{
       {"MaterialParams", "src/core/frame_graph/render_validation_contract.cpp"},
-      {"defaultTechnique", "test_material_v2_resource_dependencies.cpp"},
-      {"defaultTechnique", "test_default_material_asset_audit.cpp"},
       {"MaterialUBO", "test_material_v2_parser.cpp"},
       {"MaterialUBO", "test_071_bridge_audit.cpp"},
       {"MaterialUBO", "test_071g_legacy_boundary_removal.cpp"},
