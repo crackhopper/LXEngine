@@ -5,6 +5,7 @@
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -115,6 +116,44 @@ int main() {
 
     cmd->bindResources(*resourceManager, pipeline, renderItem);
     cmd->executeWorkItem(renderItem);
+
+    LX_core::RenderBatch batch;
+    batch.commandOffset = 7;
+    batch.commands = {
+        LX_core::IndexedIndirectDrawCommand{
+            .indexCount = 3,
+            .instanceCount = 1,
+            .firstIndex = 0,
+            .vertexOffset = 0,
+            .firstInstance = 11,
+        },
+        LX_core::IndexedIndirectDrawCommand{
+            .indexCount = 6,
+            .instanceCount = 1,
+            .firstIndex = 3,
+            .vertexOffset = 0,
+            .firstInstance = 12,
+        },
+    };
+    batch.commandCount = static_cast<u32>(batch.commands.size());
+
+    cmd->executeRenderBatch(batch);
+    const auto batchStats = cmd->getRenderBatchSubmissionStats();
+    if (batchStats.compilerBatchCountConsumed != 1 ||
+        batchStats.submittedIndirectBatchCount != 1 ||
+        batchStats.submittedIndirectDrawCount != 2 ||
+        batchStats.firstCommandOffset != 7 ||
+        batchStats.lastCommandOffset != 8 ||
+        batchStats.fallbackObservedCount != 0) {
+      std::cerr << "RenderBatch submission stats mismatch: consumed="
+                << batchStats.compilerBatchCountConsumed << " batches="
+                << batchStats.submittedIndirectBatchCount
+                << " draws=" << batchStats.submittedIndirectDrawCount
+                << " first=" << batchStats.firstCommandOffset
+                << " last=" << batchStats.lastCommandOffset
+                << " fallback=" << batchStats.fallbackObservedCount << "\n";
+      return 1;
+    }
     cmd->endRenderPass();
 
     vkEndCommandBuffer(cmd->getHandle());

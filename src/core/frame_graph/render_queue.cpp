@@ -12,6 +12,7 @@
 #include <span>
 #include <stdexcept>
 #include <string_view>
+#include <typeinfo>
 #include <unordered_set>
 
 namespace LX_core {
@@ -41,6 +42,92 @@ void invalidatePreparedDrawData(RenderPathNodeData &data) {
   data.preparationDiagnostics.clear();
   data.preparationValid = false;
   data.preparedInputCount = 0;
+}
+
+VertexLayout filterVertexLayoutToShaderInputsForBatch(
+    const VertexLayout &layout, const IShader &shader) {
+  const auto &shaderInputs = shader.getVertexInputs();
+  if (shaderInputs.empty()) {
+    return layout;
+  }
+
+  std::vector<VertexLayoutItem> filteredItems;
+  filteredItems.reserve(shaderInputs.size());
+  for (const auto &input : shaderInputs) {
+    const auto it = std::find_if(
+        layout.getItems().begin(), layout.getItems().end(),
+        [&input](const VertexLayoutItem &item) {
+          return item.location == input.location && item.type == input.type;
+        });
+    if (it == layout.getItems().end()) {
+      throw std::logic_error(
+          "RenderBatch pipeline facts missing a shader vertex input");
+    }
+    filteredItems.push_back(*it);
+  }
+  return VertexLayout(std::move(filteredItems), layout.getStride());
+}
+
+RenderBatchPipelineFacts
+makeRenderBatchPipelineFacts(const ValidatedRenderablePassData &data) {
+  if (!data.shaderInfo) {
+    throw std::logic_error("RenderBatch pipeline facts require shaderInfo");
+  }
+  if (!data.vertexBuffer.isValid()) {
+    throw std::logic_error("RenderBatch pipeline facts require vertexBuffer");
+  }
+  if (!data.indexBuffer.isValid()) {
+    throw std::logic_error("RenderBatch pipeline facts require indexBuffer");
+  }
+
+  try {
+    const auto &vertexBuffer =
+        dynamic_cast<const IVertexBuffer &>(data.vertexBuffer.get());
+    const auto &indexBuffer =
+        dynamic_cast<const IndexBuffer &>(data.indexBuffer.get());
+    return RenderBatchPipelineFacts{
+        .materialTypeSignature = data.materialTypeSignature,
+        .shaderProgram = data.shaderProgram,
+        .shaderInfo = data.shaderInfo,
+        .renderState = data.renderState,
+        .vertexLayout = filterVertexLayoutToShaderInputsForBatch(
+            vertexBuffer.getLayout(), *data.shaderInfo),
+        .topology = indexBuffer.getTopology(),
+    };
+  } catch (const std::bad_cast &) {
+    throw std::logic_error(
+        "RenderBatch pipeline facts require Vulkan-compatible vertex/index "
+        "resources");
+  }
+}
+
+bool samePipelineFacts(const RenderBatchPipelineFacts &a,
+                       const RenderBatchPipelineFacts &b) {
+  return a.materialTypeSignature == b.materialTypeSignature &&
+         a.shaderProgram.getPipelineSignature() ==
+             b.shaderProgram.getPipelineSignature() &&
+         a.renderState.getPipelineSignature() ==
+             b.renderState.getPipelineSignature() &&
+         a.vertexLayout == b.vertexLayout && a.topology == b.topology;
+}
+
+void mergePipelineFacts(RenderPathNodeContext &context,
+                        RenderBatchPipelineFacts facts) {
+  const auto it = std::find_if(
+      context.pipelineFacts.begin(), context.pipelineFacts.end(),
+      [&facts](const RenderBatchPipelineFacts &existing) {
+        return existing.materialTypeSignature == facts.materialTypeSignature;
+      });
+  if (it == context.pipelineFacts.end()) {
+    context.pipelineFacts.push_back(std::move(facts));
+    return;
+  }
+  if (!samePipelineFacts(*it, facts)) {
+    throw std::logic_error(
+        "RenderPathNode material type has conflicting shader/render-state "
+        "pipeline facts; use a distinct material type signature instead of a "
+        "backend split key");
+  }
 }
 
 template <typename Entry, typename Handle>
@@ -600,6 +687,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       .geometryContract = geometryContract,
       .attachments = std::move(attachments),
       .target = target.toDesc(),
+      .sceneResources = std::move(sceneResources),
       .objectDataSignature = StringID("BindlessObjectData.v1"),
       .backendIndirectSupported = true,
   });
@@ -626,6 +714,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
       }
     }
     validateNodeGeometryContract(scene, mesh, geometryContract);
+    mergePipelineFacts(*m_context, makeRenderBatchPipelineFacts(validatedData));
     addDrawInput(RenderDrawInput{
         .inputIndex = m_nodeData.drawInputs.size(),
         .object = validatedData.objectHandle,

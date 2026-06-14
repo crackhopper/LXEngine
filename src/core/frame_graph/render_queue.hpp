@@ -38,6 +38,15 @@ struct RenderDrawInput final {
   StringID materialTypeSignature;
 };
 
+struct RenderBatchPipelineFacts final {
+  StringID materialTypeSignature;
+  ShaderProgramSet shaderProgram;
+  IShaderSharedPtr shaderInfo;
+  RenderState renderState;
+  VertexLayout vertexLayout;
+  PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+};
+
 struct RenderPathNodeContext final {
   StringID pass;
   StringID renderPathNodeSignature;
@@ -45,6 +54,8 @@ struct RenderPathNodeContext final {
   std::optional<RenderPathGeometryContract> geometryContract;
   std::vector<RenderPathAttachmentContract> attachments;
   RenderTargetDesc target;
+  DescriptorResourceList sceneResources;
+  std::vector<RenderBatchPipelineFacts> pipelineFacts;
   StringID objectDataSignature = StringID("BindlessObjectData.v1");
   bool backendIndirectSupported = true;
 };
@@ -155,6 +166,9 @@ public:
   }
   std::vector<RenderWorkItem> &getItems() { return m_nonGeometryDispatchItems; }
   const RenderPathNodeData &nodeData() const { return m_nodeData; }
+  const std::optional<RenderPathNodeContext> &nodeContext() const {
+    return m_context;
+  }
   const RenderBatchAnalysis &lastBatchAnalysis() const {
     return m_lastBatchAnalysis;
   }

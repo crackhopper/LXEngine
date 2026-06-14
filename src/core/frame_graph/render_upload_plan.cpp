@@ -67,6 +67,12 @@ RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
       appendUniqueDescriptorResource(plan.resources, seenResources, resource);
     }
   }
+  if (queue.nodeContext().has_value()) {
+    for (const DescriptorResourceRef &resource :
+         queue.nodeContext()->sceneResources) {
+      appendUniqueDescriptorResource(plan.resources, seenResources, resource);
+    }
+  }
 
   return plan;
 }

@@ -1,6 +1,7 @@
 #include "resource_manager.hpp"
 #include "core/asset/shader.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/image_format.hpp"
 #include "core/rhi/index_buffer.hpp"
@@ -468,6 +469,19 @@ VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
     const LX_core::RenderWorkItem &item) {
   LX_core::PipelineBuildDesc info =
       LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
+  const VkRenderPass renderPass =
+      info.type == LX_core::PipelineBuildType::Graphics &&
+              !usesDynamicRendering(info)
+          ? getRenderPass(info.target).getHandle()
+          : VK_NULL_HANDLE;
+  return m_pipelineCache->getOrCreatePipeline(info, renderPass);
+}
+
+VulkanPipelineRef VulkanResourceManager::getOrCreatePipeline(
+    const LX_core::RenderBatch &batch,
+    const LX_core::RenderPathNodeContext &context) {
+  LX_core::PipelineBuildDesc info =
+      LX_core::PipelineBuildDesc::fromRenderBatch(batch, context);
   const VkRenderPass renderPass =
       info.type == LX_core::PipelineBuildType::Graphics &&
               !usesDynamicRendering(info)

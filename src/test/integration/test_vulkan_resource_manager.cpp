@@ -7,6 +7,7 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/asset/texture.hpp"
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -38,6 +39,15 @@ static_assert(
         2,
     "VulkanResourceManager must expose one pipeline resolution entry for "
     "graphics and compute work items");
+static_assert(
+    std::variant_size_v<
+        decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
+                     .getOrCreatePipeline(
+                         std::declval<const LX_core::RenderBatch &>(),
+                         std::declval<
+                             const LX_core::RenderPathNodeContext &>()))> == 2,
+    "VulkanResourceManager must expose batch pipeline resolution for compiler "
+    "RenderBatch submissions");
 
 namespace {
 

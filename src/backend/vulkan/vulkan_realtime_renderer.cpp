@@ -2279,27 +2279,38 @@ private:
         LX_core::BindlessSubmissionDecisionKind::BindlessBatch) {
       const LX_core::RenderBatchAnalysis analysis =
           queue.compileIndirectBatches();
-      if (!analysis.diagnostics.empty()) {
-        const auto &diagnostic = analysis.diagnostics.front();
+      if (!analysis.ok()) {
+        std::string reason =
+            "fallbackObserved=" +
+            std::to_string(analysis.stats.fallbackObservedCount);
+        if (!analysis.diagnostics.empty()) {
+          const auto &diagnostic = analysis.diagnostics.front();
+          reason = "input=" + std::to_string(diagnostic.inputIndex) +
+                   " reason=" +
+                   renderBatchDiagnosticReasonName(diagnostic.reason) +
+                   " materialType=" +
+                   LX_core::GlobalStringTable::get().toDebugString(
+                       diagnostic.materialTypeSignature);
+        }
         throw std::runtime_error(
             "render batch analysis rejected pass " +
-            LX_core::GlobalStringTable::get().toDebugString(passName) +
-            ": input=" + std::to_string(diagnostic.inputIndex) +
-            " reason=" +
-            renderBatchDiagnosticReasonName(diagnostic.reason) +
-            " materialType=" +
-            LX_core::GlobalStringTable::get().toDebugString(
-                diagnostic.materialTypeSignature));
+            LX_core::GlobalStringTable::get().toDebugString(passName) + ": " +
+            reason);
       }
       if (analysis.batches.empty()) {
         throw std::runtime_error(
             "render batch analysis produced no accepted batches for pass " +
             LX_core::GlobalStringTable::get().toDebugString(passName));
       }
-      throw std::runtime_error(
-          "render batch analysis backend consumption is not implemented for "
-          "pass " +
-          LX_core::GlobalStringTable::get().toDebugString(passName));
+      for (const LX_core::RenderBatch &batch : analysis.batches) {
+        auto pipeline =
+            resourceManager().getOrCreatePipeline(batch, analysis.context);
+        cmd.bindPipeline(pipeline);
+        cmd.bindSceneBindlessResources(resourceManager(), pipeline,
+                                       analysis.context);
+        cmd.executeRenderBatch(batch);
+      }
+      return;
     }
 
     throw std::runtime_error(

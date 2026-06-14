@@ -13,6 +13,8 @@
 namespace LX_core {
 
 struct RenderWorkItem; // forward decl
+struct RenderBatch;
+struct RenderPathNodeContext;
 
 enum class PipelineBuildType {
   Graphics,
@@ -65,6 +67,8 @@ struct PipelineBuildDesc {
   /// Direct raster helpers require shader, vertex, and index resources.
   /// Compute items require shader stages and descriptor bindings only.
   static PipelineBuildDesc fromRenderWorkItem(const RenderWorkItem &item);
+  static PipelineBuildDesc fromRenderBatch(const RenderBatch &batch,
+                                           const RenderPathNodeContext &context);
 };
 
 } // namespace LX_core

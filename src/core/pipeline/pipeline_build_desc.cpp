@@ -1,8 +1,10 @@
 #include "core/pipeline/pipeline_build_desc.hpp"
 
 #include "core/asset/mesh.hpp"
+#include "core/frame_graph/render_queue.hpp"
 #include "core/scene/scene.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <stdexcept>
 #include <string_view>
@@ -160,6 +162,42 @@ PipelineBuildDesc::fromRenderWorkItem(const RenderWorkItem &item) {
   info.renderState = item.renderState;
 
   // Engine-wide push constant convention until shader-declared ranges arrive.
+  info.pushConstant = PushConstantRange{};
+  return info;
+}
+
+PipelineBuildDesc PipelineBuildDesc::fromRenderBatch(
+    const RenderBatch &batch, const RenderPathNodeContext &context) {
+  const auto factsIt = std::find_if(
+      context.pipelineFacts.begin(), context.pipelineFacts.end(),
+      [&batch](const RenderBatchPipelineFacts &facts) {
+        return facts.materialTypeSignature == batch.materialTypeSignature;
+      });
+  if (factsIt == context.pipelineFacts.end()) {
+    throw std::logic_error(
+        "PipelineBuildDesc::fromRenderBatch: missing pipeline facts for "
+        "material type signature");
+  }
+  if (!factsIt->shaderInfo) {
+    throw std::logic_error(
+        "PipelineBuildDesc::fromRenderBatch: shaderInfo required");
+  }
+
+  PipelineBuildDesc info;
+  info.type = PipelineBuildType::Graphics;
+  info.key = batch.derivedPipelineKey.id.id == 0
+                 ? PipelineKey::build(batch.materialTypeSignature,
+                                      context.renderPathNodeSignature)
+                 : batch.derivedPipelineKey;
+  info.shaderVariantKey = factsIt->shaderProgram.getPipelineSignature();
+  info.target = context.target;
+  info.renderingMode = context.renderingMode;
+  info.attachments = context.attachments;
+  info.stages = factsIt->shaderInfo->getAllStages();
+  info.bindings = factsIt->shaderInfo->getReflectionBindings();
+  info.vertexLayout = factsIt->vertexLayout;
+  info.renderState = factsIt->renderState;
+  info.topology = factsIt->topology;
   info.pushConstant = PushConstantRange{};
   return info;
 }

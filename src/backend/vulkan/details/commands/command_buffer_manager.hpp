@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include "command_buffer.hpp"
+#include "../device_resources/buffer.hpp"
 #include <vulkan/vulkan.h>
 
 namespace LX_core {
@@ -14,6 +15,7 @@ namespace backend {
 struct CommandFrameContext {
   VkCommandPool pool = VK_NULL_HANDLE;
   std::vector<VkCommandBuffer> activeBuffers;
+  std::vector<std::unique_ptr<VulkanBuffer>> retainedIndirectBuffers;
   u32 nextAvailableBuffer = 0;
 };
 
