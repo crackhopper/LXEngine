@@ -65,7 +65,8 @@ MeshBufferUniquePtr makeTriangleMesh() {
       ->cloneUnique();
 }
 
-MaterialInstanceUniquePtr makeSourceMaterial() {
+MaterialInstanceUniquePtr makeSourceMaterial(
+    Vec3f kdColor = Vec3f{0.8f, 0.2f, 0.1f}) {
   MaterialContractReflection contract;
   contract.sourceUri = ResourceUri("memory://materials/matte.contract.glsl");
   contract.declaredType = "matte";
@@ -92,7 +93,7 @@ MaterialInstanceUniquePtr makeSourceMaterial() {
 
   MaterialParameterEnvelope kd;
   kd.kind = MaterialEnvelopeKind::Rgb;
-  kd.rgbValue = Vec3f{0.8f, 0.2f, 0.1f};
+  kd.rgbValue = kdColor;
   material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
   return material;
 }
@@ -361,7 +362,7 @@ void testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis() {
          "each legacy RenderWorkItem should produce a validation diagnostic");
 }
 
-void testSameSignatureInputsProducePreparedCandidates() {
+void testSameSignatureInputsProduceOneBatch() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
@@ -374,14 +375,20 @@ void testSameSignatureInputsProducePreparedCandidates() {
          "valid same-signature inputs should prepare without diagnostics");
   EXPECT(analysis.candidates.size() == 2,
          "valid same-signature inputs should produce prepared candidates");
-  EXPECT(analysis.batches.empty(),
-         "Task 4 preparation should not merge accepted batches yet");
+  EXPECT(analysis.batches.size() == 1,
+         "valid same-signature inputs should merge into one batch");
   EXPECT(analysis.diagnostics.empty(),
          "valid same-signature inputs should not keep skeleton diagnostics");
   EXPECT(analysis.stats.inputDrawCount == 2,
          "analysis stats should preserve input draw count");
   EXPECT(analysis.stats.preparedCandidateCount == 2,
          "prepared candidate count should match valid inputs");
+  EXPECT(analysis.stats.batchCount == 1,
+         "batch count should reflect the merged same-signature batch");
+  EXPECT(analysis.stats.drawCount == 2,
+         "draw count should count commands emitted into batches");
+  EXPECT(analysis.stats.indirectCapableDrawCount == 2,
+         "all valid same-signature draws should be indirect-capable");
   EXPECT(analysis.stats.unsupportedDrawCount == 0,
          "unsupported draw count should stay zero for valid preparation");
   for (usize i = 0; i < analysis.candidates.size(); ++i) {
@@ -418,8 +425,200 @@ void testSameSignatureInputsProducePreparedCandidates() {
                StringID("BindlessObjectData.v1"),
            "candidate should carry node object data ABI signature");
   }
+  if (!analysis.batches.empty()) {
+    const RenderBatch &batch = analysis.batches.front();
+    EXPECT(batch.batchIndex == 0,
+           "first accepted signature should create batch index zero");
+    EXPECT(batch.objectDataSignature == StringID("BindlessObjectData.v1"),
+           "batch should carry the object data ABI signature");
+    EXPECT(batch.materialTypeSignature == StringID("standard-pbr-opaque"),
+           "batch should carry the material type signature");
+    EXPECT(batch.derivedPipelineKey ==
+               PipelineKey::build(batch.materialTypeSignature,
+                                  analysis.context.renderPathNodeSignature),
+           "batch pipeline key should derive from material type and node "
+           "signature");
+    EXPECT(batch.commandOffset == 0,
+           "single batch command offset should start at zero");
+    EXPECT(batch.commandCount == 2,
+           "single batch command count should match its commands");
+    EXPECT(batch.candidateIndices.size() == 2,
+           "single batch should reference both prepared candidates");
+    EXPECT(batch.commands.size() == 2,
+           "single batch should emit two indirect commands");
+    for (usize i = 0; i < batch.commands.size() &&
+                      i < batch.candidateIndices.size();
+         ++i) {
+      const IndexedIndirectDrawCommand &command = batch.commands[i];
+      const usize candidateIndex = batch.candidateIndices[i];
+      EXPECT(candidateIndex < analysis.candidates.size(),
+             "batch command should reference a valid prepared candidate");
+      if (candidateIndex >= analysis.candidates.size()) {
+        continue;
+      }
+      const PreparedRenderDrawCandidate &candidate =
+          analysis.candidates[candidateIndex];
+      EXPECT(command.indexCount == candidate.indexCount,
+             "indirect command indexCount should come from the candidate");
+      EXPECT(command.instanceCount == candidate.instanceCount,
+             "indirect command instanceCount should come from the candidate");
+      EXPECT(command.firstIndex == candidate.firstIndex,
+             "indirect command firstIndex should come from the candidate");
+      EXPECT(command.vertexOffset == candidate.vertexOffset,
+             "indirect command vertexOffset should come from the candidate");
+      EXPECT(command.firstInstance == candidate.drawRecordIndex,
+             "indirect command firstInstance should select the SceneDraw row");
+    }
+  }
   EXPECT(analysis.stats.fallbackObservedCount == 0,
          "new batch compiler must not report old fallback usage");
+}
+
+void testDistinctMaterialInstancesWithSameSignatureShareBatch() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeIndexedMesh(3));
+  const MaterialHandle redMaterial =
+      table.registerMaterial(makeSourceMaterial(Vec3f{0.8f, 0.2f, 0.1f}));
+  const MaterialHandle blueMaterial =
+      table.registerMaterial(makeSourceMaterial(Vec3f{0.1f, 0.2f, 0.8f}));
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  const MaterialHandle materials[] = {redMaterial, blueMaterial};
+  for (usize i = 0; i < 2; ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = materials[i];
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = table.registerObject(object);
+    queue.addDrawInput(RenderDrawInput{
+        .inputIndex = i,
+        .object = objectHandle,
+        .mesh = mesh,
+        .material = materials[i],
+        .debugId = StringID("helmet.distinctMaterialInstance"),
+        .materialTypeSignature = StringID("standard-pbr-opaque")});
+  }
+
+  queue.prepareDrawInputs(table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "distinct material instances with the same material type should be "
+         "accepted");
+  EXPECT(analysis.candidates.size() == 2,
+         "both material instances should prepare draw candidates");
+  EXPECT(analysis.batches.size() == 1,
+         "material instance differences must not split a batch");
+  if (analysis.candidates.size() == 2) {
+    EXPECT(analysis.candidates[0].materialRefIndex !=
+               analysis.candidates[1].materialRefIndex,
+           "fixture should exercise distinct source material ref rows");
+  }
+}
+
+void testDifferentMaterialTypeSignaturesSplitBatches() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeIndexedMesh(3));
+  const MaterialHandle material = table.registerMaterial(makeSourceMaterial());
+
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  const StringID materialTypes[] = {StringID("standard-pbr-opaque"),
+                                   StringID("clearcoat-opaque"),
+                                   StringID("standard-pbr-opaque")};
+  for (usize i = 0; i < 3; ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = table.registerObject(object);
+    queue.addDrawInput(RenderDrawInput{.inputIndex = i,
+                                       .object = objectHandle,
+                                       .mesh = mesh,
+                                       .material = material,
+                                       .debugId =
+                                           StringID("helmet.materialSplit"),
+                                       .materialTypeSignature =
+                                           materialTypes[i]});
+  }
+
+  queue.prepareDrawInputs(table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "different material type signatures should split without rejecting");
+  EXPECT(analysis.batches.size() == 2,
+         "material type signature is a batch compatibility key");
+  EXPECT(analysis.stats.batchCount == 2,
+         "batch stats should count material type signature splits");
+  EXPECT(analysis.stats.drawCount == 3,
+         "split batches should still cover every draw");
+  if (analysis.batches.size() == 2) {
+    EXPECT(analysis.batches[0].commands.size() == 2,
+           "first material type batch should contain both matching commands");
+    EXPECT(analysis.batches[1].commands.size() == 1,
+           "second material type batch should contain one command");
+    EXPECT(analysis.batches[0].materialTypeSignature == materialTypes[0],
+           "first batch should keep first material type signature");
+    EXPECT(analysis.batches[1].materialTypeSignature == materialTypes[1],
+           "second batch should keep second material type signature");
+    EXPECT(analysis.batches[0].candidateIndices.size() == 2 &&
+               analysis.batches[0].candidateIndices[0] == 0 &&
+               analysis.batches[0].candidateIndices[1] == 2,
+           "first batch should gather interleaved matching candidates by "
+           "signature");
+  }
+}
+
+void testDifferentObjectDataSignaturesSplitBatches() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+  RenderPathNodeData &nodeData =
+      const_cast<RenderPathNodeData &>(fixture.queue.nodeData());
+  if (nodeData.preparedCandidates.size() == 2) {
+    nodeData.preparedCandidates[1].objectDataSignature =
+        StringID("BindlessObjectData.v2");
+  }
+
+  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
+
+  EXPECT(analysis.ok(),
+         "different prepared object data signatures should split without "
+         "rejecting");
+  EXPECT(analysis.batches.size() == 2,
+         "object data signature is a batch compatibility key");
+  EXPECT(analysis.stats.drawCount == 2,
+         "object data signature split should still cover both draws");
+  if (analysis.batches.size() == 2) {
+    EXPECT(analysis.batches[0].objectDataSignature ==
+               StringID("BindlessObjectData.v1"),
+           "first batch should keep the original object data ABI");
+    EXPECT(analysis.batches[1].objectDataSignature ==
+               StringID("BindlessObjectData.v2"),
+           "second batch should keep the mutated object data ABI");
+  }
 }
 
 void testDrawInputIdentityIsPreservedInDiagnostics() {
@@ -442,6 +641,32 @@ void testDrawInputIdentityIsPreservedInDiagnostics() {
     EXPECT(analysis.diagnostics.front().inputIndex == 42,
            "diagnostic should preserve explicit draw input identity");
   }
+}
+
+void testLegacyRejectedPreparationStatsAreNotUnsupported() {
+  SceneResourceTable table;
+  RenderWorkQueue queue;
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .debugId = StringID("helmet.legacyRejectedStats"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  queue.prepareDrawInputs(table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(),
+         "legacy rejected preparation should keep analysis rejected");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "legacy rejected preparation should produce one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::LegacyInputRejected,
+           "missing node context preparation should produce legacy rejection");
+  }
+  EXPECT(analysis.stats.legacyRejectedDrawCount == 1,
+         "legacy rejected diagnostics should increment legacy rejected count");
+  EXPECT(analysis.stats.unsupportedDrawCount == 0,
+         "legacy rejected diagnostics should not increment unsupported count");
 }
 
 void testClearItemsResetsNodeContextAndCachedAnalysis() {
@@ -535,8 +760,12 @@ int main() {
   testIndirectDrawBufferHandleIsOpaque();
   testGpuResourceTableConsumesSceneBindlessUploadView();
   testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis();
-  testSameSignatureInputsProducePreparedCandidates();
+  testSameSignatureInputsProduceOneBatch();
+  testDistinctMaterialInstancesWithSameSignatureShareBatch();
+  testDifferentMaterialTypeSignaturesSplitBatches();
+  testDifferentObjectDataSignaturesSplitBatches();
   testDrawInputIdentityIsPreservedInDiagnostics();
+  testLegacyRejectedPreparationStatsAreNotUnsupported();
   testClearItemsResetsNodeContextAndCachedAnalysis();
   testDrawInputMutationInvalidatesCachedAnalysis();
   testStalePreparationRejectsNewDrawInputs();

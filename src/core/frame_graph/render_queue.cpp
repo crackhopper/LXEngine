@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <iterator>
 #include <span>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_set>
 
@@ -288,6 +289,77 @@ resolveSortCameraEye(const Scene &scene,
   return std::nullopt;
 }
 
+void validateNodeGeometryContract(
+    const Scene &scene, const MeshHandle mesh,
+    const std::optional<RenderPathGeometryContract> &geometryContract) {
+  if (!geometryContract.has_value() || !mesh.isValid()) {
+    return;
+  }
+  const auto meshResource = scene.resources().resolve(mesh);
+  if (!meshResource.has_value()) {
+    return;
+  }
+  const GeometryStorageHandle storageHandle =
+      meshResource->get().getGeometryStorageHandle();
+  const auto storageResource = scene.resources().resolve(storageHandle);
+  if (!storageResource.has_value()) {
+    return;
+  }
+  if (storageResource->get().getTopology() != geometryContract->topology) {
+    throw std::logic_error(
+        "RenderWorkQueue topology contract mismatch for RenderPathNode "
+        "geometry");
+  }
+}
+
+[[nodiscard]] bool isBatchCompatible(
+    const RenderBatch &batch, const PreparedRenderDrawCandidate &candidate) {
+  return batch.objectDataSignature == candidate.objectDataSignature &&
+         batch.materialTypeSignature == candidate.materialTypeSignature;
+}
+
+[[nodiscard]] IndexedIndirectDrawCommand
+makeIndirectDrawCommand(const PreparedRenderDrawCandidate &candidate) {
+  IndexedIndirectDrawCommand command;
+  command.indexCount = candidate.indexCount;
+  command.instanceCount = candidate.instanceCount;
+  command.firstIndex = candidate.firstIndex;
+  command.vertexOffset = candidate.vertexOffset;
+  command.firstInstance = candidate.drawRecordIndex;
+  return command;
+}
+
+void updateBatchCommandRanges(RenderBatchAnalysis &analysis) {
+  u32 commandOffset = 0;
+  for (RenderBatch &batch : analysis.batches) {
+    batch.commandOffset = commandOffset;
+    batch.commandCount = static_cast<u32>(batch.commands.size());
+    commandOffset += batch.commandCount;
+  }
+}
+
+void updateBatchStats(RenderBatchAnalysis &analysis,
+                      const usize inputDrawCount) {
+  analysis.stats.inputDrawCount = inputDrawCount;
+  analysis.stats.preparedCandidateCount = analysis.candidates.size();
+  analysis.stats.batchCount = analysis.batches.size();
+  analysis.stats.drawCount = 0;
+  for (const RenderBatch &batch : analysis.batches) {
+    analysis.stats.drawCount += batch.commands.size();
+  }
+  analysis.stats.indirectCapableDrawCount = analysis.stats.drawCount;
+  analysis.stats.fallbackObservedCount = 0;
+  analysis.stats.unsupportedDrawCount = 0;
+  analysis.stats.legacyRejectedDrawCount = 0;
+  for (const RenderBatchDiagnostic &diagnostic : analysis.diagnostics) {
+    if (diagnostic.reason == RenderBatchDiagnosticReason::LegacyInputRejected) {
+      ++analysis.stats.legacyRejectedDrawCount;
+    } else {
+      ++analysis.stats.unsupportedDrawCount;
+    }
+  }
+}
+
 } // namespace
 
 void RenderWorkQueue::addItem(RenderWorkItem item) {
@@ -415,7 +487,6 @@ RenderBatchAnalysis RenderWorkQueue::compileIndirectBatches() const {
   if (m_context.has_value()) {
     analysis.context = *m_context;
   }
-  analysis.stats.inputDrawCount = m_nodeData.drawInputs.size();
   if (!m_nodeData.preparationValid ||
       m_nodeData.preparedInputCount != m_nodeData.drawInputs.size()) {
     for (const RenderDrawInput &drawInput : m_nodeData.drawInputs) {
@@ -423,14 +494,40 @@ RenderBatchAnalysis RenderWorkQueue::compileIndirectBatches() const {
           analysis.context, drawInput,
           RenderBatchDiagnosticReason::GlobalGeometryTableMissing));
     }
-    analysis.stats.unsupportedDrawCount = analysis.diagnostics.size();
+    updateBatchStats(analysis, m_nodeData.drawInputs.size());
     m_lastBatchAnalysis = analysis;
     return analysis;
   }
   analysis.candidates = m_nodeData.preparedCandidates;
   analysis.diagnostics = m_nodeData.preparationDiagnostics;
-  analysis.stats.preparedCandidateCount = analysis.candidates.size();
-  analysis.stats.unsupportedDrawCount = analysis.diagnostics.size();
+
+  for (usize candidateIndex = 0; candidateIndex < analysis.candidates.size();
+       ++candidateIndex) {
+    const PreparedRenderDrawCandidate &candidate =
+        analysis.candidates[candidateIndex];
+    auto batchIt = std::find_if(
+        analysis.batches.begin(), analysis.batches.end(),
+        [&candidate](const RenderBatch &batch) {
+          return isBatchCompatible(batch, candidate);
+        });
+    if (batchIt == analysis.batches.end()) {
+      RenderBatch batch;
+      batch.batchIndex = analysis.batches.size();
+      batch.objectDataSignature = candidate.objectDataSignature;
+      batch.materialTypeSignature = candidate.materialTypeSignature;
+      batch.derivedPipelineKey =
+          PipelineKey::build(batch.materialTypeSignature,
+                             analysis.context.renderPathNodeSignature);
+      analysis.batches.push_back(std::move(batch));
+      batchIt = std::prev(analysis.batches.end());
+    }
+
+    batchIt->commands.push_back(makeIndirectDrawCommand(candidate));
+    batchIt->candidateIndices.push_back(candidateIndex);
+  }
+
+  updateBatchCommandRanges(analysis);
+  updateBatchStats(analysis, m_nodeData.drawInputs.size());
   m_lastBatchAnalysis = analysis;
   return analysis;
 }
@@ -528,6 +625,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
         mesh = objectResource->get().mesh;
       }
     }
+    validateNodeGeometryContract(scene, mesh, geometryContract);
     addDrawInput(RenderDrawInput{
         .inputIndex = m_nodeData.drawInputs.size(),
         .object = validatedData.objectHandle,
@@ -535,7 +633,7 @@ void RenderWorkQueue::buildRealtime(const Scene &scene, StringID pass,
         .material = validatedData.materialHandle,
         .debugId = renderable->getDebugId(),
         .sortCenter = validatedData.sortCenter,
-        .materialTypeSignature = validatedData.materialTypeVariant,
+        .materialTypeSignature = validatedData.materialTypeSignature,
     });
   }
 

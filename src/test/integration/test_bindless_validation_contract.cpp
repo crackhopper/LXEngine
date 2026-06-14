@@ -227,7 +227,7 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
   return fixture;
 }
 
-void testStrictContractRejectsUnbatchedPreparedDrawInputs() {
+void testStrictContractAcceptsBatchedPreparedDrawInputs() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
@@ -236,13 +236,94 @@ void testStrictContractRejectsUnbatchedPreparedDrawInputs() {
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
+  EXPECT(result.ok,
+         "fully batched prepared draw inputs should satisfy validation");
+  EXPECT(result.coveredItemCount == 2,
+         "validation should report compiler-emitted indirect draw coverage");
+  EXPECT(result.diagnostics.empty(),
+         "fully batched prepared draw inputs should not produce diagnostics");
+}
+
+void testDecisionAcceptsFullyBatchedMigratedWork() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+
+  const BindlessSubmissionDecision decision =
+      decideBindlessSubmission(fixture.queue, StringID("Forward"), false, true);
+
+  EXPECT(decision.kind == BindlessSubmissionDecisionKind::BindlessBatch,
+         "fully batched migrated queue should choose bindless batch "
+         "submission");
+  EXPECT(decision.validation.ok,
+         "accepted bindless batch submission should carry successful "
+         "validation");
+}
+
+void testStrictContractRejectsPreparationDiagnostics() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 1,
+                            .indexCount = 0,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+
+  const BindlessValidationResult result =
+      validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
+
   EXPECT(!result.ok,
-         "prepared candidates should still be rejected until Task 5 creates "
-         "coverage batches");
+         "validation should reject draw inputs with batch analysis diagnostics");
   EXPECT(result.coveredItemCount == 0,
-         "Task 4 preparation should not report covered batch inputs");
-  EXPECT(result.diagnostics.size() == 2,
-         "validation should diagnose every unbatched prepared draw input");
+         "rejected preparation diagnostics should not count as covered draws");
+  EXPECT(result.diagnostics.size() == 1,
+         "batch analysis diagnostics should translate into validation "
+         "diagnostics");
+}
+
+void testStrictContractRejectsUnbatchedPreparedDrawInputs() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+  RenderPathNodeData &nodeData =
+      const_cast<RenderPathNodeData &>(fixture.queue.nodeData());
+  nodeData.preparedCandidates.clear();
+
+  const BindlessValidationResult result =
+      validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
+
+  EXPECT(!result.ok,
+         "validation should reject analysis whose draw stats do not cover all "
+         "inputs");
+  EXPECT(result.coveredItemCount == 0,
+         "unbatched prepared inputs should not report covered draws");
+}
+
+void testStrictContractRejectsDuplicateCandidateInputCoverage() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+  RenderPathNodeData &nodeData =
+      const_cast<RenderPathNodeData &>(fixture.queue.nodeData());
+  if (nodeData.preparedCandidates.size() == 2) {
+    nodeData.preparedCandidates[1].inputIndex =
+        nodeData.preparedCandidates[0].inputIndex;
+  }
+
+  const BindlessValidationResult result =
+      validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
+
+  EXPECT(!result.ok,
+         "validation should reject duplicate candidate coverage even when "
+         "draw counts match");
+  EXPECT(result.coveredItemCount == 1,
+         "covered item count should count unique covered input identities");
+  EXPECT(!result.diagnostics.empty(),
+         "duplicate input coverage should produce validation diagnostics");
 }
 
 void testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode() {
@@ -1006,7 +1087,11 @@ void testMissingDrawRecordInputProducesDiagnostic() {
 } // namespace
 
 int main() {
+  testStrictContractAcceptsBatchedPreparedDrawInputs();
+  testDecisionAcceptsFullyBatchedMigratedWork();
+  testStrictContractRejectsPreparationDiagnostics();
   testStrictContractRejectsUnbatchedPreparedDrawInputs();
+  testStrictContractRejectsDuplicateCandidateInputCoverage();
   testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode();
   testStrictContractRejectsPartialCoverage();
   testMaterialV2StrictRejectsMissingFinalIdentity();
