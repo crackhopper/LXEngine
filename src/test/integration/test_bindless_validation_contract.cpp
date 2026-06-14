@@ -1,7 +1,11 @@
+#include "core/asset/material_instance.hpp"
+#include "core/asset/mesh.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/render_queue.hpp"
 #include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/scene_resource_table.hpp"
 
 #include <functional>
 #include <iostream>
@@ -77,6 +81,18 @@ struct ShaderWithBindings final : public IShader {
   std::vector<ShaderResourceBinding> m_bindings;
 };
 
+struct SceneVertex final {
+  Vec3f position;
+
+  static VertexLayout getLayout() {
+    return VertexLayout(
+        std::vector<VertexLayoutItem>{
+            VertexLayoutItem{"position", 0, DataType::Float3,
+                             sizeof(Vec3f), 0}},
+        sizeof(SceneVertex));
+  }
+};
+
 ShaderResourceBinding storageBinding(const char *name) {
   ShaderResourceBinding binding;
   binding.name = name;
@@ -109,6 +125,104 @@ RenderWorkItem makeMigratedDraw(const IGpuResource &vertex,
   item.raster.indexCount = 3;
   item.raster.instanceCount = 1;
   return item;
+}
+
+MaterialInstanceUniquePtr makeSourceMaterial() {
+  MaterialContractReflection contract;
+  contract.sourceUri = ResourceUri("memory://materials/matte.contract.glsl");
+  contract.declaredType = "matte";
+  contract.reflectionHash = "matte-reflect-v1";
+  contract.storageAbiHash = "matte-storage-v1";
+  contract.accessorAbiHash = "material-surface-v1";
+  contract.parameters.push_back(MaterialContractParameter{
+      "Kd", true, {MaterialContractParameterKind::Rgb}});
+  contract.storageFields.push_back(MaterialContractStorageField{
+      .name = "baseColor",
+      .type = MaterialContractStorageFieldType::Vec4,
+      .inputKind = MaterialContractStorageInputKind::ParameterValue,
+      .parameterName = "Kd",
+      .defaultValue = Vec4f{1.0f, 1.0f, 1.0f, 1.0f},
+  });
+
+  auto material =
+      MaterialInstance::createUnique(MaterialTemplate::create("matte"));
+  material->setBsdfType("matte");
+  material->setMaterialSourceUri(contract.sourceUri);
+  material->setMaterialSourceSignature(contract.sourceSignature());
+  material->setMaterialSourceReflectionHash(contract.reflectionHash);
+  material->setMaterialContractReflection(std::move(contract));
+
+  MaterialParameterEnvelope kd;
+  kd.kind = MaterialEnvelopeKind::Rgb;
+  kd.rgbValue = Vec3f{0.8f, 0.2f, 0.1f};
+  material->setMaterialEnvelope(StringID("Kd"), std::move(kd));
+  return material;
+}
+
+MeshBufferUniquePtr makeIndexedMesh(u32 indexCount) {
+  auto vertices = std::vector<SceneVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  std::vector<u32> indices;
+  indices.reserve(indexCount);
+  for (u32 i = 0; i < indexCount; ++i) {
+    indices.push_back(i % 3);
+  }
+  auto vb = VertexBuffer<SceneVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(
+             vb, ib,
+             BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
+      ->cloneUnique();
+}
+
+struct BatchQueueFixtureDesc final {
+  usize drawCount = 0;
+  u32 indexCount = 0;
+  StringID materialTypeSignature;
+};
+
+struct BatchQueueFixture final {
+  SceneResourceTable table;
+  RenderWorkQueue queue;
+  MaterialHandle material;
+};
+
+BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
+  BatchQueueFixture fixture;
+  const MeshHandle mesh = fixture.table.registerMesh(
+      makeIndexedMesh(desc.indexCount));
+  fixture.material = fixture.table.registerMaterial(makeSourceMaterial());
+
+  fixture.queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  for (usize i = 0; i < desc.drawCount; ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = fixture.material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = fixture.table.registerObject(object);
+
+    fixture.queue.addDrawInput(RenderDrawInput{
+        .inputIndex = i,
+        .object = objectHandle,
+        .material = fixture.material,
+        .pass = StringID("Forward"),
+        .debugId = StringID("helmet.validation"),
+        .materialTypeSignature = desc.materialTypeSignature});
+  }
+
+  fixture.queue.prepareDrawInputs(fixture.table.buildUploadView());
+  return fixture;
 }
 
 void testStrictContractAcceptsFullyCoveredBatch() {
@@ -233,6 +347,53 @@ void testMaterialV2StrictDoesNotInferMaterialRefFallback() {
          "from the absence of SceneMaterials");
 }
 
+void testZeroIndexCountProducesDiagnostic() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 1,
+                            .indexCount = 0,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+
+  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "zero index count should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "zero index count should produce exactly one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::ZeroIndexCount,
+           "zero index count diagnostic reason should be exact");
+  }
+}
+
+void testMissingDrawRecordProducesDiagnostic() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 1,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
+  fixture.queue.clearItems();
+  fixture.queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .object = ObjectHandle{},
+      .material = fixture.material,
+      .pass = StringID("Forward"),
+      .debugId = StringID("helmet.missingObject"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  fixture.queue.prepareDrawInputs(fixture.table.buildUploadView());
+
+  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
+
+  EXPECT(!analysis.ok(), "missing object/draw record should reject the draw");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "missing object/draw record should produce exactly one diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().reason ==
+               RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved,
+           "missing object record reason should be exact");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -242,6 +403,8 @@ int main() {
   testMaterialV2StrictRejectsMissingFinalIdentity();
   testMaterialV2StrictRejectsMissingTypedSourceRef();
   testMaterialV2StrictDoesNotInferMaterialRefFallback();
+  testZeroIndexCountProducesDiagnostic();
+  testMissingDrawRecordProducesDiagnostic();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless validation contract checks failed\n";
     return 1;

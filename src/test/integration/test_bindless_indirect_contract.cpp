@@ -96,6 +96,72 @@ MaterialInstanceUniquePtr makeSourceMaterial() {
   return material;
 }
 
+MeshBufferUniquePtr makeIndexedMesh(u32 indexCount) {
+  auto vertices = std::vector<SceneVertex>{
+      {{0.0f, 0.0f, 0.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 1.0f, 0.0f}},
+  };
+  std::vector<u32> indices;
+  indices.reserve(indexCount);
+  for (u32 i = 0; i < indexCount; ++i) {
+    indices.push_back(i % 3);
+  }
+  auto vb = VertexBuffer<SceneVertex>::create(std::move(vertices));
+  auto ib = IndexBuffer::create(std::move(indices));
+  return MeshBuffer::create(
+             vb, ib,
+             BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
+      ->cloneUnique();
+}
+
+struct BatchQueueFixtureDesc final {
+  usize drawCount = 0;
+  u32 indexCount = 0;
+  StringID materialTypeSignature;
+};
+
+struct BatchQueueFixture final {
+  SceneResourceTable table;
+  RenderWorkQueue queue;
+  MaterialHandle material;
+};
+
+BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
+  BatchQueueFixture fixture;
+  const MeshHandle mesh = fixture.table.registerMesh(
+      makeIndexedMesh(desc.indexCount));
+  fixture.material = fixture.table.registerMaterial(makeSourceMaterial());
+
+  fixture.queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque"),
+      .target = RenderTargetDesc{.role = RenderTargetRole::Swapchain,
+                                 .colorFormat = ImageFormat::BGRA8,
+                                 .depthFormat = ImageFormat::D32Float},
+      .objectDataSignature = StringID("BindlessObjectData.v1")});
+
+  for (usize i = 0; i < desc.drawCount; ++i) {
+    ObjectResource object;
+    object.mesh = mesh;
+    object.material = fixture.material;
+    object.worldBounds =
+        BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}};
+    const ObjectHandle objectHandle = fixture.table.registerObject(object);
+
+    fixture.queue.addDrawInput(RenderDrawInput{
+        .inputIndex = i,
+        .object = objectHandle,
+        .material = fixture.material,
+        .pass = StringID("Forward"),
+        .debugId = StringID("helmet.sameSignature"),
+        .materialTypeSignature = desc.materialTypeSignature});
+  }
+
+  fixture.queue.prepareDrawInputs(fixture.table.buildUploadView());
+  return fixture;
+}
+
 SceneResourceTableUploadView makeSourceMaterialUploadView(
     SceneResourceTable &sceneTable) {
   const MeshHandle mesh = sceneTable.registerMesh(makeTriangleMesh());
@@ -292,24 +358,20 @@ void testQueueCompilesStableIndirectBatches() {
          "batch should preserve source item order for diagnostics");
 }
 
-void testDescriptorChangeSplitsIndirectBatches() {
-  TestGpuResource vertex(ResourceType::VertexBuffer, StringID{}, 128);
-  TestGpuResource index(ResourceType::IndexBuffer, StringID{}, 96);
-  TestGpuResource cameraA(ResourceType::UniformBuffer, StringID("CameraUBO"),
-                          64);
-  TestGpuResource cameraB(ResourceType::UniformBuffer, StringID("CameraUBO"),
-                          64);
-  const PipelineKey key =
-      PipelineKey::build(StringID("bindless.indirect.materialTypeVariant"),
-                         StringID("bindless.indirect.renderPathNode"));
+void testDescriptorIdentityDoesNotSplitSameSignatureBatch() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
 
-  RenderWorkQueue queue;
-  queue.addItem(makeDrawItem(vertex, index, cameraA, key, 0));
-  queue.addItem(makeDrawItem(vertex, index, cameraB, key, 6));
+  const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  const auto batches = queue.compileIndirectBatches();
-  EXPECT(batches.size() == 2,
-         "descriptor identity change must split indirect batches");
+  EXPECT(analysis.ok(), "same signature batch analysis should be accepted");
+  EXPECT(analysis.batches.size() == 1,
+         "descriptor identity must not split same material type signature");
+  EXPECT(analysis.stats.fallbackObservedCount == 0,
+         "new batch compiler must not report old fallback usage");
 }
 
 } // namespace
@@ -322,7 +384,7 @@ int main() {
   testIndirectDrawBufferHandleIsOpaque();
   testGpuResourceTableConsumesSceneBindlessUploadView();
   testQueueCompilesStableIndirectBatches();
-  testDescriptorChangeSplitsIndirectBatches();
+  testDescriptorIdentityDoesNotSplitSameSignatureBatch();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless/indirect checks failed\n";
     return 1;
