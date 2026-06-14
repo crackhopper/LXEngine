@@ -52,6 +52,7 @@ public:
   virtual std::string getNodeName() const = 0;
   virtual StringID getDebugId() const { return StringID{}; }
   virtual bool isDebugOnlyRenderable() const { return false; }
+  virtual std::optional<StringID> getRenderType() const { return std::nullopt; }
 
   virtual std::optional<
       std::reference_wrapper<const ValidatedRenderablePassData>>
@@ -186,6 +187,10 @@ public:
   void setVisibilityLayerMask(VisibilityLayerMask mask);
   bool isDebugOnlyRenderable() const override { return m_debugOnlyRenderable; }
   void setDebugOnlyRenderable(bool value);
+  void setRenderType(StringID renderType);
+  std::optional<StringID> getRenderType() const override {
+    return m_renderType;
+  }
 
   std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const override;
@@ -229,6 +234,7 @@ private:
   mutable bool m_worldTransformHasParent = false;
   VisibilityLayerMask m_visibilityLayerMask = VisibilityMask_All;
   bool m_debugOnlyRenderable = false;
+  std::optional<StringID> m_renderType;
   bool m_isPathRoot = false;
 };
 

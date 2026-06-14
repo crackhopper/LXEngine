@@ -691,6 +691,14 @@ void SceneNode::setDebugOnlyRenderable(const bool value) {
   emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
+void SceneNode::setRenderType(StringID renderType) {
+  if (m_renderType.has_value() && *m_renderType == renderType) {
+    return;
+  }
+  m_renderType = renderType;
+  emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+}
+
 void SceneNode::warnIfSiblingNameIsDuplicated() const {
   if (m_isPathRoot || m_name.empty()) {
     return;

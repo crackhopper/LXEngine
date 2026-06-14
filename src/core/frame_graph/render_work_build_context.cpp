@@ -6,12 +6,16 @@
 
 namespace LX_core {
 
+RenderWorkBuildContext RenderWorkBuildContext::realtimeEmpty() {
+  return RenderWorkBuildContext();
+}
+
 RenderWorkBuildContext RenderWorkBuildContext::realtime(const Scene &scene) {
   return RenderWorkBuildContext(std::cref(scene));
 }
 
-RenderWorkBuildContext RenderWorkBuildContext::realtime(
-    const Scene &scene, RealtimeOptions options) {
+RenderWorkBuildContext
+RenderWorkBuildContext::realtime(const Scene &scene, RealtimeOptions options) {
   return RenderWorkBuildContext(std::cref(scene), std::move(options));
 }
 
@@ -21,10 +25,13 @@ RenderWorkBuildContext::offline(offline::OfflineRenderJob &job) {
 }
 
 RenderDomain RenderWorkBuildContext::domain() const {
-  if (std::holds_alternative<RealtimeSource>(m_source)) {
-    return RenderDomain::Realtime;
-  }
-  return RenderDomain::Offline;
+  return std::holds_alternative<OfflineSource>(m_source)
+             ? RenderDomain::Offline
+             : RenderDomain::Realtime;
+}
+
+bool RenderWorkBuildContext::hasRealtimeScene() const {
+  return std::holds_alternative<RealtimeSource>(m_source);
 }
 
 const Scene &RenderWorkBuildContext::realtimeScene() const {
@@ -50,6 +57,9 @@ offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
   }
   throw std::logic_error("RenderWorkBuildContext does not hold an offline job");
 }
+
+RenderWorkBuildContext::RenderWorkBuildContext()
+    : m_source(EmptyRealtimeSource{}) {}
 
 RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene)
     : m_source(scene) {}

@@ -65,10 +65,14 @@ struct RenderDrawInput final : RenderInput {
   ObjectHandle object;
   MeshHandle mesh;
   MaterialHandle material;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
   u32 primitiveIndex = u32_max;
   Vec3f sortCenter{};
   StringID objectDataSignature;
+  StringID objectRenderType;
   StringID materialTypeSignature;
+  bool debugOnly = false;
   std::vector<RenderDrawCommand> drawCommands;
 };
 
