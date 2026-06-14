@@ -215,8 +215,8 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
     fixture.queue.addDrawInput(RenderDrawInput{
         .inputIndex = i,
         .object = objectHandle,
+        .mesh = mesh,
         .material = fixture.material,
-        .pass = StringID("Forward"),
         .debugId = StringID("helmet.validation"),
         .materialTypeSignature = desc.materialTypeSignature});
   }
@@ -225,20 +225,21 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
   return fixture;
 }
 
-void testStrictContractAcceptsFullyCoveredBatch() {
-  TestResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
-  TestResource index(ResourceType::IndexBuffer, StringID{}, 48);
-  RenderWorkQueue queue;
-  queue.addItem(makeMigratedDraw(vertex, index));
-  queue.addItem(makeMigratedDraw(vertex, index));
+void testStrictContractRejectsSkeletonDrawInputs() {
+  BatchQueueFixture fixture = makeBatchQueueFixture(
+      BatchQueueFixtureDesc{.drawCount = 2,
+                            .indexCount = 3,
+                            .materialTypeSignature =
+                                StringID("standard-pbr-opaque")});
 
   const BindlessValidationResult result =
-      validateBindlessMigratedQueue(queue, StringID("Forward"));
-  EXPECT(result.ok, "strict bindless contract should accept full batch coverage");
-  EXPECT(result.coveredItemCount == 2,
-         "strict bindless contract should report covered items");
-  EXPECT(result.diagnostics.empty(),
-         "strict bindless contract should not emit diagnostics on success");
+      validateBindlessMigratedQueue(fixture.queue, StringID("Forward"));
+  EXPECT(!result.ok,
+         "Task 2 skeleton should reject draw inputs until preparation exists");
+  EXPECT(result.coveredItemCount == 0,
+         "Task 2 skeleton should not report covered inputs");
+  EXPECT(result.diagnostics.size() == 2,
+         "Task 2 skeleton should diagnose every draw input");
 }
 
 void testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode() {
@@ -347,7 +348,7 @@ void testMaterialV2StrictDoesNotInferMaterialRefFallback() {
          "from the absence of SceneMaterials");
 }
 
-void testZeroIndexCountProducesDiagnostic() {
+void testZeroIndexInputProducesSkeletonDiagnostic() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 1,
                             .indexCount = 0,
@@ -356,17 +357,21 @@ void testZeroIndexCountProducesDiagnostic() {
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  EXPECT(!analysis.ok(), "zero index count should reject the draw");
+  EXPECT(!analysis.ok(), "Task 2 skeleton should reject the draw");
   EXPECT(analysis.diagnostics.size() == 1,
-         "zero index count should produce exactly one diagnostic");
+         "Task 2 skeleton should produce exactly one diagnostic");
+  EXPECT(analysis.batches.empty(),
+         "Task 2 skeleton should not produce accepted batches");
+  EXPECT(analysis.stats.unsupportedDrawCount == 1,
+         "unsupported draw count should match rejected inputs");
   if (!analysis.diagnostics.empty()) {
     EXPECT(analysis.diagnostics.front().reason ==
-               RenderBatchDiagnosticReason::ZeroIndexCount,
-           "zero index count diagnostic reason should be exact");
+               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+           "Task 2 skeleton should report missing global geometry table");
   }
 }
 
-void testMissingDrawRecordProducesDiagnostic() {
+void testMissingDrawRecordInputProducesSkeletonDiagnostic() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 1,
                             .indexCount = 3,
@@ -376,35 +381,39 @@ void testMissingDrawRecordProducesDiagnostic() {
   fixture.queue.addDrawInput(RenderDrawInput{
       .inputIndex = 0,
       .object = ObjectHandle{},
+      .mesh = MeshHandle{},
       .material = fixture.material,
-      .pass = StringID("Forward"),
       .debugId = StringID("helmet.missingObject"),
       .materialTypeSignature = StringID("standard-pbr-opaque")});
   fixture.queue.prepareDrawInputs(fixture.table.buildUploadView());
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  EXPECT(!analysis.ok(), "missing object/draw record should reject the draw");
+  EXPECT(!analysis.ok(), "Task 2 skeleton should reject the draw");
   EXPECT(analysis.diagnostics.size() == 1,
-         "missing object/draw record should produce exactly one diagnostic");
+         "Task 2 skeleton should produce exactly one diagnostic");
+  EXPECT(analysis.batches.empty(),
+         "Task 2 skeleton should not produce accepted batches");
+  EXPECT(analysis.stats.unsupportedDrawCount == 1,
+         "unsupported draw count should match rejected inputs");
   if (!analysis.diagnostics.empty()) {
     EXPECT(analysis.diagnostics.front().reason ==
-               RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved,
-           "missing object record reason should be exact");
+               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+           "Task 2 skeleton should report missing global geometry table");
   }
 }
 
 } // namespace
 
 int main() {
-  testStrictContractAcceptsFullyCoveredBatch();
+  testStrictContractRejectsSkeletonDrawInputs();
   testDecisionRejectsIncompleteMigratedWorkWithoutStrictMode();
   testStrictContractRejectsPartialCoverage();
   testMaterialV2StrictRejectsMissingFinalIdentity();
   testMaterialV2StrictRejectsMissingTypedSourceRef();
   testMaterialV2StrictDoesNotInferMaterialRefFallback();
-  testZeroIndexCountProducesDiagnostic();
-  testMissingDrawRecordProducesDiagnostic();
+  testZeroIndexInputProducesSkeletonDiagnostic();
+  testMissingDrawRecordInputProducesSkeletonDiagnostic();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless validation contract checks failed\n";
     return 1;

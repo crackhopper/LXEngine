@@ -2,6 +2,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/frame_graph/render_queue.hpp"
+#include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene_gpu_records.hpp"
@@ -152,8 +153,8 @@ BatchQueueFixture makeBatchQueueFixture(const BatchQueueFixtureDesc &desc) {
     fixture.queue.addDrawInput(RenderDrawInput{
         .inputIndex = i,
         .object = objectHandle,
+        .mesh = mesh,
         .material = fixture.material,
-        .pass = StringID("Forward"),
         .debugId = StringID("helmet.sameSignature"),
         .materialTypeSignature = desc.materialTypeSignature});
   }
@@ -331,7 +332,7 @@ void testGpuResourceTableConsumesSceneBindlessUploadView() {
          "attribute value table should create a staging buffer");
 }
 
-void testQueueCompilesStableIndirectBatches() {
+void testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis() {
   TestGpuResource vertex(ResourceType::VertexBuffer, StringID{}, 128);
   TestGpuResource index(ResourceType::IndexBuffer, StringID{}, 96);
   TestGpuResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"),
@@ -344,21 +345,23 @@ void testQueueCompilesStableIndirectBatches() {
   queue.addItem(makeDrawItem(vertex, index, camera, key, 0));
   queue.addItem(makeDrawItem(vertex, index, camera, key, 6));
 
-  const auto batches = queue.compileIndirectBatches();
-  EXPECT(batches.size() == 1,
-         "compatible default draw items should compile into one batch");
-  EXPECT(batches.front().commands.size() == 2,
-         "batch should preserve both indirect commands");
-  EXPECT(batches.front().commands[0].indexCount == 6,
-         "indexCount should be copied into indirect command");
-  EXPECT(batches.front().commands[1].firstIndex == 6,
-         "firstIndex should be copied into indirect command");
-  EXPECT(batches.front().sourceItemIndices[0] == 0 &&
-             batches.front().sourceItemIndices[1] == 1,
-         "batch should preserve source item order for diagnostics");
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(analysis.batches.empty(),
+         "legacy RenderWorkItem inputs should not produce analysis batches");
+  EXPECT(analysis.stats.inputDrawCount == 0,
+         "legacy RenderWorkItem inputs should not become draw inputs");
+
+  const BindlessValidationResult validation =
+      validateBindlessMigratedQueue(queue, StringID("Forward"));
+  EXPECT(!validation.ok,
+         "legacy RenderWorkItem geometry should be rejected by validation");
+  EXPECT(validation.coveredItemCount == 0,
+         "legacy RenderWorkItem geometry should not count as covered");
+  EXPECT(validation.diagnostics.size() == 2,
+         "each legacy RenderWorkItem should produce a validation diagnostic");
 }
 
-void testDescriptorIdentityDoesNotSplitSameSignatureBatch() {
+void testSameSignatureInputsProduceSkeletonDiagnostics() {
   BatchQueueFixture fixture = makeBatchQueueFixture(
       BatchQueueFixtureDesc{.drawCount = 2,
                             .indexCount = 3,
@@ -367,11 +370,90 @@ void testDescriptorIdentityDoesNotSplitSameSignatureBatch() {
 
   const RenderBatchAnalysis analysis = fixture.queue.compileIndirectBatches();
 
-  EXPECT(analysis.ok(), "same signature batch analysis should be accepted");
-  EXPECT(analysis.batches.size() == 1,
-         "descriptor identity must not split same material type signature");
+  EXPECT(!analysis.ok(),
+         "Task 2 skeleton should reject same-signature inputs until "
+         "preparation exists");
+  EXPECT(analysis.batches.empty(),
+         "Task 2 skeleton should not produce accepted batches");
+  EXPECT(analysis.diagnostics.size() == 2,
+         "Task 2 skeleton should diagnose every draw input");
+  EXPECT(analysis.stats.inputDrawCount == 2,
+         "analysis stats should preserve input draw count");
+  EXPECT(analysis.stats.unsupportedDrawCount == 2,
+         "unsupported draw count should match rejected inputs");
+  for (const RenderBatchDiagnostic &diagnostic : analysis.diagnostics) {
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+           "Task 2 skeleton should report missing global geometry table");
+  }
   EXPECT(analysis.stats.fallbackObservedCount == 0,
          "new batch compiler must not report old fallback usage");
+}
+
+void testDrawInputIdentityIsPreservedInDiagnostics() {
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 42,
+      .debugId = StringID("helmet.explicitInputIndex"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.diagnostics.size() == 1,
+         "single input should produce a single diagnostic");
+  if (!analysis.diagnostics.empty()) {
+    EXPECT(analysis.diagnostics.front().inputIndex == 42,
+           "diagnostic should preserve explicit draw input identity");
+  }
+}
+
+void testClearItemsResetsNodeContextAndCachedAnalysis() {
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .debugId = StringID("helmet.resetInput"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  (void)queue.compileIndirectBatches();
+
+  queue.clearItems();
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+
+  EXPECT(analysis.context.pass.id == 0,
+         "clearItems should reset node context");
+  EXPECT(analysis.stats.inputDrawCount == 0,
+         "clearItems should remove draw inputs");
+  EXPECT(analysis.diagnostics.empty(),
+         "clearItems should invalidate cached diagnostics");
+  EXPECT(queue.lastBatchAnalysis().diagnostics.empty(),
+         "last batch analysis should reflect the fresh empty compile");
+}
+
+void testDrawInputMutationInvalidatesCachedAnalysis() {
+  RenderWorkQueue queue;
+  queue.setNodeContext(RenderPathNodeContext{
+      .pass = StringID("Forward"),
+      .renderPathNodeSignature = StringID("bindless.forward.opaque")});
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 0,
+      .debugId = StringID("helmet.cachedInput"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+  (void)queue.compileIndirectBatches();
+  EXPECT(!queue.lastBatchAnalysis().diagnostics.empty(),
+         "compiled analysis should be cached");
+
+  queue.addDrawInput(RenderDrawInput{
+      .inputIndex = 1,
+      .debugId = StringID("helmet.newInput"),
+      .materialTypeSignature = StringID("standard-pbr-opaque")});
+
+  EXPECT(queue.lastBatchAnalysis().diagnostics.empty(),
+         "mutating draw inputs should invalidate cached analysis");
 }
 
 } // namespace
@@ -383,8 +465,11 @@ int main() {
   testProgressTracksResourceWork();
   testIndirectDrawBufferHandleIsOpaque();
   testGpuResourceTableConsumesSceneBindlessUploadView();
-  testQueueCompilesStableIndirectBatches();
-  testDescriptorIdentityDoesNotSplitSameSignatureBatch();
+  testLegacyRenderWorkItemsAreNotAcceptedAsBatchAnalysis();
+  testSameSignatureInputsProduceSkeletonDiagnostics();
+  testDrawInputIdentityIsPreservedInDiagnostics();
+  testClearItemsResetsNodeContextAndCachedAnalysis();
+  testDrawInputMutationInvalidatesCachedAnalysis();
   if (g_failures != 0) {
     std::cerr << g_failures << " bindless/indirect checks failed\n";
     return 1;

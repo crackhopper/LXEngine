@@ -2,6 +2,7 @@
 #include "core/frame_graph/render_validation_contract.hpp"
 #include "core/rhi/gpu_resource.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -93,7 +94,7 @@ void testMigratedQueueRejectsIncompleteCoverageWithoutFallback() {
          "falling back to per-item submission");
 }
 
-void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
+void testMigratedQueueRejectsLegacyRenderWorkItems() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -106,15 +107,18 @@ void testMigratedQueueAcceptsFullyCoveredIndirectBatch() {
 
   const BindlessValidationResult result =
       validateBindlessMigratedQueue(queue, StringID("Forward"));
-  EXPECT(result.ok, "fully covered migrated queue should pass bindless audit");
-  EXPECT(result.coveredItemCount == queue.getItems().size(),
-         "audit should cover every migrated draw item");
+  EXPECT(!result.ok,
+         "legacy RenderWorkItem geometry should not pass bindless audit");
+  EXPECT(result.coveredItemCount == 0,
+         "legacy RenderWorkItem geometry should not count as covered");
+  EXPECT(result.diagnostics.size() == 2,
+         "audit should diagnose every legacy RenderWorkItem");
 
   const BindlessSubmissionDecision decision = decideBindlessSubmission(
       queue, StringID("Forward"), true, true);
-  EXPECT(decision.kind == BindlessSubmissionDecisionKind::BindlessBatch,
-         "renderer decision should submit fully covered migrated queue as a "
-         "bindless batch");
+  EXPECT(decision.kind ==
+             BindlessSubmissionDecisionKind::StrictValidationRejected,
+         "renderer decision should reject legacy RenderWorkItem geometry");
 }
 
 void testMaterialV2ValidationRejectsLegacyMaterialDescriptor() {
@@ -175,6 +179,7 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
          "typed-index fallback rejection should include diagnostics");
   bool namesMaterialIndex = false;
   bool namesDrawIndex = false;
+  bool namesFinalShader = false;
   for (const auto &diagnostic : result.diagnostics) {
     EXPECT(diagnostic.pass == StringID("Forward"),
            "typed-index diagnostic should name the rejected pass");
@@ -191,14 +196,21 @@ void testMaterialV2ValidationRejectsTypedIndexFallback() {
         diagnostic.reason.find("typed SceneDraws index") != std::string::npos) {
       namesDrawIndex = true;
     }
+    if (diagnostic.bindingName == StringID("FinalShader") &&
+        diagnostic.reason.find("resolved final shader") != std::string::npos) {
+      namesFinalShader = true;
+    }
   }
-  EXPECT(namesMaterialIndex,
-         "typed-index diagnostic should name the missing SceneMaterials index");
+  EXPECT(!namesMaterialIndex,
+         "legacy RenderWorkItem validation should not infer SceneMaterials "
+         "consumption without final shader reflection");
   EXPECT(namesDrawIndex,
          "typed-index diagnostic should name the missing SceneDraws index");
+  EXPECT(namesFinalShader,
+         "typed-index diagnostic should require final shader reflection");
 }
 
-void testMaterialV2ValidationAcceptsTypedSceneData() {
+void testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader() {
   AuditResource vertex(ResourceType::VertexBuffer, StringID{}, 96);
   AuditResource index(ResourceType::IndexBuffer, StringID{}, 48);
   AuditResource camera(ResourceType::UniformBuffer, StringID("CameraUBO"), 64);
@@ -213,20 +225,27 @@ void testMaterialV2ValidationAcceptsTypedSceneData() {
 
   const MaterialV2ValidationResult result =
       validateMaterialV2StrictQueue(queue, StringID("Forward"));
-  EXPECT(result.ok,
-         "Material v2 validation should accept typed SceneMaterials data");
-  EXPECT(result.diagnostics.empty(),
-         "accepted Material v2 validation queue should not emit diagnostics");
+  EXPECT(!result.ok,
+         "Task 2 should not preserve a positive legacy RenderWorkItem "
+         "geometry path for typed SceneMaterials data");
+  const bool namesFinalShader =
+      std::any_of(result.diagnostics.begin(), result.diagnostics.end(),
+                  [](const MaterialV2ValidationDiagnostic &diagnostic) {
+                    return diagnostic.bindingName == StringID("FinalShader");
+                  });
+  EXPECT(namesFinalShader,
+         "legacy typed SceneMaterials item should still require final shader "
+         "reflection");
 }
 
 } // namespace
 
 int main() {
   testMigratedQueueRejectsIncompleteCoverageWithoutFallback();
-  testMigratedQueueAcceptsFullyCoveredIndirectBatch();
+  testMigratedQueueRejectsLegacyRenderWorkItems();
   testMaterialV2ValidationRejectsLegacyMaterialDescriptor();
   testMaterialV2ValidationRejectsTypedIndexFallback();
-  testMaterialV2ValidationAcceptsTypedSceneData();
+  testMaterialV2ValidationRejectsLegacyTypedSceneDataWithoutFinalShader();
   if (g_failures != 0) {
     std::cerr << g_failures << " REQ-071 bridge audit checks failed\n";
     return 1;

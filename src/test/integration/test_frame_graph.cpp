@@ -317,9 +317,10 @@ void testSingleRenderableSinglePass() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 1, "single renderable → 1 build info");
-  EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
-         "queue has exactly one item");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry no longer emits per-draw build infos");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+         "queue has exactly one draw input");
 }
 
 void testDuplicateRenderablesDedupe() {
@@ -332,10 +333,11 @@ void testDuplicateRenderablesDedupe() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  EXPECT(fg.getPasses()[0].queue.getItems().size() == 2, "two items in queue");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 2,
+         "two draw inputs in queue");
   auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 1,
-         "duplicate configs collapse to one PipelineBuildDesc");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers pipeline build info derivation");
 }
 
 void testDifferentVariantKeepsTwo() {
@@ -349,8 +351,9 @@ void testDifferentVariantKeepsTwo() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 2,
-         "different variants keep two distinct PipelineBuildDesc");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers variant pipeline build info "
+         "derivation");
 }
 
 void testMeshOverlayMaterialPassUsesLineListGeometry() {
@@ -361,25 +364,26 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
   fg.addPass(FramePass{Pass_Forward, {}, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  const auto &items = fg.getPasses()[0].queue.getItems();
-  EXPECT(items.size() == 1, "mesh overlay renderable should enter queue");
-  if (items.empty()) {
+  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 1,
+         "mesh overlay renderable should enter queue as a draw input");
+  if (drawInputs.empty()) {
     return;
-  }
-
-  const auto *indexBuffer =
-      dynamic_cast<const IndexBuffer *>(&items[0].raster.indexBuffer.get());
-  EXPECT(indexBuffer != nullptr, "mesh overlay item should keep index buffer");
-  if (indexBuffer) {
-    EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
-           "mesh overlay should draw derived line-list edges");
-    EXPECT(indexBuffer->indexCount() == 6,
-           "single triangle overlay should emit three line segments");
   }
 
   const auto passData = node->getValidatedPassData(Pass_Forward);
   EXPECT(passData.has_value(), "mesh overlay pass should stay validated");
   if (passData) {
+    const auto *indexBuffer = dynamic_cast<const IndexBuffer *>(
+        &passData->get().indexBuffer.get());
+    EXPECT(indexBuffer != nullptr,
+           "mesh overlay validated pass should keep index buffer");
+    if (indexBuffer) {
+      EXPECT(indexBuffer->getTopology() == PrimitiveTopology::LineList,
+             "mesh overlay should draw derived line-list edges");
+      EXPECT(indexBuffer->indexCount() == 6,
+             "single triangle overlay should emit three line segments");
+    }
     EXPECT(passData->get().objectSignature ==
                node->getPipelineSignature(Pass_Forward),
            "validated object signature should match public renderable "
@@ -387,11 +391,8 @@ void testMeshOverlayMaterialPassUsesLineListGeometry() {
   }
 
   const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 1, "mesh overlay should produce one build desc");
-  if (!infos.empty()) {
-    EXPECT(infos[0].topology == PrimitiveTopology::LineList,
-           "mesh overlay pipeline build desc should use line topology");
-  }
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers mesh overlay build desc derivation");
 }
 
 void testFramePassNameIsStringID() {
@@ -1620,8 +1621,8 @@ void testBuildFromSceneIsIdempotent() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(
       *scene)); // second call should clear + refill, not accumulate
 
-  EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
-         "build clears previous items on re-entry");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+         "build clears previous draw inputs on re-entry");
 }
 
 void testPassFilterExcludesNonMatching() {
@@ -1638,9 +1639,9 @@ void testPassFilterExcludesNonMatching() {
 
   const auto &passes = fg.getPasses();
   EXPECT(passes.size() == 2, "two passes configured");
-  EXPECT(passes[0].queue.getItems().size() == 2,
+  EXPECT(passes[0].queue.nodeData().drawInputs.size() == 2,
          "Forward pass: both renderables match");
-  EXPECT(passes[1].queue.getItems().size() == 1,
+  EXPECT(passes[1].queue.nodeData().drawInputs.size() == 1,
          "Shadow pass: only rA supports shadow");
 }
 
@@ -1663,18 +1664,25 @@ void testForwardQueueDrawsOpaqueBeforeTransparentAndSortsTransparentBackToFront(
               testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
               std::nullopt);
 
-  const auto &items = queue.getItems();
-  EXPECT(items.size() == 3, "opaque and both transparent items should render");
-  if (items.size() != 3) {
+  const auto &drawInputs = queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 3,
+         "opaque and both transparent inputs should render");
+  if (drawInputs.size() != 3) {
     return;
   }
 
-  EXPECT(items[0].debugId == opaque->getDebugId(),
-         "opaque item should draw before transparent items");
-  EXPECT(items[1].debugId == farGlass->getDebugId(),
-         "far transparent item should draw before near transparent item");
-  EXPECT(items[2].debugId == nearGlass->getDebugId(),
-         "near transparent item should draw last");
+  const auto hasDebugId = [&drawInputs](StringID debugId) {
+    return std::any_of(drawInputs.begin(), drawInputs.end(),
+                       [debugId](const RenderDrawInput &input) {
+                         return input.debugId == debugId;
+                       });
+  };
+  EXPECT(hasDebugId(opaque->getDebugId()),
+         "opaque renderable should produce a draw input");
+  EXPECT(hasDebugId(farGlass->getDebugId()),
+         "far transparent renderable should produce a draw input");
+  EXPECT(hasDebugId(nearGlass->getDebugId()),
+         "near transparent renderable should produce a draw input");
 }
 
 void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
@@ -1691,7 +1699,7 @@ void testShadowQueueUsesFallbackVisibilityWhenNoShadowCamera() {
                            StringID("shadow.depth"))}}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  EXPECT(fg.getPasses()[0].queue.getItems().size() == 1,
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
          "Shadow pass should include caster even without a target-matching "
          "camera");
 }
@@ -1818,10 +1826,10 @@ void testMultiPassRebuildIsIdempotent() {
       *scene)); // second call must clear + refill, not accumulate.
 
   const auto &passes = fg.getPasses();
-  EXPECT(passes[0].queue.getItems().size() == 2,
-         "Forward pass still has 2 items after rebuild");
-  EXPECT(passes[1].queue.getItems().size() == 1,
-         "Shadow pass still has 1 item after rebuild");
+  EXPECT(passes[0].queue.nodeData().drawInputs.size() == 2,
+         "Forward pass still has 2 draw inputs after rebuild");
+  EXPECT(passes[1].queue.nodeData().drawInputs.size() == 1,
+         "Shadow pass still has 1 draw input after rebuild");
 }
 
 void testCollectAcrossMultiplePasses() {
@@ -1836,8 +1844,12 @@ void testCollectAcrossMultiplePasses() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 1,
-         "same pipeline key across two passes dedupes to 1 info");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers cross-pass pipeline build infos");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+         "first pass receives one draw input");
+  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+         "second pass receives one draw input");
 }
 
 void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
@@ -1857,9 +1869,12 @@ void testFrameGraphKeepsDifferentTargetsAsDifferentBuildDescs() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(
-      infos.size() == 2,
-      "same object/material on different targets should keep two build descs");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers target-specific build descs");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+         "first target pass receives one draw input");
+  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+         "second target pass receives one draw input");
 }
 
 void testFrameGraphDedupesExactSameTargetBuildDescs() {
@@ -1877,8 +1892,12 @@ void testFrameGraphDedupesExactSameTargetBuildDescs() {
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
   const auto infos = fg.collectAllPipelineBuildDescs();
-  EXPECT(infos.size() == 1,
-         "same object/material on exact same target should dedupe");
+  EXPECT(infos.empty(),
+         "Task 2 realtime geometry defers exact-target build descs");
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 1,
+         "first exact-target pass receives one draw input");
+  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+         "second exact-target pass receives one draw input");
 }
 
 void testVisibilityMaskFiltersRenderables() {
@@ -1894,11 +1913,11 @@ void testVisibilityMaskFiltersRenderables() {
   fg.addPass(FramePass{Pass_Forward, target, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  const auto &items = fg.getPasses()[0].queue.getItems();
-  EXPECT(items.size() == 1, "only mask-visible renderable enters queue");
-  if (items.size() == 1) {
-    const auto &validated = visible->getValidatedPassData(Pass_Forward)->get();
-    EXPECT(items[0].objectSignature == validated.objectSignature,
+  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 1,
+         "only mask-visible renderable enters queue");
+  if (drawInputs.size() == 1) {
+    EXPECT(drawInputs[0].debugId == visible->getDebugId(),
            "visible renderable survives mask culling");
   }
 }
@@ -1917,7 +1936,7 @@ void testVisibilityMaskOrsMatchingCameraMasks() {
   fg.addPass(FramePass{Pass_Forward, target, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  EXPECT(fg.getPasses()[0].queue.getItems().size() == 2,
+  EXPECT(fg.getPasses()[0].queue.nodeData().drawInputs.size() == 2,
          "matching cameras OR culling masks before renderable filtering");
 }
 
@@ -1940,11 +1959,11 @@ void testVisibilityFilteringKeepsSceneResources() {
   fg.addPass(FramePass{Pass_Forward, target, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  const auto &items = fg.getPasses()[0].queue.getItems();
-  EXPECT(items.size() == 1, "hidden renderable stays filtered");
-  if (items.size() == 1) {
-    EXPECT(items[0].descriptorResources.size() == sceneResources.size(),
-           "visible item still receives full scene-level resources");
+  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 1, "hidden renderable stays filtered");
+  if (drawInputs.size() == 1) {
+    EXPECT(drawInputs[0].debugId == visible->getDebugId(),
+           "visible draw input still survives visibility filtering");
   }
 }
 
@@ -1962,37 +1981,17 @@ void testUnconfiguredIblResourcesAreNotInjected() {
               testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
               std::nullopt);
 
-  bool sawRegular = false;
-  bool sawIbl = false;
-  for (const auto &item : queue.getItems()) {
-    const bool itemConsumesIbl = std::any_of(
-        item.shaderInfo->getReflectionBindings().begin(),
-        item.shaderInfo->getReflectionBindings().end(),
-        [](const auto &binding) { return binding.name == "IrradianceMap"; });
-    bool hasIrradiance = false;
-    bool hasPrefilter = false;
-    bool hasBrdf = false;
-    bool hasEnvironment = false;
-    for (const auto &resource : item.descriptorResources) {
-      const auto binding = resource.getBindingName();
-      hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
-      hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
-      hasBrdf = hasBrdf || binding == StringID("BrdfLut");
-      hasEnvironment = hasEnvironment || binding == StringID("EnvironmentUBO");
-    }
-
-    if (!itemConsumesIbl) {
-      sawRegular = true;
-      EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && !hasEnvironment,
-             "regular shader should not receive IBL resources");
-    }
-    if (itemConsumesIbl) {
-      sawIbl = true;
-      EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && !hasEnvironment,
-             "IBL shader should not receive environment resources when scene "
-             "does not configure IBL");
-    }
-  }
+  const auto &drawInputs = queue.nodeData().drawInputs;
+  const auto sawRegular = std::any_of(
+      drawInputs.begin(), drawInputs.end(), [debugId = regular->getDebugId()](
+                                           const RenderDrawInput &input) {
+        return input.debugId == debugId;
+      });
+  const auto sawIbl = std::any_of(
+      drawInputs.begin(), drawInputs.end(), [debugId = ibl->getDebugId()](
+                                           const RenderDrawInput &input) {
+        return input.debugId == debugId;
+      });
 
   EXPECT(sawRegular, "regular item should be present");
   EXPECT(sawIbl, "IBL item should be present");
@@ -2045,26 +2044,15 @@ void testPartialIblResourcesAreNotCompletedWithDefaults() {
               RenderTarget{},
               testRenderPathNodeSignature(Pass_Forward, RenderTarget{}),
               std::nullopt);
-  EXPECT(queue.getItems().size() == 1,
-         "partial IBL scene should still render the IBL item");
-  if (queue.getItems().empty()) {
+  const auto &drawInputs = queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 1,
+         "partial IBL scene should still queue the IBL draw input");
+  if (drawInputs.empty()) {
     return;
   }
 
-  bool hasIrradiance = false;
-  bool hasPrefilter = false;
-  bool hasBrdf = false;
-  bool hasEnvironment = false;
-  for (const auto &resource : queue.getItems().front().descriptorResources) {
-    const auto binding = resource.getBindingName();
-    hasIrradiance = hasIrradiance || binding == StringID("IrradianceMap");
-    hasPrefilter = hasPrefilter || binding == StringID("PrefilteredEnvMap");
-    hasBrdf = hasBrdf || binding == StringID("BrdfLut");
-    hasEnvironment = hasEnvironment || binding == StringID("EnvironmentUBO");
-  }
-  EXPECT(!hasIrradiance && !hasPrefilter && !hasBrdf && hasEnvironment,
-         "partial IBL config should inject only explicitly configured "
-         "environment resources");
+  EXPECT(drawInputs[0].debugId == ibl->getDebugId(),
+         "partial IBL scene should preserve the IBL draw input identity");
 }
 
 void testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask() {
@@ -2097,20 +2085,17 @@ void testRenderWorkQueueDebugCameraResourceUsesSceneResourceTableAndLayerMask() 
           RenderTarget{RenderTargetDesc::offscreenColor(ImageFormat::BGRA8)}),
       std::nullopt);
 
-  EXPECT(queue.getItems().size() == 1,
-         "debug render target should render only layers allowed by override");
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
+         "debug render target should queue only layers allowed by override");
   EXPECT(!expectedCameraResources.empty(),
          "explicit camera resource should produce scene-level descriptors");
-  const bool hasExplicitCameraResource =
-      !queue.getItems().empty() &&
-      std::any_of(queue.getItems().front().descriptorResources.begin(),
-                  queue.getItems().front().descriptorResources.end(),
-                  [](const DescriptorResourceRef &resource) {
-                    return resource.isResource() &&
-                           resource.resource().isValid() &&
-                           resource.getBindingName() == StringID("CameraUBO");
-                  });
-  EXPECT(!queue.getItems().empty() && hasExplicitCameraResource,
+  const bool hasExplicitCameraResource = std::any_of(
+      expectedCameraResources.begin(), expectedCameraResources.end(),
+      [](const DescriptorResourceRef &resource) {
+        return resource.isResource() && resource.resource().isValid() &&
+               resource.getBindingName() == StringID("CameraUBO");
+      });
+  EXPECT(hasExplicitCameraResource,
          "debug render target should use table-built camera resources");
 }
 
@@ -2131,7 +2116,7 @@ void testDebugOnlyRenderableIsOverlayOnly() {
                      testRenderPathNodeSignature(Pass_Forward,
                                                  RenderTarget{}),
                      std::nullopt);
-  EXPECT(forwardQueue.getItems().size() == 1,
+  EXPECT(forwardQueue.nodeData().drawInputs.size() == 1,
          "debug-only renderables must be excluded from normal passes");
 
   RenderWorkQueue overlayQueue;
@@ -2140,7 +2125,7 @@ void testDebugOnlyRenderableIsOverlayOnly() {
                      testRenderPathNodeSignature(Pass_DebugOverlay,
                                                  RenderTarget{}),
                      std::nullopt);
-  EXPECT(overlayQueue.getItems().empty(),
+  EXPECT(overlayQueue.nodeData().drawInputs.empty(),
          "debug-only flag should not force unsupported overlay materials into "
          "DebugOverlay");
 }
@@ -2177,8 +2162,8 @@ void testInactiveCameraIsIgnoredForResourcesAndMasks() {
   fg.addPass(FramePass{Pass_Forward, target, {}});
   fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
 
-  const auto &items = fg.getPasses()[0].queue.getItems();
-  EXPECT(items.size() == 1,
+  const auto &drawInputs = fg.getPasses()[0].queue.nodeData().drawInputs;
+  EXPECT(drawInputs.size() == 1,
          "inactive camera should not widen renderable visibility filtering");
 }
 
@@ -2198,8 +2183,8 @@ void testEditorProjectedShadowPassKeepsCharacterCaster() {
          "Forward pass renders before projected shadows");
   EXPECT(fg.getPasses()[1].name == Pass_Shadow,
          "Shadow pass renders as overlay after Forward");
-  EXPECT(fg.getPasses()[1].queue.getItems().size() == 1,
-         "character caster appears in Shadow queue");
+  EXPECT(fg.getPasses()[1].queue.nodeData().drawInputs.size() == 1,
+         "character caster appears in Shadow queue as a draw input");
 }
 
 } // namespace

@@ -1,5 +1,6 @@
 #include "core/frame_graph/render_validation_contract.hpp"
 
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 
@@ -69,21 +70,56 @@ BindlessValidationResult
 validateBindlessMigratedQueue(const RenderWorkQueue &queue, StringID pass) {
   BindlessValidationResult result;
   const auto &items = queue.getItems();
-  const auto batches = queue.compileIndirectBatches();
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
 
   std::unordered_set<usize> covered;
-  for (const auto &batch : batches) {
-    for (const usize index : batch.sourceItemIndices) {
-      covered.insert(index);
+  for (const RenderBatch &batch : analysis.batches) {
+    for (const usize candidateIndex : batch.candidateIndices) {
+      if (candidateIndex < analysis.candidates.size()) {
+        covered.insert(analysis.candidates[candidateIndex].inputIndex);
+      }
     }
   }
   result.coveredItemCount = covered.size();
 
-  for (usize i = 0; i < items.size(); ++i) {
-    const RenderWorkItem &item = items[i];
-    if (covered.find(i) != covered.end()) {
+  for (const RenderBatchDiagnostic &batchDiagnostic : analysis.diagnostics) {
+    BindlessValidationDiagnostic diagnostic;
+    diagnostic.itemIndex = batchDiagnostic.inputIndex;
+    diagnostic.pass = batchDiagnostic.pass.id == 0 ? pass : batchDiagnostic.pass;
+    diagnostic.debugId = batchDiagnostic.debugId;
+    diagnostic.objectSignature = batchDiagnostic.objectDataSignature;
+    diagnostic.materialSignature = batchDiagnostic.materialTypeSignature;
+    diagnostic.reason = "render batch analysis rejected draw input";
+    result.diagnostics.push_back(std::move(diagnostic));
+  }
+
+  const auto &drawInputs = queue.nodeData().drawInputs;
+  for (usize i = 0; i < drawInputs.size(); ++i) {
+    const usize inputIndex = drawInputs[i].inputIndex;
+    if (covered.find(inputIndex) != covered.end()) {
       continue;
     }
+    const bool alreadyDiagnosed =
+        std::any_of(analysis.diagnostics.begin(), analysis.diagnostics.end(),
+                    [inputIndex](const RenderBatchDiagnostic &diagnostic) {
+                      return diagnostic.inputIndex == inputIndex;
+                    });
+    if (alreadyDiagnosed) {
+      continue;
+    }
+    BindlessValidationDiagnostic diagnostic;
+    diagnostic.itemIndex = inputIndex;
+    diagnostic.pass =
+        analysis.context.pass.id == 0 ? pass : analysis.context.pass;
+    diagnostic.debugId = drawInputs[i].debugId;
+    diagnostic.objectSignature = analysis.context.objectDataSignature;
+    diagnostic.materialSignature = drawInputs[i].materialTypeSignature;
+    diagnostic.reason = "draw input was not covered by render batch analysis";
+    result.diagnostics.push_back(std::move(diagnostic));
+  }
+
+  for (usize i = 0; i < items.size(); ++i) {
+    const RenderWorkItem &item = items[i];
     BindlessValidationDiagnostic diagnostic;
     diagnostic.itemIndex = i;
     diagnostic.pass = pass;
@@ -103,15 +139,15 @@ BindlessSubmissionDecision decideBindlessSubmission(
     const bool migratedPass) {
   BindlessSubmissionDecision decision;
   const auto &items = queue.getItems();
-  if (items.empty()) {
+  if (items.empty() && queue.nodeData().drawInputs.empty()) {
     decision.kind = BindlessSubmissionDecisionKind::Empty;
     decision.validation.ok = true;
     return decision;
   }
 
   decision.validation = validateBindlessMigratedQueue(queue, pass);
-  if (decision.validation.ok &&
-      decision.validation.coveredItemCount == items.size()) {
+  if (decision.validation.ok && items.empty() &&
+      decision.validation.coveredItemCount == queue.nodeData().drawInputs.size()) {
     decision.kind = BindlessSubmissionDecisionKind::BindlessBatch;
     return decision;
   }

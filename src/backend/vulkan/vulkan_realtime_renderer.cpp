@@ -485,6 +485,40 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
   return LX_core::GlobalStringTable::get().toDebugString(id);
 }
 
+[[nodiscard]] const char *
+renderBatchDiagnosticReasonName(
+    LX_core::RenderBatchDiagnosticReason reason) {
+  switch (reason) {
+  case LX_core::RenderBatchDiagnosticReason::ObjectDataSignatureMismatch:
+    return "ObjectDataSignatureMismatch";
+  case LX_core::RenderBatchDiagnosticReason::MaterialTypeSignatureMismatch:
+    return "MaterialTypeSignatureMismatch";
+  case LX_core::RenderBatchDiagnosticReason::SourceMaterialRefUnresolved:
+    return "SourceMaterialRefUnresolved";
+  case LX_core::RenderBatchDiagnosticReason::ObjectDrawRecordUnresolved:
+    return "ObjectDrawRecordUnresolved";
+  case LX_core::RenderBatchDiagnosticReason::InvalidSourceMaterialRef:
+    return "InvalidSourceMaterialRef";
+  case LX_core::RenderBatchDiagnosticReason::InvalidDrawRecord:
+    return "InvalidDrawRecord";
+  case LX_core::RenderBatchDiagnosticReason::MissingMeshRange:
+    return "MissingMeshRange";
+  case LX_core::RenderBatchDiagnosticReason::InvalidMeshRange:
+    return "InvalidMeshRange";
+  case LX_core::RenderBatchDiagnosticReason::ZeroIndexCount:
+    return "ZeroIndexCount";
+  case LX_core::RenderBatchDiagnosticReason::ZeroInstanceCount:
+    return "ZeroInstanceCount";
+  case LX_core::RenderBatchDiagnosticReason::GlobalGeometryTableMissing:
+    return "GlobalGeometryTableMissing";
+  case LX_core::RenderBatchDiagnosticReason::BackendIndirectUnsupported:
+    return "BackendIndirectUnsupported";
+  case LX_core::RenderBatchDiagnosticReason::LegacyInputRejected:
+    return "LegacyInputRejected";
+  }
+  return "Unknown";
+}
+
 void writeStringArrayJson(std::ostream &out,
                           const std::vector<std::string> &values) {
   out << "[";
@@ -1508,6 +1542,7 @@ public:
   [[nodiscard]] usize frameGraphItemCount() const {
     usize total = 0;
     for (const auto &pass : m_frameGraph.getPasses()) {
+      total += pass.queue.nodeData().drawInputs.size();
       total += pass.queue.getItems().size();
     }
     return total;
@@ -1754,12 +1789,9 @@ public:
                     }),
                 pass, target, transientRenderPathNodeSignature(pass, target),
                 std::nullopt);
-    if (queue.getItems().empty()) {
-      throw std::runtime_error("debug render target produced no draw items");
+    if (queue.nodeData().drawInputs.empty()) {
+      throw std::runtime_error("debug render target produced no draw inputs");
     }
-
-    syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
 
     const VkExtent2D extent = m_swapchain->getExtent();
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -1949,35 +1981,12 @@ public:
                 transientRenderPathNodeSignature(LX_core::Pass_Forward,
                                                  target),
                 std::nullopt);
-    if (queue.getItems().empty()) {
+    const auto &drawInputs = queue.nodeData().drawInputs;
+    if (drawInputs.empty()) {
       throw std::runtime_error(
-          "realtime profile output produced no draw items");
+          "realtime profile output produced no draw inputs");
     }
-    auto profileCameraUbo = makeProfileCameraUbo(outputCameraResource);
-    bindProfileCameraUbo(queue, *profileCameraUbo);
-    debugInfo.cameraResourceCount = 1;
-    debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
-    debugInfo.pipelineIdentity.reserve(queue.getItems().size());
-    for (const auto &item : queue.getItems()) {
-      debugInfo.pipelineIdentity.push_back(makePipelineIdentityDebug(item));
-    }
-    const LX_core::Mat4f viewProj = outputCameraProj * outputCameraView;
-    for (const auto &renderable : m_scene->getRenderables()) {
-      if (!renderable) {
-        continue;
-      }
-      const LX_core::StringID debugId = renderable->getDebugId();
-      for (const auto &item : queue.getItems()) {
-        if (item.debugId != debugId) {
-          continue;
-        }
-        debugInfo.projectedBounds.push_back(makeProjectedBoundsDebug(
-            *renderable, item, viewProj, output.width, output.height));
-        break;
-      }
-    }
-    syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
+    debugInfo.drawItemCount = static_cast<u32>(drawInputs.size());
 
     const VkExtent2D extent{output.width, output.height};
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -2171,7 +2180,7 @@ private:
   void submitBindlessQueue(LX_core::RenderWorkQueue &queue,
                            LX_core::StringID passName,
                            VulkanCommandBuffer &cmd) {
-    auto &items = queue.getItems();
+    (void)cmd;
     const bool strictBindlessValidation = strictBindlessValidationEnabled();
     const bool migratedValidationPass =
         isMigratedBindlessValidationPass(passName);
@@ -2226,24 +2235,29 @@ private:
 
     if (decision.kind ==
         LX_core::BindlessSubmissionDecisionKind::BindlessBatch) {
-      const auto batches = queue.compileIndirectBatches();
-      for (const auto &batch : batches) {
-        if (batch.sourceItemIndices.empty()) {
-          continue;
-        }
-        LX_core::RenderWorkItem batchItem = items[batch.sourceItemIndices[0]];
-        batchItem.kind = LX_core::RenderWorkKind::RasterBatch;
-        batchItem.descriptorResources = batch.descriptorResources;
-        batchItem.raster.vertexBuffer = batch.vertexBuffer;
-        batchItem.raster.indexBuffer = batch.indexBuffer;
-        batchItem.rasterBatch.commands = batch.commands;
-        batchItem.rasterBatch.sourceItemIndices = batch.sourceItemIndices;
-        auto pipeline = resourceManager().getOrCreatePipeline(batchItem);
-        cmd.bindPipeline(pipeline);
-        cmd.bindResources(resourceManager(), pipeline, batchItem);
-        cmd.executeWorkItem(batchItem);
+      const LX_core::RenderBatchAnalysis analysis =
+          queue.compileIndirectBatches();
+      if (!analysis.diagnostics.empty()) {
+        const auto &diagnostic = analysis.diagnostics.front();
+        throw std::runtime_error(
+            "render batch analysis rejected pass " +
+            LX_core::GlobalStringTable::get().toDebugString(passName) +
+            ": input=" + std::to_string(diagnostic.inputIndex) +
+            " reason=" +
+            renderBatchDiagnosticReasonName(diagnostic.reason) +
+            " materialType=" +
+            LX_core::GlobalStringTable::get().toDebugString(
+                diagnostic.materialTypeSignature));
       }
-      return;
+      if (analysis.batches.empty()) {
+        throw std::runtime_error(
+            "render batch analysis produced no accepted batches for pass " +
+            LX_core::GlobalStringTable::get().toDebugString(passName));
+      }
+      throw std::runtime_error(
+          "render batch analysis backend consumption is not implemented for "
+          "pass " +
+          LX_core::GlobalStringTable::get().toDebugString(passName));
     }
 
     throw std::runtime_error(

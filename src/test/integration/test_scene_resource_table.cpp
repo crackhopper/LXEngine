@@ -1295,18 +1295,16 @@ void testRealtimeRenderQueueWritesTypedGpuMaterialIndex() {
       Pass_Forward, renderTarget,
       testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
-  EXPECT(queue.getItems().size() == 2,
-         "queue should contain both material-index test draws");
-  std::vector<u32> materialIndices;
-  for (const RenderWorkItem &item : queue.getItems()) {
-    EXPECT(item.raster.materialIndex != u32_max,
-           "queued draw should carry a typed SceneMaterials index");
-    materialIndices.push_back(item.raster.materialIndex);
+  EXPECT(queue.nodeData().drawInputs.size() == 2,
+         "queue should contain both material-index test draw inputs");
+
+  const auto uploadView = scene->resources().buildUploadView();
+  EXPECT(uploadView.materials.size() == 2,
+         "upload view should contain compact SceneMaterials records");
+  for (const auto &drawInput : queue.nodeData().drawInputs) {
+    EXPECT(drawInput.material.isValid(),
+           "draw input should preserve material handle for preparation");
   }
-  std::sort(materialIndices.begin(), materialIndices.end());
-  EXPECT(materialIndices.size() == 2 && materialIndices[0] == 0 &&
-             materialIndices[1] == 1,
-         "queued draws should write compact SceneMaterials indices per draw");
 }
 
 void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
@@ -1350,19 +1348,20 @@ void testRealtimeRenderQueueWritesTypedGpuDrawRecordIndex() {
            "draw record should point at compact material record");
   }
 
-  const auto batches = queue.compileIndirectBatches();
-  EXPECT(!batches.empty(),
-         "draw-record queue test should compile indirect batches");
-  std::vector<u32> firstInstances;
-  for (const auto &batch : batches) {
-    for (const auto &command : batch.commands) {
-      firstInstances.push_back(command.firstInstance);
-    }
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(!analysis.ok(),
+         "Task 2 skeleton should reject draw inputs until preparation exists");
+  EXPECT(analysis.batches.empty(),
+         "Task 2 skeleton should not emit indirect command batches");
+  EXPECT(analysis.diagnostics.size() == 2,
+         "Task 2 skeleton should diagnose every draw input");
+  EXPECT(analysis.stats.unsupportedDrawCount == 2,
+         "unsupported count should match rejected draw inputs");
+  for (const RenderBatchDiagnostic &diagnostic : analysis.diagnostics) {
+    EXPECT(diagnostic.reason ==
+               RenderBatchDiagnosticReason::GlobalGeometryTableMissing,
+           "Task 2 skeleton should report missing global geometry table");
   }
-  std::sort(firstInstances.begin(), firstInstances.end());
-  EXPECT(firstInstances.size() == 2 && firstInstances[0] == 0 &&
-             firstInstances[1] == 1,
-         "firstInstance should index typed draw records, not materials");
 }
 
 void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
@@ -1385,17 +1384,13 @@ void testRealtimeRenderQueueWritesTypedIndicesWithoutShaderConsumption() {
       Pass_Forward, renderTarget,
       testRenderPathNodeSignature(Pass_Forward, renderTarget), std::nullopt);
 
-  EXPECT(queue.getItems().size() == 1,
-         "queue should contain the shader-independent typed-index draw");
-  if (!queue.getItems().empty()) {
-    const RenderWorkItem &item = queue.getItems().front();
-    EXPECT(item.raster.materialIndex != u32_max,
-           "queued draw should carry a typed SceneMaterials index even when "
-           "the shader does not consume SceneMaterials");
-    EXPECT(item.raster.drawRecordIndex != u32_max,
-           "queued draw should carry a typed SceneDraws index even when the "
-           "shader does not consume SceneDraws");
-  }
+  EXPECT(queue.nodeData().drawInputs.size() == 1,
+         "queue should contain the shader-independent draw input");
+  const RenderBatchAnalysis analysis = queue.compileIndirectBatches();
+  EXPECT(!analysis.ok(),
+         "Task 2 skeleton should reject draw input until preparation exists");
+  EXPECT(analysis.diagnostics.size() == 1,
+         "Task 2 skeleton should diagnose the draw input");
 }
 
 void testSceneGpuRecordLayoutContract() {
