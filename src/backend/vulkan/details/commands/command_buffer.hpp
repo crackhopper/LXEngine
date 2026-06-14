@@ -39,9 +39,7 @@ public:
   VulkanCommandBuffer(
       VkCommandBuffer handle, VulkanDevice &device,
       std::vector<std::unique_ptr<VulkanBuffer>> *retainedIndirectBuffers =
-          nullptr)
-      : m_handle(handle), m_device(device),
-        m_retainedIndirectBuffers(retainedIndirectBuffers) {}
+          nullptr);
   ~VulkanCommandBuffer();
 
   VkCommandBuffer getHandle() const { return m_handle; }

@@ -41,6 +41,12 @@ VkViewport makeVulkanViewport(u32 width, u32 height) {
   return viewport;
 }
 
+VulkanCommandBuffer::VulkanCommandBuffer(
+    VkCommandBuffer handle, VulkanDevice &device,
+    std::vector<std::unique_ptr<VulkanBuffer>> *retainedIndirectBuffers)
+    : m_handle(handle), m_device(device),
+      m_retainedIndirectBuffers(retainedIndirectBuffers) {}
+
 VulkanCommandBuffer::~VulkanCommandBuffer() = default;
 
 void VulkanCommandBuffer::begin() {
