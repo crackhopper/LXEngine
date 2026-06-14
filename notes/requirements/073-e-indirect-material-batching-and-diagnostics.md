@@ -16,7 +16,7 @@
 2. `RenderPathNodeData` 携带 handle/ref-level `RenderDrawInput[]`，不预填 typed GPU table indices。
 3. `RenderBatchPreparation` 从 `SceneResourceTableUploadView` 解析 `RenderDrawInput`，输出 `PreparedRenderDrawCandidate[]`。
 4. `RenderBatchCompiler` 作为通用 compiler，按 context 的 sort policy 排序，再合并相邻 compatible prepared candidates。
-5. opaque geometry batch signature 只由 object data signature + material pipeline signature 决定。
+5. geometry batch signature 只由 object data signature + material type signature 决定；073e 的当前输入是 opaque material types。
 6. backend realtime geometry 默认提交走 Vulkan indirect draw；旧 direct/per-item geometry 成功路径删除或命名隔离，不能作为 fallback。
 7. diagnostics 和 stats 覆盖每个 input draw / prepared candidate：成功 batch、明确 split、明确 rejection，不能静默跳过。
 8. Helmet realtime smoke 只验证 073e 的 opaque indirect path；BMW/glass/transparent 留给 073f。
@@ -40,11 +40,11 @@
 
 | 概念 | 说明 |
 |---|---|
-| `RenderPathNodeContext` | pass identity、rendering mode、sort policy、render state defaults、target/attachment contract、geometry contract、object data ABI resolver、material signature resolver、global geometry table view、backend indirect capability |
+| `RenderPathNodeContext` | pass identity、rendering mode、sort policy、render state defaults、target/attachment contract、geometry contract、material type filters、object data ABI resolver、material signature resolver、global geometry table view、backend indirect capability |
 | `RenderPathNodeData` | 当前 node 的 handle/ref-level `RenderDrawInput[]` |
 | `RenderDrawInput` | object handle/ref、mesh handle/ref、material handle/ref、local primitive/submesh ref、debug identity、sort source data |
 | `RenderBatchPreparation` | queue-owned stage/helper；使用 `SceneResourceTableUploadView` 把 input references 解析成 GPU table indices/ranges 和 indirect command payload，不是新的 public hierarchy |
-| `PreparedRenderDrawCandidate` | typed object/draw indices、typed mesh table range、typed material ref/source-local material indices、object data signature、material pipeline signature、final shader reflection identity used for readiness、indirect draw counts/offsets、sort key |
+| `PreparedRenderDrawCandidate` | typed object/draw indices、typed mesh table range、typed material ref/source-local material indices、object data signature、material type signature、final shader reflection identity used for readiness、indirect draw counts/offsets、sort key |
 | `RenderBatchCompiler` | 通用 batch compiler，不带 `Opaque` 前缀 |
 | `RenderBatchAnalysis` | batches、diagnostics、stats |
 
@@ -59,7 +59,7 @@
 | `SceneResourceTableUploadView` | `REQ-073-b` 的 SceneResourceTable upload build | 只给 preparation 做 index/range 解析 |
 | final shader reflection | `REQ-073-c` 对当前 node 内 input material/source 的 material-source variant resolution | material signature resolver 与 readiness validation |
 | object data signature | 当前 bindless object/draw table ABI resolver | prepared candidate 与 backend pipeline lookup |
-| material pipeline signature | 当前 node 内对 input material 的 material signature resolver | prepared candidate 与 backend pipeline lookup |
+| material type signature | 当前 node 内对 input material 的 material signature resolver | prepared candidate 与 backend pipeline lookup |
 | typed object/draw/material/mesh index/range | preparation 通过 `SceneResourceTableUploadView` 解析 `RenderDrawInput` 生成 | prepared candidate validation 与 indirect command generation |
 | `PreparedRenderDrawCandidate` | preparation output | sort policy 与 batch merge |
 | `RenderBatchAnalysis` | batch compiler output | Vulkan indirect submission 与 diagnostics/tests |
@@ -68,12 +68,12 @@
 
 ### R2: Prepared Draw Candidate Readiness
 
-opaque geometry node 内的 prepared draw candidate 只有在以下事实由 preparation 阶段显式解析后才 indirect-ready：
+接受 opaque material types 的 RenderPathNode 内，prepared draw candidate 只有在以下事实由 preparation 阶段显式解析后才 indirect-ready：
 
 - valid mesh / geometry table range。
 - non-zero index count 和 instance count。
 - object data signature 已解析；当前 bindless 阶段为单一稳定值，例如 `BindlessObjectData.v1`。
-- material pipeline signature 已解析。
+- material type signature 已解析。
 - shader 消费 `SceneDraws` / `SceneObjects` 时，preparation 已由 input object reference 解析出 typed draw/object index。
 - shader 消费 source-local material data 时，preparation 已由 input material reference 解析出 typed material ref 和 source-local material index。
 - material storage 存在且 index/range 合法。
@@ -87,25 +87,28 @@ batch compatibility SHALL 在一个 `RenderPathNodeContext` 内判断。两个 p
 
 ```text
 object data signature == object data signature
-material pipeline signature == material pipeline signature
+material type signature == material type signature
 ```
+
+`RenderPathNode` 是普通 node/pass context；它通过 filters 声明支持哪些 material types。073e 的当前输入是 opaque material types。若同一 surface 需要 opaque / transparent 两套 shader/material 行为，应表达为不同 material type identity，例如 `standard-pbr-opaque` 和 `standard-pbr-transparent`；073f 再补 transparent material types、transparent sorting 和 adjacent-compatible merge。
 
 不得作为 batch split key：
 
 - `PipelineKey` 独立比较结果。
 - `RenderPathNodeSignature` per-draw 拷贝。
-- old mesh-derived `objectSignature`。
-- material URI、material name、material 参数值、texture presence、texture id。
-- per-material descriptor object identity 或 `DescriptorResourceList` equality。
+- old mesh-derived `objectSignature`；它必须从 production batching path 删除，不能改名保留成兼容 key。
+- material instance identity，例如 URI/name。
+- per-instance material data，例如参数值、texture/resource handle。
+- `DescriptorResourceList` equality。
 - vertex layout、object topology、target/attachment、geometry buffer identity。
 - old `MaterialUBO` / `SceneGpuMaterialRecord` PBR payload identity。
 - `techniques/...` shader URI。
 
-不同材质参数值或不同 texture slot 在 object data signature 和 material pipeline signature 相同时 SHALL 进入同一 batch。
+不同材质参数值、texture slot 或 resource handle 在 object data signature 和 material type signature 相同时 SHALL 进入同一 batch。draw command/table index 负责选择实际 object/material/mesh 数据，batch compatibility 不比较每个材质实例的存储值。
 
 ### R4: Generic Batch Pipeline Flow
 
-`RenderWorkQueue` 的 batch pipeline SHALL 使用同一流程支持 opaque 和未来 transparent node：
+`RenderWorkQueue` 的 batch pipeline SHALL 使用同一流程支持当前 opaque material types 和未来 transparent material types：
 
 ```text
 RenderPathNodeData
@@ -117,7 +120,7 @@ RenderPathNodeData
   -> return RenderBatchAnalysis
 ```
 
-073e 只实现 opaque policy：opaque 可以为了 batch locality 排序/聚合，因为深度顺序不是语义约束。073f 在同一模型上补 transparent depth sort 和 adjacent-compatible merge。
+073e 只实现 opaque material type policy：可以为了 batch locality 排序/聚合，因为深度顺序不是语义约束。073f 在同一模型上补 transparent material type、depth sort 和 adjacent-compatible merge。
 
 ### R5: Diagnostics And Stats
 
@@ -125,14 +128,14 @@ RenderPathNodeData
 
 - 每个 input draw 要么被 preparation 拒绝并带 diagnostic，要么生成 prepared candidate；每个 prepared candidate 要么被一个 batch 覆盖，要么有一个 diagnostic。
 - 没有 draw 被静默跳过。
-- diagnostics 至少包含 input draw index、pass/node context、object data signature、material pipeline signature、material/source identity、prepared mesh/draw/material index/range when available、derived PipelineKey when available、split/rejection reason。
+- diagnostics 至少包含 input draw index、pass/node context、object data signature、material type signature、material/source identity、prepared mesh/draw/material index/range when available、derived PipelineKey when available、split/rejection reason。
 - stats 至少包含 input draw count、prepared candidate count、batch count、draw count、indirect-capable draw count、unsupported draw count、legacy-rejected draw count、fallback-observed count。
 - positive validation 中 `fallback-observed == 0`。
 
 合法 split/rejection reason 词表：
 
 - `object-data-signature-mismatch`
-- `material-pipeline-signature-mismatch`
+- `material-type-signature-mismatch`
 - `source-material-ref-unresolved`
 - `object-draw-record-unresolved`
 - `invalid-source-material-ref`
@@ -145,7 +148,7 @@ RenderPathNodeData
 - `backend-indirect-unsupported`
 - `legacy-input-rejected`
 
-不得把 `descriptor-resource-mismatch`、`vertex-layout-mismatch`、`topology-mismatch`、`target-mismatch`、`geometry-buffer-mismatch` 作为 realtime opaque geometry 的永久 split reason。
+不得把 `descriptor-resource-mismatch`、`vertex-layout-mismatch`、`topology-mismatch`、`target-mismatch`、`geometry-buffer-mismatch` 作为 realtime geometry 的永久 split reason。`DescriptorResourceList` equality 是旧实现审计项，不是需求模型。
 
 ### R6: Backend Indirect Submission Hard Cut
 
@@ -194,18 +197,18 @@ Helmet realtime smoke SHALL 验证：
 - current descriptor-resource equality split 被证明为旧行为。
 - `RenderWorkKind` / `.kind` / `RasterDraw` / `RasterBatch` 不属于 geometry batch contract。
 - current bindless object data signature 是单一稳定值，参与 batch signature。
-- old mesh-derived `objectSignature` 不能拆 opaque bindless batch。
+- old mesh-derived `objectSignature` 从 production batching path 删除；如需保留，只能出现在 named negative audit。
 - 不同 vertex buffer、topology、target/attachment 或 geometry buffer identity 不能成为永久 split key。
 - zero index/instance、unresolved source material ref、unresolved draw record、invalid prepared material/draw/mesh index/range 输出 diagnostic。
 - 每个 input draw 要么 preparation diagnostic，要么生成 prepared candidate；每个 prepared candidate 都 covered or diagnosed。
 
 ### T2: Same Signature Batching
 
-构造同 object data signature、同 material pipeline signature、不同材质参数值和 texture slot 的多个 draw，断言进入同一 batch。
+构造同 object data signature、同 material type signature、不同材质参数值和 texture slot 的多个 draw，断言进入同一 batch。
 
 ### T3: Split Diagnostics
 
-构造 object data signature mismatch、material pipeline signature mismatch 和 invalid table/range data，断言 exact reason 和 input/prepared identity。
+构造 object data signature mismatch、material type signature mismatch 和 invalid table/range data，断言 exact reason 和 input/prepared identity。
 
 ### T4: Backend Indirect Submission
 
@@ -241,7 +244,7 @@ rg -n "executeWorkItem|direct.*draw|per-item" src/backend src/core src/test
 ## 边界与约束
 
 - 不写按 material source/type 的 shader runtime branch。
-- 不因贴图存在性、材质值、material URI、material name 拆 pipeline 或 batch。
+- 不直接比较 material instance identity 或 per-instance material data 来拆 pipeline 或 batch；draw/material table index 负责选择具体参数和资源。
 - 不用旧 `MaterialUBO`、`SceneGpuMaterialRecord` PBR truth 或 per-material descriptor 证明 indirect path 成功。
 - 不使用 `techniques/...`、material-local technique/defaultTechnique、legacy resolver fallback 或旧 shader source tree 作为正向 batching 输入。
 - 不保留两个可通过的 realtime geometry 默认入口。
