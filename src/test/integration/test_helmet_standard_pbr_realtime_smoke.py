@@ -73,10 +73,18 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertGreaterEqual(int(stats.get("litPixelCount", 0)), 64)
         self.assertGreaterEqual(float(stats.get("averageLuminance", 0.0)), 0.001)
         batch_stats = payload["renderBatchStats"]
-        compiler_batch_count = int(batch_stats["compilerBatchCountConsumed"])
-        submitted_batch_count = int(batch_stats["submittedIndirectBatchCount"])
-        submitted_draw_count = int(batch_stats["submittedIndirectDrawCount"])
-        fallback_count = int(batch_stats["fallbackObservedCount"])
+        compiler_batch_count = self._required_int_stat(
+            batch_stats, "compilerBatchCountConsumed"
+        )
+        submitted_batch_count = self._required_int_stat(
+            batch_stats, "submittedIndirectBatchCount"
+        )
+        submitted_draw_count = self._required_int_stat(
+            batch_stats, "submittedIndirectDrawCount"
+        )
+        fallback_count = self._required_int_stat(
+            batch_stats, "fallbackObservedCount"
+        )
         self.assertGreater(compiler_batch_count, 0)
         self.assertEqual(
             compiler_batch_count,
@@ -105,7 +113,9 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                     False,
                 )
 
-    def test_require_output_files_normalizes_render_batch_stats(self) -> None:
+    def test_require_output_files_accepts_native_integer_render_batch_stats(
+        self,
+    ) -> None:
         module = self._load_realtime_render_module()
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -115,9 +125,9 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                     "width": 4,
                     "height": 4,
                     "renderBatchStats": {
-                        "compilerBatchCountConsumed": "1",
+                        "compilerBatchCountConsumed": 1,
                         "submittedIndirectBatchCount": 1,
-                        "submittedIndirectDrawCount": "2",
+                        "submittedIndirectDrawCount": 2,
                         "fallbackObservedCount": 0,
                     },
                 },
@@ -141,10 +151,14 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                     "fallbackObservedCount": 0,
                 },
             )
+            for value in result["renderBatchStats"].values():
+                self.assertIsInstance(value, int)
+                self.assertNotIsInstance(value, bool)
 
     def test_require_output_files_rejects_malformed_render_batch_stats(self) -> None:
         module = self._load_realtime_render_module()
-        cases: list[tuple[str, dict[str, object]]] = [
+        cases: list[tuple[str, object]] = [
+            ("non-dict stats", []),
             (
                 "missing key",
                 {
@@ -154,10 +168,28 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                 },
             ),
             (
-                "non-integer value",
+                "string value",
+                {
+                    "compilerBatchCountConsumed": "1",
+                    "submittedIndirectBatchCount": 1,
+                    "submittedIndirectDrawCount": 1,
+                    "fallbackObservedCount": 0,
+                },
+            ),
+            (
+                "float value",
                 {
                     "compilerBatchCountConsumed": 1,
-                    "submittedIndirectBatchCount": "not-an-int",
+                    "submittedIndirectBatchCount": 1.9,
+                    "submittedIndirectDrawCount": 1,
+                    "fallbackObservedCount": 0,
+                },
+            ),
+            (
+                "bool value",
+                {
+                    "compilerBatchCountConsumed": 1,
+                    "submittedIndirectBatchCount": True,
                     "submittedIndirectDrawCount": 1,
                     "fallbackObservedCount": 0,
                 },
@@ -204,6 +236,12 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
+
+    def _required_int_stat(self, stats: dict[str, object], key: str) -> int:
+        value = stats[key]
+        self.assertIsInstance(value, int)
+        self.assertNotIsInstance(value, bool)
+        return value
 
     @staticmethod
     def _write_minimal_render_result(

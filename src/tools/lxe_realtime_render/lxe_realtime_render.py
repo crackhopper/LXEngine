@@ -339,16 +339,11 @@ def normalize_render_batch_stats(metadata: dict[str, object]) -> dict[str, int]:
 
     normalized: dict[str, int] = {}
     for key, value in batch_stats.items():
-        if isinstance(value, bool):
+        if isinstance(value, bool) or type(value) is not int:
             raise RuntimeError(
                 f"realtime metadata renderBatchStats {key} is not an int"
             )
-        try:
-            normalized[key] = int(value)
-        except (TypeError, ValueError) as error:
-            raise RuntimeError(
-                f"realtime metadata renderBatchStats {key} is not an int"
-            ) from error
+        normalized[key] = value
 
     for key in REQUIRED_RENDER_BATCH_STAT_KEYS:
         if key not in normalized:
