@@ -237,13 +237,15 @@ static bool testPbrShadersUseMaterialAccessorAbi(
   const struct {
     const char *label;
     std::filesystem::path path;
+    bool shouldEvaluateBsdf;
   } shaders[] = {
       {"Forward PBR",
-       shaderDir / "render_paths" / "Forward" / "pbr.frag"},
+       shaderDir / "render_paths" / "Forward" / "pbr.frag", true},
       {"Deferred GBuffer",
-       shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag"},
+       shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag", false},
       {"OfflineRT direct ray",
-       shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp"},
+       shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp",
+       true},
   };
 
   for (const auto &shader : shaders) {
@@ -276,7 +278,8 @@ static bool testPbrShadersUseMaterialAccessorAbi(
                 << " should call lxLoadMaterialSurface\n";
       return false;
     }
-    if (source.find("lxEvaluateBsdf") == std::string::npos) {
+    if (shader.shouldEvaluateBsdf &&
+        source.find("lxEvaluateBsdf") == std::string::npos) {
       std::cerr << "  FAIL: " << shader.label
                 << " should call lxEvaluateBsdf\n";
       return false;
@@ -295,6 +298,38 @@ static bool testPbrShadersUseMaterialAccessorAbi(
   }
 
   std::cout << "  PASS: PBR shaders use Material Accessor ABI source hook\n";
+  return true;
+}
+
+static bool testDeferredGBufferStoresSurfaceAlbedo(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: Deferred GBuffer stores surface albedo directly\n";
+  const auto source = readTextFile(shaderDir / "render_paths" / "Deferred" /
+                                   "pbr_gbuffer.frag");
+  if (source.empty()) {
+    std::cerr << "  FAIL: Deferred pbr_gbuffer.frag is empty or unreadable\n";
+    return false;
+  }
+  if (source.find("lxEvaluateBsdf") != std::string::npos) {
+    std::cerr << "  FAIL: Deferred GBuffer must not derive albedo from "
+                 "lxEvaluateBsdf\n";
+    return false;
+  }
+  if (source.find("LX_BSDF_PI") != std::string::npos ||
+      source.find("bsdfBaseColor") != std::string::npos) {
+    std::cerr << "  FAIL: Deferred GBuffer must not recover albedo from "
+                 "BSDF * pi\n";
+    return false;
+  }
+  if (source.find("outAlbedoAlpha = albedo") == std::string::npos &&
+      source.find("outAlbedoAlpha = vec4(albedo.rgb, albedo.a)") ==
+          std::string::npos) {
+    std::cerr << "  FAIL: Deferred GBuffer should store loaded surface "
+                 "albedo directly\n";
+    return false;
+  }
+
+  std::cout << "  PASS: Deferred GBuffer stores surface albedo directly\n";
   return true;
 }
 
@@ -1256,6 +1291,8 @@ int main(int argc, char *argv[]) {
   int failures = 0;
 
   if (!testPbrShadersUseMaterialAccessorAbi(shaderDir))
+    ++failures;
+  if (!testDeferredGBufferStoresSurfaceAlbedo(shaderDir))
     ++failures;
   if (!testVariantOnlyShaderNakedCompileFailsWithDiagnostic(shaderDir))
     ++failures;
