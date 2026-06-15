@@ -57,10 +57,16 @@ vec3 lxPbrF0(vec3 baseColor, float metallic) {
   return mix(vec3(0.04), baseColor, clamp(metallic, 0.0, 1.0));
 }
 
-vec3 lxPbrDirectLight(LxPbrDirectInput pbr) {
+vec3 lxPbrDirectBrdf(LxPbrDirectInput pbr) {
   vec3 N = normalize(pbr.normal);
   vec3 V = normalize(pbr.viewDir);
   vec3 L = normalize(pbr.lightDir);
+  float NdotV = max(dot(N, V), 0.0);
+  float NdotL = max(dot(N, L), 0.0);
+  if (NdotV <= 0.0 || NdotL <= 0.0) {
+    return vec3(0.0);
+  }
+
   vec3 H = normalize(V + L);
   float roughness = clamp(pbr.roughness, 0.04, 1.0);
   float metallic = clamp(pbr.metallic, 0.0, 1.0);
@@ -71,14 +77,18 @@ vec3 lxPbrDirectLight(LxPbrDirectInput pbr) {
   vec3 F = lxFresnelSchlick(max(dot(H, V), 0.0), F0);
 
   vec3 numerator = NDF * G * F;
-  float denominator =
-      4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+  float denominator = 4.0 * NdotV * NdotL + 0.0001;
   vec3 specular = numerator / denominator;
 
   vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+  return kD * pbr.baseColor / LX_PBR_PI + specular;
+}
+
+vec3 lxPbrDirectLight(LxPbrDirectInput pbr) {
+  vec3 N = normalize(pbr.normal);
+  vec3 L = normalize(pbr.lightDir);
   float NdotL = max(dot(N, L), 0.0);
-  return (kD * pbr.baseColor / LX_PBR_PI + specular) *
-         pbr.lightColor * NdotL;
+  return lxPbrDirectBrdf(pbr) * pbr.lightColor * NdotL;
 }
 
 vec3 lxPbrLayeredClearcoatDirectLight(LxPbrDirectInput pbr,

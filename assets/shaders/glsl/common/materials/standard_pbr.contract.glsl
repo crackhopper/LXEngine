@@ -32,6 +32,7 @@
 
 #include "../material_surface.glsl"
 #include "../material_bsdf.glsl"
+#include "../pbr.glsl"
 
 #ifndef LX_STANDARD_PBR_SOURCE_RECORDS_DECLARED
 #define LX_STANDARD_PBR_SOURCE_RECORDS_DECLARED
@@ -109,7 +110,20 @@ LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geomet
 }
 
 LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput) {
-  return lxEvaluateLambertLikeBsdf(bsdfInput);
+  LxPbrDirectInput pbrInput;
+  pbrInput.baseColor = max(bsdfInput.baseColor, vec3(0.0));
+  pbrInput.normal = bsdfInput.normal;
+  pbrInput.viewDir = bsdfInput.wo;
+  pbrInput.lightDir = bsdfInput.wi;
+  pbrInput.lightColor = vec3(1.0);
+  pbrInput.metallic = bsdfInput.metallic;
+  pbrInput.roughness = bsdfInput.roughness;
+  pbrInput.ao = bsdfInput.ao;
+  pbrInput.emissive = bsdfInput.emissive;
+
+  LxBsdfEvaluateOutput result;
+  result.value = lxPbrDirectBrdf(pbrInput);
+  return result;
 }
 
 LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput) {
