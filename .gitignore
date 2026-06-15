@@ -60,10 +60,6 @@ notes/superpowers/
 
 # local editor / scene workspace data
 data/
-!data/
-!data/scenes/
-!data/scenes/bmw-m6/
-!data/scenes/bmw-m6/**
 
 # local implementation worktrees
 .worktrees/
