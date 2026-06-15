@@ -27,7 +27,31 @@ endif()
 if(NOT SHADERC_LIB)
   message(FATAL_ERROR "shaderc not found. Set SHADERC_DIR or install libshaderc-dev (Linux) / Vulkan SDK (Windows)")
 endif()
+
+if(NOT SHADERC_INCLUDE_DIR OR "${SHADERC_INCLUDE_DIR}" STREQUAL "")
+  set(_LX_SHADERC_INCLUDE_HINTS)
+  if(SHADERC_DIR)
+    list(APPEND _LX_SHADERC_INCLUDE_HINTS "${SHADERC_DIR}/include")
+  endif()
+  if(DEFINED ENV{VULKAN_SDK})
+    list(APPEND _LX_SHADERC_INCLUDE_HINTS "$ENV{VULKAN_SDK}/include")
+  endif()
+  if(SHADERC_LIB)
+    get_filename_component(_LX_SHADERC_LIB_DIR "${SHADERC_LIB}" DIRECTORY)
+    get_filename_component(_LX_SHADERC_ROOT "${_LX_SHADERC_LIB_DIR}/.." ABSOLUTE)
+    list(APPEND _LX_SHADERC_INCLUDE_HINTS "${_LX_SHADERC_ROOT}/include")
+  endif()
+  find_path(SHADERC_INCLUDE_DIR
+    NAMES shaderc/shaderc.hpp
+    HINTS ${_LX_SHADERC_INCLUDE_HINTS}
+  )
+endif()
+
+if(NOT SHADERC_INCLUDE_DIR)
+  message(FATAL_ERROR "shaderc headers not found. Set SHADERC_DIR or install libshaderc-dev (Linux) / Vulkan SDK (Windows)")
+endif()
 message(STATUS "shaderc library: ${SHADERC_LIB}")
+message(STATUS "shaderc include: ${SHADERC_INCLUDE_DIR}")
 
 # shaderc_combined (static) requires SPIRV-Tools and SPIRV-Tools-opt
 if(SHADERC_LIB MATCHES "shaderc_combined")
