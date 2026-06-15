@@ -125,7 +125,10 @@ class GltfMaterialConvertTest(unittest.TestCase):
             self.assertIn("kind: Directional", scene_text)
             self.assertIn("direction: [-0.45, -0.75, -0.48]", scene_text)
             self.assertIn("intensity: 4.0", scene_text)
-            self.assertNotIn("ground", scene_text.lower())
+            self.assertNotIn("nodeName: ground", scene_text)
+            self.assertNotIn("name: ground", scene_text)
+            self.assertNotIn("ground_mesh", scene_text)
+            self.assertNotIn("builtin://lxe_editor/primitives/plane", scene_text)
             self.assertIn("uri: assets/models/damaged_helmet/DamagedHelmet.gltf", scene_text)
             self.assertIn(
                 "uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material",
