@@ -84,10 +84,14 @@ VkFormat imageFormatToVk(ImageFormat format) {
   switch (format) {
   case ImageFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case ImageFormat::RGBA8Srgb:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case ImageFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case ImageFormat::BGRA8Srgb:
+    return VK_FORMAT_B8G8R8A8_SRGB;
   case ImageFormat::R8:
     return VK_FORMAT_R8_UNORM;
   case ImageFormat::D32Float:
@@ -341,11 +345,11 @@ VulkanGraphicsPipeline::getColorBlendStateCreateInfo() {
 
   usize colorAttachmentCount = m_target.colorAttachmentCount();
   if (!m_attachments.empty()) {
-    colorAttachmentCount = static_cast<usize>(std::count_if(
-        m_attachments.begin(), m_attachments.end(),
-        [](const RenderPathAttachmentContract &contract) {
-          return !contract.depth;
-        }));
+    colorAttachmentCount = static_cast<usize>(
+        std::count_if(m_attachments.begin(), m_attachments.end(),
+                      [](const RenderPathAttachmentContract &contract) {
+                        return !contract.depth;
+                      }));
   }
   m_colorBlendAttachments.assign(colorAttachmentCount, attachment);
 

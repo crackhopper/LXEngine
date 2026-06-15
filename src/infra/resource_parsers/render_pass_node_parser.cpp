@@ -191,10 +191,9 @@ bool rejectUnsupportedFields(const YAML::Node &node,
       continue;
     }
     const std::string key = it->first.as<std::string>();
-    if (key == "id" || key == "shader" || key == "stage" ||
-        key == "dispatch" || key == "rendering" || key == "input" ||
-        key == "sources" || key == "targets" || key == "renderState" ||
-        key == "writeMode") {
+    if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
+        key == "rendering" || key == "input" || key == "sources" ||
+        key == "targets" || key == "renderState" || key == "writeMode") {
       continue;
     }
     if (key == "enginePass") {
@@ -396,10 +395,10 @@ parseGeometryContract(const YAML::Node &node, RenderPassNodeParseResult &result,
   if (!valid) {
     return std::nullopt;
   }
-  auto vertex = parseGeometryVertexContract(node["vertex"], result,
-                                            field + ".vertex");
-  auto topology = parseGeometryTopology(node["topology"], result,
-                                        field + ".topology");
+  auto vertex =
+      parseGeometryVertexContract(node["vertex"], result, field + ".vertex");
+  auto topology =
+      parseGeometryTopology(node["topology"], result, field + ".topology");
   if (!vertex.has_value() || !topology.has_value()) {
     return std::nullopt;
   }
@@ -503,7 +502,8 @@ parseMaterialInputFilter(const YAML::Node &node,
   }
   material.types = std::move(*types);
   if (const auto required = node["required"]) {
-    auto parsedRequired = parseBoolScalar(required, result, field + ".required");
+    auto parsedRequired =
+        parseBoolScalar(required, result, field + ".required");
     if (!parsedRequired.has_value()) {
       return std::nullopt;
     }
@@ -536,7 +536,8 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
         key == "geometry") {
       continue;
     }
-    addDiagnostic(result, field + "." + key, "unsupported input contract field");
+    addDiagnostic(result, field + "." + key,
+                  "unsupported input contract field");
     valid = false;
   }
 
@@ -562,8 +563,9 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
       rejectedField = true;
     }
     if (node["material"]) {
-      addDiagnostic(result, field + ".material",
-                    "fullscreen-triangle input does not accept material filter");
+      addDiagnostic(
+          result, field + ".material",
+          "fullscreen-triangle input does not accept material filter");
       rejectedField = true;
     }
     if (node["geometry"]) {
@@ -604,14 +606,15 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
                                std::move(input));
   }
 
-  auto object = parseObjectInputFilter(node["object"], result, field + ".object");
+  auto object =
+      parseObjectInputFilter(node["object"], result, field + ".object");
   auto material =
       parseMaterialInputFilter(node["material"], result, field + ".material");
   std::optional<LX_core::RenderPathGeometryContract> geometry;
   bool geometryValid = true;
   if (node["geometry"]) {
-    auto parsedGeometry = parseGeometryContract(node["geometry"], result,
-                                                field + ".geometry");
+    auto parsedGeometry =
+        parseGeometryContract(node["geometry"], result, field + ".geometry");
     if (parsedGeometry.has_value()) {
       geometry = *parsedGeometry;
     } else {
@@ -649,11 +652,17 @@ parseImageFormat(const YAML::Node &node, RenderPassNodeParseResult &result,
   if (value == "RGBA8") {
     return LX_core::ImageFormat::RGBA8;
   }
+  if (value == "RGBA8Srgb" || value == "RGBA8_SRGB") {
+    return LX_core::ImageFormat::RGBA8Srgb;
+  }
   if (value == "RGBA16F" || value == "RGBA16Float") {
     return LX_core::ImageFormat::RGBA16Float;
   }
   if (value == "BGRA8") {
     return LX_core::ImageFormat::BGRA8;
+  }
+  if (value == "BGRA8Srgb" || value == "BGRA8_SRGB") {
+    return LX_core::ImageFormat::BGRA8Srgb;
   }
   if (value == "R8") {
     return LX_core::ImageFormat::R8;
@@ -710,13 +719,14 @@ parseAttachmentContracts(const YAML::Node &node,
     }
     valid &= requireField(attachmentNode["target"], result, prefix + ".target");
     valid &= requireField(attachmentNode["format"], result, prefix + ".format");
-    valid &= requireField(attachmentNode["samples"], result, prefix + ".samples");
+    valid &=
+        requireField(attachmentNode["samples"], result, prefix + ".samples");
     valid &= requireField(attachmentNode["layers"], result, prefix + ".layers");
     if (!valid) {
       continue;
     }
-    auto format = parseImageFormat(attachmentNode["format"], result,
-                                   prefix + ".format");
+    auto format =
+        parseImageFormat(attachmentNode["format"], result, prefix + ".format");
     if (!format.has_value()) {
       continue;
     }
@@ -813,10 +823,9 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   std::vector<std::string> targets = parseStringList(node["targets"]);
   validateResourceVocabulary(sources, result, fieldPrefix + ".sources");
   validateResourceVocabulary(targets, result, fieldPrefix + ".targets");
-  auto attachments = parseAttachmentContracts(node["rendering"]["attachments"],
-                                              result,
-                                              fieldPrefix +
-                                                  ".rendering.attachments");
+  auto attachments =
+      parseAttachmentContracts(node["rendering"]["attachments"], result,
+                               fieldPrefix + ".rendering.attachments");
   if (!result.diagnostics.empty()) {
     return result;
   }

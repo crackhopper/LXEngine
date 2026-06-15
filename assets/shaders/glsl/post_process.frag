@@ -10,6 +10,7 @@ layout(set = 0, binding = 0) uniform sampler2D SceneColor;
 layout(set = 0, binding = 1) uniform PostProcessUBO {
     float exposure;
     int toneMappingMode;
+    int outputEncodingMode;
     float gamma;
     float bloomIntensity;
 } postProcess;
@@ -22,5 +23,8 @@ void main() {
     vec3 mapped = postProcess.toneMappingMode == 1
                       ? lxToneMapReinhard(hdr, postProcess.exposure)
                       : lxToneMapAces(hdr, postProcess.exposure);
-    outColor = vec4(lxLinearToSrgbGamma(mapped, postProcess.gamma), 1.0);
+    vec3 encoded = postProcess.outputEncodingMode == 1
+                       ? lxLinearToSrgbGamma(mapped, postProcess.gamma)
+                       : mapped;
+    outColor = vec4(encoded, 1.0);
 }

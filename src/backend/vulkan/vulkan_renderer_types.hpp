@@ -6,6 +6,11 @@
 
 namespace LX_core::backend {
 
+enum class VulkanPostProcessOutputEncoding : u32 {
+  Linear = 0,
+  Srgb = 1,
+};
+
 struct VulkanPostProcessSettings final {
   bool bloomEnabled = true;
   float bloomIntensity = 0.25f;

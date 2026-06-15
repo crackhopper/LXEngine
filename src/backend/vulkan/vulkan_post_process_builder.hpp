@@ -11,7 +11,8 @@ public:
   explicit VulkanPostProcessBuilder(const VulkanPostProcessSettings &settings);
 
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr
-  createStandardPostProcessMaterial() const;
+  createStandardPostProcessMaterial(
+      VulkanPostProcessOutputEncoding outputEncoding) const;
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createBloomThresholdMaterial() const;
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr

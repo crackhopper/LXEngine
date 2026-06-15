@@ -97,17 +97,19 @@ std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
           1,
           LX_core::ShaderPropertyType::UniformBuffer,
           1,
-          16,
+          20,
           0,
           LX_core::ShaderStage::Fragment,
           {LX_core::StructMemberInfo{"exposure",
                                      LX_core::ShaderPropertyType::Float, 0, 4},
            LX_core::StructMemberInfo{"toneMappingMode",
                                      LX_core::ShaderPropertyType::Int, 4, 4},
+           LX_core::StructMemberInfo{"outputEncodingMode",
+                                     LX_core::ShaderPropertyType::Int, 8, 4},
            LX_core::StructMemberInfo{"gamma",
-                                     LX_core::ShaderPropertyType::Float, 8, 4},
+                                     LX_core::ShaderPropertyType::Float, 12, 4},
            LX_core::StructMemberInfo{
-               "bloomIntensity", LX_core::ShaderPropertyType::Float, 12, 4}}},
+               "bloomIntensity", LX_core::ShaderPropertyType::Float, 16, 4}}},
       LX_core::ShaderResourceBinding{"BloomColor",
                                      0,
                                      2,
@@ -314,7 +316,8 @@ VulkanPostProcessBuilder::VulkanPostProcessBuilder(
     : m_settings(settings) {}
 
 LX_core::MaterialInstanceUniquePtr
-VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
+VulkanPostProcessBuilder::createStandardPostProcessMaterial(
+    const VulkanPostProcessOutputEncoding outputEncoding) const {
   auto shader = std::make_shared<StaticFullscreenShader>(
       kPostProcessShaderName, loadGraphicsShaderStages(kPostProcessShaderName),
       postProcessBindings());
@@ -333,6 +336,9 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
                                         LX_core::StringID("toneMappingMode"),
                                         0);
+  material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
+                                        LX_core::StringID("outputEncodingMode"),
+                                        static_cast<int>(outputEncoding));
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
                                         LX_core::StringID("gamma"), 2.2f);
   material->writeShaderBindingParameter(

@@ -23,9 +23,7 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
-PipelineKey testKey(const char *name) {
-  return PipelineKey{StringID(name)};
-}
+PipelineKey testKey(const char *name) { return PipelineKey{StringID(name)}; }
 
 std::vector<ShaderStageCode> graphicsStages() {
   return {
@@ -214,6 +212,17 @@ void testDirectConstructionIsDeterministic() {
          "attachments should be deterministic");
 }
 
+void testSrgbSwapchainTargetKeepsDistinctPipelineSignature() {
+  const RenderTargetDesc unorm =
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
+  const RenderTargetDesc srgb = RenderTargetDesc::swapchain(
+      ImageFormat::BGRA8Srgb, ImageFormat::D32Float);
+
+  EXPECT(unorm != srgb, "sRGB swapchain format must not collapse to UNORM");
+  EXPECT(unorm.getPipelineSignature() != srgb.getPipelineSignature(),
+         "sRGB swapchain target needs a distinct pipeline identity");
+}
+
 } // namespace
 
 int main() {
@@ -222,6 +231,7 @@ int main() {
   testGraphicsPreservesDirectConstructionFacts();
   testComputePreservesDirectConstructionFacts();
   testDirectConstructionIsDeterministic();
+  testSrgbSwapchainTargetKeepsDistinctPipelineSignature();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

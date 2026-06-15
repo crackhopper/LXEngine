@@ -52,10 +52,14 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
   switch (format) {
   case LX_core::ImageFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case LX_core::ImageFormat::RGBA8Srgb:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case LX_core::ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case LX_core::ImageFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case LX_core::ImageFormat::BGRA8Srgb:
+    return VK_FORMAT_B8G8R8A8_SRGB;
   case LX_core::ImageFormat::R8:
     return VK_FORMAT_R8_UNORM;
   case LX_core::ImageFormat::D32Float:
@@ -94,8 +98,7 @@ bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
   return false;
 }
 
-std::optional<usize>
-bufferHandleToken(const VulkanAnyResource &gpuRes) {
+std::optional<usize> bufferHandleToken(const VulkanAnyResource &gpuRes) {
   if (const auto bufferPtr = std::get_if<VulkanBufferUniquePtr>(&gpuRes)) {
     if (*bufferPtr) {
       return std::hash<VkBuffer>{}((*bufferPtr)->getHandle());
@@ -454,9 +457,8 @@ VulkanResourceManager::getRenderPass(const RenderTargetDesc &target) {
     depthFormat = toVkFormat(*target.depthFormat);
   }
 
-  auto renderPass =
-      VulkanRenderPass::create(m_device, std::move(colorFormats), depthFormat,
-                               false);
+  auto renderPass = VulkanRenderPass::create(m_device, std::move(colorFormats),
+                                             depthFormat, false);
   auto [insertedIt, inserted] =
       m_frameGraphRenderPasses.emplace(hash, std::move(renderPass));
   (void)inserted;

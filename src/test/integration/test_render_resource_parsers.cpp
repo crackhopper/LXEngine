@@ -182,6 +182,53 @@ void testDefaultRenderPathGraphAssetParses() {
   }
 }
 
+void testRenderPathGraphParsesSrgbSwapchainAttachment() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://srgb-swapchain.render-path.yaml",
+                                   R"(
+schema: lxe.render-path-graph.v1
+name: SrgbSwapchain
+renderPath: Forward
+features: {}
+passes:
+  - id: PostProcess
+    stage: raster
+    dispatch: fullscreen
+    shader: post_process
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8Srgb
+          samples: 1
+          layers: 1
+    sources: [hdr.color]
+    targets: [swapchain.color]
+    renderState:
+      cullMode: Back
+      depthTest: false
+      depthWrite: false
+      depthOp: LessEqual
+)");
+
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "render path graph should parse BGRA8Srgb attachment format");
+  EXPECT(parsed.diagnostics.empty(),
+         "BGRA8Srgb attachment should not emit diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
+    return;
+  }
+  const auto &passes = parsed.renderPathGraph->passes;
+  EXPECT(passes.size() == 1, "test graph should contain one pass");
+  if (!passes.empty() && !passes.front().attachments.empty()) {
+    EXPECT(passes.front().attachments.front().format ==
+               LX_core::ImageFormat::BGRA8Srgb,
+           "BGRA8Srgb should be retained in attachment contract");
+  }
+}
+
 void testDefaultDeferredRenderPathGraphAssetParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
@@ -190,8 +237,9 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
 
   EXPECT(parsed.renderPathGraph.has_value(),
          "default deferred render path graph asset should parse");
-  EXPECT(parsed.diagnostics.empty(),
-         "default deferred render path graph asset should not emit diagnostics");
+  EXPECT(
+      parsed.diagnostics.empty(),
+      "default deferred render path graph asset should not emit diagnostics");
   if (!parsed.renderPathGraph.has_value()) {
     return;
   }
@@ -481,8 +529,8 @@ void testParserAdapterRejectsMissingGraphShaderDependency() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
-      "lxe_missing_shader.render-path.yaml", R"(
+  const LX_core::ResourceUri graphUri =
+      writeTempRenderPathGraph("lxe_missing_shader.render-path.yaml", R"(
 schema: lxe.render-path-graph.v1
 name: MissingShader
 renderPath: Forward
@@ -512,9 +560,9 @@ passes:
       depthOp: LessEqual
 )");
 
-  const auto parsed = registry.parse(
-      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
-      LX_infra::SceneResourceParseContext{});
+  const auto parsed =
+      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
+                     graphUri, LX_infra::SceneResourceParseContext{});
 
   EXPECT(!parsed.identity.isValid() ||
              parsed.metadata.state == LX_core::ResourceState::Failed,
@@ -545,8 +593,8 @@ void testParserAdapterResolvesRenderPathShaderUriForms() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
-      "lxe_shader_forms.render-path.yaml", R"(
+  const LX_core::ResourceUri graphUri =
+      writeTempRenderPathGraph("lxe_shader_forms.render-path.yaml", R"(
 schema: lxe.render-path-graph.v1
 name: ShaderForms
 renderPath: Forward
@@ -703,9 +751,9 @@ passes:
       depthOp: LessEqual
 )");
 
-  const auto parsed = registry.parse(
-      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
-      LX_infra::SceneResourceParseContext{});
+  const auto parsed =
+      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
+                     graphUri, LX_infra::SceneResourceParseContext{});
 
   EXPECT(parsed.diagnostics.empty(),
          "RenderPath shader URI forms should resolve without diagnostics");
@@ -745,9 +793,10 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
     LX_infra::registerRenderResourceParsers(registry);
     LX_core::SceneResourceTable table;
 
-    const auto parsed = registry.parse(
-        table, LX_core::SceneResourceType::RenderPathGraph,
-        LX_core::ResourceUri(asset.path), LX_infra::SceneResourceParseContext{});
+    const auto parsed =
+        registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
+                       LX_core::ResourceUri(asset.path),
+                       LX_infra::SceneResourceParseContext{});
 
     EXPECT(parsed.diagnostics.empty(),
            std::string(asset.path) +
@@ -786,6 +835,7 @@ int main() {
   testRenderFeatureParsesPureEnvelope();
   testDefaultRenderFeatureAssetParses();
   testDefaultRenderPathGraphAssetParses();
+  testRenderPathGraphParsesSrgbSwapchainAttachment();
   testDefaultDeferredRenderPathGraphAssetParses();
   testRenderFeatureRejectsPassAndShaderFields();
   testRenderFeatureResourcesAreExplicitlyNotImplemented();
