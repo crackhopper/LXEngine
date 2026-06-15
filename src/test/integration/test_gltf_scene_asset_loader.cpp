@@ -262,17 +262,17 @@ void testGltfLoaderExtractsMetallicRoughnessFactorsAndTextures() {
   loader.load(gltfPath.string());
   const infra::GLTFPbrMaterial &pbr = loader.getMaterial();
 
-  expectNear(pbr.baseColorFactor.x, 0.2f,
+  expectNear(pbr.baseColor.x, 0.2f,
              "glTF baseColorFactor r should be extracted");
-  expectNear(pbr.baseColorFactor.y, 0.3f,
+  expectNear(pbr.baseColor.y, 0.3f,
              "glTF baseColorFactor g should be extracted");
-  expectNear(pbr.baseColorFactor.z, 0.4f,
+  expectNear(pbr.baseColor.z, 0.4f,
              "glTF baseColorFactor b should be extracted");
-  expectNear(pbr.baseColorFactor.w, 0.5f,
+  expectNear(pbr.baseColor.w, 0.5f,
              "glTF baseColorFactor a should be extracted");
-  expectNear(pbr.metallicFactor, 0.6f,
+  expectNear(pbr.metallic, 0.6f,
              "glTF metallicFactor should be extracted");
-  expectNear(pbr.roughnessFactor, 0.7f,
+  expectNear(pbr.roughness, 0.7f,
              "glTF roughnessFactor should be extracted");
   expect(pbr.alphaMode == "MASK", "glTF alphaMode should be extracted");
   expectNear(pbr.alphaCutoff, 0.35f,

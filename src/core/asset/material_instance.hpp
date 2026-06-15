@@ -54,7 +54,7 @@ struct MaterialParameterValue final {
    procedural 或旧测试路径使用。
 
 这条分层很重要：envelope-backed surface instance 会忽略旧 shader-binding 参数写入，
-防止 `MaterialUBO` 重新成为默认 surface truth。真正会影响 pipeline identity 的是
+防止旧 material UBO 重新成为默认 surface truth。真正会影响 pipeline identity 的是
 material type/source variant；普通 envelope 参数值只改变材质数据和上传版本。
 */
 class MaterialInstance {

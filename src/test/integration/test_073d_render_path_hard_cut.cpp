@@ -42,7 +42,7 @@ constexpr std::string_view kRenderPathNamespace = "render_paths/";
 
 bool isRepoRoot(const fs::path &path) {
   return fs::exists(path / "assets/render_paths/forward_main.render-path.yaml") &&
-         fs::exists(path / "src/editor/scene_runtime.cpp");
+         fs::exists(path / "src/editor/runtime/scene_runtime.cpp");
 }
 
 fs::path findRepoRoot() {

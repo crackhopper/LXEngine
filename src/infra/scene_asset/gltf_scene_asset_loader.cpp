@@ -289,10 +289,9 @@ void setTextureEnvelope(MaterialInstanceSharedPtr &material,
   material->setMaterialContractReflection(reflection);
 
   setRgbEnvelope(material, "baseColor",
-                 Vec3f{pbr.baseColorFactor.x, pbr.baseColorFactor.y,
-                       pbr.baseColorFactor.z});
-  setFloatEnvelope(material, "metallic", pbr.metallicFactor);
-  setFloatEnvelope(material, "roughness", pbr.roughnessFactor);
+                 Vec3f{pbr.baseColor.x, pbr.baseColor.y, pbr.baseColor.z});
+  setFloatEnvelope(material, "metallic", pbr.metallic);
+  setFloatEnvelope(material, "roughness", pbr.roughness);
   setRgbEnvelope(material, "emissive", pbr.emissiveFactor);
   setStringEnvelope(material, "alphaMode", pbr.alphaMode);
   setFloatEnvelope(material, "alphaCutoff", pbr.alphaCutoff);
