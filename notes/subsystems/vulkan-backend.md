@@ -62,6 +62,20 @@
 | PostProcess 是否知道目标编码 | 应该。`PostProcessUBO.outputEncodingMode` 由目标 `ImageFormat` 决定，而不是由 scene 名字、相机或测试路径推断 |
 | pipeline target 和 swapchain image view 是否同格式族 | 应该。sRGB surface 必须形成 sRGB pipeline target，UNORM surface 才形成 UNORM target |
 
+### Debug color-transfer export
+
+`render debug export-path color-transfer [camera-path] [out-dir]` runs a
+diagnostic render path that exports HDR, tone-mapped linear, sRGB-attachment,
+UNORM manual-sRGB, and fixed ramp targets into one bundle. This command is for
+root-cause localization. It is not a production color-management policy.
+
+The important rule is that raw LDR PNG outputs from this bundle are written
+without an extra CPU gamma pass. If `debug.final.srgb` is dark while
+`debug.final.unorm_manual_srgb` is correct, the next fix must inspect attachment
+format, dynamic rendering pipeline format, image view format, or readback. If
+the ramp targets agree but the helmet targets diverge, the bug is probably in
+PBR/tone mapping/input data rather than Vulkan sRGB attachment conversion.
+
 ## 阴影调试复盘
 
 方向光阴影像一台临时搬到灯光方向上的正交相机：我们先用 active camera 的视锥决定要覆盖的世界范围，再从灯光方向渲染一张深度图，Forward pass 里的像素再拿自己的世界坐标回到这张深度图里查深度。
