@@ -28,10 +28,11 @@ main.cpp
   -> OfflineSceneLoader
   -> SoftwareComputeOfflineIntegrator
   -> createOfflineRenderFrameGraph
-  -> RenderWorkQueue::build(RenderWorkBuildContext::offline(...))
+  -> RenderWorkCompiler::buildInputs(...)
+  -> RenderWorkCompiler::prepare(...)
   -> buildOfflineSceneStorageResources
   -> OfflineRenderGraphExecutor
-  -> offline_primary_ray.comp
+  -> offline_pbr_direct_ray.comp
   -> OfflineImageWriter
 ```
 
@@ -59,7 +60,7 @@ src/tools/lxe_offline_render/offline_render_cli.cpp
 | `loader.load()` | 把 scene 文档裁剪进 `SceneResourceTable` | `offline_scene_loader.cpp` |
 | `renderer.render()` | 选择 explicit integrator | `vulkan_offline_renderer.cpp` |
 | `SoftwareComputeOfflineIntegrator::render()` | 创建 offline FrameGraph 并驱动 headless compute | `software_compute_offline_integrator.cpp` |
-| `FrameGraph::build(...)` | 从 offline job 生成 compute work item | `render_queue.cpp` |
+| `RenderWorkCompiler::buildInputs(...)` / `prepare(...)` | 从 offline job 生成 compute input 和 pipeline-facing desc | `render_work_compiler.cpp` |
 | `OfflineRenderGraphExecutor::execute()` | 复用 pipeline / descriptor / command buffer 路径执行 compute | `offline_render_graph_executor.cpp` |
 | `writeOfflineImageOutputs()` | 写 EXR / PNG / JSON / raw | `offline_image_writer.cpp` |
 
@@ -91,7 +92,7 @@ src/core/offline/offline_render_job.hpp
 | `material.uri` + overrides | `MaterialInstance` | baseColor、metallic、roughness、emissive |
 | `light.kind: Directional` | `LightResource` | 当前取方向光参与直接光和阴影测试 |
 
-`SceneResourceTable` 是阅读这块的核心。它像离线实验室的标准样品：不携带 editor 状态，不携带 realtime draw item，也没有 Vulkan 句柄。它只保留离线计算需要的事实。
+`SceneResourceTable` 是阅读这块的核心。它像离线实验室的标准样品：不携带 editor 状态，不携带 realtime draw input，也没有 Vulkan 句柄。它只保留离线计算需要的事实。
 
 读 `OfflineSceneLoader::load()` 时，可以按这几个函数理解：
 
@@ -114,7 +115,7 @@ src/core/scene/scene_resource_table.cpp
 src/core/offline/offline_scene_storage_resources.cpp
 src/core/raytracing/software_bvh.hpp
 src/core/raytracing/software_bvh.cpp
-assets/shaders/glsl/offline_primary_ray.comp
+assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
 src/test/integration/test_offline_gpu_scene.cpp
 ```
 
@@ -136,7 +137,7 @@ src/test/integration/test_offline_gpu_scene.cpp
 3. table 把 object transform 保留在 `SceneGpuObjectRecord`，BVH 使用 world-space bounds。
 4. `makeShaderParams()` 根据 active camera、output profile、offline settings 和第一个方向光写入 `SceneGpuFrameParams`。
 
-修改这层时，一定同步看 `offline_primary_ray.comp`。C++ 的 `alignas(16)`、`static_assert(sizeof(...))` 和 GLSL 的 `layout(std430)` 必须一起维护。否则 shader 会按错误偏移读 buffer，画面可能不是崩溃，而是颜色、阴影或相机方向悄悄错掉。
+修改这层时，一定同步看 `offline_pbr_direct_ray.comp` 和相关 material contract include。C++ 的 `alignas(16)`、`static_assert(sizeof(...))` 和 GLSL 的 `layout(std430)` 必须一起维护。否则 shader 会按错误偏移读 buffer，画面可能不是崩溃，而是颜色、阴影或相机方向悄悄错掉。
 
 ## 第四站：BVH 让 shader 不必遍历所有三角形
 
@@ -145,7 +146,7 @@ src/test/integration/test_offline_gpu_scene.cpp
 ```text
 src/core/raytracing/software_bvh.hpp
 src/core/raytracing/software_bvh.cpp
-assets/shaders/glsl/offline_primary_ray.comp
+assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
 ```
 
 `SceneSoftwareBvh` 当前在 CPU 上为 primitive buffer 构建一棵紧凑 BVH，再把节点上传给 compute shader。它不是最终的高性能加速结构，但已经让 MVP 有了 closest-hit 查询和 shadow ray 查询。
@@ -176,40 +177,45 @@ src/backend/vulkan/offline/vulkan_offline_renderer.hpp
 src/backend/vulkan/offline/vulkan_offline_renderer.cpp
 src/backend/vulkan/offline/software_compute_offline_integrator.cpp
 src/core/offline/offline_render_work_graph.cpp
-src/core/frame_graph/render_queue.cpp
+src/core/frame_graph/render_work_compiler.cpp
 src/backend/vulkan/offline/offline_render_graph_executor.cpp
 ```
 
-它和实时 renderer 最大区别是：没有窗口、swapchain 和实时 raster pass；但它并不绕开 `FrameGraph`。`VulkanOfflineRenderer` 只负责选择 explicit integrator；当前 `software-compute` integrator 创建 headless Vulkan runtime，然后用 offline `FrameGraph` 生成一个 compute work item。
+它和实时 renderer 最大区别是：没有窗口、swapchain 和实时 raster pass；但它并不绕开 `FrameGraph`。`VulkanOfflineRenderer` 只负责选择 explicit integrator；当前 `software-compute` integrator 创建 headless Vulkan runtime，然后用 offline `FrameGraph` 和 `RenderWorkCompiler` 生成一个 compute input/desc。
 
 `software-compute` 的阅读顺序如下：
 
 | 步骤 | 代码动作 | 理解方式 |
 |---|---|---|
 | `validateOfflineRenderJob()` | 检查 output、active camera、upload view 和 BVH 能否成立 | 检查实验样品 |
-| `createOfflineRenderFrameGraph()` | 创建 `Pass_OfflineRayTrace` | 排一项离线实验 |
-| `graph.build(RenderWorkBuildContext::offline(job, shader))` | 让 queue 生成 `ComputeDispatch` work item | 生成可执行工单 |
+| `createOfflineRenderFrameGraph()` | 创建 file-local `OfflineCompute` pass | 排一项离线实验 |
+| `graph.compile()` | 校验并排序 offline pass 资源依赖 | 排实验步骤 |
+| `RenderWorkCompiler::buildInputs(...)` | 生成 `RenderComputeInput`，写入 dispatch group 和 `OutputPixels` readback 名 | 生成可执行工单 |
+| `RenderWorkCompiler::prepare(...)` | 生成 accepted `RenderInputDesc`、binding plan 和 compute pipeline build desc | 准备实验仪器 |
 | `buildOfflineSceneStorageResources()` | 导出 scene records、BVH、params 和 output buffer | 装入实验样品 |
-| `resourceManager.preloadPipelines(...)` | 从 work item 派生 compute pipeline build desc | 准备实验仪器 |
-| `buildRenderUploadPlan(pass.queue)` | 收集本 pass 需要同步的 `IGpuResource` | 准备 shader 可读写内存 |
-| `cmd->bindPipeline()` / `bindResources()` | 绑定 compute pipeline 和 9 个 storage buffer | 对齐 GLSL binding name |
-| `cmd->executeWorkItem()` | 按 8x8 workgroup 覆盖整张图 | 每个 invocation 计算一个像素 |
+| `resourceManager.preloadPipelines(...)` | 从 accepted desc 收集 compute pipeline build desc | 预热实验仪器 |
+| `syncDescriptorResources(desc.bindingPlan.descriptors)` | 收集本 desc 需要同步的 storage/image 资源 | 准备 shader 可读写内存 |
+| `cmd->bindPipeline()` / `bindResources()` | 绑定 compute pipeline 和 binding plan resources | 对齐 GLSL binding name |
+| `cmd->executeRenderInput()` | 按 8x8 workgroup 覆盖整张图 | 每个 invocation 计算一个像素 |
 | `vkCmdPipelineBarrier()` | compute 写完后允许 host read | GPU/CPU 同步边界 |
 | `map()` + `memcpy()` | 读回 `OfflineReadbackImage.rgba` | 得到 CPU 可写文件的 float 图 |
 
 这里最值得记住的数字是 descriptor binding：
 
-| Binding | Buffer |
+| Binding / 名称 | Buffer |
 |---|---|
-| 0 | `SceneVertices` |
-| 1 | `SceneIndices` |
-| 2 | `SceneMeshes` |
-| 3 | `ScenePrimitives` |
-| 4 | `SceneObjects` |
-| 5 | `SceneMaterials` |
-| 6 | `SceneBvhNodes` |
-| 7 | `SceneFrameParams` |
-| 8 | `OutputPixels` |
+| 0 / `ScenePositions` | compact vertex position buffer |
+| 1 / `SceneAttributeStreams` | attribute stream descriptors |
+| 2 / `SceneAttributeValues` | packed normal/uv/tangent values |
+| 3 / `SceneIndices` | compact index buffer |
+| 4 / `SceneMeshes` | mesh records |
+| 5 / `ScenePrimitives` | primitive records |
+| 6 / `SceneObjects` | object records |
+| 7 / `SceneMaterials` | simple/material record path，按 shader reflection 需要绑定 |
+| 8 / `SceneBvhNodes` | CPU 构建的 compact BVH |
+| 9 / `SceneFrameParams` | camera、尺寸、samples、light、background 和 compare mode |
+| 10 / `OutputPixels` | compute output buffer |
+| 11 / `SceneTextures` | offline direct ray shader 使用的 texture array |
 
 如果以后新增纹理、light array、AOV 或 accumulation buffer，storage resource 生成、shader reflection contract、GLSL binding、测试都要一起变。
 
@@ -218,7 +224,7 @@ src/backend/vulkan/offline/offline_render_graph_executor.cpp
 现在读：
 
 ```text
-assets/shaders/glsl/offline_primary_ray.comp
+assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
 ```
 
 当前 shader 是 `software-compute` integrator，不是完整 path tracer。它对每个像素做这些事：
@@ -270,7 +276,7 @@ src/test/integration/test_offline_image_writer.cpp
 |---|---|
 | `test_offline_render_cli` | CLI 参数和 profile override |
 | `test_offline_scene_loader` | scene YAML 到 `SceneResourceTable` |
-| `test_offline_gpu_scene` | C++ GPU struct layout、offline storage resources 和 work item |
+| `test_offline_gpu_scene` | C++ GPU struct layout、offline storage resources、compute input 和 input desc |
 | `test_vulkan_offline_renderer` | headless Vulkan runtime、offline graph compute 和 readback |
 | `test_offline_image_writer` | EXR / PNG / JSON / raw 输出 |
 
@@ -298,7 +304,7 @@ ctest --test-dir build --output-on-failure \
 | unsupported mesh | `OfflineSceneLoader::makeBuiltinMesh()` 当前支持范围 |
 | no visible primitives | instance visibility、mesh indices、upload view |
 | failed to find offline compute shader SPIR-V | shader 编译产物和运行工作目录 |
-| readback empty / non-finite | work item 资源、shader 输出、buffer 大小、barrier/readback |
+| readback empty / non-finite | input desc 资源、shader 输出、buffer 大小、barrier/readback |
 | EXR/PNG 写出失败 | `OfflineImageWriter` 和输出目录权限 |
 
 ## 改代码时按数据流提交

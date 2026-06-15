@@ -1,6 +1,6 @@
 # 03 从现有 Contract 开始
 
-我们先不新增 shader。最稳的自定义材质练习，是复制一份已经 supported 的 `.material`，只改参数和资源 URI。这样我们可以先证明 parser、contract、instance、graph filter、editor round-trip 都工作，再考虑新增 BSDF 类型。
+我们先不新增 shader。最稳的自定义材质练习，是复制一份已经 supported 的 `.material`，只改参数和资源 URI。这样我们可以先证明 parser、contract、instance、graph input、editor round-trip 都工作，再考虑新增 BSDF 类型。
 
 ## 当前可以直接复用的起点
 
@@ -42,14 +42,16 @@ bsdf:
 Forward 和 Deferred 主 graph 的 surface pass 都包含：
 
 ```yaml
-filters:
-  renderClass: [surface.opaque]
-  bsdf: [matte, uber, metal, substrate, standard-pbr]
+input:
+  kind: scene-renderables
+  material:
+    type: [matte, uber, metal, substrate, standard-pbr]
+    required: true
 sources:
   - material.bsdf
 ```
 
-因此 `standard-pbr` 材质会被当前 graph 命中。若我们把 `bsdf.type` 改成新类型，例如 `gooch`，也必须把 graph `filters.bsdf` 加上 `gooch`，否则材质能加载但 pass 不会为它生成 draw。
+因此 `standard-pbr` 材质会被当前 graph 命中。若我们把 `bsdf.type` 改成新类型，例如 `gooch`，也必须把 graph `input.material.type` 加上 `gooch`，否则材质能加载但 pass 不会为它生成 draw input。
 
 ## 先跑解析和 variant 测试
 
@@ -64,7 +66,7 @@ ninja test_material_source_variant_pipeline
 
 ## 我们已经学会了什么
 
-自定义材质的第一步不是写 shader，而是复用 supported contract 新建 `.material`。只要 schema、contract source、参数名、参数 kind 和 graph filter 都对齐，材质就能进入当前渲染链路。
+自定义材质的第一步不是写 shader，而是复用 supported contract 新建 `.material`。只要 schema、contract source、参数名、参数 kind 和 graph input 都对齐，材质就能进入当前渲染链路。
 
 ## 下一步
 

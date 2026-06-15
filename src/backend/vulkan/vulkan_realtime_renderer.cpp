@@ -2,7 +2,6 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/material_template.hpp"
-#include "core/asset/shader_binding_ownership.hpp"
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/frame_graph_build_plan.hpp"
 #include "core/frame_graph/graph_resource_registry.hpp"
@@ -41,7 +40,6 @@
 #include "vulkan_post_process_builder.hpp"
 #include "vulkan_renderer_foundation.hpp"
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -59,8 +57,8 @@
 #include <utility>
 #include <vector>
 namespace {
-constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
-constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
+constexpr const char *kBloomBlurHShaderName = "render_paths/Post/bloom_blur_h";
+constexpr const char *kBloomBlurVShaderName = "render_paths/Post/bloom_blur_v";
 constexpr const char *kDefaultForwardRenderPathGraphAsset =
     "assets/render_paths/forward_main.render-path.yaml";
 constexpr const char *kDefaultForwardBloomRenderPathGraphAsset =
@@ -69,8 +67,6 @@ constexpr const char *kDefaultDeferredRenderPathGraphAsset =
     "assets/render_paths/deferred_main.render-path.yaml";
 constexpr const char *kDefaultDeferredBloomRenderPathGraphAsset =
     "assets/render_paths/deferred_bloom.render-path.yaml";
-constexpr u32 kDebugColorTransferMinProbeWidth = 10;
-constexpr u32 kDebugColorTransferMinProbeHeight = 1;
 
 bool strictBindlessValidationEnabled() {
   return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
@@ -132,73 +128,6 @@ void resolveMaterialSourceVariantsOrThrow(
   throw std::runtime_error(message);
 }
 
-void validateDebugColorTransferExtent(const VkExtent2D extent) {
-  if (extent.width == 0 || extent.height == 0) {
-    throw std::runtime_error(
-        "debug color transfer export extent must be positive");
-  }
-  if (extent.width < kDebugColorTransferMinProbeWidth ||
-      extent.height < kDebugColorTransferMinProbeHeight) {
-    throw std::runtime_error(
-        "debug color transfer export extent must be at least " +
-        std::to_string(kDebugColorTransferMinProbeWidth) + "x" +
-        std::to_string(kDebugColorTransferMinProbeHeight) +
-        " pixels for fixed ramp probes");
-  }
-}
-
-void validateDebugColorTransferForwardMaterialsReady(
-    const LX_core::Scene &scene, const LX_core::RenderPathGraph &graph,
-    const LX_core::ResourceUri &graphUri) {
-  const LX_core::RenderPassNode *forwardPass = nullptr;
-  for (const LX_core::RenderPassNode &pass : graph.passes) {
-    if (LX_core::StringID(pass.id) == LX_core::Pass_Forward) {
-      forwardPass = &pass;
-      break;
-    }
-  }
-  if (forwardPass == nullptr) {
-    throw std::runtime_error(
-        "debug color transfer graph has no Forward pass: " +
-        graphUri.string());
-  }
-
-  const auto acceptsMaterial = [&](const LX_core::MaterialInstance &material) {
-    const std::string &bsdfType = material.getBsdfType();
-    if (bsdfType.empty()) {
-      return false;
-    }
-    const auto &types = forwardPass->input.material.types;
-    return types.empty() || std::find(types.begin(), types.end(), bsdfType) !=
-                                types.end();
-  };
-
-  scene.resources().forEachMaterialInstance(
-      [&](LX_core::MaterialHandle, const LX_core::MaterialInstance &material,
-          const LX_core::ResourceUri &materialUri) {
-        if (!acceptsMaterial(material)) {
-          return;
-        }
-        const auto materialTemplate = material.getTemplate();
-        const bool hasForwardDefinition =
-            materialTemplate &&
-            materialTemplate->getPassDefinition(LX_core::Pass_Forward)
-                .has_value();
-        if (hasForwardDefinition && material.isPassEnabled(LX_core::Pass_Forward) &&
-            material.getPassShaderProgram(LX_core::Pass_Forward).has_value()) {
-          return;
-        }
-
-        throw std::runtime_error(
-            "debug color transfer export requires production Forward material "
-            "variants to be prepared before export; unresolved material=" +
-            (materialUri.empty() ? std::string("<anonymous>")
-                                 : materialUri.string()) +
-            " bsdfType=" + material.getBsdfType() + " graph=" +
-            graphUri.string());
-      });
-}
-
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
 /// RGBA8 and log a debug warning rather than throwing — initScene must be
@@ -206,11 +135,9 @@ void validateDebugColorTransferForwardMaterialsReady(
 LX_core::ImageFormat toImageFormat(VkFormat format) {
   switch (format) {
   case VK_FORMAT_B8G8R8A8_SRGB:
-    return LX_core::ImageFormat::BGRA8Srgb;
   case VK_FORMAT_B8G8R8A8_UNORM:
     return LX_core::ImageFormat::BGRA8;
   case VK_FORMAT_R8G8B8A8_SRGB:
-    return LX_core::ImageFormat::RGBA8Srgb;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return LX_core::ImageFormat::RGBA8;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
@@ -237,14 +164,10 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
   switch (format) {
   case LX_core::ImageFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
-  case LX_core::ImageFormat::RGBA8Srgb:
-    return VK_FORMAT_R8G8B8A8_SRGB;
   case LX_core::ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case LX_core::ImageFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
-  case LX_core::ImageFormat::BGRA8Srgb:
-    return VK_FORMAT_B8G8R8A8_SRGB;
   case LX_core::ImageFormat::R8:
     return VK_FORMAT_R8_UNORM;
   case LX_core::ImageFormat::D32Float:
@@ -267,91 +190,14 @@ std::string vkFormatName(VkFormat format) {
     return "D32_SFLOAT_S8_UINT";
   case VK_FORMAT_R8G8B8A8_UNORM:
     return "R8G8B8A8_UNORM";
-  case VK_FORMAT_R8G8B8A8_SRGB:
-    return "R8G8B8A8_SRGB";
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return "R16G16B16A16_SFLOAT";
   case VK_FORMAT_R32G32B32A32_SFLOAT:
     return "R32G32B32A32_SFLOAT";
   case VK_FORMAT_B8G8R8A8_UNORM:
     return "B8G8R8A8_UNORM";
-  case VK_FORMAT_B8G8R8A8_SRGB:
-    return "B8G8R8A8_SRGB";
   default:
     return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
-  }
-}
-
-std::string vkColorSpaceName(VkColorSpaceKHR colorSpace) {
-  switch (colorSpace) {
-  case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
-    return "SRGB_NONLINEAR_KHR";
-  default:
-    return "VkColorSpaceKHR(" + std::to_string(static_cast<int>(colorSpace)) +
-           ")";
-  }
-}
-
-std::string imageFormatName(LX_core::ImageFormat format) {
-  switch (format) {
-  case LX_core::ImageFormat::RGBA8:
-    return "RGBA8";
-  case LX_core::ImageFormat::RGBA16Float:
-    return "RGBA16Float";
-  case LX_core::ImageFormat::BGRA8:
-    return "BGRA8";
-  case LX_core::ImageFormat::R8:
-    return "R8";
-  case LX_core::ImageFormat::D32Float:
-    return "D32Float";
-  case LX_core::ImageFormat::D24UnormS8:
-    return "D24UnormS8";
-  case LX_core::ImageFormat::D32FloatS8:
-    return "D32FloatS8";
-  case LX_core::ImageFormat::RGBA8Srgb:
-    return "RGBA8Srgb";
-  case LX_core::ImageFormat::BGRA8Srgb:
-    return "BGRA8Srgb";
-  }
-  return "ImageFormat(" + std::to_string(static_cast<u32>(format)) + ")";
-}
-
-std::string outputEncodingModeName(
-    LX_core::backend::VulkanPostProcessOutputEncoding encoding) {
-  switch (encoding) {
-  case LX_core::backend::VulkanPostProcessOutputEncoding::Linear:
-    return "Linear";
-  case LX_core::backend::VulkanPostProcessOutputEncoding::Srgb:
-    return "Srgb";
-  }
-  return "Unknown";
-}
-
-std::string debugColorTransferOutputEncodingModeForMaterial(
-    const LX_core::MaterialInstance &material) {
-  const std::optional<LX_core::MaterialParameterValue> value =
-      material.readShaderBindingParameterValue(
-          LX_core::StringID("DebugColorTransferUBO"),
-          LX_core::StringID("outputEncodingMode"));
-  if (!value.has_value() ||
-      value->type != LX_core::MaterialParameterValueType::Int) {
-    throw std::runtime_error(
-        "debug color transfer material missing DebugColorTransferUBO."
-        "outputEncodingMode");
-  }
-  switch (value->intValue) {
-  case static_cast<i32>(
-      LX_core::backend::VulkanPostProcessOutputEncoding::Linear):
-    return outputEncodingModeName(
-        LX_core::backend::VulkanPostProcessOutputEncoding::Linear);
-  case static_cast<i32>(
-      LX_core::backend::VulkanPostProcessOutputEncoding::Srgb):
-    return outputEncodingModeName(
-        LX_core::backend::VulkanPostProcessOutputEncoding::Srgb);
-  default:
-    throw std::runtime_error(
-        "debug color transfer material has unsupported outputEncodingMode: " +
-        std::to_string(value->intValue));
   }
 }
 
@@ -361,9 +207,7 @@ VkDeviceSize dumpByteSize(VkFormat format, u32 width, u32 height) {
   switch (format) {
   case VK_FORMAT_D32_SFLOAT:
   case VK_FORMAT_R8G8B8A8_UNORM:
-  case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_B8G8R8A8_UNORM:
-  case VK_FORMAT_B8G8R8A8_SRGB:
     return pixelCount * 4u;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return pixelCount * 8u;
@@ -425,15 +269,14 @@ std::vector<unsigned char> makeBmpPixelsFromDump(VkFormat format, u32 width,
     return bgrPixels;
   }
 
-  if (format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ||
-      format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB) {
+  if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+      format == VK_FORMAT_B8G8R8A8_UNORM) {
     const auto *rgba = static_cast<const unsigned char *>(mappedData);
     for (u32 y = 0; y < height; ++y) {
       for (u32 x = 0; x < width; ++x) {
         const usize i =
             (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
-        if (format == VK_FORMAT_B8G8R8A8_UNORM ||
-            format == VK_FORMAT_B8G8R8A8_SRGB) {
+        if (format == VK_FORMAT_B8G8R8A8_UNORM) {
           bgrPixels.push_back(rgba[i + 0u]);
           bgrPixels.push_back(rgba[i + 1u]);
           bgrPixels.push_back(rgba[i + 2u]);
@@ -479,40 +322,6 @@ std::vector<unsigned char> makeBmpPixelsFromDump(VkFormat format, u32 width,
                            vkFormatName(format));
 }
 
-std::vector<unsigned char> makeRgba8PixelsFromDump(VkFormat format, u32 width,
-                                                   u32 height,
-                                                   const void *mappedData) {
-  if (format != VK_FORMAT_R8G8B8A8_UNORM && format != VK_FORMAT_R8G8B8A8_SRGB &&
-      format != VK_FORMAT_B8G8R8A8_UNORM && format != VK_FORMAT_B8G8R8A8_SRGB) {
-    throw std::runtime_error("raw RGBA8 export does not support " +
-                             vkFormatName(format));
-  }
-
-  std::vector<unsigned char> out(static_cast<usize>(width) *
-                                 static_cast<usize>(height) * 4u);
-  const auto *src = static_cast<const unsigned char *>(mappedData);
-  const bool sourceIsBgra =
-      format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB;
-  for (u32 y = 0; y < height; ++y) {
-    for (u32 x = 0; x < width; ++x) {
-      const usize i =
-          (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
-      if (sourceIsBgra) {
-        out[i + 0u] = src[i + 2u];
-        out[i + 1u] = src[i + 1u];
-        out[i + 2u] = src[i + 0u];
-        out[i + 3u] = src[i + 3u];
-      } else {
-        out[i + 0u] = src[i + 0u];
-        out[i + 1u] = src[i + 1u];
-        out[i + 2u] = src[i + 2u];
-        out[i + 3u] = src[i + 3u];
-      }
-    }
-  }
-  return out;
-}
-
 struct DumpScalarStats final {
   double minValue = 0.0;
   double maxValue = 0.0;
@@ -553,17 +362,15 @@ DumpScalarStats computeDumpScalarStats(VkFormat format, u32 width, u32 height,
       pushScalar(pixels[i]);
     }
   } else if (format == VK_FORMAT_R8G8B8A8_UNORM ||
-             format == VK_FORMAT_R8G8B8A8_SRGB ||
-             format == VK_FORMAT_B8G8R8A8_UNORM ||
-             format == VK_FORMAT_B8G8R8A8_SRGB) {
+             format == VK_FORMAT_B8G8R8A8_UNORM) {
     const auto *pixels = static_cast<const unsigned char *>(mappedData);
     for (usize i = 0; i < pixelCount; ++i) {
       const usize base = i * 4u;
-      const bool bgra = format == VK_FORMAT_B8G8R8A8_UNORM ||
-                        format == VK_FORMAT_B8G8R8A8_SRGB;
-      const double r = pixels[base + (bgra ? 2u : 0u)] / 255.0;
+      const double r =
+          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 2u : 0u)] / 255.0;
       const double g = pixels[base + 1u] / 255.0;
-      const double b = pixels[base + (bgra ? 0u : 2u)] / 255.0;
+      const double b =
+          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 0u : 2u)] / 255.0;
       pushScalar(std::max({r, g, b}));
     }
   } else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
@@ -698,8 +505,7 @@ void writeStringArrayJson(std::ostream &out,
 makePipelineIdentityDebug(const LX_core::FramePass &pass,
                           const LX_core::RenderInputDesc &desc) {
   PipelineIdentityDebug out;
-  out.materialTypeVariant =
-      debugString(desc.pipelineBuildDesc.shaderVariantKey);
+  out.materialTypeVariant = debugString(desc.pipelineBuildDesc.shaderVariantKey);
   out.renderPathNodeSignature =
       debugString(LX_core::getFramePassRenderPathNodeSignature(pass));
   out.pipelineKey = debugString(desc.pipelineKey.id);
@@ -725,8 +531,7 @@ executableDrawCommandCount(const LX_core::RenderDrawInput &draw) {
 void recordExecutedRenderInputStats(
     LX_core::backend::VulkanRealtimeRenderInputStats &stats,
     const LX_core::RenderInput &input) {
-  if (const auto *draw =
-          dynamic_cast<const LX_core::RenderDrawInput *>(&input)) {
+  if (const auto *draw = dynamic_cast<const LX_core::RenderDrawInput *>(&input)) {
     stats.submittedDrawCount += executableDrawCommandCount(*draw);
     return;
   }
@@ -924,185 +729,6 @@ void writeRealtimeProfileMetadata(
       << "}\n";
 }
 
-void writeDebugColorTransferManifest(
-    const std::filesystem::path &path,
-    const LX_core::backend::VulkanDebugColorTransferExportResult &result) {
-  std::filesystem::create_directories(path.parent_path());
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
-  if (!out.is_open()) {
-    throw std::runtime_error("failed to write debug color transfer manifest " +
-                             path.string());
-  }
-
-  out << "{\n"
-      << "  \"graphUri\": \"" << jsonEscape(result.graphUri) << "\",\n";
-  if (result.cameraPath.has_value()) {
-    out << "  \"cameraPath\": \"" << jsonEscape(*result.cameraPath) << "\",\n";
-  } else {
-    out << "  \"cameraPath\": null,\n";
-  }
-  out << "  \"previewTransform\": {\n"
-      << "    \"kind\": \""
-      << jsonEscape(result.previewTransform.kind) << "\",\n"
-      << "    \"toneMappingMode\": \""
-      << jsonEscape(result.previewTransform.toneMappingMode) << "\",\n"
-      << "    \"exposure\": " << result.previewTransform.exposure << ",\n"
-      << "    \"gamma\": " << result.previewTransform.gamma << "\n"
-      << "  },\n"
-      << "  \"surfaceFormat\": \""
-      << jsonEscape(result.formatFacts.surfaceFormat) << "\",\n"
-      << "  \"surfaceColorSpace\": \""
-      << jsonEscape(result.formatFacts.surfaceColorSpace) << "\",\n"
-      << "  \"swapchainImageViewFormat\": \""
-      << jsonEscape(result.formatFacts.swapchainImageViewFormat) << "\",\n"
-      << "  \"swapchainTargetFormat\": \""
-      << jsonEscape(result.formatFacts.swapchainTargetFormat) << "\",\n"
-      << "  \"outputDirectory\": \""
-      << jsonEscape(result.outputDirectory.generic_string()) << "\",\n"
-      << "  \"passes\": [\n";
-  for (usize i = 0; i < result.passes.size(); ++i) {
-    const auto &pass = result.passes[i];
-    out << "    {\"pass\":\"" << jsonEscape(pass.pass) << "\",\"target\":\""
-        << jsonEscape(pass.target) << "\",\"shader\":\""
-        << jsonEscape(pass.shader) << "\",\"attachmentFormat\":\""
-        << jsonEscape(pass.attachmentFormat)
-        << "\",\"pipelineColorFormat\":\""
-        << jsonEscape(pass.pipelineColorFormat)
-        << "\",\"outputEncodingMode\":\""
-        << jsonEscape(pass.outputEncodingMode) << "\"}";
-    out << (i + 1 == result.passes.size() ? "\n" : ",\n");
-  }
-  out << "  ],\n"
-      << "  \"targets\": [\n";
-  for (usize i = 0; i < result.targets.size(); ++i) {
-    const auto &target = result.targets[i];
-    out << "    {\"name\":\"" << jsonEscape(target.name) << "\",\"path\":\""
-        << jsonEscape(target.path.generic_string()) << "\",\"format\":\""
-        << jsonEscape(target.format) << "\",\"width\":" << target.width
-        << ",\"height\":" << target.height << ",\"min\":" << target.minValue
-        << ",\"max\":" << target.maxValue << ",\"mean\":" << target.meanValue
-        << ",\"nonZeroRatio\":" << target.nonZeroRatio << "}";
-    out << (i + 1 == result.targets.size() ? "\n" : ",\n");
-  }
-  out << "  ],\n"
-      << "  \"probes\": [\n";
-  for (usize i = 0; i < result.probes.size(); ++i) {
-    const auto &probe = result.probes[i];
-    out << "    {\"target\":\"" << jsonEscape(probe.target) << "\",\"label\":\""
-        << jsonEscape(probe.label) << "\",\"x\":" << probe.x
-        << ",\"y\":" << probe.y << ",\"red\":" << probe.red
-        << ",\"green\":" << probe.green << ",\"blue\":" << probe.blue
-        << ",\"expected\":" << probe.expected << "}";
-    out << (i + 1 == result.probes.size() ? "\n" : ",\n");
-  }
-  out << "  ]\n"
-      << "}\n";
-  out.close();
-  if (!out) {
-    throw std::runtime_error("failed to finish debug color transfer manifest " +
-                             path.string());
-  }
-}
-
-LX_core::RenderTargetDesc
-renderTargetDescFromAttachmentContracts(const LX_core::FramePass &pass) {
-  LX_core::RenderTargetDesc desc;
-  desc.role = LX_core::RenderTargetRole::Offscreen;
-  desc.colorFormat = std::nullopt;
-  desc.colorFormats.clear();
-  desc.depthFormat = std::nullopt;
-
-  bool sawAttachment = false;
-  for (const LX_core::RenderPathAttachmentContract &attachment :
-       pass.attachments) {
-    if (!sawAttachment) {
-      desc.sampleCount = static_cast<u8>(attachment.samples);
-      desc.layerCount = attachment.layers;
-      sawAttachment = true;
-    } else if (desc.sampleCount != static_cast<u8>(attachment.samples) ||
-               desc.layerCount != attachment.layers) {
-      throw std::runtime_error(
-          "debug color transfer pass has mixed attachment shape: " +
-          LX_core::GlobalStringTable::get().toDebugString(pass.name));
-    }
-
-    if (attachment.depth) {
-      if (desc.depthFormat.has_value()) {
-        throw std::runtime_error(
-            "debug color transfer pass has duplicate depth attachments: " +
-            LX_core::GlobalStringTable::get().toDebugString(pass.name));
-      }
-      desc.depthFormat = attachment.format;
-    } else {
-      desc.colorFormats.push_back(attachment.format);
-    }
-  }
-
-  if (!desc.colorFormats.empty()) {
-    desc.colorFormat = desc.colorFormats.front();
-  }
-  if (!desc.colorFormat.has_value() && !desc.depthFormat.has_value()) {
-    throw std::runtime_error(
-        "debug color transfer pass has no attachment contract: " +
-        LX_core::GlobalStringTable::get().toDebugString(pass.name));
-  }
-  return desc;
-}
-
-LX_core::DescriptorResourceList
-materialOwnedDescriptorResources(const LX_core::MaterialInstance &material,
-                                 const LX_core::IShaderSharedPtr &shader) {
-  LX_core::DescriptorResourceList out;
-  if (!shader) {
-    return out;
-  }
-  for (const LX_core::ShaderResourceBinding &binding :
-       shader->getReflectionBindings()) {
-    if (!LX_core::isMaterialOwnedBinding(binding.name)) {
-      continue;
-    }
-    if (binding.type != LX_core::ShaderPropertyType::UniformBuffer &&
-        binding.type != LX_core::ShaderPropertyType::StorageBuffer) {
-      throw std::logic_error(
-          "debug color transfer material-owned non-buffer binding is not "
-          "supported: " +
-          binding.name);
-    }
-    const LX_core::StringID bindingId(binding.name);
-    const LX_core::GpuResourceRef resource =
-        material.getShaderBindingResource(bindingId);
-    if (!resource.isValid()) {
-      throw std::logic_error(
-          "debug color transfer material missing buffer resource: " +
-          binding.name);
-    }
-    out.emplace_back(resource.get());
-  }
-  return out;
-}
-
-LX_core::RenderWorkBuildContext::PassPreparationFacts
-fullscreenMaterialFacts(LX_core::StringID pass,
-                        const LX_core::MaterialInstance &material) {
-  LX_core::RenderWorkBuildContext::PassPreparationFacts facts;
-  facts.pass = pass;
-  facts.shaderInfo = material.getPassShader(pass);
-  facts.renderState = material.getPassRenderState(pass);
-  const auto shaderProgram = material.getPassShaderProgram(pass);
-  if (!shaderProgram.has_value()) {
-    throw std::logic_error(
-        "debug color transfer fullscreen material missing shader program for "
-        "pass " +
-        LX_core::GlobalStringTable::get().toDebugString(pass));
-  }
-  facts.shaderProgram = shaderProgram->get();
-  facts.pipelineVariantKey =
-      material.getMaterialTypeVariantSignature(shaderProgram->get());
-  facts.descriptorResources =
-      materialOwnedDescriptorResources(material, facts.shaderInfo);
-  return facts;
-}
-
 VkPipelineStageFlags dumpRestoreStage(VkImageLayout layout,
                                       VkImageAspectFlags aspect) {
   if (layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
@@ -1155,50 +781,34 @@ std::string sanitizeAttachmentName(std::string_view name) {
 }
 
 LX_core::StringID passIdFromDebugName(std::string_view passName) {
-  if (passName == "Forward" || passName == "forward") {
+  if (passName == "Forward") {
     return LX_core::Pass_Forward;
   }
-  if (passName == "BloomThreshold" || passName == "bloomThreshold" ||
-      passName == "bloom_threshold") {
+  if (passName == "BloomThreshold") {
     return LX_core::Pass_BloomThreshold;
   }
-  if (passName == "BloomBlurH" || passName == "bloomBlurH" ||
-      passName == "bloom_blur_h") {
+  if (passName == "BloomBlurH") {
     return LX_core::Pass_BloomBlurH;
   }
-  if (passName == "BloomBlurV" || passName == "bloomBlurV" ||
-      passName == "bloom_blur_v") {
+  if (passName == "BloomBlurV") {
     return LX_core::Pass_BloomBlurV;
   }
-  if (passName == "PostProcess" || passName == "postProcess" ||
-      passName == "post_process") {
+  if (passName == "PostProcess") {
     return LX_core::Pass_PostProcess;
   }
-  if (passName == "DebugOverlay" || passName == "debugOverlay" ||
-      passName == "debug_overlay") {
+  if (passName == "DebugOverlay") {
     return LX_core::Pass_DebugOverlay;
   }
   throw std::runtime_error("unsupported debug render target pass: " +
                            std::string(passName));
 }
 
-LX_core::StringID
-transientRenderPathNodeSignature(LX_core::StringID passName,
-                                 const LX_core::RenderTarget &target) {
+LX_core::StringID transientRenderPathNodeSignature(
+    LX_core::StringID passName, const LX_core::RenderTarget &target) {
   LX_core::FramePass pass;
   pass.name = passName;
   pass.target = target.toDesc();
   return LX_core::getFramePassRenderPathNodeSignature(pass);
-}
-
-LX_core::backend::VulkanPostProcessOutputEncoding
-postProcessOutputEncodingForTarget(const LX_core::RenderTargetDesc &target) {
-  const auto colorFormats = target.getColorFormats();
-  if (!colorFormats.empty() &&
-      LX_core::isSrgbImageFormat(colorFormats.front())) {
-    return LX_core::backend::VulkanPostProcessOutputEncoding::Linear;
-  }
-  return LX_core::backend::VulkanPostProcessOutputEncoding::Srgb;
 }
 
 void writeLe16(std::ostream &out, u16 value) {
@@ -1456,8 +1066,8 @@ public:
     return false;
   }
 
-  [[nodiscard]] static bool
-  isBindlessSceneDescriptor(const LX_core::DescriptorResourceRef &descriptor) {
+  [[nodiscard]] static bool isBindlessSceneDescriptor(
+      const LX_core::DescriptorResourceRef &descriptor) {
     const LX_core::StringID name = descriptor.getBindingName();
     return name == LX_core::StringID("SceneObjects") ||
            name == LX_core::StringID("SceneDraws") ||
@@ -1491,8 +1101,8 @@ public:
     if (resource.isTextureArray()) {
       for (const LX_core::TextureSamplerRef &texture : resource.textures()) {
         if (texture.isValid()) {
-          resourceManager().syncResource(
-              commandBufferManager(), LX_core::GpuResourceRef{texture.get()});
+          resourceManager().syncResource(commandBufferManager(),
+                                         LX_core::GpuResourceRef{texture.get()});
         }
       }
       return;
@@ -1550,8 +1160,8 @@ public:
     return facts.back();
   }
 
-  [[nodiscard]] u32
-  shadowCascadeIndexForCompiledPass(usize compiledPassIndex) const {
+  [[nodiscard]] u32 shadowCascadeIndexForCompiledPass(
+      usize compiledPassIndex) const {
     u32 cascadeIndex = 0;
     const auto &passes = m_compiledFrameGraph.getPasses();
     for (usize i = 0; i < compiledPassIndex && i < passes.size(); ++i) {
@@ -1582,8 +1192,9 @@ public:
 
     const auto &compiledPass =
         m_compiledFrameGraph.getPasses()[*compiledPassIndex];
-    auto &facts = ensurePassPreparationFacts(options.passPreparationFacts,
-                                             compiledPass.name);
+    auto &facts =
+        ensurePassPreparationFacts(options.passPreparationFacts,
+                                   compiledPass.name);
     if (*compiledPassIndex < m_compiledPassDescriptorResources.size()) {
       appendDescriptorResources(
           facts.descriptorResources,
@@ -1630,19 +1241,22 @@ public:
     if (!expRendererDebugEnabled()) {
       return;
     }
-    for (const LX_core::RenderInputDiagnostic &diagnostic : desc.diagnostics) {
-      std::cerr
-          << "[RendererDebug] RenderInput rejected pass="
-          << LX_core::GlobalStringTable::get().toDebugString(diagnostic.pass)
-          << " debugId="
-          << LX_core::GlobalStringTable::get().toDebugString(diagnostic.debugId)
-          << " message=" << diagnostic.message << std::endl;
+    for (const LX_core::RenderInputDiagnostic &diagnostic :
+         desc.diagnostics) {
+      std::cerr << "[RendererDebug] RenderInput rejected pass="
+                << LX_core::GlobalStringTable::get().toDebugString(
+                       diagnostic.pass)
+                << " debugId="
+                << LX_core::GlobalStringTable::get().toDebugString(
+                       diagnostic.debugId)
+                << " message=" << diagnostic.message << std::endl;
     }
   }
 
   void syncCompiledFramePassUploadPlans() {
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
       const LX_core::CompiledFrameGraphPass &compiledPass =
           compiledPasses[passIndex];
       if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
@@ -1658,10 +1272,11 @@ public:
     }
   }
 
-  [[nodiscard]] bool
-  compiledFramePassUploadPlansRequireSharedHostBufferSync() const {
+  [[nodiscard]] bool compiledFramePassUploadPlansRequireSharedHostBufferSync()
+      const {
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
       const LX_core::CompiledFrameGraphPass &compiledPass =
           compiledPasses[passIndex];
       if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
@@ -1781,7 +1396,6 @@ public:
         pass.target = swapchainDesc;
         pass.phase = LX_core::FrameGraphPhase::Debug;
       }
-      LX_core::syncFramePassAttachmentContractsWithTarget(pass);
     };
     const auto expandGraphDeclaredShadowCascadePass =
         [&](const LX_core::FramePass &graphPass) {
@@ -1818,14 +1432,15 @@ public:
                                    LX_core::RenderPath::Deferred);
       const std::vector<LX_core::StringID> deferredPasses =
           m_postProcessSettings.bloomEnabled
-              ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
-                                               LX_core::Pass_Deferred,
-                                               LX_core::Pass_DeferredLighting,
-                                               LX_core::Pass_BloomThreshold,
-                                               LX_core::Pass_BloomBlurH,
-                                               LX_core::Pass_BloomBlurV,
-                                               LX_core::Pass_PostProcess,
-                                               LX_core::Pass_DebugOverlay}
+              ? std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow,
+                    LX_core::Pass_Deferred,
+                    LX_core::Pass_DeferredLighting,
+                    LX_core::Pass_BloomThreshold,
+                    LX_core::Pass_BloomBlurH,
+                    LX_core::Pass_BloomBlurV,
+                    LX_core::Pass_PostProcess,
+                    LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Deferred,
                     LX_core::Pass_DeferredLighting, LX_core::Pass_PostProcess,
@@ -1852,13 +1467,11 @@ public:
                                    LX_core::RenderPath::Forward);
       const std::vector<LX_core::StringID> forwardPasses =
           m_postProcessSettings.bloomEnabled
-              ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
-                                               LX_core::Pass_Forward,
-                                               LX_core::Pass_BloomThreshold,
-                                               LX_core::Pass_BloomBlurH,
-                                               LX_core::Pass_BloomBlurV,
-                                               LX_core::Pass_PostProcess,
-                                               LX_core::Pass_DebugOverlay}
+              ? std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow, LX_core::Pass_Forward,
+                    LX_core::Pass_BloomThreshold, LX_core::Pass_BloomBlurH,
+                    LX_core::Pass_BloomBlurV, LX_core::Pass_PostProcess,
+                    LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Forward,
                     LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
@@ -1878,8 +1491,7 @@ public:
     // RenderPathGraph coverage audit:
     // - Forward, Deferred/DeferredLighting, Bloom, PostProcess, Shadow, and
     //   DebugOverlay are graph asset managed.
-    // - Shadow keeps a temporary named dynamic expansion from the
-    // graph-declared
+    // - Shadow keeps a temporary named dynamic expansion from the graph-declared
     //   Shadow pass to per-cascade runtime instances until RenderPathGraph can
     //   express cascade fan-out directly.
 
@@ -1996,12 +1608,12 @@ public:
           finalSwapchainPassIndex != compiledPasses.size() &&
           passIndex >= finalSwapchainGroupStartIndex &&
           passIndex <= finalSwapchainPassIndex;
-      const bool beginGuiFrame = isFinalSwapchainGroup &&
-                                 passIndex == finalSwapchainGroupStartIndex &&
-                                 !skipGuiFrame;
-      const bool endGuiFrame = isFinalSwapchainGroup &&
-                               passIndex == finalSwapchainPassIndex &&
-                               !skipGuiFrame;
+      const bool beginGuiFrame =
+          isFinalSwapchainGroup &&
+          passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame;
+      const bool endGuiFrame =
+          isFinalSwapchainGroup && passIndex == finalSwapchainPassIndex &&
+          !skipGuiFrame;
       const auto renderingMode = explicitRenderingModeFor(compiledPass);
       if (renderingMode == LX_core::RenderPathNodeRenderingMode::Dynamic) {
         recordDynamicPass(passIndex, imageIndex, extent, *cmd, beginGuiFrame,
@@ -2338,9 +1950,11 @@ public:
                       });
     PreparedRenderPassInputs prepared =
         prepareRenderPassInputs(debugPass, debugContext);
-    const bool hasAcceptedInput = std::any_of(
-        prepared.descs.begin(), prepared.descs.end(),
-        [](const LX_core::RenderInputDesc &desc) { return desc.accepted(); });
+    const bool hasAcceptedInput =
+        std::any_of(prepared.descs.begin(), prepared.descs.end(),
+                    [](const LX_core::RenderInputDesc &desc) {
+                      return desc.accepted();
+                    });
     if (!hasAcceptedInput) {
       throw std::runtime_error("debug render target produced no draw inputs");
     }
@@ -2533,15 +2147,12 @@ public:
 
     const char *forwardGraphAsset = kDefaultForwardRenderPathGraphAsset;
     const LX_core::RenderPathGraph forwardRenderPathGraph =
-        loadRenderPathGraphAsset(forwardGraphAsset,
-                                 LX_core::RenderPath::Forward);
-    resolveMaterialSourceVariantsOrThrow(
-        *m_scene, forwardRenderPathGraph,
-        LX_core::ResourceUri(forwardGraphAsset));
+        loadRenderPathGraphAsset(forwardGraphAsset, LX_core::RenderPath::Forward);
+    resolveMaterialSourceVariantsOrThrow(*m_scene, forwardRenderPathGraph,
+                                          LX_core::ResourceUri(forwardGraphAsset));
     LX_core::FrameGraph forwardGraph =
         LX_core::buildFrameGraphFromRenderPathGraph(
-            forwardRenderPathGraph,
-            LX_core::GraphResourceRegistry::makeDefault());
+            forwardRenderPathGraph, LX_core::GraphResourceRegistry::makeDefault());
     const auto forwardPassIt = std::find_if(
         forwardGraph.getPasses().begin(), forwardGraph.getPasses().end(),
         [](const LX_core::FramePass &pass) {
@@ -2556,11 +2167,11 @@ public:
 
     const LX_core::RenderWorkBuildContext profileContext =
         LX_core::RenderWorkBuildContext::realtime(
-            *m_scene, LX_core::RenderWorkBuildContext::RealtimeOptions{
-                          .cameraResource = outputCameraResource,
-                          .visibleMask =
-                              outputCullingMask & ~LX_core::Layer_EditorOverlay,
-                      });
+            *m_scene,
+            LX_core::RenderWorkBuildContext::RealtimeOptions{
+                .cameraResource = outputCameraResource,
+                .visibleMask = outputCullingMask & ~LX_core::Layer_EditorOverlay,
+            });
     PreparedRenderPassInputs prepared =
         prepareRenderPassInputs(forwardPass, profileContext);
     if (prepared.inputs.empty()) {
@@ -2738,493 +2349,6 @@ public:
     return result;
   }
 
-  VulkanDebugColorTransferExportResult exportDebugColorTransfer(
-      const VulkanDebugColorTransferExportRequest &request) {
-    if ((request.width == 0) != (request.height == 0)) {
-      throw std::runtime_error(
-          "debug color transfer export width and height must both be set");
-    }
-    if (request.width != 0 && request.height != 0) {
-      validateDebugColorTransferExtent(
-          VkExtent2D{request.width, request.height});
-    }
-
-    if (!m_foundation || !m_swapchain || !m_scene) {
-      throw std::runtime_error("renderer is not initialized");
-    }
-
-    auto camera = cameraForDebugDump(request.cameraPath);
-    if (!camera.has_value()) {
-      throw std::runtime_error("debug color transfer camera not found");
-    }
-
-    VkExtent2D extent = m_swapchain->getExtent();
-    if (request.width != 0 && request.height != 0) {
-      extent = VkExtent2D{request.width, request.height};
-    }
-    validateDebugColorTransferExtent(extent);
-
-    const auto timestamp =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    const std::filesystem::path outputDir =
-        request.outputDirectory.empty()
-            ? (std::filesystem::path("artifacts/debug/color-transfer") /
-               std::to_string(timestamp))
-            : request.outputDirectory;
-    std::filesystem::create_directories(outputDir);
-
-    m_swapchain->waitForAllFrames();
-    device().waitIdle();
-    std::unique_ptr<LX_core::LightBase> directionalLightSnapshot;
-    if (const LX_core::DirectionalLight *light = mainDirectionalLight()) {
-      directionalLightSnapshot = light->cloneUnique();
-    }
-    std::vector<LX_core::MaterialInstance::UniquePtr> debugMaterials;
-    std::vector<std::unique_ptr<LX_core::FrameGraphSampledResource>>
-        debugSampledResources;
-    struct TemporaryFrameGraphState final {
-      Impl &renderer;
-      LX_core::FrameGraph frameGraph;
-      LX_core::CompiledFrameGraph compiledFrameGraph;
-      decltype(m_basePassPreparationFacts) basePassPreparationFacts;
-      decltype(m_compiledPassDescriptorResources)
-          compiledPassDescriptorResources;
-      std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
-      decltype(m_currentLiveStats) currentLiveStats;
-      decltype(m_lastLiveStats) lastLiveStats;
-      std::unique_ptr<LX_core::LightBase> directionalLightSnapshot;
-
-      ~TemporaryFrameGraphState() {
-        if (renderer.m_foundation) {
-          if (renderer.m_swapchain) {
-            renderer.m_swapchain->waitForAllFrames();
-          }
-          renderer.device().waitIdle();
-        }
-        renderer.m_frameGraph = std::move(frameGraph);
-        renderer.m_compiledFrameGraph = std::move(compiledFrameGraph);
-        renderer.m_basePassPreparationFacts =
-            std::move(basePassPreparationFacts);
-        renderer.m_compiledPassDescriptorResources =
-            std::move(compiledPassDescriptorResources);
-        renderer.m_liveRenderView = std::move(liveRenderView);
-        renderer.m_currentLiveStats = currentLiveStats;
-        renderer.m_lastLiveStats = lastLiveStats;
-        if (const auto *snapshot =
-                dynamic_cast<const LX_core::DirectionalLight *>(
-                    directionalLightSnapshot.get())) {
-          if (LX_core::DirectionalLight *light =
-                  renderer.mainDirectionalLight()) {
-            light->restoreShadowCascadeStateFrom(*snapshot);
-            renderer.refreshShadowCascadeUboSnapshots(*light);
-          }
-        }
-        renderer.resetOffscreenFramebuffers();
-        if (renderer.m_foundation) {
-          renderer.resourceManager().clearFrameGraphAttachments();
-        }
-      }
-    } restore{
-        .renderer = *this,
-        .frameGraph = std::move(m_frameGraph),
-        .compiledFrameGraph = std::move(m_compiledFrameGraph),
-        .basePassPreparationFacts = std::move(m_basePassPreparationFacts),
-        .compiledPassDescriptorResources =
-            std::move(m_compiledPassDescriptorResources),
-        .liveRenderView = std::move(m_liveRenderView),
-        .currentLiveStats = m_currentLiveStats,
-        .lastLiveStats = m_lastLiveStats,
-        .directionalLightSnapshot = std::move(directionalLightSnapshot),
-    };
-
-    auto &cameraComponent = camera->get();
-    updateDirectionalLightCascadesForCamera(cameraComponent);
-    LX_core::CameraSnapshot cameraSnapshot =
-        cameraComponent.getSnapshot(request.cameraPath.value_or(""));
-    cameraSnapshot.projection.aspect =
-        static_cast<float>(extent.width) / static_cast<float>(extent.height);
-    const LX_core::CameraResource cameraResource =
-        LX_core::Scene::makeCameraResource(cameraSnapshot);
-
-    constexpr const char *kDebugGraphAsset =
-        "assets/render_paths/debug_color_transfer.render-path.yaml";
-    const LX_core::RenderPathGraph debugGraph = loadRenderPathGraphAsset(
-        kDebugGraphAsset, LX_core::RenderPath::Forward);
-    const std::vector<LX_core::StringID> expectedPasses{
-        LX_core::Pass_Forward,
-        LX_core::Pass_DebugToneMapLinear,
-        LX_core::Pass_DebugSrgbAttachment,
-        LX_core::Pass_DebugUnormManualSrgb,
-        LX_core::Pass_DebugRampSrgb,
-        LX_core::Pass_DebugRampUnormManualSrgb,
-    };
-    LX_core::validateRenderPathGraphPassSet(debugGraph, expectedPasses,
-                                            expectedPasses);
-    validateDebugColorTransferForwardMaterialsReady(
-        *m_scene, debugGraph, LX_core::ResourceUri(kDebugGraphAsset));
-
-    m_frameGraph = LX_core::buildFrameGraphFromRenderPathGraph(
-        debugGraph, LX_core::GraphResourceRegistry::makeDefault());
-    for (LX_core::FramePass &pass : m_frameGraph.getPasses()) {
-      pass.target = renderTargetDescFromAttachmentContracts(pass);
-      LX_core::syncFramePassAttachmentContractsWithTarget(pass);
-    }
-    m_basePassPreparationFacts.clear();
-    m_compiledPassDescriptorResources.clear();
-    m_liveRenderView = LX_core::gpu::LiveRenderView{
-        .cameraPath = request.cameraPath.value_or(""),
-        .cameraResource = cameraResource,
-        .visibleMask =
-            cameraResource.cullingMask & ~LX_core::Layer_EditorOverlay,
-        .viewportExtent = LX_core::Vec2f{static_cast<float>(extent.width),
-                                         static_cast<float>(extent.height)},
-        .previewEnabled = true,
-        .editorOverlayVisible = false,
-    };
-
-    VulkanPostProcessBuilder builder(m_postProcessSettings);
-    std::unordered_map<LX_core::StringID, std::string,
-                       LX_core::StringID::Hash>
-        actualDebugOutputEncodings;
-    const auto installDebugMaterial =
-        [&](LX_core::StringID pass, const char *shaderName,
-            VulkanPostProcessOutputEncoding outputEncoding) {
-          auto material = builder.createDebugColorTransferMaterial(
-              pass, shaderName, outputEncoding);
-          actualDebugOutputEncodings[pass] =
-              debugColorTransferOutputEncodingModeForMaterial(*material);
-          m_basePassPreparationFacts[pass] =
-              fullscreenMaterialFacts(pass, *material);
-          debugMaterials.push_back(std::move(material));
-        };
-    installDebugMaterial(LX_core::Pass_DebugToneMapLinear,
-                         "debug_color_transfer_tonemap",
-                         VulkanPostProcessOutputEncoding::Linear);
-    installDebugMaterial(LX_core::Pass_DebugSrgbAttachment,
-                         "debug_color_transfer_copy",
-                         VulkanPostProcessOutputEncoding::Linear);
-    installDebugMaterial(LX_core::Pass_DebugUnormManualSrgb,
-                         "debug_color_transfer_copy",
-                         VulkanPostProcessOutputEncoding::Srgb);
-    installDebugMaterial(LX_core::Pass_DebugRampSrgb,
-                         "debug_color_transfer_ramp",
-                         VulkanPostProcessOutputEncoding::Linear);
-    installDebugMaterial(LX_core::Pass_DebugRampUnormManualSrgb,
-                         "debug_color_transfer_ramp",
-                         VulkanPostProcessOutputEncoding::Srgb);
-
-    m_compiledFrameGraph =
-        m_frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
-    if (!m_compiledFrameGraph.isValid()) {
-      throw std::runtime_error(m_compiledFrameGraph.errorText());
-    }
-    for (const auto &pass : m_compiledFrameGraph.getPasses()) {
-      if (pass.target.role != LX_core::RenderTargetRole::Offscreen) {
-        throw std::runtime_error(
-            "debug color transfer graph must render only offscreen passes");
-      }
-      if (explicitRenderingModeFor(pass) !=
-          LX_core::RenderPathNodeRenderingMode::Dynamic) {
-        throw std::runtime_error(
-            "debug color transfer graph requires explicit dynamic rendering: " +
-            LX_core::GlobalStringTable::get().toDebugString(pass.name));
-      }
-    }
-    attachFrameGraphSampledResources(&debugSampledResources);
-    resetOffscreenFramebuffers();
-    resourceManager().clearFrameGraphAttachments();
-
-    const auto collectDiagnostics =
-        [](const std::vector<LX_core::RenderInputDesc> &descs) {
-          std::string diagnostics;
-          for (const LX_core::RenderInputDesc &desc : descs) {
-            for (const LX_core::RenderInputDiagnostic &diagnostic :
-                 desc.diagnostics) {
-              diagnostics += "\n  ";
-              diagnostics += diagnostic.message;
-            }
-          }
-          return diagnostics;
-        };
-    for (usize passIndex = 0;
-         passIndex < m_compiledFrameGraph.getPasses().size(); ++passIndex) {
-      const LX_core::CompiledFrameGraphPass &compiledPass =
-          m_compiledFrameGraph.getPasses()[passIndex];
-      const LX_core::FramePass &pass = sourceGraphPassFor(compiledPass);
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-      PreparedRenderPassInputs prepared =
-          prepareRenderPassInputs(pass, context);
-      const bool hasAcceptedInput = std::any_of(
-          prepared.descs.begin(), prepared.descs.end(),
-          [](const LX_core::RenderInputDesc &desc) { return desc.accepted(); });
-      if (!hasAcceptedInput) {
-        throw std::runtime_error(
-            "debug color transfer pass produced no accepted inputs: " +
-            LX_core::GlobalStringTable::get().toDebugString(pass.name) +
-            collectDiagnostics(prepared.descs));
-      }
-    }
-
-    const u32 frameSlot = m_frameIndex % kMaxFramesInFlight;
-    commandBufferManager().beginFrame(frameSlot);
-    device().getDescriptorManager().beginFrame(frameSlot);
-    resourceManager().beginFrame(frameSlot);
-    syncCompiledFramePassUploadPlans();
-    preparePipelinesForLoadedScene();
-
-    m_currentLiveStats = {};
-    auto cmd = commandBufferManager().beginSingleTimeCommands();
-    for (usize passIndex = 0;
-         passIndex < m_compiledFrameGraph.getPasses().size(); ++passIndex) {
-      recordDynamicPass(passIndex, 0, extent, *cmd, false, false);
-    }
-    commandBufferManager().endSingleTimeCommands(std::move(cmd),
-                                                 device().getGraphicsQueue());
-
-    struct AttachmentReadback final {
-      std::vector<unsigned char> bytes;
-      VkFormat format = VK_FORMAT_UNDEFINED;
-      u32 width = 0;
-      u32 height = 0;
-      DumpScalarStats stats;
-    };
-    const auto readAttachment = [&](const char *name) {
-      const LX_core::StringID attachmentId(name);
-      auto attachmentOpt =
-          resourceManager().getFrameGraphAttachment(attachmentId);
-      if (!attachmentOpt.has_value() || !attachmentOpt->get().texture) {
-        throw std::runtime_error(
-            "debug color transfer attachment not available: " +
-            std::string(name));
-      }
-      auto &attachment = attachmentOpt->get();
-      const u32 width = attachment.extent.width;
-      const u32 height = attachment.extent.height;
-      const VkDeviceSize byteSize =
-          dumpByteSize(attachment.format, width, height);
-      if (width == 0 || height == 0 || byteSize == 0) {
-        throw std::runtime_error(
-            "debug color transfer attachment has empty extent: " +
-            std::string(name));
-      }
-
-      auto readback = VulkanBuffer::create(
-          device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-      const VkImageLayout previousLayout = attachment.currentLayout;
-      const auto attachmentKind =
-          (attachment.aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
-              ? LX_core::FrameGraphAttachmentKind::Color
-              : LX_core::FrameGraphAttachmentKind::Depth;
-      auto copyCmd = commandBufferManager().beginSingleTimeCommands();
-      transitionFrameGraphAttachment(
-          LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
-          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
-          VK_ACCESS_TRANSFER_READ_BIT, *copyCmd);
-
-      VkBufferImageCopy region{};
-      region.bufferOffset = 0;
-      region.bufferRowLength = 0;
-      region.bufferImageHeight = 0;
-      region.imageSubresource.aspectMask = attachment.aspect;
-      region.imageSubresource.mipLevel = 0;
-      region.imageSubresource.baseArrayLayer = 0;
-      region.imageSubresource.layerCount = 1;
-      region.imageOffset = {0, 0, 0};
-      region.imageExtent = {width, height, 1};
-      vkCmdCopyImageToBuffer(copyCmd->getHandle(),
-                             attachment.texture->getHandle(),
-                             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                             readback->getHandle(), 1, &region);
-      transitionFrameGraphAttachment(
-          LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
-          previousLayout, dumpRestoreStage(previousLayout, attachment.aspect),
-          dumpRestoreAccess(previousLayout, attachment.aspect), *copyCmd);
-      commandBufferManager().endSingleTimeCommands(std::move(copyCmd),
-                                                   device().getGraphicsQueue());
-
-      AttachmentReadback out;
-      out.bytes.resize(static_cast<usize>(byteSize));
-      out.format = attachment.format;
-      out.width = width;
-      out.height = height;
-      const void *mapped = readback->map();
-      out.stats =
-          computeDumpScalarStats(attachment.format, width, height, mapped);
-      std::memcpy(out.bytes.data(), mapped, out.bytes.size());
-      readback->unmap();
-      return out;
-    };
-
-    VulkanDebugColorTransferExportResult result;
-    result.graphUri = kDebugGraphAsset;
-    result.cameraPath = request.cameraPath;
-    result.outputDirectory = outputDir;
-    result.manifestPath = outputDir / "manifest.json";
-    const VkSurfaceFormatKHR surfaceFormat = device().getSurfaceFormat();
-    result.formatFacts.surfaceFormat = vkFormatName(surfaceFormat.format);
-    result.formatFacts.surfaceColorSpace =
-        vkColorSpaceName(surfaceFormat.colorSpace);
-    result.formatFacts.swapchainImageViewFormat =
-        vkFormatName(m_swapchain->getImageFormat());
-    const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
-    result.formatFacts.swapchainTargetFormat =
-        imageFormatName(swapchainTarget.colorFormat);
-
-    const auto appendTargetRecord = [&](const char *name,
-                                        const std::filesystem::path &path,
-                                        const AttachmentReadback &readback) {
-      result.targets.push_back(VulkanDebugColorTransferTargetRecord{
-          .name = name,
-          .path = path,
-          .format = vkFormatName(readback.format),
-          .width = readback.width,
-          .height = readback.height,
-          .minValue = readback.stats.minValue,
-          .maxValue = readback.stats.maxValue,
-          .meanValue = readback.stats.meanValue,
-          .nonZeroRatio = readback.stats.nonZeroRatio,
-      });
-    };
-    const LX_core::image::ToneMappingSettings previewToneMapping{
-        .exposure = 1.0f,
-        .gamma = 2.2f,
-        .mode = LX_core::image::ToneMappingMode::Aces,
-    };
-    result.previewTransform = VulkanDebugColorTransferPreviewTransform{
-        .kind = "cpu-tone-mapped-png",
-        .toneMappingMode =
-            LX_core::image::toneMappingModeName(previewToneMapping.mode),
-        .exposure = previewToneMapping.exposure,
-        .gamma = previewToneMapping.gamma,
-    };
-    const auto appendPassRecords = [&]() {
-      for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
-        const std::vector<LX_core::ImageFormat> colorFormats =
-            pass.target.getColorFormats();
-        usize colorIndex = 0;
-        for (const LX_core::RenderPathAttachmentContract &attachment :
-             pass.attachments) {
-          if (attachment.depth) {
-            continue;
-          }
-          const std::string pipelineColorFormat =
-              colorIndex < colorFormats.size()
-                  ? imageFormatName(colorFormats[colorIndex])
-                  : std::string("<missing>");
-          std::string outputEncodingMode;
-          if (pass.name == LX_core::Pass_Forward) {
-            outputEncodingMode = "LinearHdr";
-          } else {
-            const auto encodingIt = actualDebugOutputEncodings.find(pass.name);
-            if (encodingIt == actualDebugOutputEncodings.end()) {
-              throw std::runtime_error(
-                  "debug color transfer pass has no installed debug material "
-                  "output encoding: " +
-                  LX_core::GlobalStringTable::get().toDebugString(pass.name));
-            }
-            outputEncodingMode = encodingIt->second;
-          }
-          result.passes.push_back(VulkanDebugColorTransferPassRecord{
-              .pass = LX_core::GlobalStringTable::get().toDebugString(
-                  pass.name),
-              .target = attachment.target,
-              .shader = pass.shaderUri.string(),
-              .attachmentFormat = imageFormatName(attachment.format),
-              .pipelineColorFormat = pipelineColorFormat,
-              .outputEncodingMode = outputEncodingMode,
-          });
-          ++colorIndex;
-        }
-      }
-    };
-    appendPassRecords();
-
-    AttachmentReadback hdr = readAttachment("hdr.color");
-    LX_core::offline::OfflineReadbackImage hdrImage = makeRgba32fImageFromDump(
-        hdr.format, hdr.width, hdr.height, hdr.bytes.data());
-    const std::filesystem::path hdrExr = outputDir / "hdr_color.exr";
-    LX_infra::image::writeRgba32fExr(hdrExr, hdrImage);
-    LX_infra::image::writeToneMappedPng(outputDir / "hdr_color_preview.png",
-                                        hdrImage, previewToneMapping);
-    appendTargetRecord("hdr.color", hdrExr, hdr);
-
-    AttachmentReadback linearLdr = readAttachment("debug.ldr.linear");
-    LX_core::offline::OfflineReadbackImage linearLdrImage =
-        makeRgba32fImageFromDump(linearLdr.format, linearLdr.width,
-                                 linearLdr.height, linearLdr.bytes.data());
-    const std::filesystem::path linearLdrExr =
-        outputDir / "tone_mapped_linear.exr";
-    LX_infra::image::writeRgba32fExr(linearLdrExr, linearLdrImage);
-    LX_infra::image::writeToneMappedPng(outputDir /
-                                            "tone_mapped_linear_preview.png",
-                                        linearLdrImage, previewToneMapping);
-    appendTargetRecord("debug.ldr.linear", linearLdrExr, linearLdr);
-
-    const auto writeRawPngTarget = [&](const char *targetName,
-                                       const char *fileName) {
-      AttachmentReadback readback = readAttachment(targetName);
-      std::vector<unsigned char> rgba =
-          makeRgba8PixelsFromDump(readback.format, readback.width,
-                                  readback.height, readback.bytes.data());
-      const std::filesystem::path path = outputDir / fileName;
-      LX_infra::image::writeRawRgba8Png(path, readback.width, readback.height,
-                                        rgba);
-      appendTargetRecord(targetName, path, readback);
-      return std::make_pair(std::move(readback), std::move(rgba));
-    };
-
-    (void)writeRawPngTarget("debug.final.srgb", "srgb_attachment.png");
-    (void)writeRawPngTarget("debug.final.unorm_manual_srgb",
-                            "unorm_manual_srgb.png");
-    auto rampSrgb =
-        writeRawPngTarget("debug.ramp.srgb", "ramp_srgb_attachment.png");
-    auto rampUnorm = writeRawPngTarget("debug.ramp.unorm_manual_srgb",
-                                       "ramp_unorm_manual_srgb.png");
-
-    struct ProbeSpec final {
-      const char *label;
-      float x;
-      u32 expected;
-    };
-    constexpr std::array<ProbeSpec, 4> kProbeSpecs{{
-        {"black", 0.1f, 0u},
-        {"gray18", 0.3f, 118u},
-        {"half", 0.5f, 188u},
-        {"white", 0.7f, 255u},
-    }};
-    const auto addRampProbes = [&](const char *target, u32 width, u32 height,
-                                   const std::vector<unsigned char> &rgba) {
-      for (const ProbeSpec &probe : kProbeSpecs) {
-        const u32 px = std::min(width - 1u, static_cast<u32>(probe.x * width));
-        const u32 py = height / 2u;
-        const usize i =
-            (static_cast<usize>(py) * width + static_cast<usize>(px)) * 4u;
-        result.probes.push_back(VulkanDebugColorTransferProbeRecord{
-            .target = target,
-            .label = probe.label,
-            .x = px,
-            .y = py,
-            .red = rgba[i + 0u],
-            .green = rgba[i + 1u],
-            .blue = rgba[i + 2u],
-            .expected = probe.expected,
-        });
-      }
-    };
-    addRampProbes("debug.ramp.srgb", rampSrgb.first.width,
-                  rampSrgb.first.height, rampSrgb.second);
-    addRampProbes("debug.ramp.unorm_manual_srgb", rampUnorm.first.width,
-                  rampUnorm.first.height, rampUnorm.second);
-
-    writeDebugColorTransferManifest(result.manifestPath, result);
-    return result;
-  }
-
 private:
   struct PendingScreenDump final {
     std::filesystem::path path;
@@ -3345,8 +2469,7 @@ private:
   void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
     VulkanPostProcessBuilder builder(m_postProcessSettings);
     addFullscreenMaterialItem(LX_core::Pass_PostProcess, target,
-                              builder.createStandardPostProcessMaterial(
-                                  postProcessOutputEncodingForTarget(target)),
+                              builder.createStandardPostProcessMaterial(),
                               "PostProcessFullscreenTriangle");
   }
 
@@ -3359,8 +2482,8 @@ private:
     addFullscreenMaterialItem(LX_core::Pass_DeferredLighting, target,
                               std::move(material),
                               "DeferredLightingFullscreenTriangle");
-    auto factsIt =
-        m_basePassPreparationFacts.find(LX_core::Pass_DeferredLighting);
+    auto factsIt = m_basePassPreparationFacts.find(
+        LX_core::Pass_DeferredLighting);
     if (factsIt == m_basePassPreparationFacts.end()) {
       return;
     }
@@ -3502,14 +2625,16 @@ private:
     std::unordered_set<LX_core::PipelineKey, LX_core::PipelineKey::Hash>
         seenPipelines;
     std::vector<LX_core::PipelineBuildDesc> pipelineDescs;
-    const auto appendPipelineDesc = [&](LX_core::PipelineBuildDesc desc) {
-      if (seenPipelines.insert(desc.key).second) {
-        pipelineDescs.push_back(std::move(desc));
-      }
-    };
+    const auto appendPipelineDesc =
+        [&](LX_core::PipelineBuildDesc desc) {
+          if (seenPipelines.insert(desc.key).second) {
+            pipelineDescs.push_back(std::move(desc));
+          }
+        };
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     const auto &graphPasses = m_frameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
       const LX_core::CompiledFrameGraphPass &compiledPass =
           compiledPasses[passIndex];
       if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
@@ -3530,36 +2655,28 @@ private:
     resourceManager().preloadPipelines(pipelineDescs);
   }
 
-  void attachFrameGraphSampledResources(
-      std::vector<std::unique_ptr<LX_core::FrameGraphSampledResource>>
-          *localResources = nullptr) {
+  void attachFrameGraphSampledResources() {
     m_compiledPassDescriptorResources.clear();
     m_compiledPassDescriptorResources.resize(
         m_compiledFrameGraph.getPasses().size());
 
     const auto appendReadToCompiledPass =
-        [this, localResources](usize compiledPassIndex,
-                               const LX_core::FrameGraphRead &read) {
+        [this](usize compiledPassIndex, const LX_core::FrameGraphRead &read) {
           if (read.bindingName == LX_core::StringID{}) {
             return;
           }
           auto resource = std::make_unique<LX_core::FrameGraphSampledResource>(
               read.resource, read.bindingName);
-          LX_core::GpuResourceRef resourceRef;
-          if (localResources != nullptr) {
-            localResources->push_back(std::move(resource));
-            resourceRef = LX_core::GpuResourceRef{*localResources->back()};
-          } else {
-            resourceRef =
-                m_scene->resources().addRenderGpuResource(std::move(resource));
-          }
+          const auto resourceRef =
+              m_scene->resources().addRenderGpuResource(std::move(resource));
           m_compiledPassDescriptorResources[compiledPassIndex].emplace_back(
               resourceRef.get());
         };
 
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     const auto &graphPasses = m_frameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
       const auto &compiledPass = compiledPasses[passIndex];
       if (compiledPass.sourcePassIndex >= graphPasses.size()) {
         continue;
@@ -3738,8 +2855,8 @@ private:
     }
   }
 
-  const LX_core::FramePass &sourceGraphPassFor(
-      const LX_core::CompiledFrameGraphPass &compiledPass) const {
+  const LX_core::FramePass &
+  sourceGraphPassFor(const LX_core::CompiledFrameGraphPass &compiledPass) const {
     const auto &graphPasses = m_frameGraph.getPasses();
     if (compiledPass.sourcePassIndex >= graphPasses.size()) {
       throw std::runtime_error("CompiledFrameGraphPass has invalid source pass "
@@ -3748,8 +2865,9 @@ private:
     return graphPasses[compiledPass.sourcePassIndex];
   }
 
-  LX_core::RenderPathNodeRenderingMode explicitRenderingModeFor(
-      const LX_core::CompiledFrameGraphPass &compiledPass) const {
+  LX_core::RenderPathNodeRenderingMode
+  explicitRenderingModeFor(const LX_core::CompiledFrameGraphPass &compiledPass)
+      const {
     const auto &graphPass = sourceGraphPassFor(compiledPass);
     if (!graphPass.renderingMode.has_value()) {
       throw std::runtime_error(
@@ -3839,9 +2957,8 @@ private:
                                        : VK_ATTACHMENT_LOAD_OP_CLEAR;
   }
 
-  VkRenderingAttachmentInfo
-  makeDynamicColorAttachmentInfo(VkImageView imageView,
-                                 const LX_core::FrameGraphWrite &write) const {
+  VkRenderingAttachmentInfo makeDynamicColorAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
     VkRenderingAttachmentInfo info{};
     info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     info.imageView = imageView;
@@ -3852,9 +2969,8 @@ private:
     return info;
   }
 
-  VkRenderingAttachmentInfo
-  makeDynamicDepthAttachmentInfo(VkImageView imageView,
-                                 const LX_core::FrameGraphWrite &write) const {
+  VkRenderingAttachmentInfo makeDynamicDepthAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
     VkRenderingAttachmentInfo info{};
     info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     info.imageView = imageView;
@@ -3878,8 +2994,8 @@ private:
                                    /*createFramebuffer=*/false);
 
     std::vector<VkRenderingAttachmentInfo> colorAttachments;
-    const auto colorWrites = findWritesForKind(
-        compiledPass, LX_core::FrameGraphAttachmentKind::Color);
+    const auto colorWrites =
+        findWritesForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Color);
     colorAttachments.reserve(colorWrites.size());
     if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
       transitionSwapchainImage(imageIndex,
@@ -3887,14 +3003,15 @@ private:
       if (colorWrites.size() != 1) {
         throw std::runtime_error(
             "Dynamic swapchain pass must declare exactly one color write: " +
-            LX_core::GlobalStringTable::get().toDebugString(compiledPass.name));
+            LX_core::GlobalStringTable::get().toDebugString(
+                compiledPass.name));
       }
       colorAttachments.push_back(makeDynamicColorAttachmentInfo(
           m_swapchain->getImageView(imageIndex), colorWrites.front().get()));
     } else {
       for (const auto &write : colorWrites) {
-        auto attachment = resourceManager().getFrameGraphAttachment(
-            write.get().resource.name);
+        auto attachment =
+            resourceManager().getFrameGraphAttachment(write.get().resource.name);
         if (!attachment.has_value() || !attachment->get().texture) {
           throw std::runtime_error(
               "Dynamic offscreen pass missing color attachment: " +
@@ -3907,8 +3024,8 @@ private:
     }
 
     std::optional<VkRenderingAttachmentInfo> depthAttachment;
-    const auto depthWrite = findWriteForKind(
-        compiledPass, LX_core::FrameGraphAttachmentKind::Depth);
+    const auto depthWrite =
+        findWriteForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Depth);
     if (depthWrite.has_value()) {
       if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
         depthAttachment = makeDynamicDepthAttachmentInfo(
@@ -4235,12 +3352,6 @@ VulkanRealtimeRenderer::generateRealtimeProfileOutput(
     const std::filesystem::path &basePath) {
   return p_impl->generateRealtimeProfileOutput(std::move(scene), output,
                                                basePath);
-}
-
-VulkanDebugColorTransferExportResult
-VulkanRealtimeRenderer::exportDebugColorTransfer(
-    const VulkanDebugColorTransferExportRequest &request) {
-  return p_impl->exportDebugColorTransfer(request);
 }
 
 } // namespace LX_core::backend

@@ -73,7 +73,7 @@ std::shared_ptr<T> makePlacementShared(void *storage, Args &&...args) {
 }
 
 LX_core::IShaderSharedPtr makeDebugOverlayShader() {
-  constexpr const char *kShaderName = "debug_overlay";
+  constexpr const char *kShaderName = "render_paths/Debug/debug_overlay";
   std::vector<LX_core::ShaderStageCode> stages{
       LX_test::loadTestShaderStage(kShaderName, "vert.spv",
                                    LX_core::ShaderStage::Vertex),
@@ -86,7 +86,7 @@ LX_core::IShaderSharedPtr makeDebugOverlayShader() {
 }
 
 LX_core::MaterialInstanceSharedPtr makeDebugOverlayMaterial() {
-  constexpr const char *kShaderName = "debug_overlay";
+  constexpr const char *kShaderName = "render_paths/Debug/debug_overlay";
   auto shader = makeDebugOverlayShader();
 
   LX_core::ShaderProgramSet shaderProgram;
@@ -178,7 +178,7 @@ LX_core::RenderInputDesc makeDebugOverlayDesc(
     const LX_core::Scene &scene, const LX_core::RenderDrawInput &input) {
   auto shader = makeDebugOverlayShader();
   LX_core::ShaderProgramSet shaderProgram;
-  shaderProgram.shaderName = "debug_overlay";
+  shaderProgram.shaderName = "render_paths/Debug/debug_overlay";
   shaderProgram.shader = shader;
 
   LX_core::RenderState renderState;
@@ -204,7 +204,7 @@ LX_core::RenderInputDesc makeDebugOverlayDesc(
       .vertex = LX_core::RenderPathGeometryVertexContract::PositionOnly,
       .topology = LX_core::PrimitiveTopology::LineList,
   };
-  pass.shaderUri = LX_core::ResourceUri("debug_overlay");
+  pass.shaderUri = LX_core::ResourceUri("render_paths/Debug/debug_overlay");
 
   const LX_core::PipelineKey pipelineKey = LX_core::PipelineKey::build(
       shaderProgram.getPipelineSignature(),

@@ -31,11 +31,11 @@
 "resourceRefs": []
 "namedMaterialRefs": []
 "sourceLocation":
-  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "file": "<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt"
   "startLine": 126
   "endLine": 131
 "runtimeApproximation":
-  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
+  "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
   "strategy": "substrate-surface-material-v2"
   "precisionLoss": ["PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate"]
 "unsupportedByCurrentRenderer": ["PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate"]

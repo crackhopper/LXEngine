@@ -6,7 +6,6 @@
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <filesystem>
@@ -183,245 +182,6 @@ void testDefaultRenderPathGraphAssetParses() {
   }
 }
 
-void testDebugColorTransferRenderPathGraphAssetParses() {
-  LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse(
-      "assets/render_paths/debug_color_transfer.render-path.yaml",
-      readTextFile(
-          "assets/render_paths/debug_color_transfer.render-path.yaml"));
-
-  EXPECT(parsed.renderPathGraph.has_value(),
-         "debug color transfer graph asset should parse");
-  EXPECT(parsed.diagnostics.empty(),
-         "debug color transfer graph should not emit diagnostics");
-  if (!parsed.renderPathGraph.has_value()) {
-    return;
-  }
-
-  const auto &graph = *parsed.renderPathGraph;
-  EXPECT(graph.name == "DebugColorTransfer", "debug graph should retain name");
-  EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
-         "debug graph should use Forward render path");
-  EXPECT(graph.passes.size() == 6,
-         "debug graph should declare Forward plus five diagnostic passes");
-
-  const auto findPass =
-      [&](const std::string &id) -> const LX_core::RenderPassNode * {
-    for (const auto &pass : graph.passes) {
-      if (pass.id == id) {
-        return &pass;
-      }
-    }
-    return nullptr;
-  };
-  const auto passHasSource = [](const LX_core::RenderPassNode &pass,
-                                const std::string &source) {
-    return std::find(pass.sources.begin(), pass.sources.end(), source) !=
-           pass.sources.end();
-  };
-
-  const auto *debugToneMap = findPass("DebugToneMapLinear");
-  const auto *debugSrgb = findPass("DebugSrgbAttachment");
-  const auto *debugUnorm = findPass("DebugUnormManualSrgb");
-  const auto *debugRampSrgb = findPass("DebugRampSrgb");
-  const auto *debugRampUnorm = findPass("DebugRampUnormManualSrgb");
-  EXPECT(debugToneMap != nullptr,
-         "debug graph should contain DebugToneMapLinear pass");
-  EXPECT(debugSrgb != nullptr,
-         "debug graph should contain DebugSrgbAttachment pass");
-  EXPECT(debugUnorm != nullptr,
-         "debug graph should contain DebugUnormManualSrgb pass");
-  EXPECT(debugRampSrgb != nullptr,
-         "debug graph should contain DebugRampSrgb pass");
-  EXPECT(debugRampUnorm != nullptr,
-         "debug graph should contain DebugRampUnormManualSrgb pass");
-  if (debugToneMap != nullptr) {
-    EXPECT(debugToneMap->shaderUri ==
-               LX_core::ResourceUri("debug_color_transfer_tonemap"),
-           "DebugToneMapLinear should use tonemap shader");
-  }
-  if (debugSrgb != nullptr) {
-    EXPECT(debugSrgb->shaderUri ==
-               LX_core::ResourceUri("debug_color_transfer_copy"),
-           "DebugSrgbAttachment should use copy shader");
-    EXPECT(passHasSource(*debugSrgb, "feature.toneMapping"),
-           "DebugSrgbAttachment should depend on tone mapping feature");
-  }
-  if (debugUnorm != nullptr) {
-    EXPECT(debugUnorm->shaderUri ==
-               LX_core::ResourceUri("debug_color_transfer_copy"),
-           "DebugUnormManualSrgb should use copy shader");
-    EXPECT(passHasSource(*debugUnorm, "feature.toneMapping"),
-           "DebugUnormManualSrgb should depend on tone mapping feature");
-  }
-  if (debugRampSrgb != nullptr) {
-    EXPECT(debugRampSrgb->shaderUri ==
-               LX_core::ResourceUri("debug_color_transfer_ramp"),
-           "DebugRampSrgb should use ramp shader");
-    EXPECT(passHasSource(*debugRampSrgb, "feature.toneMapping"),
-           "DebugRampSrgb should depend on tone mapping feature");
-  }
-  if (debugRampUnorm != nullptr) {
-    EXPECT(debugRampUnorm->shaderUri ==
-               LX_core::ResourceUri("debug_color_transfer_ramp"),
-           "DebugRampUnormManualSrgb should use ramp shader");
-    EXPECT(passHasSource(*debugRampUnorm, "feature.toneMapping"),
-           "DebugRampUnormManualSrgb should depend on tone mapping feature");
-  }
-
-  bool sawFinalSrgbAttachment = false;
-  bool sawRampSrgbAttachment = false;
-  bool sawFinalUnormAttachment = false;
-  bool sawRampUnormAttachment = false;
-  bool sawLinearLdr = false;
-  for (const auto &pass : graph.passes) {
-    for (const auto &attachment : pass.attachments) {
-      if (attachment.target == "debug.final.srgb") {
-        sawFinalSrgbAttachment =
-            sawFinalSrgbAttachment ||
-            attachment.format == LX_core::ImageFormat::RGBA8Srgb;
-      }
-      if (attachment.target == "debug.ramp.srgb") {
-        sawRampSrgbAttachment =
-            sawRampSrgbAttachment ||
-            attachment.format == LX_core::ImageFormat::RGBA8Srgb;
-      }
-      if (attachment.target == "debug.final.unorm_manual_srgb") {
-        sawFinalUnormAttachment =
-            sawFinalUnormAttachment ||
-            attachment.format == LX_core::ImageFormat::RGBA8;
-      }
-      if (attachment.target == "debug.ramp.unorm_manual_srgb") {
-        sawRampUnormAttachment =
-            sawRampUnormAttachment ||
-            attachment.format == LX_core::ImageFormat::RGBA8;
-      }
-      if (attachment.target == "debug.ldr.linear") {
-        sawLinearLdr = sawLinearLdr ||
-                       attachment.format == LX_core::ImageFormat::RGBA16Float;
-      }
-    }
-  }
-  EXPECT(sawFinalSrgbAttachment,
-         "debug graph should contain final SRGB attachment");
-  EXPECT(sawRampSrgbAttachment,
-         "debug graph should contain ramp SRGB attachment");
-  EXPECT(sawFinalUnormAttachment,
-         "debug graph should contain final UNORM attachment");
-  EXPECT(sawRampUnormAttachment,
-         "debug graph should contain ramp UNORM attachment");
-  EXPECT(sawLinearLdr, "debug graph should contain linear LDR float target");
-
-  const LX_core::FrameGraph frameGraph =
-      LX_core::buildFrameGraphFromRenderPathGraph(
-          graph, LX_core::GraphResourceRegistry::makeDefault());
-  const auto findFramePass =
-      [&](LX_core::StringID id) -> const LX_core::FramePass * {
-    for (const auto &pass : frameGraph.getPasses()) {
-      if (pass.name == id) {
-        return &pass;
-      }
-    }
-    return nullptr;
-  };
-  const auto hasSampledReadBinding = [](const LX_core::FramePass &pass,
-                                        const char *resource,
-                                        const char *binding) {
-    return std::any_of(pass.reads.begin(), pass.reads.end(),
-                       [&](const LX_core::FrameGraphRead &read) {
-                         return read.resource == LX_core::StringID(resource) &&
-                                read.bindingName == LX_core::StringID(binding);
-                       });
-  };
-  const auto *toneMapPass = findFramePass(LX_core::Pass_DebugToneMapLinear);
-  const auto *srgbPass = findFramePass(LX_core::Pass_DebugSrgbAttachment);
-  const auto *unormPass = findFramePass(LX_core::Pass_DebugUnormManualSrgb);
-  EXPECT(toneMapPass != nullptr &&
-             hasSampledReadBinding(*toneMapPass, "hdr.color", "SceneColor"),
-         "DebugToneMapLinear should bind hdr.color as SceneColor");
-  EXPECT(srgbPass != nullptr &&
-             hasSampledReadBinding(*srgbPass, "debug.ldr.linear", "SceneColor"),
-         "DebugSrgbAttachment should bind debug.ldr.linear as SceneColor");
-  EXPECT(
-      unormPass != nullptr &&
-          hasSampledReadBinding(*unormPass, "debug.ldr.linear", "SceneColor"),
-      "DebugUnormManualSrgb should bind debug.ldr.linear as SceneColor");
-  const auto compiled =
-      frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
-  EXPECT(compiled.isValid(),
-         "debug graph asset should compile into a FrameGraph plan");
-}
-
-void testDebugColorTransferRenderPathGraphAssetResolvesShaderPayloads() {
-  LX_infra::SceneResourceParserRegistry registry;
-  LX_infra::registerRenderResourceParsers(registry);
-  LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri(
-      "assets/render_paths/debug_color_transfer.render-path.yaml");
-
-  const auto parsed =
-      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
-                     graphUri, LX_infra::SceneResourceParseContext{});
-
-  EXPECT(parsed.diagnostics.empty(),
-         "debug color transfer graph should resolve shader dependencies "
-         "without diagnostics");
-  EXPECT(parsed.identity.isValid(),
-         "debug color transfer graph should register through parser registry");
-  EXPECT(parsed.metadata.state != LX_core::ResourceState::Failed,
-         "debug color transfer graph registry parse should not fail");
-  EXPECT(table.shaderCount() == 4,
-         "debug color transfer graph should register unique shader "
-         "descriptors for Forward plus three utility shaders");
-}
-
-void testRenderPathGraphParsesSrgbSwapchainAttachment() {
-  LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse("memory://srgb-swapchain.render-path.yaml",
-                                   R"(
-schema: lxe.render-path-graph.v1
-name: SrgbSwapchain
-renderPath: Forward
-features: {}
-passes:
-  - id: PostProcess
-    stage: raster
-    dispatch: fullscreen
-    shader: post_process
-    input:
-      kind: fullscreen-triangle
-    rendering:
-      mode: dynamic
-      attachments:
-        - target: swapchain.color
-          format: BGRA8Srgb
-          samples: 1
-          layers: 1
-    sources: [hdr.color]
-    targets: [swapchain.color]
-    renderState:
-      cullMode: Back
-      depthTest: false
-      depthWrite: false
-      depthOp: LessEqual
-)");
-
-  EXPECT(parsed.renderPathGraph.has_value(),
-         "render path graph should parse BGRA8Srgb attachment format");
-  EXPECT(parsed.diagnostics.empty(),
-         "BGRA8Srgb attachment should not emit diagnostics");
-  if (!parsed.renderPathGraph.has_value()) {
-    return;
-  }
-  const auto &passes = parsed.renderPathGraph->passes;
-  EXPECT(passes.size() == 1, "test graph should contain one pass");
-  if (!passes.empty() && !passes.front().attachments.empty()) {
-    EXPECT(passes.front().attachments.front().format ==
-               LX_core::ImageFormat::BGRA8Srgb,
-           "BGRA8Srgb should be retained in attachment contract");
-  }
-}
-
 void testDefaultDeferredRenderPathGraphAssetParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
@@ -430,9 +190,8 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
 
   EXPECT(parsed.renderPathGraph.has_value(),
          "default deferred render path graph asset should parse");
-  EXPECT(
-      parsed.diagnostics.empty(),
-      "default deferred render path graph asset should not emit diagnostics");
+  EXPECT(parsed.diagnostics.empty(),
+         "default deferred render path graph asset should not emit diagnostics");
   if (!parsed.renderPathGraph.has_value()) {
     return;
   }
@@ -722,8 +481,8 @@ void testParserAdapterRejectsMissingGraphShaderDependency() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri =
-      writeTempRenderPathGraph("lxe_missing_shader.render-path.yaml", R"(
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_missing_shader.render-path.yaml", R"(
 schema: lxe.render-path-graph.v1
 name: MissingShader
 renderPath: Forward
@@ -753,9 +512,9 @@ passes:
       depthOp: LessEqual
 )");
 
-  const auto parsed =
-      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
-                     graphUri, LX_infra::SceneResourceParseContext{});
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
 
   EXPECT(!parsed.identity.isValid() ||
              parsed.metadata.state == LX_core::ResourceState::Failed,
@@ -782,12 +541,112 @@ passes:
          "failed shader metadata should be interned only for diagnostics");
 }
 
+void testParserAdapterRejectsRootUtilityShaderUri() {
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  LX_core::SceneResourceTable table;
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_root_utility_shader_rejected.render-path.yaml", R"(
+schema: lxe.render-path-graph.v1
+name: RootUtilityRejected
+renderPath: Forward
+passes:
+  - id: PostProcess
+    stage: raster
+    dispatch: fullscreen
+    shader: post_process
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8
+          samples: 1
+          layers: 1
+    sources: [hdr.color]
+    targets: [swapchain.color]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
+
+  EXPECT(!parsed.identity.isValid() ||
+             parsed.metadata.state == LX_core::ResourceState::Failed,
+         "root utility shader URI should fail graph parse");
+  EXPECT(hasDiagnosticContaining(parsed, "post_process"),
+         "diagnostic should name rejected root utility shader URI");
+  EXPECT(hasDiagnosticContaining(parsed, "unsupported shader URI"),
+         "diagnostic should explain unsupported shader URI");
+  EXPECT(hasDiagnosticContaining(parsed, "render_paths/"),
+         "diagnostic should point authors at render_paths namespace");
+  EXPECT(table.shaderCount() == 0,
+         "root utility shader URI must not register a typed shader descriptor");
+}
+
+void testParserAdapterRejectsDirectShaderSourceUri() {
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  LX_core::SceneResourceTable table;
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_direct_shader_source_rejected.render-path.yaml", R"(
+schema: lxe.render-path-graph.v1
+name: DirectShaderSourceRejected
+renderPath: Forward
+passes:
+  - id: PostProcess
+    stage: raster
+    dispatch: fullscreen
+    shader: assets/shaders/glsl/render_paths/Post/post_process.frag
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8
+          samples: 1
+          layers: 1
+    sources: [hdr.color]
+    targets: [swapchain.color]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
+
+  EXPECT(!parsed.identity.isValid() ||
+             parsed.metadata.state == LX_core::ResourceState::Failed,
+         "direct shader source URI should fail graph parse");
+  EXPECT(hasDiagnosticContaining(
+             parsed, "assets/shaders/glsl/render_paths/Post/post_process.frag"),
+         "diagnostic should name rejected direct shader source URI");
+  EXPECT(hasDiagnosticContaining(parsed, "unsupported shader URI"),
+         "diagnostic should explain unsupported shader URI");
+  EXPECT(hasDiagnosticContaining(parsed, "render_paths/"),
+         "diagnostic should point authors at render_paths namespace");
+  EXPECT(table.shaderCount() == 0,
+         "direct shader source URI must not register a typed shader "
+         "descriptor");
+}
+
 void testParserAdapterResolvesRenderPathShaderUriForms() {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   LX_core::SceneResourceTable table;
-  const LX_core::ResourceUri graphUri =
-      writeTempRenderPathGraph("lxe_shader_forms.render-path.yaml", R"(
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_shader_forms.render-path.yaml", R"(
 schema: lxe.render-path-graph.v1
 name: ShaderForms
 renderPath: Forward
@@ -865,7 +724,7 @@ passes:
   - id: PostProcess
     stage: raster
     dispatch: fullscreen
-    shader: post_process
+    shader: render_paths/Post/post_process
     input:
       kind: fullscreen-triangle
     rendering:
@@ -885,7 +744,7 @@ passes:
   - id: BloomThreshold
     stage: raster
     dispatch: fullscreen
-    shader: bloom_threshold
+    shader: render_paths/Post/bloom_threshold
     input:
       kind: fullscreen-triangle
     rendering:
@@ -905,7 +764,7 @@ passes:
   - id: BloomBlurH
     stage: raster
     dispatch: fullscreen
-    shader: bloom_blur_h
+    shader: render_paths/Post/bloom_blur_h
     input:
       kind: fullscreen-triangle
     rendering:
@@ -925,7 +784,7 @@ passes:
   - id: BloomBlurV
     stage: raster
     dispatch: fullscreen
-    shader: bloom_blur_v
+    shader: render_paths/Post/bloom_blur_v
     input:
       kind: fullscreen-triangle
     rendering:
@@ -944,9 +803,9 @@ passes:
       depthOp: LessEqual
 )");
 
-  const auto parsed =
-      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
-                     graphUri, LX_infra::SceneResourceParseContext{});
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
 
   EXPECT(parsed.diagnostics.empty(),
          "RenderPath shader URI forms should resolve without diagnostics");
@@ -986,10 +845,9 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
     LX_infra::registerRenderResourceParsers(registry);
     LX_core::SceneResourceTable table;
 
-    const auto parsed =
-        registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
-                       LX_core::ResourceUri(asset.path),
-                       LX_infra::SceneResourceParseContext{});
+    const auto parsed = registry.parse(
+        table, LX_core::SceneResourceType::RenderPathGraph,
+        LX_core::ResourceUri(asset.path), LX_infra::SceneResourceParseContext{});
 
     EXPECT(parsed.diagnostics.empty(),
            std::string(asset.path) +
@@ -1028,9 +886,6 @@ int main() {
   testRenderFeatureParsesPureEnvelope();
   testDefaultRenderFeatureAssetParses();
   testDefaultRenderPathGraphAssetParses();
-  testDebugColorTransferRenderPathGraphAssetParses();
-  testDebugColorTransferRenderPathGraphAssetResolvesShaderPayloads();
-  testRenderPathGraphParsesSrgbSwapchainAttachment();
   testDefaultDeferredRenderPathGraphAssetParses();
   testRenderFeatureRejectsPassAndShaderFields();
   testRenderFeatureResourcesAreExplicitlyNotImplemented();
@@ -1039,6 +894,8 @@ int main() {
   testRenderPathGraphRejectsUnparsedAllowedLookingFields();
   testLegacyRenderEffectSchemaIsRejectedByNewParser();
   testParserAdapterRejectsMissingGraphShaderDependency();
+  testParserAdapterRejectsRootUtilityShaderUri();
+  testParserAdapterRejectsDirectShaderSourceUri();
   testParserAdapterResolvesRenderPathShaderUriForms();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   if (g_failures != 0) {

@@ -81,7 +81,7 @@ passes:
   - id: BloomThreshold
     stage: raster
     dispatch: fullscreen
-    shader: bloom_threshold
+    shader: render_paths/Post/bloom_threshold
     input:
       kind: fullscreen-triangle
     rendering:
@@ -103,7 +103,7 @@ passes:
   - id: BloomBlurH
     stage: raster
     dispatch: fullscreen
-    shader: bloom_blur_h
+    shader: render_paths/Post/bloom_blur_h
     input:
       kind: fullscreen-triangle
     rendering:
@@ -125,7 +125,7 @@ passes:
   - id: BloomBlurV
     stage: raster
     dispatch: fullscreen
-    shader: bloom_blur_v
+    shader: render_paths/Post/bloom_blur_v
     input:
       kind: fullscreen-triangle
     rendering:
@@ -147,7 +147,7 @@ passes:
   - id: PostProcess
     stage: raster
     dispatch: fullscreen
-    shader: post_process
+    shader: render_paths/Post/post_process
     input:
       kind: fullscreen-triangle
     rendering:
@@ -169,7 +169,7 @@ passes:
   - id: DebugOverlay
     stage: raster
     dispatch: draw
-    shader: debug_overlay
+    shader: render_paths/Debug/debug_overlay
     input:
       kind: scene-renderables
       object:

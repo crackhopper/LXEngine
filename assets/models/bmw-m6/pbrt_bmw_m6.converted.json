@@ -1,6 +1,6 @@
 {
   "schema": "lxe.pbrtSceneConversion.v1",
-  "inputScene": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt",
+  "inputScene": "<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt",
   "sourceSceneBounds": [
     [
       -23.973587,
@@ -13,7 +13,7 @@
       26.584051
     ]
   ],
-  "outputScene": "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml",
+  "outputScene": "assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml",
   "meshCount": 114,
   "materialCount": 28,
   "runtimeMaterialCount": 28,
@@ -21,809 +21,809 @@
   "shapeMaterials": [
     {
       "shapeIndex": 1,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00001.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00001.obj",
       "pbrtMaterial": "LightGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LightGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LightGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 2,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00002.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00002.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 3,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00003.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00003.obj",
       "pbrtMaterial": "carbonfibre",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
     },
     {
       "shapeIndex": 4,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00004.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00004.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 5,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00005.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00005.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 6,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00006.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00006.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 7,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00007.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00007.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 8,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00008.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00008.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 9,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00009.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00009.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 10,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00010.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00010.obj",
       "pbrtMaterial": "LightGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LightGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LightGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 11,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00011.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00011.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 12,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00012.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00012.obj",
       "pbrtMaterial": "HeadLight",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLight.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLight.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
     },
     {
       "shapeIndex": 13,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00013.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00013.obj",
       "pbrtMaterial": "None",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
     },
     {
       "shapeIndex": 14,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00014.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00014.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "shapeIndex": 15,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00015.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00015.obj",
       "pbrtMaterial": "brakeDisc",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
     },
     {
       "shapeIndex": 16,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00016.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00016.obj",
       "pbrtMaterial": "mattefloor",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
     },
     {
       "shapeIndex": 17,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00017.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00017.obj",
       "pbrtMaterial": "Seal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/Seal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/Seal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/Seal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/Seal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 18,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00018.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00018.obj",
       "pbrtMaterial": "None",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
     },
     {
       "shapeIndex": 19,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00019.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00019.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 20,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00020.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00020.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 21,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00021.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00021.obj",
       "pbrtMaterial": "HeadLight",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLight.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLight.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
     },
     {
       "shapeIndex": 22,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00022.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00022.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 23,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00023.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00023.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 24,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00024.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00024.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 25,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00025.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00025.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 26,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00026.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00026.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 27,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00027.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00027.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 28,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00028.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00028.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 29,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00029.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00029.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 30,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00030.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00030.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 31,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00031.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00031.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 32,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00032.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00032.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 33,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00033.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00033.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 34,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00034.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00034.obj",
       "pbrtMaterial": "tiresidewall",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
     },
     {
       "shapeIndex": 35,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00035.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00035.obj",
       "pbrtMaterial": "tire",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
     },
     {
       "shapeIndex": 36,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00036.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00036.obj",
       "pbrtMaterial": "tire",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
     },
     {
       "shapeIndex": 37,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00037.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00037.obj",
       "pbrtMaterial": "tiresidewall",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
     },
     {
       "shapeIndex": 38,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00038.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00038.obj",
       "pbrtMaterial": "tiresidewall",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
     },
     {
       "shapeIndex": 39,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00039.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00039.obj",
       "pbrtMaterial": "tire",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
     },
     {
       "shapeIndex": 40,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00040.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00040.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 41,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00041.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00041.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 42,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00042.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00042.obj",
       "pbrtMaterial": "tire",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
     },
     {
       "shapeIndex": 43,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00043.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00043.obj",
       "pbrtMaterial": "tiresidewall",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
     },
     {
       "shapeIndex": 44,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00044.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00044.obj",
       "pbrtMaterial": "brake_clipper",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brake_clipper.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brake_clipper.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brake_clipper.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brake_clipper.pbrt-material.yaml"
     },
     {
       "shapeIndex": 45,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00045.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00045.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 46,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00046.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00046.obj",
       "pbrtMaterial": "LogoAzure",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoAzure.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoAzure.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoAzure.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoAzure.pbrt-material.yaml"
     },
     {
       "shapeIndex": 47,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00047.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00047.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 48,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00048.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00048.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 49,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00049.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00049.obj",
       "pbrtMaterial": "LogoRed",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoRed.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoRed.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoRed.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoRed.pbrt-material.yaml"
     },
     {
       "shapeIndex": 50,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00050.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00050.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 51,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00051.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00051.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 52,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00052.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00052.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 53,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00053.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00053.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 54,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00054.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00054.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 55,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00055.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00055.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 56,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00056.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00056.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 57,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00057.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00057.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 58,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00058.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00058.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 59,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00059.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00059.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 60,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00060.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00060.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 61,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00061.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00061.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 62,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00062.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00062.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 63,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00063.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00063.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 64,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00064.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00064.obj",
       "pbrtMaterial": "LogoBlack",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
     },
     {
       "shapeIndex": 65,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00065.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00065.obj",
       "pbrtMaterial": "LogoBlue",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
     },
     {
       "shapeIndex": 66,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00066.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00066.obj",
       "pbrtMaterial": "LogoSilver",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "shapeIndex": 67,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00067.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00067.obj",
       "pbrtMaterial": "LogoWhite",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
     },
     {
       "shapeIndex": 68,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00068.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00068.obj",
       "pbrtMaterial": "None",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
     },
     {
       "shapeIndex": 69,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00069.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00069.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "shapeIndex": 70,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00070.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00070.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "shapeIndex": 71,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00071.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00071.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 72,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00072.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00072.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 73,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00073.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00073.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 74,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00074.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00074.obj",
       "pbrtMaterial": "mattefloor",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
     },
     {
       "shapeIndex": 75,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00075.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00075.obj",
       "pbrtMaterial": "grillmetal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/grillmetal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/grillmetal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 76,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00076.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00076.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 77,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00077.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00077.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 78,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00078.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00078.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 79,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00079.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00079.obj",
       "pbrtMaterial": "HeadLightGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 80,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00080.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00080.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 81,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00081.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00081.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 82,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00082.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00082.obj",
       "pbrtMaterial": "mattefloor",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
     },
     {
       "shapeIndex": 83,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00083.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00083.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 84,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00084.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00084.obj",
       "pbrtMaterial": "None",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
     },
     {
       "shapeIndex": 85,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00085.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00085.obj",
       "pbrtMaterial": "None",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
     },
     {
       "shapeIndex": 86,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00086.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00086.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 87,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00087.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00087.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 88,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00088.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00088.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 89,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00089.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00089.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 90,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00090.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00090.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 91,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00091.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00091.obj",
       "pbrtMaterial": "WheelRim",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "shapeIndex": 92,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00092.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00092.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 93,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00093.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00093.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 94,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00094.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00094.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 95,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00095.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00095.obj",
       "pbrtMaterial": "HeadLightGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 96,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00096.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00096.obj",
       "pbrtMaterial": "WindscreenGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 97,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00097.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00097.obj",
       "pbrtMaterial": "WindscreenGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 98,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00098.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00098.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 99,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00099.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00099.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 100,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00100.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00100.obj",
       "pbrtMaterial": "WindscreenGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 101,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00101.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00101.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "shapeIndex": 102,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00102.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00102.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 103,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00103.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00103.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 104,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00104.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00104.obj",
       "pbrtMaterial": "carbonfibre",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
     },
     {
       "shapeIndex": 105,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00105.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00105.obj",
       "pbrtMaterial": "WindscreenGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 106,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00106.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00106.obj",
       "pbrtMaterial": "floor",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/floor.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/floor.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
     },
     {
       "shapeIndex": 107,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00107.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00107.obj",
       "pbrtMaterial": "WindowSeal",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
     },
     {
       "shapeIndex": 108,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00108.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00108.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "shapeIndex": 109,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00109.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00109.obj",
       "pbrtMaterial": "brakeDisc",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
     },
     {
       "shapeIndex": 110,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00110.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00110.obj",
       "pbrtMaterial": "HeadLightGlass",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
     },
     {
       "shapeIndex": 111,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00111.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00111.obj",
       "pbrtMaterial": "HeadLightGlass01",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass01.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass01.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
     },
     {
       "shapeIndex": 112,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00112.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00112.obj",
       "pbrtMaterial": "CarPaint",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "shapeIndex": 113,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00113.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00113.obj",
       "pbrtMaterial": "shinychrome",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     },
     {
       "shapeIndex": 114,
-      "mesh": "data/scenes/bmw-m6/meshes/mesh_00114.obj",
+      "mesh": "assets/models/bmw-m6/meshes/mesh_00114.obj",
       "pbrtMaterial": "LEATHER",
-      "runtimeMaterialUri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "runtimeMaterialUri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material",
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     }
   ],
   "meshes": [
     {
       "shapeIndex": 1,
       "sourceName": "BMWHeadLightA.009_Cube.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00001.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00001.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00001.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00001.obj",
       "vertexCount": 386,
       "texCoordCount": 0,
       "faceCount": 704,
@@ -844,8 +844,8 @@
     {
       "shapeIndex": 2,
       "sourceName": "BMWSideMirrorA.004_Cube.130",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00002.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00002.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00002.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00002.obj",
       "vertexCount": 2124,
       "texCoordCount": 2124,
       "faceCount": 2880,
@@ -866,8 +866,8 @@
     {
       "shapeIndex": 3,
       "sourceName": "BMWSideMirrorA.003_Cube.129",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00003.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00003.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00003.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00003.obj",
       "vertexCount": 1392,
       "texCoordCount": 1392,
       "faceCount": 1984,
@@ -888,8 +888,8 @@
     {
       "shapeIndex": 4,
       "sourceName": "BMWSideMirrorA.002_Cube.128",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00004.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00004.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00004.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00004.obj",
       "vertexCount": 16194,
       "texCoordCount": 16194,
       "faceCount": 23728,
@@ -910,8 +910,8 @@
     {
       "shapeIndex": 5,
       "sourceName": "BMWSideMirrorA.001_Cube.127",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00005.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00005.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00005.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00005.obj",
       "vertexCount": 2000,
       "texCoordCount": 2000,
       "faceCount": 3072,
@@ -932,8 +932,8 @@
     {
       "shapeIndex": 6,
       "sourceName": "BMWSideMirrorA_Cube.028",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00006.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00006.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00006.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00006.obj",
       "vertexCount": 878,
       "texCoordCount": 878,
       "faceCount": 1296,
@@ -954,8 +954,8 @@
     {
       "shapeIndex": 7,
       "sourceName": "BMWM3Logo.001_Cube.019",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00007.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00007.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00007.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00007.obj",
       "vertexCount": 486,
       "texCoordCount": 486,
       "faceCount": 256,
@@ -976,8 +976,8 @@
     {
       "shapeIndex": 8,
       "sourceName": "BMWM6LOGO.002_Cube.016",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00008.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00008.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00008.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00008.obj",
       "vertexCount": 191,
       "texCoordCount": 191,
       "faceCount": 128,
@@ -998,8 +998,8 @@
     {
       "shapeIndex": 9,
       "sourceName": "BMWWatersquirt_Cube.026",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00009.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00009.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00009.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00009.obj",
       "vertexCount": 176,
       "texCoordCount": 176,
       "faceCount": 208,
@@ -1020,8 +1020,8 @@
     {
       "shapeIndex": 10,
       "sourceName": "BMWHeadLightA.008_Cube.125",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00010.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00010.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00010.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00010.obj",
       "vertexCount": 386,
       "texCoordCount": 0,
       "faceCount": 704,
@@ -1042,8 +1042,8 @@
     {
       "shapeIndex": 11,
       "sourceName": "BMWHeadLightA.007_Cube.124",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00011.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00011.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00011.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00011.obj",
       "vertexCount": 4352,
       "texCoordCount": 0,
       "faceCount": 8192,
@@ -1064,8 +1064,8 @@
     {
       "shapeIndex": 12,
       "sourceName": "BMWHeadLightA.006_Cube.123",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00012.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00012.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00012.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00012.obj",
       "vertexCount": 640,
       "texCoordCount": 0,
       "faceCount": 1024,
@@ -1086,8 +1086,8 @@
     {
       "shapeIndex": 13,
       "sourceName": "BMWHeadLightA.004_Cube.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00013.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00013.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00013.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00013.obj",
       "vertexCount": 384,
       "texCoordCount": 0,
       "faceCount": 640,
@@ -1108,8 +1108,8 @@
     {
       "shapeIndex": 14,
       "sourceName": "BMWMirror_Cube.121",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00014.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00014.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00014.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00014.obj",
       "vertexCount": 154,
       "texCoordCount": 0,
       "faceCount": 304,
@@ -1130,8 +1130,8 @@
     {
       "shapeIndex": 15,
       "sourceName": "BMWRearBrakeDisc.L_Mesh.005",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00015.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00015.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00015.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00015.obj",
       "vertexCount": 17248,
       "texCoordCount": 0,
       "faceCount": 16064,
@@ -1152,8 +1152,8 @@
     {
       "shapeIndex": 16,
       "sourceName": "BWMFloor_Cube.119",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00016.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00016.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00016.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00016.obj",
       "vertexCount": 795,
       "texCoordCount": 795,
       "faceCount": 682,
@@ -1174,8 +1174,8 @@
     {
       "shapeIndex": 17,
       "sourceName": "BMWSeal_Cube.023",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00017.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00017.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00017.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00017.obj",
       "vertexCount": 20550,
       "texCoordCount": 20550,
       "faceCount": 31648,
@@ -1196,8 +1196,8 @@
     {
       "shapeIndex": 18,
       "sourceName": "BWMRearParkinglight_Cube.113",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00018.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00018.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00018.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00018.obj",
       "vertexCount": 90,
       "texCoordCount": 90,
       "faceCount": 96,
@@ -1218,8 +1218,8 @@
     {
       "shapeIndex": 19,
       "sourceName": "BWMRearBumper.002_Cube.112",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00019.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00019.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00019.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00019.obj",
       "vertexCount": 295,
       "texCoordCount": 295,
       "faceCount": 304,
@@ -1240,8 +1240,8 @@
     {
       "shapeIndex": 20,
       "sourceName": "BWMExhaust_Cube.111",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00020.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00020.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00020.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00020.obj",
       "vertexCount": 2006,
       "texCoordCount": 2006,
       "faceCount": 2624,
@@ -1262,8 +1262,8 @@
     {
       "shapeIndex": 21,
       "sourceName": "BMWHeadLightA.003_Cube.110",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00021.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00021.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00021.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00021.obj",
       "vertexCount": 640,
       "texCoordCount": 0,
       "faceCount": 1024,
@@ -1284,8 +1284,8 @@
     {
       "shapeIndex": 22,
       "sourceName": "Curve.008_Mesh.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00022.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00022.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00022.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00022.obj",
       "vertexCount": 38,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -1306,8 +1306,8 @@
     {
       "shapeIndex": 23,
       "sourceName": "Curve.008_Mesh.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00023.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00023.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00023.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00023.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -1328,8 +1328,8 @@
     {
       "shapeIndex": 24,
       "sourceName": "Curve.008_Mesh.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00024.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00024.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00024.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00024.obj",
       "vertexCount": 268,
       "texCoordCount": 0,
       "faceCount": 473,
@@ -1350,8 +1350,8 @@
     {
       "shapeIndex": 25,
       "sourceName": "Curve.008_Mesh.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00025.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00025.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00025.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00025.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -1372,8 +1372,8 @@
     {
       "shapeIndex": 26,
       "sourceName": "BMWWheelLogoFW.L_Mesh.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00026.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00026.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00026.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00026.obj",
       "vertexCount": 38,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -1394,8 +1394,8 @@
     {
       "shapeIndex": 27,
       "sourceName": "BMWWheelLogoFW.L_Mesh.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00027.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00027.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00027.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00027.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -1416,8 +1416,8 @@
     {
       "shapeIndex": 28,
       "sourceName": "BMWWheelLogoFW.L_Mesh.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00028.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00028.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00028.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00028.obj",
       "vertexCount": 115,
       "texCoordCount": 0,
       "faceCount": 171,
@@ -1438,8 +1438,8 @@
     {
       "shapeIndex": 29,
       "sourceName": "BMWWheelLogoFW.L_Mesh.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00029.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00029.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00029.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00029.obj",
       "vertexCount": 243,
       "texCoordCount": 0,
       "faceCount": 398,
@@ -1460,8 +1460,8 @@
     {
       "shapeIndex": 30,
       "sourceName": "BMWFender.006_Cube.107",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00030.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00030.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00030.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00030.obj",
       "vertexCount": 192,
       "texCoordCount": 192,
       "faceCount": 224,
@@ -1482,8 +1482,8 @@
     {
       "shapeIndex": 31,
       "sourceName": "BMWFender.005_Cube.106",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00031.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00031.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00031.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00031.obj",
       "vertexCount": 192,
       "texCoordCount": 192,
       "faceCount": 224,
@@ -1504,8 +1504,8 @@
     {
       "shapeIndex": 32,
       "sourceName": "BMWFrontbumper_Cube.105",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00032.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00032.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00032.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00032.obj",
       "vertexCount": 9537,
       "texCoordCount": 9537,
       "faceCount": 9712,
@@ -1526,8 +1526,8 @@
     {
       "shapeIndex": 33,
       "sourceName": "BMWKidnerGrill2_Cube.014",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00033.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00033.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00033.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00033.obj",
       "vertexCount": 1014,
       "texCoordCount": 1014,
       "faceCount": 1136,
@@ -1548,8 +1548,8 @@
     {
       "shapeIndex": 34,
       "sourceName": "BMWFrontTire.L_Circle.011",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00034.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00034.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00034.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00034.obj",
       "vertexCount": 55872,
       "texCoordCount": 55872,
       "faceCount": 110592,
@@ -1570,8 +1570,8 @@
     {
       "shapeIndex": 35,
       "sourceName": "BMWFrontTread.L_Plane.007",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00035.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00035.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00035.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00035.obj",
       "vertexCount": 14910,
       "texCoordCount": 0,
       "faceCount": 10200,
@@ -1592,8 +1592,8 @@
     {
       "shapeIndex": 36,
       "sourceName": "BMWRearTread.L_Plane.003",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00036.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00036.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00036.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00036.obj",
       "vertexCount": 14910,
       "texCoordCount": 0,
       "faceCount": 10200,
@@ -1614,8 +1614,8 @@
     {
       "shapeIndex": 37,
       "sourceName": "BMWLFrontTire.001_Circle.010",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00037.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00037.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00037.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00037.obj",
       "vertexCount": 55872,
       "texCoordCount": 0,
       "faceCount": 110592,
@@ -1636,8 +1636,8 @@
     {
       "shapeIndex": 38,
       "sourceName": "BMWRearTire.R_Circle.005",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00038.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00038.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00038.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00038.obj",
       "vertexCount": 55872,
       "texCoordCount": 0,
       "faceCount": 110592,
@@ -1658,8 +1658,8 @@
     {
       "shapeIndex": 39,
       "sourceName": "BMWRearTread.R_Plane",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00039.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00039.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00039.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00039.obj",
       "vertexCount": 14910,
       "texCoordCount": 0,
       "faceCount": 10200,
@@ -1680,8 +1680,8 @@
     {
       "shapeIndex": 40,
       "sourceName": "BMWFrontRim.R_Circle.013",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00040.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00040.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00040.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00040.obj",
       "vertexCount": 11191,
       "texCoordCount": 0,
       "faceCount": 18520,
@@ -1702,8 +1702,8 @@
     {
       "shapeIndex": 41,
       "sourceName": "BMWRearRim.R_Circle.008",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00041.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00041.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00041.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00041.obj",
       "vertexCount": 11191,
       "texCoordCount": 0,
       "faceCount": 18520,
@@ -1724,8 +1724,8 @@
     {
       "shapeIndex": 42,
       "sourceName": "BMWFrontTread.R_Plane.011",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00042.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00042.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00042.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00042.obj",
       "vertexCount": 14910,
       "texCoordCount": 0,
       "faceCount": 10200,
@@ -1746,8 +1746,8 @@
     {
       "shapeIndex": 43,
       "sourceName": "BMWFrontTire.R_Circle.014",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00043.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00043.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00043.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00043.obj",
       "vertexCount": 55872,
       "texCoordCount": 0,
       "faceCount": 110592,
@@ -1768,8 +1768,8 @@
     {
       "shapeIndex": 44,
       "sourceName": "BMWFrontBrake.L_Circle.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00044.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00044.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00044.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00044.obj",
       "vertexCount": 3720,
       "texCoordCount": 0,
       "faceCount": 3784,
@@ -1790,8 +1790,8 @@
     {
       "shapeIndex": 45,
       "sourceName": "BMWFronttirevalve.L_Circle.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00045.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00045.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00045.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00045.obj",
       "vertexCount": 217,
       "texCoordCount": 0,
       "faceCount": 416,
@@ -1812,8 +1812,8 @@
     {
       "shapeIndex": 46,
       "sourceName": "BMWM3Logo_Cube.101",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00046.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00046.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00046.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00046.obj",
       "vertexCount": 8,
       "texCoordCount": 8,
       "faceCount": 4,
@@ -1834,8 +1834,8 @@
     {
       "shapeIndex": 47,
       "sourceName": "BMWM3Logo_Cube.101",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00047.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00047.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00047.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00047.obj",
       "vertexCount": 8,
       "texCoordCount": 8,
       "faceCount": 4,
@@ -1856,8 +1856,8 @@
     {
       "shapeIndex": 48,
       "sourceName": "BMWM3Logo_Cube.101",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00048.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00048.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00048.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00048.obj",
       "vertexCount": 8,
       "texCoordCount": 8,
       "faceCount": 4,
@@ -1878,8 +1878,8 @@
     {
       "shapeIndex": 49,
       "sourceName": "BMWM3Logo_Cube.101",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00049.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00049.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00049.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00049.obj",
       "vertexCount": 8,
       "texCoordCount": 8,
       "faceCount": 4,
@@ -1900,8 +1900,8 @@
     {
       "shapeIndex": 50,
       "sourceName": "BMWM3Logo_Cube.101",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00050.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00050.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00050.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00050.obj",
       "vertexCount": 342,
       "texCoordCount": 342,
       "faceCount": 224,
@@ -1922,8 +1922,8 @@
     {
       "shapeIndex": 51,
       "sourceName": "BWMRearBumper.001_Cube.027",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00051.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00051.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00051.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00051.obj",
       "vertexCount": 4746,
       "texCoordCount": 4746,
       "faceCount": 5382,
@@ -1944,8 +1944,8 @@
     {
       "shapeIndex": 52,
       "sourceName": "Curve.004_Mesh.007",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00052.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00052.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00052.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00052.obj",
       "vertexCount": 38,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -1966,8 +1966,8 @@
     {
       "shapeIndex": 53,
       "sourceName": "Curve.004_Mesh.007",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00053.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00053.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00053.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00053.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -1988,8 +1988,8 @@
     {
       "shapeIndex": 54,
       "sourceName": "Curve.004_Mesh.007",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00054.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00054.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00054.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00054.obj",
       "vertexCount": 292,
       "texCoordCount": 0,
       "faceCount": 521,
@@ -2010,8 +2010,8 @@
     {
       "shapeIndex": 55,
       "sourceName": "Curve.004_Mesh.007",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00055.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00055.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00055.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00055.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2032,8 +2032,8 @@
     {
       "shapeIndex": 56,
       "sourceName": "BMWWheelLogoRW.L_Mesh.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00056.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00056.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00056.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00056.obj",
       "vertexCount": 38,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -2054,8 +2054,8 @@
     {
       "shapeIndex": 57,
       "sourceName": "BMWWheelLogoRW.L_Mesh.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00057.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00057.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00057.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00057.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2076,8 +2076,8 @@
     {
       "shapeIndex": 58,
       "sourceName": "BMWWheelLogoRW.L_Mesh.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00058.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00058.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00058.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00058.obj",
       "vertexCount": 292,
       "texCoordCount": 0,
       "faceCount": 521,
@@ -2098,8 +2098,8 @@
     {
       "shapeIndex": 59,
       "sourceName": "BMWWheelLogoRW.L_Mesh.006",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00059.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00059.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00059.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00059.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2120,8 +2120,8 @@
     {
       "shapeIndex": 60,
       "sourceName": "BMWHoodLogo_Mesh.004",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00060.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00060.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00060.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00060.obj",
       "vertexCount": 38,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -2142,8 +2142,8 @@
     {
       "shapeIndex": 61,
       "sourceName": "BMWHoodLogo_Mesh.004",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00061.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00061.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00061.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00061.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2164,8 +2164,8 @@
     {
       "shapeIndex": 62,
       "sourceName": "BMWHoodLogo_Mesh.004",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00062.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00062.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00062.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00062.obj",
       "vertexCount": 281,
       "texCoordCount": 0,
       "faceCount": 499,
@@ -2186,8 +2186,8 @@
     {
       "shapeIndex": 63,
       "sourceName": "BMWHoodLogo_Mesh.004",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00063.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00063.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00063.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00063.obj",
       "vertexCount": 28,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2208,8 +2208,8 @@
     {
       "shapeIndex": 64,
       "sourceName": "BMWBootLogo_Mesh.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00064.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00064.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00064.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00064.obj",
       "vertexCount": 76,
       "texCoordCount": 0,
       "faceCount": 38,
@@ -2230,8 +2230,8 @@
     {
       "shapeIndex": 65,
       "sourceName": "BMWBootLogo_Mesh.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00065.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00065.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00065.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00065.obj",
       "vertexCount": 95,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2252,8 +2252,8 @@
     {
       "shapeIndex": 66,
       "sourceName": "BMWBootLogo_Mesh.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00066.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00066.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00066.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00066.obj",
       "vertexCount": 1589,
       "texCoordCount": 0,
       "faceCount": 771,
@@ -2274,8 +2274,8 @@
     {
       "shapeIndex": 67,
       "sourceName": "BMWBootLogo_Mesh.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00067.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00067.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00067.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00067.obj",
       "vertexCount": 91,
       "texCoordCount": 0,
       "faceCount": 48,
@@ -2296,8 +2296,8 @@
     {
       "shapeIndex": 68,
       "sourceName": "BMWHood.001_Cube.098",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00068.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00068.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00068.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00068.obj",
       "vertexCount": 22,
       "texCoordCount": 0,
       "faceCount": 20,
@@ -2318,8 +2318,8 @@
     {
       "shapeIndex": 69,
       "sourceName": "BMWRoofLining_Cube.097",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00069.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00069.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00069.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00069.obj",
       "vertexCount": 1111,
       "texCoordCount": 1111,
       "faceCount": 734,
@@ -2340,8 +2340,8 @@
     {
       "shapeIndex": 70,
       "sourceName": "BMWRearDash_Cube.092",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00070.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00070.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00070.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00070.obj",
       "vertexCount": 801,
       "texCoordCount": 0,
       "faceCount": 1472,
@@ -2362,8 +2362,8 @@
     {
       "shapeIndex": 71,
       "sourceName": "BMWDoor.001_Cube.090",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00071.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00071.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00071.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00071.obj",
       "vertexCount": 696,
       "texCoordCount": 696,
       "faceCount": 800,
@@ -2384,8 +2384,8 @@
     {
       "shapeIndex": 72,
       "sourceName": "BMWHeadLightCover.001_Cube.088",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00072.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00072.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00072.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00072.obj",
       "vertexCount": 654,
       "texCoordCount": 654,
       "faceCount": 356,
@@ -2406,8 +2406,8 @@
     {
       "shapeIndex": 73,
       "sourceName": "BMWHeadLightA.001_Cube.085",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00073.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00073.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00073.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00073.obj",
       "vertexCount": 3328,
       "texCoordCount": 0,
       "faceCount": 6144,
@@ -2428,8 +2428,8 @@
     {
       "shapeIndex": 74,
       "sourceName": "BMWRadiator_Cube.015",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00074.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00074.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00074.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00074.obj",
       "vertexCount": 387,
       "texCoordCount": 387,
       "faceCount": 336,
@@ -2450,8 +2450,8 @@
     {
       "shapeIndex": 75,
       "sourceName": "BMWMeshgrill_Cube.024",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00075.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00075.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00075.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00075.obj",
       "vertexCount": 26535,
       "texCoordCount": 0,
       "faceCount": 13622,
@@ -2472,8 +2472,8 @@
     {
       "shapeIndex": 76,
       "sourceName": "BMWSideWindowSealB_Cube.074",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00076.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00076.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00076.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00076.obj",
       "vertexCount": 284,
       "texCoordCount": 284,
       "faceCount": 300,
@@ -2494,8 +2494,8 @@
     {
       "shapeIndex": 77,
       "sourceName": "BMWSideWindowSealC_Cube.073",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00077.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00077.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00077.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00077.obj",
       "vertexCount": 368,
       "texCoordCount": 368,
       "faceCount": 432,
@@ -2516,8 +2516,8 @@
     {
       "shapeIndex": 78,
       "sourceName": "BMWFender_Cube.071",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00078.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00078.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00078.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00078.obj",
       "vertexCount": 2748,
       "texCoordCount": 2748,
       "faceCount": 3228,
@@ -2538,8 +2538,8 @@
     {
       "shapeIndex": 79,
       "sourceName": "BMWIndicator_Cube.103",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00079.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00079.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00079.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00079.obj",
       "vertexCount": 160,
       "texCoordCount": 0,
       "faceCount": 112,
@@ -2560,8 +2560,8 @@
     {
       "shapeIndex": 80,
       "sourceName": "BMWSidewindowSealA_Cube.069",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00080.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00080.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00080.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00080.obj",
       "vertexCount": 912,
       "texCoordCount": 912,
       "faceCount": 976,
@@ -2582,8 +2582,8 @@
     {
       "shapeIndex": 81,
       "sourceName": "BMWFlicenseholder_Cube.010",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00081.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00081.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00081.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00081.obj",
       "vertexCount": 1416,
       "texCoordCount": 1416,
       "faceCount": 1744,
@@ -2604,8 +2604,8 @@
     {
       "shapeIndex": 82,
       "sourceName": "BMWAirDam_Cube.065",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00082.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00082.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00082.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00082.obj",
       "vertexCount": 234,
       "texCoordCount": 234,
       "faceCount": 240,
@@ -2626,8 +2626,8 @@
     {
       "shapeIndex": 83,
       "sourceName": "BMWBoot_Cube.057",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00083.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00083.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00083.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00083.obj",
       "vertexCount": 2238,
       "texCoordCount": 2238,
       "faceCount": 2816,
@@ -2648,8 +2648,8 @@
     {
       "shapeIndex": 84,
       "sourceName": "BMWM6LOGO.001_Cube.100",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00084.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00084.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00084.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00084.obj",
       "vertexCount": 24,
       "texCoordCount": 24,
       "faceCount": 12,
@@ -2670,8 +2670,8 @@
     {
       "shapeIndex": 85,
       "sourceName": "BMWRearSeam_Cube.054",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00085.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00085.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00085.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00085.obj",
       "vertexCount": 1323,
       "texCoordCount": 1323,
       "faceCount": 1920,
@@ -2692,8 +2692,8 @@
     {
       "shapeIndex": 86,
       "sourceName": "BMWHoodSeal_Cube.030",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00086.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00086.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00086.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00086.obj",
       "vertexCount": 312,
       "texCoordCount": 312,
       "faceCount": 252,
@@ -2714,8 +2714,8 @@
     {
       "shapeIndex": 87,
       "sourceName": "BMWSeamB_Cube.029",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00087.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00087.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00087.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00087.obj",
       "vertexCount": 184,
       "texCoordCount": 184,
       "faceCount": 140,
@@ -2736,8 +2736,8 @@
     {
       "shapeIndex": 88,
       "sourceName": "BMWSeamC_Cube.012",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00088.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00088.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00088.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00088.obj",
       "vertexCount": 120,
       "texCoordCount": 120,
       "faceCount": 76,
@@ -2758,8 +2758,8 @@
     {
       "shapeIndex": 89,
       "sourceName": "BMWFrontWheel.L_Circle.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00089.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00089.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00089.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00089.obj",
       "vertexCount": 241,
       "texCoordCount": 0,
       "faceCount": 440,
@@ -2780,8 +2780,8 @@
     {
       "shapeIndex": 90,
       "sourceName": "BMWRearRim.L_Circle",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00090.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00090.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00090.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00090.obj",
       "vertexCount": 11191,
       "texCoordCount": 0,
       "faceCount": 18520,
@@ -2802,8 +2802,8 @@
     {
       "shapeIndex": 91,
       "sourceName": "BMWFrontrim.L_Circle.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00091.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00091.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00091.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00091.obj",
       "vertexCount": 11176,
       "texCoordCount": 0,
       "faceCount": 18520,
@@ -2824,8 +2824,8 @@
     {
       "shapeIndex": 92,
       "sourceName": "BWMRearBumper_Cube.051",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00092.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00092.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00092.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00092.obj",
       "vertexCount": 3935,
       "texCoordCount": 3935,
       "faceCount": 4448,
@@ -2846,8 +2846,8 @@
     {
       "shapeIndex": 93,
       "sourceName": "BMWHood_Cube.050",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00093.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00093.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00093.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00093.obj",
       "vertexCount": 464,
       "texCoordCount": 464,
       "faceCount": 352,
@@ -2868,8 +2868,8 @@
     {
       "shapeIndex": 94,
       "sourceName": "BMWSideskirting_Cube.044",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00094.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00094.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00094.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00094.obj",
       "vertexCount": 2080,
       "texCoordCount": 2080,
       "faceCount": 2388,
@@ -2890,8 +2890,8 @@
     {
       "shapeIndex": 95,
       "sourceName": "BMWRearLight_Cube.032",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00095.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00095.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00095.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00095.obj",
       "vertexCount": 3572,
       "texCoordCount": 0,
       "faceCount": 7136,
@@ -2912,8 +2912,8 @@
     {
       "shapeIndex": 96,
       "sourceName": "BMWSideWindowB_Cube.009",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00096.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00096.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00096.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00096.obj",
       "vertexCount": 2138,
       "texCoordCount": 2138,
       "faceCount": 2272,
@@ -2934,8 +2934,8 @@
     {
       "shapeIndex": 97,
       "sourceName": "BMWSideWindowA_Cube.004",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00097.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00097.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00097.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00097.obj",
       "vertexCount": 1260,
       "texCoordCount": 1260,
       "faceCount": 984,
@@ -2956,8 +2956,8 @@
     {
       "shapeIndex": 98,
       "sourceName": "BMWGlassSeamA_Cube.025",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00098.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00098.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00098.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00098.obj",
       "vertexCount": 62,
       "texCoordCount": 62,
       "faceCount": 60,
@@ -2978,8 +2978,8 @@
     {
       "shapeIndex": 99,
       "sourceName": "BMWWindscreenSeal_Cube.022",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00099.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00099.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00099.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00099.obj",
       "vertexCount": 1064,
       "texCoordCount": 1064,
       "faceCount": 1728,
@@ -3000,8 +3000,8 @@
     {
       "shapeIndex": 100,
       "sourceName": "BMWWindScreen_Cube.021",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00100.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00100.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00100.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00100.obj",
       "vertexCount": 695,
       "texCoordCount": 695,
       "faceCount": 588,
@@ -3022,8 +3022,8 @@
     {
       "shapeIndex": 101,
       "sourceName": "BMWMirrorPlate_Cube.120",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00101.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00101.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00101.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00101.obj",
       "vertexCount": 42,
       "texCoordCount": 42,
       "faceCount": 32,
@@ -3044,8 +3044,8 @@
     {
       "shapeIndex": 102,
       "sourceName": "BMWGlassSeamB_Cube.018",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00102.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00102.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00102.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00102.obj",
       "vertexCount": 505,
       "texCoordCount": 505,
       "faceCount": 768,
@@ -3066,8 +3066,8 @@
     {
       "shapeIndex": 103,
       "sourceName": "BMWRoofSeal_Cube.013",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00103.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00103.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00103.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00103.obj",
       "vertexCount": 1246,
       "texCoordCount": 1246,
       "faceCount": 1920,
@@ -3088,8 +3088,8 @@
     {
       "shapeIndex": 104,
       "sourceName": "BMWRoof_Cube.011",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00104.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00104.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00104.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00104.obj",
       "vertexCount": 249,
       "texCoordCount": 249,
       "faceCount": 180,
@@ -3110,8 +3110,8 @@
     {
       "shapeIndex": 105,
       "sourceName": "BMWSideRearWindow_Cube.008",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00105.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00105.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00105.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00105.obj",
       "vertexCount": 616,
       "texCoordCount": 616,
       "faceCount": 508,
@@ -3132,8 +3132,8 @@
     {
       "shapeIndex": 106,
       "sourceName": "Plane_Plane.001",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00106.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00106.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00106.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00106.obj",
       "vertexCount": 22,
       "texCoordCount": 0,
       "faceCount": 20,
@@ -3154,8 +3154,8 @@
     {
       "shapeIndex": 107,
       "sourceName": "BMWSteeringWheel_Torus",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00107.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00107.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00107.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00107.obj",
       "vertexCount": 208,
       "texCoordCount": 0,
       "faceCount": 416,
@@ -3176,8 +3176,8 @@
     {
       "shapeIndex": 108,
       "sourceName": "BMWFrontSeats_Cube.005",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00108.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00108.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00108.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00108.obj",
       "vertexCount": 9863,
       "texCoordCount": 0,
       "faceCount": 19200,
@@ -3198,8 +3198,8 @@
     {
       "shapeIndex": 109,
       "sourceName": "BMWFrontBrakeDisc.L_Mesh",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00109.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00109.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00109.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00109.obj",
       "vertexCount": 17312,
       "texCoordCount": 0,
       "faceCount": 16064,
@@ -3220,8 +3220,8 @@
     {
       "shapeIndex": 110,
       "sourceName": "BMWHeadLightCoverA_Cube.066",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00110.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00110.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00110.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00110.obj",
       "vertexCount": 1508,
       "texCoordCount": 1508,
       "faceCount": 2592,
@@ -3242,8 +3242,8 @@
     {
       "shapeIndex": 111,
       "sourceName": "BMWHeadLightCoverB_Cube.067",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00111.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00111.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00111.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00111.obj",
       "vertexCount": 1074,
       "texCoordCount": 1074,
       "faceCount": 1408,
@@ -3264,8 +3264,8 @@
     {
       "shapeIndex": 112,
       "sourceName": "BMWDoor_Cube.091",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00112.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00112.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00112.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00112.obj",
       "vertexCount": 4558,
       "texCoordCount": 4558,
       "faceCount": 5408,
@@ -3286,8 +3286,8 @@
     {
       "shapeIndex": 113,
       "sourceName": "BMWKidneyGrill_Cube.108",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00113.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00113.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00113.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00113.obj",
       "vertexCount": 6208,
       "texCoordCount": 6208,
       "faceCount": 8000,
@@ -3308,8 +3308,8 @@
     {
       "shapeIndex": 114,
       "sourceName": "BMWDashBoard_Cube.002",
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/geometry/mesh_00114.ply",
-      "output": "data/scenes/bmw-m6/meshes/mesh_00114.obj",
+      "input": "<pbrt-v3-scenes>/bmw-m6/geometry/mesh_00114.ply",
+      "output": "assets/models/bmw-m6/meshes/mesh_00114.obj",
       "vertexCount": 51,
       "texCoordCount": 0,
       "faceCount": 64,
@@ -3347,29 +3347,29 @@
     "fov": 30
   },
   "environment": {
-    "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/textures/sky.exr",
-    "output": "data/scenes/bmw-m6/textures/sky.exr"
+    "input": "<pbrt-v3-scenes>/bmw-m6/textures/sky.exr",
+    "output": "assets/models/bmw-m6/textures/sky.exr"
   },
   "sourceResources": [
     {
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/textures/sky.exr",
-      "output": "data/scenes/bmw-m6/textures/sky.exr"
+      "input": "<pbrt-v3-scenes>/bmw-m6/textures/sky.exr",
+      "output": "assets/models/bmw-m6/textures/sky.exr"
     },
     {
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/spds/Al.eta.spd",
-      "output": "data/scenes/bmw-m6/spds/Al.eta.spd"
+      "input": "<pbrt-v3-scenes>/bmw-m6/spds/Al.eta.spd",
+      "output": "assets/models/bmw-m6/spds/Al.eta.spd"
     },
     {
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/spds/Al.k.spd",
-      "output": "data/scenes/bmw-m6/spds/Al.k.spd"
+      "input": "<pbrt-v3-scenes>/bmw-m6/spds/Al.k.spd",
+      "output": "assets/models/bmw-m6/spds/Al.k.spd"
     },
     {
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bsdfs/leather.bsdf",
-      "output": "data/scenes/bmw-m6/bsdfs/leather.bsdf"
+      "input": "<pbrt-v3-scenes>/bmw-m6/bsdfs/leather.bsdf",
+      "output": "assets/models/bmw-m6/bsdfs/leather.bsdf"
     },
     {
-      "input": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/BLENDSWAP_LICENSE.txt",
-      "output": "data/scenes/bmw-m6/licenses/BLENDSWAP_LICENSE.txt"
+      "input": "<pbrt-v3-scenes>/bmw-m6/BLENDSWAP_LICENSE.txt",
+      "output": "assets/models/bmw-m6/licenses/BLENDSWAP_LICENSE.txt"
     }
   ],
   "ignoredCommentedDirectives": [
@@ -3394,79 +3394,79 @@
       "material": "CarPaint",
       "pbrtType": "substrate",
       "reason": "PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
     },
     {
       "material": "HeadLightGlass",
       "pbrtType": "glass",
       "reason": "PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
     },
     {
       "material": "HeadLightGlass01",
       "pbrtType": "glass",
       "reason": "PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
     },
     {
       "material": "LEATHER-white",
       "pbrtType": "fourier",
       "reason": "Fourier BSDF table retained in Material v2; realtime Fourier BSDF evaluation may still be unsupported",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER-white.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER-white.pbrt-material.yaml"
     },
     {
       "material": "LEATHER",
       "pbrtType": "mix",
       "reason": "PBRT mix material references retained in Material v2; realtime nested material mixing may still be unsupported",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
     },
     {
       "material": "LightGlass",
       "pbrtType": "glass",
       "reason": "PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
     },
     {
       "material": "LogoSilver",
       "pbrtType": "metal",
       "reason": "spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
     },
     {
       "material": "WheelRim",
       "pbrtType": "metal",
       "reason": "spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
     },
     {
       "material": "WindscreenGlass",
       "pbrtType": "glass",
       "reason": "PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
     },
     {
       "material": "carbonfibre",
       "pbrtType": "substrate",
       "reason": "PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
     },
     {
       "material": "floor",
       "pbrtType": "substrate",
       "reason": "PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
     },
     {
       "material": "grillmetal",
       "pbrtType": "metal",
       "reason": "spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
     },
     {
       "material": "shinychrome",
       "pbrtType": "metal",
       "reason": "spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate",
-      "sourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+      "sourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
     }
   ],
   "runtimeApproximations": [

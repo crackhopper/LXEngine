@@ -229,7 +229,7 @@ name: ForwardMain
 renderPath: Forward
 passes:
   - id: PostProcess
-    shader: post_process
+    shader: render_paths/Post/post_process
     stage: raster
     dispatch: fullscreen
     input:

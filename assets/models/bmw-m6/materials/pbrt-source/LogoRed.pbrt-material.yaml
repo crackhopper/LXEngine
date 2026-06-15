@@ -16,11 +16,11 @@
 "resourceRefs": []
 "namedMaterialRefs": []
 "sourceLocation":
-  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "file": "<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt"
   "startLine": 68
   "endLine": 70
 "runtimeApproximation":
-  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoRed.material"
+  "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoRed.material"
   "strategy": "matte-surface-material-v2"
   "precisionLoss": []
 "unsupportedByCurrentRenderer": []

@@ -2,7 +2,7 @@
 
 ## Outputs
 
-- Scene: `data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml`
+- Scene: `assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml`
 - Meshes: 114
 - Runtime materials: 28
 - PBRT source materials: 28

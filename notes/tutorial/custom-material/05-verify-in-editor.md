@@ -7,12 +7,12 @@
 | 步骤 | editor 里做什么 | 验证点 |
 |---|---|---|
 | 挂材质 | 改 `materialUri` | 节点引用的是新 `.material v2` |
-| 匹配 pass | 使用当前 render profile / graph | `filters.renderClass` / `filters.bsdf` 命中 |
+| 匹配 pass | 使用当前 render profile / graph | `input.material.type` / `input.object.renderClass` 命中 |
 | 改参数 | Inspector 节点级覆盖 | 覆盖的是 BSDF 参数 envelope |
 | 留记录 | `scene save` | scene YAML 保存 material URI 和 overrides |
 | 复查 | `scene open` | 重新加载后画面和参数一致 |
 
-如果只看见画面颜色变了，我们只能说明某条 shader 大概率执行了；还不能说明 material parser、graph filter、scene override 和 round-trip 都接通。
+如果只看见画面颜色变了，我们只能说明某条 shader 大概率执行了；还不能说明 material parser、graph input、scene override 和 round-trip 都接通。
 
 ## 挂到节点并确认 materialUri
 
@@ -47,11 +47,11 @@ scene open main
 |---|---|
 | material URI 保持不变 | scene document round-trip 正常 |
 | override 参数仍在 | editor 没有只改 runtime 临时状态 |
-| graph pass 仍能产出 draw | material render class / BSDF type 与 graph filter 匹配 |
+| graph pass 仍能产出 draw | material BSDF type、object render class 与 graph input 匹配 |
 
 ## 我们已经学会了什么
 
-材质验证不只是“画面变了”。我们还要验证 `.material v2`、RenderPathGraph filter、editor override、scene 保存和重新加载这一整条链路。
+材质验证不只是“画面变了”。我们还要验证 `.material v2`、RenderPathGraph input、editor override、scene 保存和重新加载这一整条链路。
 
 ## 下一步
 

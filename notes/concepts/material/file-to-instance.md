@@ -75,7 +75,15 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     rendering:
       mode: dynamic
       attachments:
@@ -133,5 +141,5 @@ Kd: { kind: rgb, value: [0.8, 0.7, 0.6], source: explicit }
 ## 下一步
 
 - [Material Contract v2](material-contract-v2.md)
-- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
+- [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)
 - [创建与排错自定义材质](custom-template.md)

@@ -14,7 +14,7 @@
 | Material contract GLSL | 定义参数 metadata、storage ABI、`lxLoadMaterialSurface` 和 BSDF 函数 | `assets/shaders/glsl/common/materials/*.contract.glsl` |
 | Material parser | 把 YAML + contract source 转成 runtime instance | `src/infra/material_loader/material_resource_parser.*` |
 | `MaterialInstance` | 保存 BSDF type、source signature、参数 envelope、资源依赖 | `src/core/asset/material_instance.hpp` |
-| RenderPathGraph | 选择 pass shader、source/target、render state，并用 `filters.bsdf` 匹配材质 | `assets/render_paths/*.render-path.yaml` |
+| RenderPathGraph | 选择 pass shader、source/target、render state，并用 `input.material.type` 匹配材质 | `assets/render_paths/*.render-path.yaml` |
 | Source variant resolver | 给 pass shader 注入 `LX_MATERIAL_CONTRACT_SOURCE` | `src/infra/resource_parsers/material_source_variant_resolver.*` |
 | scene override | 记录某个节点的局部参数 | scene YAML 的 material override 字段 |
 

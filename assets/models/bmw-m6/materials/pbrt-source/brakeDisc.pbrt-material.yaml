@@ -36,11 +36,11 @@
 "resourceRefs": []
 "namedMaterialRefs": []
 "sourceLocation":
-  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "file": "<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt"
   "startLine": 110
   "endLine": 116
 "runtimeApproximation":
-  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
+  "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
   "strategy": "uber-surface-material-v2"
   "precisionLoss": []
 "unsupportedByCurrentRenderer": []

@@ -30,13 +30,13 @@ Forward pass 不直接持有 Vulkan image。它声明读取 `shadow.cascade0` �
 ```mermaid
 flowchart LR
     fg[FrameGraphRead sampled resource]
-    item[RenderWorkItem descriptorResources]
+    desc[RenderInputDesc bindingPlan]
     cmd[VulkanCommandBuffer bindResources]
     attachment[VulkanResourceManager current-frame attachment]
     shader[blinnphong_0.frag ShadowMap0..3]
 
-    fg --> item
-    item --> cmd
+    fg --> desc
+    desc --> cmd
     cmd --> attachment
     attachment --> shader
 ```

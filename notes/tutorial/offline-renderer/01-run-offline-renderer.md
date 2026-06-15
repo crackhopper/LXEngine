@@ -1,6 +1,6 @@
 # 运行离线渲染器：从 Output Profile 到 EXR/PNG
 
-离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 加载进 `SceneResourceTable`，再通过 offline `FrameGraph` 生成一个 compute work item，最后输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
+离线渲染器的第一步不是追求画面最终质量，而是确认实验管线稳定：同一份 scene 能被 editor 保存，也能被 CLI 加载进 `SceneResourceTable`，再通过 offline `FrameGraph` 和 `RenderWorkCompiler` 生成一个 compute input/desc，最后输出一张线性 HDR 图，并同时保存 EXR、PNG preview、metadata 和 raw readback。
 
 ## 构建目标
 
@@ -14,9 +14,9 @@ ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_of
 
 | 目标 | 验证内容 |
 |---|---|
-| `CompileShaders` | `offline_primary_ray.comp` 被编译成 `build/assets/shaders/glsl/offline_primary_ray.comp.spv` |
+| `CompileShaders` | `techniques/OfflineRT/offline_pbr_direct_ray.comp` 被编译成 `build/assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp.spv` |
 | `test_offline_scene_loader` | scene YAML 能编译成 `SceneResourceTable` |
-| `test_offline_gpu_scene` | `SceneResourceTable` 能打包成 offline storage buffer、BVH 和 `RenderWorkItem` |
+| `test_offline_gpu_scene` | `SceneResourceTable` 能打包成 offline storage buffer、BVH、`RenderComputeInput` 和 `RenderInputDesc` |
 | `test_vulkan_offline_renderer` | headless Vulkan renderer 能初始化 |
 | `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
 | `test_offline_render_cli` | CLI 参数和 profile override 行为稳定 |
@@ -43,7 +43,7 @@ scene:
       outputFormat: exr-png
       outDir: artifacts/offline/mvp
   offlineRender:                  # -> LX_core::offline::OfflineRenderSettings
-    integrator: software-compute       # -> assets/shaders/glsl/offline_primary_ray.comp
+    integrator: software-compute       # -> assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
     samples: 1
     maxBounce: 1
     seed: 1
@@ -86,9 +86,9 @@ artifacts/offline/smoke.rgba32f
 | 选择 profile | `OutputProfile` + `OfflineRenderSettings` | 相机、宽高、输出目录、samples、integrator 等参数 |
 | 加载离线 scene 数据 | `LX_infra::offline::OfflineSceneLoader` | `SceneResourceTable` |
 | 资产解析 | `OfflineAssetResolver` | `builtin://` / `cache://` / project path 的本地路径 |
-| Offline FrameGraph | `createOfflineRenderFrameGraph()` | `Pass_OfflineRayTrace` |
+| Offline FrameGraph | `createOfflineRenderFrameGraph()` | file-local `OfflineCompute` pass |
 | GPU records 导出 | `buildOfflineSceneStorageResources()` | vertex、index、mesh、primitive、object、material、BVH、frame params、output buffer |
-| Work item 构建 | `RenderWorkQueue::build(RenderWorkBuildContext::offline(...))` | `RenderWorkItem{domain=Offline, kind=ComputeDispatch}` |
+| Render input 构建 | `RenderWorkCompiler::buildInputs(...)` / `prepare(...)` | `RenderComputeInput` + accepted `RenderInputDesc` |
 | Compute 执行 | `OfflineRenderGraphExecutor` | `OfflineReadbackImage` |
 | 文件输出 | `OfflineImageWriter` | `.exr` / `.png` / `.json` / `.rgba32f` |
 
@@ -101,7 +101,7 @@ artifacts/offline/smoke.rgba32f
 | 消费实时材质 pipeline 合同 | 消费离线打包后的 material 参数 |
 | 以每帧稳定交互为目标 | 以可复现实验和高质量参考图为目标 |
 
-我们复用 scene YAML、资产路径、基础数学类型、`FrameGraph` / `RenderWorkItem` 工单形态，以及 Vulkan pipeline / descriptor / command buffer 基础设施；不复用实时 renderer 的 swapchain、viewport 状态和 raster material pass。这个边界能避免离线路径被实时约束绑死，也方便后续在 shader 里试 paper、path tracing、denoising 和 reference AOV。
+我们复用 scene YAML、资产路径、基础数学类型、`FrameGraph` / `RenderInputDesc` 工单形态，以及 Vulkan pipeline / descriptor / command buffer 基础设施；不复用实时 renderer 的 swapchain、viewport 状态和 raster material pass。这个边界能避免离线路径被实时约束绑死，也方便后续在 shader 里试 paper、path tracing、denoising 和 reference AOV。
 
 ## 常见问题
 

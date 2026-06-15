@@ -42,7 +42,7 @@ scene:
     uri: assets/materials/pbr_gold.material
 ```
 
-运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并保留两类资源：一类是 CPU preview/fallback cubemap，另一类是绑定名为 `EquirectangularMap` 的 HDR 输入。VulkanRenderer 初始化 scene 时会把这份 equirectangular 输入交给 GPU bake pipeline，生成 baked `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap` 和 `BrdfLut`，后续 PBR draw item 会优先消费 baked resources。
+运行时加载时，`SceneRuntime::loadFromDocumentPath(...)` 读取 `scene.environment`，加载 `hdrUri` 指向的 HDR texture，并保留两类资源：一类是 CPU preview/fallback cubemap，另一类是绑定名为 `EquirectangularMap` 的 HDR 输入。VulkanRenderer 初始化 scene 时会把这份 equirectangular 输入交给 GPU bake pipeline，生成 baked `SkyboxMap`、`IrradianceMap`、`PrefilteredEnvMap` 和 `BrdfLut`，后续 PBR draw input 会优先消费 baked resources。
 
 ## 在 editor 中打开
 
@@ -72,7 +72,7 @@ scene open ibl_metal_sphere
 ./build/src/test/test_scene_runtime
 ```
 
-这两个测试会确认 scene asset 存在、environment 配置能 round-trip、`metal_sphere` 使用 `pbr_gold.material`，并且 PBR draw item 能收到 scene-level IBL resources。
+这两个测试会确认 scene asset 存在、environment 配置能 round-trip、`metal_sphere` 使用 `pbr_gold.material`，并且 PBR draw input 能收到 scene-level IBL resources。
 
 ## 当前能看到什么
 

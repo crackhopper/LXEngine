@@ -10,7 +10,7 @@
 | `m_materialSourceUri` / `m_materialSourceSignature` | contract source 和 material-side pipeline identity 输入 |
 | `m_materialSourceReflectionHash` | source reflection 的稳定校验信息 |
 | `m_materialContractReflection` | 参数、storage ABI、accessor ABI 的反射结果 |
-| `m_renderClass` / `m_tags` | render path filter 和 authoring metadata |
+| `m_renderClass` / `m_tags` | render path input matching 和 authoring metadata |
 | `m_materialEnvelopesByName` | `bsdf.parameters.*` 的 typed envelope |
 | `m_materialDependencies` | texture、spectrum、bsdf table、material ref 等资源依赖 |
 | `m_materialStateVersion` / `m_materialStateDirty` | 上传和验证可观察的版本/脏标记 |
@@ -46,14 +46,14 @@ parser 会对照 `MaterialContractReflection` 校验参数名和 kind，然后�
 
 ## Pass 选择属于 RenderPathGraph
 
-pass 是否存在、是否匹配某个 material，由 active `RenderPathGraph` 的 pass filter 和 validation 决定。`MaterialInstance` 提供 `renderClass`、`bsdf.type`、source signature 和 envelope，RenderWorkQueue 再把它与 graph pass 组合成 work item。
+pass 是否存在、是否匹配某个 material，由 active `RenderPathGraph` 的 pass input contract 和 validation 决定。`MaterialInstance` 提供 `renderClass`、`bsdf.type`、source signature 和 envelope，`RenderWorkCompiler` 再把它与 graph pass 组合成 draw input 和 pipeline desc。
 
-| 改动 | 是否改变 pipeline key | 是否改变 work item |
+| 改动 | 是否改变 pipeline key | 是否改变 render input |
 |---|---|---|
 | 改 BSDF 参数值 | 否 | 否，只改变材质数据 |
 | 改 texture resource URI | 通常否 | 否，只改变资源 handle |
 | 改 BSDF type / contract source | 是 | 可能改变 shader variant |
-| graph filter 未匹配该 material | 否，key 本身不变 | 是，不为该 pass 产出 item |
+| graph input 未匹配该 material | 否，key 本身不变 | 是，不为该 pass 产出 input |
 | 改 RenderPathGraph pass shader/renderState/attachment | 是 | 可能改变 pipeline 和 pass 输出 |
 
 ## Scene 文件里的材质覆盖
@@ -77,5 +77,5 @@ materialOverrides:
 ## 下一步
 
 - [从 .material 到 MaterialInstance](file-to-instance.md)
-- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
+- [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)
 - [MaterialInstance 源码分析](../../source_analysis/src/core/asset/material_instance.md)

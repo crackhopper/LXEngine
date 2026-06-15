@@ -26,11 +26,11 @@
 "resourceRefs": []
 "namedMaterialRefs": ["LEATHER-white", "LEATHER-black"]
 "sourceLocation":
-  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "file": "<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt"
   "startLine": 47
   "endLine": 51
 "runtimeApproximation":
-  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+  "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
   "strategy": "mix-surface-material-v2"
   "precisionLoss": ["PBRT mix material references retained in Material v2; realtime nested material mixing may still be unsupported"]
 "unsupportedByCurrentRenderer": ["PBRT mix material references retained in Material v2; realtime nested material mixing may still be unsupported"]

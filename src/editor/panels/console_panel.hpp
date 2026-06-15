@@ -40,6 +40,7 @@ public:
       bool itemActive, bool enterPressed, bool keypadEnterPressed, bool ctrlHeld,
       bool shiftHeld, bool altHeld, bool superHeld);
   [[nodiscard]] static ImGuiInputTextFlags inputTextFlags();
+  [[nodiscard]] static ImGuiInputTextFlags outputTextFlags();
   [[nodiscard]] static bool usesMultilineInput();
   [[nodiscard]] static int inputTextCallback(ImGuiInputTextCallbackData *data);
 
@@ -55,7 +56,6 @@ public:
 private:
   void appendAttachmentToDispatchOwner(u64 dispatchOwnerId, std::string_view line);
   void drawOutputRegion(float reservedInputHeight);
-  void drawDisplayEntry(const DisplayEntry &entry) const;
 
   CommandBus &m_commandBus;
   ConsoleInputController m_inputController;

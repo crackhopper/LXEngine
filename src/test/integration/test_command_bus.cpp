@@ -2165,6 +2165,15 @@ void testConsolePanelUsesSingleLineHistoryCompatibleInputFlags() {
          "are enabled");
 }
 
+void testConsolePanelUsesSelectableReadOnlyOutputFlags() {
+  const ImGuiInputTextFlags flags = ConsolePanel::outputTextFlags();
+  EXPECT((flags & ImGuiInputTextFlags_ReadOnly) != 0,
+         "console output should be a read-only text input so users can select "
+         "and copy command history");
+  EXPECT((flags & ImGuiInputTextFlags_WordWrap) != 0,
+         "console output should preserve wrapped long debug payloads");
+}
+
 void testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory() {
   CommandFixture fixture;
   ConsoleInputController controller(fixture.bus);
@@ -2337,6 +2346,7 @@ int main() {
   testConsolePanelCharFilterDoesNotRewriteCallbackBuffer();
   testConsolePanelShouldSubmitPlainEnterOnly();
   testConsolePanelUsesSingleLineHistoryCompatibleInputFlags();
+  testConsolePanelUsesSelectableReadOnlyOutputFlags();
   testConsoleInputControllerSyncsCallbackBufferAfterCompletionAndHistory();
   testConsoleInputControllerPersistsHistoryLines();
   testConsoleInputControllerSanitizesMultilineSubmitToSingleLine();

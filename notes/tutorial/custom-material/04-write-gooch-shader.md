@@ -8,9 +8,9 @@ Gooch 风格材质像美术老师用两支彩笔做明暗：暗面偏冷，亮�
 |---|---|
 | `assets/shaders/glsl/common/materials/gooch.contract.glsl` | 声明 `gooch` 参数、storage ABI、surface/BSDF 函数 |
 | `assets/materials/gooch_demo.material` | 使用 `bsdf.type: gooch` 并填写参数 envelope |
-| `assets/render_paths/*.render-path.yaml` | 在需要的 pass `filters.bsdf` 中加入 `gooch` |
+| `assets/render_paths/*.render-path.yaml` | 在需要的 pass `input.material.type` 中加入 `gooch` |
 
-如果我们要让 Gooch 有完全独立的光照公式，也可以新增 pass shader；但第一步通常先复用 `techniques/Forward/pbr`，让它 include `gooch.contract.glsl`，然后通过 `lxLoadMaterialSurface` / `lxEvaluateBsdf` 产出统一 surface。
+如果我们要让 Gooch 有完全独立的光照公式，也可以新增 pass shader；但第一步通常先复用 `render_paths/Forward/pbr`，让它 include `gooch.contract.glsl`，然后通过 `lxLoadMaterialSurface` / `lxEvaluateBsdf` 产出统一 surface。
 
 ## Contract metadata 先写清楚
 
@@ -128,21 +128,23 @@ bsdf:
     intensity: { kind: float, value: 1.0 }
 ```
 
-## Graph filter 必须跟上
+## Graph input 必须跟上
 
 如果 `Forward` pass 仍然只接受 `standard-pbr`、`matte`、`uber`、`metal`、`substrate`，`gooch` material 会加载成功但不会被这个 pass 消费：
 
 ```yaml
-filters:
-  renderClass: [surface.opaque]
-  bsdf: [matte, uber, metal, substrate, standard-pbr, gooch]
+input:
+  kind: scene-renderables
+  material:
+    type: [matte, uber, metal, substrate, standard-pbr, gooch]
+    required: true
 ```
 
-pass shader `techniques/Forward/pbr` 已经要求 `LX_MATERIAL_CONTRACT_SOURCE`，所以 `sources` 也必须保留 `material.bsdf`。
+pass shader `render_paths/Forward/pbr` 已经要求 `LX_MATERIAL_CONTRACT_SOURCE`，所以 `sources` 也必须保留 `material.bsdf`。
 
 ## 我们已经学会了什么
 
-新增 Gooch 不只是写 fragment 公式。当前材质系统要求我们新增 contract metadata、实现 shader ABI、写 `.material` envelope，并让 RenderPathGraph pass filter 接受新 BSDF type。视觉公式最后才接到 contract storage / accessor 之后。
+新增 Gooch 不只是写 fragment 公式。当前材质系统要求我们新增 contract metadata、实现 shader ABI、写 `.material` envelope，并让 RenderPathGraph pass input 接受新 BSDF type。视觉公式最后才接到 contract storage / accessor 之后。
 
 ## 下一步
 

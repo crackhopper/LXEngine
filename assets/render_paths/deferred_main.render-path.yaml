@@ -119,7 +119,7 @@ passes:
   - id: PostProcess
     stage: raster
     dispatch: fullscreen
-    shader: post_process
+    shader: render_paths/Post/post_process
     input:
       kind: fullscreen-triangle
     rendering:
@@ -141,7 +141,7 @@ passes:
   - id: DebugOverlay
     stage: raster
     dispatch: draw
-    shader: debug_overlay
+    shader: render_paths/Debug/debug_overlay
     input:
       kind: scene-renderables
       object:

@@ -60,14 +60,19 @@ pass shader 写在 RenderPathGraph：
 ```yaml
 passes:
   - id: Forward
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr, uber, matte, metal, substrate]
+        required: true
     sources:
       - material.bsdf
       - scene.camera
       - scene.lights
 ```
 
-`techniques/Forward/pbr.frag` 会通过 `LX_MATERIAL_CONTRACT_SOURCE` include material contract。也就是说，`.material` 选择 contract source，RenderPathGraph 选择 pass shader，resolver 把两者编译成最终 shader variant。
+`render_paths/Forward/pbr.frag` 会通过 `LX_MATERIAL_CONTRACT_SOURCE` include material contract。也就是说，`.material` 选择 contract source，RenderPathGraph 选择 pass shader，resolver 把两者编译成最终 shader variant。
 
 ## 常见错法
 

@@ -178,7 +178,7 @@ void testBmwProfileOmittedMaterialV2StrictStillRequiresStrictPolicy() {
 renderValidation:
   sourceMode: source
   profileKind: bmw
-  scenePath: data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml
+  scenePath: assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml
 realtimeRender:
   width: 32
   height: 32

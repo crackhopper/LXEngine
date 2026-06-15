@@ -9,7 +9,7 @@ asset chains plus shared material, shader, texture, and environment resources.
 | Asset chain | Location | Purpose |
 |---|---|---|
 | Damaged Helmet | `models/damaged_helmet/` | Helmet PBR realtime/offline validation |
-| BMW M6 | `../data/scenes/bmw-m6/` | BMW M6 scene conversion and rendering validation |
+| BMW M6 | `models/bmw-m6/` | BMW M6 scene conversion and rendering validation |
 | Shared environment maps | `env/` | Retained lighting/environment inputs |
 | Shared materials | `materials/` | Retained Material v2 runtime material files |
 | Shared shaders | `shaders/` | Retained GLSL/SPIR-V shader assets |

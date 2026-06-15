@@ -181,7 +181,7 @@ bsdf:
 
 ## Shader 如何消费 Contract
 
-Render pass shader 不在 `.material` 中选择。Forward PBR pass shader `assets/shaders/glsl/techniques/Forward/pbr.frag` 明确要求 resolver 注入 material contract source：
+Render pass shader 不在 `.material` 中选择。Forward PBR pass shader `assets/shaders/glsl/render_paths/Forward/pbr.frag` 明确要求 resolver 注入 material contract source：
 
 ```glsl
 #if defined(LX_MATERIAL_CONTRACT_SOURCE)
@@ -191,7 +191,7 @@ Render pass shader 不在 `.material` 中选择。Forward PBR pass shader `asset
 #endif
 ```
 
-这段代码在 `assets/shaders/glsl/techniques/Forward/pbr.frag:7`。因此裸编译 `pbr.frag` 会失败；必须由 `MaterialSourceVariantResolver` 为每个 material type/source 生成 specialized variant。
+这段代码在 `assets/shaders/glsl/render_paths/Forward/pbr.frag:7`。因此裸编译 `pbr.frag` 会失败；必须由 `MaterialSourceVariantResolver` 为每个 material type/source 生成 specialized variant。
 
 进入 `main()` 后，shader 先调用 contract 提供的 accessor：
 
@@ -200,7 +200,7 @@ LxMaterialSurface surface =
     lxLoadMaterialSurface(vMaterialRefIndex, vUV, geometricNormal, tangentFrame);
 ```
 
-然后把统一 surface 转成 direct lighting / BSDF 输入，调用 `lxEvaluateBsdf(...)`，见 `assets/shaders/glsl/techniques/Forward/pbr.frag:60`。Deferred GBuffer shader 走同样的 include/accessor 模式，只是把结果写入 GBuffer attachment。
+然后把统一 surface 转成 direct lighting / BSDF 输入，调用 `lxEvaluateBsdf(...)`，见 `assets/shaders/glsl/render_paths/Forward/pbr.frag`。Deferred GBuffer shader 走同样的 include/accessor 模式，只是把结果写入 GBuffer attachment。
 
 ## RenderPathGraph 怎样配套
 
@@ -210,10 +210,15 @@ LxMaterialSurface surface =
 - id: Forward
   stage: raster
   dispatch: draw
-  shader: techniques/Forward/pbr
-  filters:
-    renderClass: [surface.opaque]
-    bsdf: [matte, uber, metal, substrate, standard-pbr]
+  shader: render_paths/Forward/pbr
+  input:
+    kind: scene-renderables
+    material:
+      type: [matte, uber, metal, substrate, standard-pbr]
+      required: true
+    geometry:
+      vertex: position-only
+      topology: triangle-list
   sources:
     - geometry.vertex
     - geometry.index
@@ -223,15 +228,15 @@ LxMaterialSurface surface =
   targets: [hdr.color, depth.main]
 ```
 
-`filters.bsdf` 决定这个 pass 是否接受某个 material type；`sources` 中出现 `material.bsdf` 表示 shader 需要材质 envelope/storage。`RenderPassNode` 还必须声明 `stage`、`dispatch`、`rendering.attachments`、`geometry` 和 `renderState`。
+`input.material.type` 决定这个 pass 是否接受某个 material type；`sources` 中出现 `material.bsdf` 表示 shader 需要材质 envelope/storage。`RenderPassNode` 还必须声明 `stage`、`dispatch`、`input`、`rendering.attachments` 和 `renderState`。
 
 `MaterialSourceVariantResolver` 再做三件关键事：
 
 1. 遍历 `SceneResourceTable` 中的 material instance，按 `bsdf.type + source URI + reflection hash + source signature` 分组。
 2. 检查 pass shader 是否包含 `LX_MATERIAL_CONTRACT_SOURCE`；包含则 pass 必须声明 `material.bsdf`，不包含则不能声明 `material.bsdf`，见 `src/infra/resource_parsers/material_source_variant_resolver.cpp:344`。
-3. 对 graph filter 命中的每种 material source 编译 shader variant，并注册到 `SceneResourceTable`，见 `src/infra/resource_parsers/material_source_variant_resolver.cpp:386`。
+3. 对 graph input 命中的每种 material source 编译 shader variant，并注册到 `SceneResourceTable`，见 `src/infra/resource_parsers/material_source_variant_resolver.cpp:386`。
 
-这一步解释了为什么“新增材质类型”通常要同时改 contract、material 文件和 graph filter：缺任何一环，pass 都不会获得正确的 shader variant。
+这一步解释了为什么“新增材质类型”通常要同时改 contract、material 文件和 graph input：缺任何一环，pass 都不会获得正确的 shader variant。
 
 ## Pipeline Identity 的边界
 
@@ -257,7 +262,7 @@ PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
 | 目标 | 改哪些文件 | 是否需要 C++ |
 |---|---|---|
 | 新增一份材质资产 | 新建 `assets/materials/*.material`，复用 supported contract | 不需要 |
-| 新增一种 BSDF contract | 新建 `assets/shaders/glsl/common/materials/<type>.contract.glsl`，写 metadata 和 ABI 函数；把 graph `filters.bsdf` 加上 `<type>`；必要时新增或复用 pass shader | 通常不需要，除非新增 envelope kind、资源类型或 renderer 注入资源 |
+| 新增一种 BSDF contract | 新建 `assets/shaders/glsl/common/materials/<type>.contract.glsl`，写 metadata 和 ABI 函数；把 graph `input.material.type` 加上 `<type>`；必要时新增或复用 pass shader | 通常不需要，除非新增 envelope kind、资源类型或 renderer 注入资源 |
 
 新增 contract 时最小检查清单：
 
@@ -265,8 +270,8 @@ PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
 2. `status` 先写 `supported` 之前，要确认 `lxLoadMaterialSurface`、`lxEvaluateBsdf`、`lxSampleBsdf` 符合当前签名。
 3. `storageField` 只能引用已声明 parameter，texture field 要写 `defaultTexture=white/black/flatNormal`。
 4. 新 `.material` 的 `bsdf.type` 必须和 contract `type` 一致。
-5. Graph pass 的 `filters.bsdf` 必须包含新 type；pass shader 如果 include contract source，`sources` 必须包含 `material.bsdf`。
-6. 跑 `ninja test_material_v2_parser test_material_source_contract test_material_source_variant_pipeline`，再用 `lxe_editor` 验证 scene 中 material URI、graph filter 和 shader variant 都接通。
+5. Graph pass 的 `input.material.type` 必须包含新 type；pass shader 如果 include contract source，`sources` 必须包含 `material.bsdf`。
+6. 跑 `ninja test_material_v2_parser test_material_source_contract test_material_source_variant_pipeline`，再用 `lxe_editor` 验证 scene 中 material URI、graph input 和 shader variant 都接通。
 
 ## 我们已经学会了什么
 

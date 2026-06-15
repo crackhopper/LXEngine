@@ -14,21 +14,23 @@ scene into LXEngine scene/material/mesh files plus a manifest.
 
 ```bash
 python3 src/tools/lxe_pbrt_scene_convert/lxe_pbrt_scene_convert.py \
-  --input data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt \
-  --out data/scenes/bmw-m6 \
-  --scene data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml
+  --input <pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt \
+  --out assets/models/bmw-m6 \
+  --scene assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml
 ```
 
 Equivalent CMake target:
 
 ```bash
+cmake -S . -B build -G Ninja \
+  -DLXE_PBRT_BMW_M6_SOURCE=<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt
 ninja RunPbrtBmwM6Convert
 ```
 
 ## Outputs
 
 ```text
-data/scenes/bmw-m6/
+assets/models/bmw-m6/
   pbrt_bmw_m6.scene.yaml
   meshes/*.obj
   materials/runtime-pbr-approx/*.material

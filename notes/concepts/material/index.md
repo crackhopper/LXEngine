@@ -13,10 +13,11 @@
 | `MaterialContractReflection` | 描述 BSDF contract、storage ABI 和 accessor ABI | `src/core/asset/material_contract.hpp` |
 | `MaterialInstance` | 保存 BSDF type、material source signature、参数 envelope、资源依赖和少量非 surface shader binding 状态 | `src/core/asset/material_instance.hpp` |
 | `RenderPathGraph` | 声明 render path 下的 pass DAG、shader URI、source/target、geometry/attachment contract 和 render state | `assets/render_paths/*.render-path.yaml` |
-| `RenderPassNode` | 单个 pass 的 stage/dispatch/filter/rendering/geometry/renderState | `src/core/asset/render_effect.hpp` |
+| `RenderPassNode` | 单个 pass 的 stage/dispatch/input/source/target/rendering/renderState | `src/core/asset/render_effect.hpp` |
 | `RenderFeature` | tone mapping、shadow、post effect 等算法参数 envelope | `assets/effects/*.render-feature.yaml` |
 | `SceneResourceTable` | 持有 material、texture、render path graph、render feature、shader 等带 generation 的资源 handle | `src/core/scene/scene_resource_table.hpp` |
-| `RenderWorkItem` | 某个 pass 下的一次 pipeline work；raster 是 draw，offline 可以是 dispatch | `src/core/scene/scene.hpp` |
+| `RenderWorkCompiler` | 按 pass 把 scene/fullscreen/compute 输入准备成 `RenderInput` 与 `RenderInputDesc` | `src/core/frame_graph/render_work_compiler.hpp` |
+| `RenderInputDesc` | 某个 pass 下的一次 pipeline-facing 描述，包含 pipeline key、build desc、binding plan 和诊断 | `src/core/frame_graph/render_input.hpp` |
 | `PipelineKey` | `MaterialTypeVariant + RenderPathNodeSignature` 组合出的 pipeline cache 身份 | `src/core/pipeline/pipeline_key.hpp` |
 
 ## 推荐阅读顺序
@@ -26,7 +27,7 @@
 3. [Shader 在材质中的角色](shader.md)：看 contract source、RenderPathGraph pass shader 和系统 ABI 如何配合。
 4. [内置 Shader 清单](shader-catalog.md)：认识 Forward、Deferred、PostProcess、OfflineRT shader 家族。
 5. [MaterialInstance：运行时状态](material-instance.md)：看 envelope、source signature、resource dependency 和非 surface binding 状态。
-6. [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)：把 RenderPathGraph、FrameGraph、RenderWorkQueue 串起来。
+6. [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)：把 RenderPathGraph、FrameGraph、RenderWorkCompiler 串起来。
 7. [什么是 Pipeline](what-is-pipeline.md)：建立当前 pipeline identity 的模型。
 8. [Contract 如何影响 Pipeline](contract-and-pipeline.md)：理解 material type/source variant 与 RenderPathNode signature 怎样组成 pipeline identity。
 9. [创建与排错自定义材质](custom-template.md)：按当前 v2 authoring 路径写材质、contract 和 render path。
@@ -64,8 +65,9 @@ schema: lxe.material.v2
 schema: lxe.render-path-graph.v1
   -> RenderPathGraphResourceParser
   -> RenderPathGraph(RenderPassNode...)
-  -> FramePass / RenderWorkQueue
-  -> RenderWorkItem
+  -> FramePass / FrameGraph::compile()
+  -> RenderWorkCompiler
+  -> RenderInput + RenderInputDesc
   -> PipelineKey(MaterialTypeVariant, RenderPathNodeSignature)
   -> PipelineBuildDesc
   -> Vulkan PipelineCache
@@ -74,4 +76,4 @@ schema: lxe.render-path-graph.v1
 ## 继续阅读
 
 - [MaterialInstance 源码分析](../../source_analysis/src/core/asset/material_instance.md)
-- [RenderWorkQueue 源码分析](../../source_analysis/src/core/frame_graph/render_queue.md)
+- [RenderWorkCompiler 源码分析](../../concepts-design/rendering-pipeline/render-work-compiler.md)

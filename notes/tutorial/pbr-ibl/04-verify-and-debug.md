@@ -21,7 +21,7 @@ xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 | 验证 | 说明 |
 |---|---|
 | scene document | `ibl_metal_sphere.scene.yaml` 存在，environment / PBR material 能 round-trip |
-| scene runtime | `metal_sphere` 能加载，PBR draw item 收到 scene-level IBL resources |
+| scene runtime | `metal_sphere` 能加载，PBR draw input 收到 scene-level IBL resources |
 | frame graph | Forward/Post/Bloom 的资源关系能编译 |
 | shader compiler | PBR、post、bloom、IBL bake shader 合同稳定 |
 | Vulkan frame graph | backend pass 顺序和 bloom toggle 可运行 |
@@ -48,7 +48,7 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 
 | 现象 | 优先检查 |
 |---|---|
-| 金属球发黑 | `test_scene_runtime` 是否通过；PBR draw item 是否收到 `IrradianceMap` / `PrefilteredEnvMap` / `BrdfLut` / `EnvironmentUBO` |
+| 金属球发黑 | `test_scene_runtime` 是否通过；PBR draw input 是否收到 `IrradianceMap` / `PrefilteredEnvMap` / `BrdfLut` / `EnvironmentUBO` |
 | 画面过曝或过暗 | `PostProcessUBO.exposure`、tone mapping mode、HDR 输入是否仍是线性值 |
 | 反射方向不对 | cubemap face orientation；真实 bake 接入后需要 dump cubemap face 对照 HDR 方向 |
 | 没有 bloom | `VulkanRenderer::PostProcessSettings::bloomEnabled`、threshold、`bloomIntensity` |

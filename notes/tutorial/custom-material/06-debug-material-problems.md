@@ -1,6 +1,6 @@
 # 06 材质排错
 
-材质问题通常不是一个点坏了，而是 `.material`、contract metadata、shader variant、RenderPathGraph filter、scene override 之间某个环节没对上。我们像查账一样逐层核对。
+材质问题通常不是一个点坏了，而是 `.material`、contract metadata、shader variant、RenderPathGraph input、scene override 之间某个环节没对上。我们像查账一样逐层核对。
 
 ## 快速诊断表
 
@@ -9,7 +9,7 @@
 | material 加载失败 | `schema`、root allowlist、`bsdf.source`、contract `status` |
 | 参数名报 unknown | YAML 参数名是否真的在 `.contract.glsl` 的 `parameter:` 行中 |
 | texture 参数报错 | texture envelope 是否写了 `kind: texture`、`valueType` 和 `uri` |
-| pass 不产出 draw | RenderPathGraph `filters.renderClass` / `filters.bsdf` 是否命中 |
+| pass 不产出 draw | RenderPathGraph `input.material.type` / `input.object.renderClass` 是否命中 |
 | shader 编译失败 | pass shader 是否需要 `LX_MATERIAL_CONTRACT_SOURCE` variant |
 | 物体全黑 | contract `lxLoadMaterialSurface` 是否填出有效 baseColor/normal/ao，light 输入是否存在 |
 | 保存后参数丢失 | scene YAML 是否保存了 `materialOverrides` 或 `nodeMaterialOverrides` |
@@ -39,10 +39,10 @@ rg -n "bsdf:|type:|source:" assets/materials/gooch_demo.material
 rg -n "type: gooch|parameter:" assets/shaders/glsl/common/materials/gooch.contract.glsl
 ```
 
-确认 graph filter 接受该类型：
+确认 graph input 接受该类型：
 
 ```bash
-rg -n "bsdf: .*gooch|gooch" assets/render_paths
+rg -n "type: .*gooch|gooch" assets/render_paths
 ```
 
 然后跑针对性验证：
@@ -68,7 +68,7 @@ ninja test_material_source_variant_pipeline
 
 ## 我们已经学会了什么
 
-材质排错要按链路查：YAML 能过 schema，contract 能反射，参数能进 envelope，资源能注册，graph 能命中，shader variant 能编译，scene 能保存覆盖。只看“画面变了没有”不足以判断材质接入是否完整。
+材质排错要按链路查：YAML 能过 schema，contract 能反射，参数能进 envelope，资源能注册，graph input 能命中，shader variant 能编译，scene 能保存覆盖。只看“画面变了没有”不足以判断材质接入是否完整。
 
 ## 下一步
 

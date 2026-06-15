@@ -27,7 +27,7 @@ bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName)
 
 bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
   return hasShaderOutputsAtRoot(root, "render_paths/Forward/pbr") &&
-         hasShaderOutputsAtRoot(root, "post_process") &&
+         hasShaderOutputsAtRoot(root, "render_paths/Post/post_process") &&
          hasShaderOutputsAtRoot(root,
                                 "render_paths/Deferred/deferred_lighting") &&
          hasShaderOutputsAtRoot(root, "render_paths/Deferred/pbr_gbuffer");

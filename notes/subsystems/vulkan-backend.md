@@ -36,55 +36,6 @@
 - `kMaxFramesInFlight` 在 `VulkanRenderer` 内部只有一个定义，初始化路径和 draw 路径共用同一来源
 - Vulkan viewport 现在固定使用正高度：`x=0`、`y=0`、`width=w`、`height=h`；Vulkan 需要的 Y 翻转由 camera projection matrix 承担
 
-## 显示出口的色彩边界
-
-我们可以把显示出口想成一扇只允许通过一次的门：HDR lighting 先在线性空间里计算，tone mapping 把很宽的亮度范围压到屏幕能表达的 `0..1`，最后才进入显示设备需要的 sRGB 编码。如果同一张图在 shader 里做一次 gamma，又写进 sRGB swapchain 让硬件再做一次 sRGB 编码，结果会变亮、发白，局部颜色对比也会被压弱。
-
-当前 Vulkan realtime 路径按下面的职责分工处理：
-
-| 阶段 | 空间 | 当前职责 |
-|---|---|---|
-| `Forward` / `DeferredLighting` | linear HDR | 输出 `RGBA16Float` HDR color，不做最终显示 gamma |
-| `PostProcess` tone mapping | display-linear | 执行 ACES 或 Reinhard，把 HDR 压到 `0..1` 的线性显示值 |
-| sRGB swapchain | sRGB encoded | 当目标格式是 `BGRA8Srgb` / `RGBA8Srgb` 时，`PostProcess` 输出 linear，Vulkan sRGB attachment 在写入时完成 linear-to-sRGB 编码 |
-| UNORM swapchain fallback | sRGB encoded | 当目标格式只是 `BGRA8` / `RGBA8` 时，`PostProcess` 通过 `outputEncodingMode = Srgb` 手动做 `linear -> sRGB gamma` |
-| realtime profile PNG | sRGB encoded file | 离屏 profile 读回 `RGBA16Float` 后，由 CPU 的 `writeToneMappedPng(...)` 做一次 tone mapping + gamma，生成可查看 PNG |
-
-这意味着 tone mapping 仍然是必须的。sRGB swapchain 或硬件只负责最后的 transfer function 编码，不负责把 HDR 高亮压回可显示范围。没有 tone mapping，超过 `1.0` 的 HDR 值会直接夹断；有 tone mapping 但重复 gamma，图像会比 profile 输出更亮、更灰。
-
-格式类型也必须保留这个边界。`ImageFormat::BGRA8` 和 `ImageFormat::BGRA8Srgb` 不是同一种 pipeline target；`ImageFormat::RGBA8` 和 `ImageFormat::RGBA8Srgb` 也一样。`VulkanDevice` 选择到 `VK_FORMAT_B8G8R8A8_SRGB` / `VK_FORMAT_R8G8B8A8_SRGB` 时，`makeSwapchainTarget()` 会保留 sRGB 语义，让 `VkPipelineRenderingCreateInfo`、render pass attachment 和 swapchain image view 使用同一类格式。这样可以避免 pipeline 以 UNORM 创建、实际 image view 却是 SRGB 的 validation error。
-
-调试这类问题时，我们先问三个问题：
-
-| 问题 | 应该看到的事实 |
-|---|---|
-| HDR pass 是否已经做了最终 gamma | 不应该。PBR/Forward shader 输出 HDR 或 display-linear 中间结果，不能写最终 sRGB |
-| PostProcess 是否知道目标编码 | 应该。`PostProcessUBO.outputEncodingMode` 由目标 `ImageFormat` 决定，而不是由 scene 名字、相机或测试路径推断 |
-| pipeline target 和 swapchain image view 是否同格式族 | 应该。sRGB surface 必须形成 sRGB pipeline target，UNORM surface 才形成 UNORM target |
-
-### Debug color-transfer export
-
-`render debug export-path color-transfer [camera-path] [out-dir]` runs a
-diagnostic render path that exports HDR, tone-mapped linear, sRGB-attachment,
-UNORM manual-sRGB, and fixed ramp targets into one bundle. This command is for
-root-cause localization. It is not a production color-management policy.
-
-The important rule is that raw LDR PNG outputs from this bundle are written
-without an extra CPU gamma pass. If `debug.final.srgb` is dark while
-`debug.final.unorm_manual_srgb` is correct, the next fix must inspect attachment
-format, dynamic rendering pipeline format, image view format, or readback. If
-the ramp targets agree but the helmet targets diverge, the bug is probably in
-PBR/tone mapping/input data rather than Vulkan sRGB attachment conversion.
-
-`manifest.json` is part of the evidence, not just an index. It records the
-render-path graph URI, camera path, CPU preview tone-mapping transform,
-surface/swapchain formats, per-target stats, and per-pass attachment contract,
-pipeline color format, shader URI, and `outputEncodingMode`. For the canonical
-comparison, `debug.final.srgb` must use an sRGB attachment with linear shader
-output, while `debug.final.unorm_manual_srgb` must use a UNORM attachment with
-manual sRGB shader output. A mismatch in those fields means the render boundary
-is wrong before any image comparison is meaningful.
-
 ## 阴影调试复盘
 
 方向光阴影像一台临时搬到灯光方向上的正交相机：我们先用 active camera 的视锥决定要覆盖的世界范围，再从灯光方向渲染一张深度图，Forward pass 里的像素再拿自己的世界坐标回到这张深度图里查深度。
@@ -146,7 +97,7 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 
 | Integrator | 当前职责 | 数据入口 |
 |---|---|---|
-| `software-compute` | 初始化 headless `VulkanDevice`，创建 offline FrameGraph，预构建 compute pipeline，按 pass upload plan 同步 SSBO，dispatch `offline_primary_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` |
+| `software-compute` | 初始化 headless `VulkanDevice`，创建 offline FrameGraph，预构建 compute pipeline，按 pass upload plan 同步 SSBO，dispatch `offline_pbr_direct_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` |
 | `hardware-ray-tracing` | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录 | `SceneResourceTableUploadView` |
 
 `software-compute` 的 descriptor contract 使用统一 block 名：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 `OutputPixels`。这些名字由 shader reflection 测试和 integrator 的 descriptor validation 同时保护。

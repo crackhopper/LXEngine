@@ -1,6 +1,5 @@
 #include "infra/resource_parsers/render_path_shader_resolver.hpp"
 
-#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <sstream>
@@ -14,9 +13,6 @@ constexpr std::string_view kFilePrefix = "file://";
 constexpr std::string_view kShaderRoot = "assets/shaders/glsl/";
 constexpr std::string_view kRenderPathPrefix = "render_paths/";
 constexpr std::string_view kLegacyTechniquePrefix = "techniques/";
-constexpr std::array<std::string_view, 6> kSupportedStageExtensions{
-    ".vert", ".frag", ".comp", ".geom", ".tesc", ".tese",
-};
 
 [[nodiscard]] bool startsWith(std::string_view text, std::string_view prefix) {
   return text.rfind(prefix, 0) == 0;
@@ -67,58 +63,6 @@ pathFromUri(const LX_core::ResourceUri &uri) {
 [[nodiscard]] bool isLegacyRealtimeDirectPath(std::string_view shader) {
   return containsLegacyRealtimePath(shader, legacyRealtimeTechniqueRoot()) ||
          containsLegacyRealtimePath(shader, legacyRealtimeAssetsUriRoot());
-}
-
-[[nodiscard]] bool isAllowedRootUtilityShader(std::string_view shader) {
-  static constexpr std::array<std::string_view, 9> kAllowedRootUtilities{
-      "post_process",
-      "debug_overlay",
-      "bloom_threshold",
-      "bloom_blur_h",
-      "bloom_blur_v",
-      "skybox",
-      "debug_color_transfer_tonemap",
-      "debug_color_transfer_copy",
-      "debug_color_transfer_ramp",
-  };
-  for (const std::string_view allowed : kAllowedRootUtilities) {
-    if (shader == allowed) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::string_view supportedStageExtensionsText() {
-  return ".vert, .frag, .comp, .geom, .tesc, .tese";
-}
-
-[[nodiscard]] std::string pathExtension(std::string_view shader) {
-  return std::filesystem::path(std::string(shader)).extension().string();
-}
-
-[[nodiscard]] bool hasCompilerSupportedStageExtension(std::string_view shader) {
-  const std::string extension = pathExtension(shader);
-  for (const std::string_view supported : kSupportedStageExtensions) {
-    if (extension == supported) {
-      return true;
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] bool hasPathExtension(std::string_view shader) {
-  return !pathExtension(shader).empty();
-}
-
-[[nodiscard]] bool isDirectShaderLocation(std::string_view shader) {
-  return startsWith(shader, kShaderRoot) || startsWith(shader, kAssetsPrefix) ||
-         startsWith(shader, kFilePrefix) ||
-         std::filesystem::path(std::string(shader)).is_absolute();
-}
-
-[[nodiscard]] bool isDirectShaderSourceCandidate(std::string_view shader) {
-  return isDirectShaderLocation(shader) || hasPathExtension(shader);
 }
 
 [[nodiscard]] std::string formatUriList(
@@ -196,16 +140,6 @@ resolveStageShape(const LX_core::ResourceUri &graphUri,
   return result;
 }
 
-[[nodiscard]] LX_core::ResourceUri
-directSourceUri(std::string_view shader) {
-  if (startsWith(shader, kShaderRoot) || startsWith(shader, kAssetsPrefix) ||
-      startsWith(shader, kFilePrefix) ||
-      std::filesystem::path(std::string(shader)).is_absolute()) {
-    return LX_core::ResourceUri(shader);
-  }
-  return makeShaderRootUri(shader);
-}
-
 } // namespace
 
 RenderPathShaderSourceResolveResult
@@ -246,45 +180,10 @@ resolveRenderPathShaderSourceUris(const LX_core::ResourceUri &graphUri,
     return resolveStageShape(graphUri, passId, shaderUri, shader);
   }
 
-  if (isAllowedRootUtilityShader(shader)) {
-    return resolveStageShape(graphUri, passId, shaderUri, shader);
-  }
-
-  if (isDirectShaderSourceCandidate(shader) &&
-      !hasCompilerSupportedStageExtension(shader)) {
-    result.diagnostics.push_back(
-        diagnosticPrefix(graphUri, passId, shaderUri) +
-        " has unsupported direct shader source extension; use " +
-        std::string(kRenderPathPrefix) +
-        "... for RenderPath pass shaders or a direct shader source file with "
-        "one of these valid compiler-supported stage extensions: " +
-        std::string(supportedStageExtensionsText()));
-    return result;
-  }
-
-  if (hasCompilerSupportedStageExtension(shader)) {
-    const LX_core::ResourceUri directUri = directSourceUri(shader);
-    if (sourceFileExists(directUri)) {
-      result.sourceUris = {directUri};
-      return result;
-    }
-    result.diagnostics.push_back(
-        diagnosticPrefix(graphUri, passId, shaderUri) +
-        " is missing direct shader source file '" + directUri.string() +
-        "'; use " + std::string(kRenderPathPrefix) +
-        "... for RenderPath pass shaders or an existing direct shader source "
-        "file with one of these valid compiler-supported stage extensions: " +
-        std::string(supportedStageExtensionsText()));
-    return result;
-  }
-
   result.diagnostics.push_back(
       diagnosticPrefix(graphUri, passId, shaderUri) +
       " has unsupported shader URI; use " + std::string(kRenderPathPrefix) +
-      "... for RenderPath pass shaders, an allowed root utility shader, or an "
-      "existing direct shader source file with one of these "
-      "valid compiler-supported stage extensions: " +
-      std::string(supportedStageExtensionsText()));
+      "... for RenderPath pass shaders");
   return result;
 }
 

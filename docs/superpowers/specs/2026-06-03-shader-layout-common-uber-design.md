@@ -65,7 +65,7 @@ assets/shaders/glsl/
     rtr_shadertoy_quantum_core.vert
     rtr_shadertoy_quantum_core.frag
   offline/
-    offline_primary_ray.comp
+    offline_pbr_direct_ray.comp
 ```
 
 The migration is one-way. Existing C++ code, material assets, tests, shader README content, and build scripts will be updated to use the new paths. Root-level forwarding shader files or compatibility copies will not be kept.
@@ -158,7 +158,7 @@ Examples of expected extraction:
 - TBN construction, flat-normal fallback, and normal-map decode move into geometry/material helpers.
 - Bloom horizontal and vertical shaders share a single blur helper that takes axis or texel direction.
 - Cascade shadow selection, debug color, and PCF logic move out of `blinnphong_0.frag`.
-- Offline ray records, BVH node decoding, AABB intersection, triangle intersection, scene traversal, random hash, and camera ray generation move out of `offline_primary_ray.comp`.
+- Offline ray records, BVH node decoding, AABB intersection, triangle intersection, scene traversal, random hash, and camera ray generation move out of `offline_pbr_direct_ray.comp`.
 
 `common/scene/records.glsl` and `common/scene/buffers.glsl` are the shared GPU scene table ABI used by both the forward Uber shader and offline/RTRT-style compute shaders. Offline rendering is a ray-trace consumer of this ABI; the Uber shader is a raster forward consumer.
 
@@ -223,7 +223,7 @@ This keeps PSO count lower than traditional permutation-heavy shader families wh
 
 ## Offline and RTRT Reuse
 
-`offline/offline_primary_ray.comp` will be refactored to consume common scene, ray, material, and lighting modules. Its special-purpose compute entry point remains local to `offline/`, but the following logic becomes reusable:
+`offline/offline_pbr_direct_ray.comp` will be refactored to consume common scene, ray, material, and lighting modules. Its special-purpose compute entry point remains local to `offline/`, but the following logic becomes reusable:
 
 - `lxWangHash` and `lxRandom01`
 - `lxTransformPoint`
@@ -245,7 +245,7 @@ Tests will update existing hard-coded paths and add coverage for:
 
 - Traditional `forward/pbr.vert|frag` compile and reflect under the converged ABI.
 - Traditional `forward/blinnphong_0.vert|frag` compile and reflect under the converged ABI.
-- `offline/offline_primary_ray.comp` compiles after common ray/module extraction.
+- `offline/offline_pbr_direct_ray.comp` compiles after common ray/module extraction.
 - `forward/uber_forward.vert|frag` compiles and reflects its SSBO scene/material resources and bindless texture declarations.
 - IBL, post, debug, shadow, experimental, and minimal shaders compile from their new directories.
 - Asset layout tests expect the new directory structure and no root-level concrete shader files.

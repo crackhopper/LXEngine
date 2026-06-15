@@ -15,10 +15,15 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [matte, uber, metal, substrate, standard-pbr]
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     sources:
       - geometry.vertex
       - geometry.index
@@ -34,9 +39,6 @@ passes:
         - target: depth.main
           format: D32Float
           depth: true
-    geometry:
-      topology: triangle-list
-      vertexLayout: mesh.pbr
     renderState:
       cullMode: Back
       depthTest: true
@@ -49,9 +51,11 @@ passes:
 
 | 边界 | 字段 | 作用 |
 |---|---|---|
-| material 匹配 | `filters.renderClass` / `filters.bsdf` | 决定哪些 material instance 能进入这个 pass |
+| pass 输入 | `input.kind` | 决定 pass 消费 scene renderables、fullscreen triangle 还是 compute dispatch |
+| material 匹配 | `input.material.type` / `input.material.required` | 决定哪些 material instance 能进入这个 pass |
+| geometry 合同 | `input.geometry` | 决定 vertex layout 和 topology 是否满足 pass |
 | shader 输入 | `sources` | 声明 pass shader 需要 geometry、material、scene 或 feature 数据 |
-| pipeline 结构 | `shader` / `rendering` / `geometry` / `renderState` | 决定 shader stage、attachment、vertex input、topology 和 fixed-function state |
+| pipeline 结构 | `shader` / `rendering` / `input.geometry` / `renderState` | 决定 shader stage、attachment、vertex input、topology 和 fixed-function state |
 
 ## `material.bsdf` 的含义
 
@@ -65,7 +69,7 @@ passes:
   -> specialized shader variant
 ```
 
-如果 pass shader 包含 `LX_MATERIAL_CONTRACT_SOURCE`，pass 就必须声明 `material.bsdf`。Resolver 会用这条 source 检查 pass shader、material contract 和 graph filter 是否一致。
+如果 pass shader 包含 `LX_MATERIAL_CONTRACT_SOURCE`，pass 就必须声明 `material.bsdf`。Resolver 会用这条 source 检查 pass shader、material contract 和 graph input 是否一致。
 
 ## Pass Contract 怎样进入 Pipeline
 
@@ -97,5 +101,5 @@ RenderPathGraph pass contract 是当前 pipeline 结构的中心。`.material` �
 ## 下一步
 
 - [Contract 如何影响 Pipeline](contract-and-pipeline.md)
-- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
+- [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)
 - [Material Contract v2](material-contract-v2.md)

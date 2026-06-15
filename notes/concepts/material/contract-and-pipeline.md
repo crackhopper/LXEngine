@@ -11,10 +11,11 @@ MaterialContractReflection / material source resolver
 RenderPassNode
   -> getRenderPathNodeSignature(node)
 
-RenderWorkItem
+RenderWorkCompiler::prepare(...)
+  -> RenderInputDesc
   -> PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
 
-PipelineBuildDesc::fromRenderWorkItem(item)
+RenderInputDesc.pipelineBuildDesc
   -> shader stages / bindings / render state / target / attachments / topology
 ```
 
@@ -38,7 +39,7 @@ PipelineBuildDesc::fromRenderWorkItem(item)
 同一个 pass shader 可以针对不同 material contract 编译出不同 shader variant：
 
 ```text
-techniques/Forward/pbr
+render_paths/Forward/pbr
   + standard_pbr.contract.glsl
   -> pbr.standard_pbr.frag.spv
 ```
@@ -66,5 +67,5 @@ techniques/Forward/pbr
 ## 下一步
 
 - [什么是 Pipeline](what-is-pipeline.md)
-- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
+- [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)
 - [Pipeline cache 子系统](../../subsystems/pipeline-cache.md)

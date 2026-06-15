@@ -470,7 +470,7 @@ void testFullscreenTriangleBuildsOneInputAndDesc() {
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
-  pass.shaderUri = ResourceUri("post_process");
+  pass.shaderUri = ResourceUri("render_paths/Post/post_process");
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
@@ -503,7 +503,7 @@ void testPrepareReferencesInputWithoutCopyingDrawCommands() {
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
-  pass.shaderUri = ResourceUri("post_process");
+  pass.shaderUri = ResourceUri("render_paths/Post/post_process");
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
@@ -533,7 +533,7 @@ void testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected() {
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
-  pass.shaderUri = ResourceUri("post_process");
+  pass.shaderUri = ResourceUri("render_paths/Post/post_process");
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
@@ -551,7 +551,7 @@ void testFullscreenDescStatsAndSkeletonPipelineFactsAreRejected() {
          "fullscreen desc should carry pipeline key");
   EXPECT(desc.pipelineBuildDesc.key == desc.pipelineKey,
          "pipeline build desc key should match desc pipeline key");
-  EXPECT(desc.shaderUri == StringID("post_process"),
+  EXPECT(desc.shaderUri == StringID("render_paths/Post/post_process"),
          "fullscreen desc should carry shader uri");
   EXPECT(desc.stats.compilerInputCount == 1, "stats should count one input");
   EXPECT(!desc.accepted(),
@@ -609,7 +609,7 @@ void testFullscreenDescUsesPreparedPassFactsAndGraphReads() {
   pass.stage = RenderPassStage::Raster;
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
-  pass.shaderUri = ResourceUri("post_process");
+  pass.shaderUri = ResourceUri("render_paths/Post/post_process");
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureBinding("SceneColor")},
@@ -624,7 +624,7 @@ void testFullscreenDescUsesPreparedPassFactsAndGraphReads() {
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
   passFacts.pipelineVariantKey = StringID("fullscreen.post_process.variant");
-  passFacts.shaderProgram.shaderName = "post_process";
+  passFacts.shaderProgram.shaderName = "render_paths/Post/post_process";
   passFacts.shaderProgram.shader = shader;
   passFacts.shaderInfo = shader;
   passFacts.renderState.depthTestEnable = false;
@@ -1031,7 +1031,7 @@ void testNoMaterialDebugRenderableAcceptedWithDrawPayload() {
   pass.input.kind = RenderPassInputKind::SceneRenderables;
   pass.input.object.renderClasses = {"debug"};
   pass.input.material.required = false;
-  pass.shaderUri = ResourceUri("debug_overlay");
+  pass.shaderUri = ResourceUri("render_paths/Debug/debug_overlay");
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
@@ -1295,7 +1295,7 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   pass.input.object.renderClasses = {"debug"};
   pass.input.material.required = false;
   pass.input.material.types = {"matte"};
-  pass.shaderUri = ResourceUri("debug_overlay");
+  pass.shaderUri = ResourceUri("render_paths/Debug/debug_overlay");
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;

@@ -4,7 +4,7 @@ PBR + IBL 教程像搭一间带镜面球的摄影棚：HDR 环境提供棚内光
 
 ## 这一组教程解决什么
 
-当前代码已经具备 HDR post stack、HDR/cubemap 资源形状、PBR shader 的 scene-level IBL binding 合同、Vulkan GPU IBL bake、Forward HDR skybox 背景，以及一个可加载的 metal sphere scene。SceneRuntime 会保留 CPU preview/fallback 资源和 `EquirectangularMap` 输入；VulkanRenderer 在 `initScene()` 阶段执行 GPU bake，并让 PBR draw item 与 skybox background 优先消费 baked scene-level IBL resources。
+当前代码已经具备 HDR post stack、HDR/cubemap 资源形状、PBR shader 的 scene-level IBL binding 合同、Vulkan GPU IBL bake、Forward HDR skybox 背景，以及一个可加载的 metal sphere scene。SceneRuntime 会保留 CPU preview/fallback 资源和 `EquirectangularMap` 输入；VulkanRenderer 在 `initScene()` 阶段执行 GPU bake，并让 PBR draw input 与 skybox background 优先消费 baked scene-level IBL resources。
 
 | 对象 | 作用 | 当前文件 |
 |---|---|---|
@@ -26,7 +26,7 @@ PBR + IBL 教程像搭一间带镜面球的摄影棚：HDR 环境提供棚内光
 | 能力 | 当前状态 | 说明 |
 |---|---|---|
 | PBR shader 输出线性 HDR | 可用 | PBR fragment shader 不做 tone mapping |
-| scene-level IBL resource 注入 | 可用 | PBR draw item 会收到默认或显式 IBL resources |
+| scene-level IBL resource 注入 | 可用 | PBR draw input 会收到默认或显式 IBL resources |
 | HDR cubemap / mip 资源形状 | 可用 | backend 支持 2D/cube、mip/layer 形状 |
 | GPU bake shader 合同 | 可用 | equirect、irradiance、prefilter、BRDF LUT shader 已编译和反射测试 |
 | CPU equirect cubemap fallback | 可用 | runtime 保留方向性 `SkyboxMap` / `PrefilteredEnvMap` preview 数据 |

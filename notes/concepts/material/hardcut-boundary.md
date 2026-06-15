@@ -28,18 +28,18 @@
 
 ## FrameGraph 执行 Pass DAG
 
-RenderPathGraph 声明 pass；FrameGraph 根据 source/target 依赖排序和校验；RenderWorkQueue 把匹配的 scene/material/geometry 组合成 draw 或 dispatch work item。
+RenderPathGraph 声明 pass；FrameGraph 根据 source/target 依赖排序和校验；RenderWorkCompiler 把匹配的 scene/material/geometry 组合成 draw 或 compute input，并准备 pipeline-facing desc。
 
 ```text
 RenderPathGraph
   -> FrameGraph resource dependency validation
-  -> RenderWorkQueue
-  -> RenderWorkItem
+  -> RenderWorkCompiler
+  -> RenderInput + RenderInputDesc
   -> PipelineKey(MaterialTypeVariant, RenderPathNodeSignature)
   -> backend pipeline / draw / dispatch
 ```
 
-Surface pass 通过 `filters.renderClass` 和 `filters.bsdf` 选择 material；post、shadow、debug、offline pass 通过自己的 `sources` 和 `targets` 声明资源合同。材质文件不参与 pass DAG 决策。
+Surface pass 通过 `input.material.type` 选择 material；debug/object pass 可以通过 `input.object.renderClass` 选择 object；post、shadow、debug、offline pass 通过自己的 `input`、`sources` 和 `targets` 声明资源合同。材质文件不参与 pass DAG 决策。
 
 ## 当前检查清单
 
@@ -48,7 +48,7 @@ Surface pass 通过 `filters.renderClass` 和 `filters.bsdf` 选择 material；p
 | material 参数是否合法 | `.material` + `.contract.glsl` metadata |
 | shader variant 是否该生成 | pass shader 是否需要 `LX_MATERIAL_CONTRACT_SOURCE`，graph 是否声明 `material.bsdf` |
 | pipeline key 为什么变化 | `materialTypeVariant` 与 `RenderPathNodeSignature` |
-| draw 为什么没有进入某 pass | `filters.renderClass` / `filters.bsdf` 与 scene material URI |
+| draw 为什么没有进入某 pass | `input.material.type`、`input.object.renderClass`、visibility mask 与 scene material/object |
 | 资源是否进上传视图 | `SceneResourceTableUploadView` 的 material refs、source records、texture handles |
 | pass 顺序和 target 是否正确 | RenderPathGraph `sources` / `targets` 与 FrameGraph validation |
 

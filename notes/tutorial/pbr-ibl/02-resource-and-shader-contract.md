@@ -36,7 +36,7 @@ PBR shader 还会消费 scene-level IBL 资源：
 | `BrdfLut` | `Texture2D` | scene-level IBL |
 | `EnvironmentUBO` | `UniformBuffer` | scene-level IBL |
 
-这些资源由 scene/environment 或 bake pipeline 提供，不写进 `.material`。RenderWorkQueue / descriptor resolver 会在 pass 生成 work item 时把 scene-level resources 拼进去。
+这些资源由 scene/environment 或 bake pipeline 提供，不写进 `.material`。`RenderWorkCompiler` / descriptor resolver 会在 pass 准备 `RenderInputDesc` 时把 scene-level resources 拼进去。
 
 ## 为什么不写进 `.material`
 

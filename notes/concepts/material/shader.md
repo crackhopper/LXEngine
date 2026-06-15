@@ -7,7 +7,7 @@
 | 层 | 当前职责 | 例子 |
 |---|---|---|
 | Material contract shader | 描述 BSDF 参数、storage/accessor ABI，并提供 `lxLoadMaterialSurface` / BSDF 函数 | `assets/shaders/glsl/common/materials/standard_pbr.contract.glsl` |
-| Render pass shader | 在某个 pass 中执行 raster/compute 逻辑，并通过 `LX_MATERIAL_CONTRACT_SOURCE` include contract | `assets/shaders/glsl/techniques/Forward/pbr.frag` |
+| Render pass shader | 在某个 pass 中执行 raster/compute 逻辑，并通过 `LX_MATERIAL_CONTRACT_SOURCE` include contract | `assets/shaders/glsl/render_paths/Forward/pbr.frag` |
 
 Material contract 决定 `MaterialContractReflection`；Render pass shader 决定 `RenderPassNode` 的 shader payload、descriptor binding、vertex input 和 pipeline build 输入。
 
@@ -20,7 +20,7 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
+    shader: render_paths/Forward/pbr
     sources:
       - geometry.vertex
       - geometry.index
@@ -55,10 +55,10 @@ Forward / Deferred surface shader 都不是裸编译入口。`pbr.frag` 开头�
 #endif
 ```
 
-这段检查在 `assets/shaders/glsl/techniques/Forward/pbr.frag:7`。因此 pass shader 的工作方式是：
+这段检查在 `assets/shaders/glsl/render_paths/Forward/pbr.frag:7`。因此 pass shader 的工作方式是：
 
 ```text
-RenderPathGraph pass shader = techniques/Forward/pbr
+RenderPathGraph pass shader = render_paths/Forward/pbr
   + material instance source = common/materials/standard_pbr.contract.glsl
   -> MaterialSourceVariantResolver 编译 specialized shader variant
   -> shader 内部 include contract source

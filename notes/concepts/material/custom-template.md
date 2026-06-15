@@ -8,7 +8,7 @@
 |---|---|---|
 | 复用 contract 写 `.material` | `assets/materials/<name>.material` | 选择 supported `bsdf.type`，填写参数 envelope 和资源 URI |
 | 新增 material contract | `assets/shaders/glsl/common/materials/<type>.contract.glsl` | 定义 BSDF 参数、storage/accessor ABI 和 shader 入口 |
-| 写或复用 render path graph | `assets/render_paths/*.render-path.yaml` | 声明 pass、shader、source/target、geometry/attachment contract，并让 `filters.bsdf` 包含新类型 |
+| 写或复用 render path graph | `assets/render_paths/*.render-path.yaml` | 声明 pass、shader、source/target、geometry/attachment contract，并让 `input.material.type` 包含新类型 |
 | 注册进场景 | scene document 或 editor runtime | 节点引用 mesh/material |
 | 验证渲染 | `lxe_editor` 或集成测试 | 触发 scene/resource/graph validation 和 pipeline preload |
 
@@ -100,10 +100,15 @@ passes:
   - id: Forward
     stage: raster
     dispatch: draw
-    shader: techniques/Forward/pbr
-    filters:
-      renderClass: [surface.opaque]
-      bsdf: [standard-pbr, uber, metal, matte, gooch]
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr, uber, metal, matte, gooch]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
     sources:
       - geometry.vertex
       - geometry.index
@@ -119,7 +124,7 @@ passes:
       blendEnable: false
 ```
 
-这个 pass 通过 `filters.bsdf` 说明它支持哪些 material type，通过 `sources` 说明它需要 `material.bsdf`。如果 shader 需要某个材质 contract 的 specialized variant，variant 由 material source resolver 和 shader variant pipeline 处理，而不是 material YAML 直接塞宏。
+这个 pass 通过 `input.material.type` 说明它支持哪些 material type，通过 `sources` 说明它需要 `material.bsdf`。如果 shader 需要某个材质 contract 的 specialized variant，variant 由 material source resolver 和 shader variant pipeline 处理，而不是 material YAML 直接塞宏。
 
 如果 pass shader 包含 `LX_MATERIAL_CONTRACT_SOURCE`，它必须声明 `material.bsdf`；如果它不包含该宏，就不能声明 `material.bsdf`。这条一致性由 `MaterialSourceVariantResolver` 校验。
 
@@ -133,7 +138,7 @@ passes:
 | missing contract source | `bsdf.source` URI 是否能解析到 `.contract.glsl` |
 | parameter kind mismatch | YAML 中的 `kind` 是否符合 `MaterialContractReflection` 允许的 kind |
 | missing resource dependency | texture/spectrum/bsdf-table URI 是否真实注册，不能用空 payload 充数 |
-| graph pass 不产出 draw | `filters.renderClass` / `filters.bsdf` 是否匹配 material instance |
+| graph pass 不产出 draw | `input.material.type`、`input.object.renderClass`、visibility mask 是否匹配 material/object |
 | pipeline key 不符合预期 | 检查 material type/source variant 和 RenderPathNode signature |
 | shader 裸编译失败 | surface pass shader 是否需要 `LX_MATERIAL_CONTRACT_SOURCE`，应由 resolver 编译 variant |
 
@@ -169,4 +174,4 @@ ninja test_render_path_graph_pass_contract
 
 - [从 .material 到 MaterialInstance](file-to-instance.md)
 - [Material Contract v2](material-contract-v2.md)
-- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
+- [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)

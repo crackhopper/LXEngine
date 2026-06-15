@@ -54,7 +54,7 @@ job 的 `SceneResourceTable` 内建立 render-scope storage/output 资源，所�
 | 4 | `src/core/scene/scene_resource_table.*` | table 如何打包成 indexed shader storage buffer |
 | 5 | `src/core/raytracing/software_bvh.*` | primitive 如何获得可遍历 BVH |
 | 6 | `src/backend/vulkan/offline/software_compute_offline_integrator.*` | pipeline、descriptor、dispatch、readback 如何连起来 |
-| 7 | `assets/shaders/glsl/offline_primary_ray.comp` | 当前 integrator 如何生成相机 ray、遍历 BVH、计算直接光和环境 |
+| 7 | `assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp` | 当前 integrator 如何生成相机 ray、遍历 BVH、计算直接光和环境 |
 | 8 | `src/infra/offline/offline_image_writer.*` | readback 如何写成 EXR、PNG、JSON 和 raw dump |
 
 ## 当前 MVP 的关键边界

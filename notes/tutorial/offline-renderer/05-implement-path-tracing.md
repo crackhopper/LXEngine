@@ -1,10 +1,10 @@
 # 实现自己的 Path Tracing：从 Primary Ray Shader 扩成 Integrator
 
-当前 offline compute renderer 可以看作一台已经通电的实验仪器：scene storage buffer、offline `RenderWorkItem`、compute dispatch、readback 都能工作。实现自己的 path tracing，重点不是重新搭 Vulkan，而是把 integrator 的输入、随机采样、路径循环、材质评估和输出验证逐步替换进去。
+当前 offline compute renderer 可以看作一台已经通电的实验仪器：scene storage buffer、offline `RenderComputeInput` / `RenderInputDesc`、compute dispatch、readback 都能工作。实现自己的 path tracing，重点不是重新搭 Vulkan，而是把 integrator 的输入、随机采样、路径循环、材质评估和输出验证逐步替换进去。
 
 ## 先理解当前 Shader 做了什么
 
-`assets/shaders/glsl/offline_primary_ray.comp` 现在执行的是一条很短的路径：
+`assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp` 现在执行的是一条很短的路径：
 
 | 步骤 | 当前行为 | Path tracing 会怎样扩展 |
 |---|---|---|
@@ -26,7 +26,7 @@
 | Asset resolve | `src/infra/offline/offline_asset_resolver.*` | 把 `cache://`、HDR、texture 路径解析到本地文件 |
 | Scene compile | `src/infra/offline/offline_scene_loader.*` | 从 scene YAML / material YAML 收集离线材质数据 |
 | Storage resources / BVH | `src/core/offline/offline_scene_storage_resources.*` + `src/core/raytracing/software_bvh.*` | 保持 C++ struct、BVH node 和 GLSL std430 layout 一致 |
-| Offline work graph | `src/core/offline/offline_render_work_graph.*` + `src/core/frame_graph/render_queue.*` | 生成 path tracing 所需的 compute work item、resource 和 pipeline key |
+| Offline work graph | `src/core/offline/offline_render_work_graph.*` + `src/core/frame_graph/render_work_compiler.*` | 生成 path tracing 所需的 compute input、resource binding plan 和 pipeline key |
 | Vulkan compute executor | `src/backend/vulkan/offline/software_compute_offline_integrator.*` + `offline_render_graph_executor.*` | 新增 shader 选择、resource binding 和 dispatch 参数 |
 | Shader | `assets/shaders/glsl/*.comp` | 实现真正的 path tracing integrator |
 | CLI | `src/tools/lxe_offline_render/main.cpp` | 选择 profile、输出文件、打印验证信息 |
@@ -65,7 +65,7 @@ static_assert(sizeof(SceneGpuMaterialRecord) == 64);
 ```
 
 ```glsl
-// assets/shaders/glsl/offline_primary_ray.comp
+// assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
 struct lxSceneMaterialRecord {
   vec4 baseColor;
   vec4 pbrParams;
@@ -142,7 +142,7 @@ Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样
 
 | 不建议 | 原因 | 更合适的做法 |
 |---|---|---|
-| 直接复用 realtime draw item | 它绑定了 pass、pipeline key、可见性和实时材质假设 | 从 scene YAML 加载统一 `SceneResourceTable` |
+| 直接复用 realtime draw input | 它绑定了 pass、pipeline key、可见性和实时材质假设 | 从 scene YAML 加载统一 `SceneResourceTable` |
 | 把 path tracing 参数塞进 realtime renderer | 实时和离线的生命周期、输出目标不同 | 放在单个 `scene.offlineRender`；相机、尺寸和输出目录放在 `scene.outputProfiles` |
 | 一开始接 bindless | 当前需求明确不做 bindless，且会放大架构风险 | 先用显式 storage buffer / resource binding |
 | 先做复杂 UI | integrator 还在变，UI 会过早固化接口 | 先用 CLI 和 scene profile 固定实验合同 |

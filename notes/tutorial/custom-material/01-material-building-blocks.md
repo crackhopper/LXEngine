@@ -14,7 +14,7 @@
 | Mesh / vertex data | 原材料 | 提供顶点、法线、UV 等几何输入 |
 | Scene node override | 局部改写 | 针对节点覆盖 surface 参数，不改 pass 或 shader |
 
-真正的一帧画面需要这些单据一起生效：scene 节点引用 mesh 和 material；active RenderPathGraph 选择 pass；pass filter 命中 material 的 render class / BSDF type；shader 读取 material、feature 和 scene 数据；backend 用 work item 生成 pipeline 和 draw/dispatch。
+真正的一帧画面需要这些单据一起生效：scene 节点引用 mesh 和 material；active RenderPathGraph 选择 pass；pass input 命中 material 的 BSDF type 和 object render class；shader 读取 material、feature 和 scene 数据；backend 用 `RenderInputDesc` 生成 pipeline 并执行 draw/dispatch。
 
 ## 当前材质文件只回答一个问题
 
@@ -38,7 +38,7 @@ bsdf:
 
 1. 打开 `.material`，确认 `schema: lxe.material.v2`、`bsdf.type` 和参数 envelope。
 2. 打开 `bsdf.source` 指向的 `.contract.glsl`，看这个材质类型的参数和 accessor ABI。
-3. 打开 active `assets/render_paths/*.render-path.yaml`，确认哪些 pass 的 `filters.bsdf` 会消费这个材质。
+3. 打开 active `assets/render_paths/*.render-path.yaml`，确认哪些 pass 的 `input.material.type` 会消费这个材质。
 4. 打开 pass 的 shader，确认它如何读取 material surface 和 scene/feature 数据。
 5. 在 editor 中切换 material URI，验证 scene 保存和重新加载。
 
@@ -52,7 +52,7 @@ bsdf:
 
 ## 我们已经学会了什么
 
-材质系统不是“shader 文件等于材质”。当前材质是一份 surface envelope；pass 和 shader 由 RenderPathGraph 提供；两者在 scene validation、source variant resolver 和 RenderWorkQueue 里汇合。
+材质系统不是“shader 文件等于材质”。当前材质是一份 surface envelope；pass 和 shader 由 RenderPathGraph 提供；两者在 scene validation、source variant resolver 和 `RenderWorkCompiler` 里汇合。
 
 ## 下一步
 

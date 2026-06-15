@@ -3,7 +3,7 @@
   "gameplayCameraPath": "/pbrt_camera"
   "environment":
     "enabled": true
-    "hdrUri": "data/scenes/bmw-m6/textures/sky.exr"
+    "hdrUri": "assets/models/bmw-m6/textures/sky.exr"
     "intensity": 1.0
     "skyboxEnabled": false
   "realtimeRender":
@@ -96,11 +96,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00001.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00001.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LightGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LightGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
               "pbrtMaterialName": "LightGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -112,11 +112,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00002.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00002.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -128,11 +128,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00003.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00003.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
               "pbrtMaterialName": "carbonfibre"
               "runtimeApproximationUntilSupported": true
         -
@@ -144,11 +144,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00004.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00004.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -160,11 +160,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00005.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00005.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -176,11 +176,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00006.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00006.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -192,11 +192,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00007.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00007.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -208,11 +208,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00008.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00008.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -224,11 +224,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00009.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00009.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -240,11 +240,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00010.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00010.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LightGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LightGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LightGlass.pbrt-material.yaml"
               "pbrtMaterialName": "LightGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -256,11 +256,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00011.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00011.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -272,11 +272,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00012.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00012.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLight.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLight.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLight"
               "runtimeApproximationUntilSupported": true
         -
@@ -288,11 +288,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00013.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00013.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
               "pbrtMaterialName": "None"
               "runtimeApproximationUntilSupported": true
         -
@@ -304,11 +304,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00014.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00014.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
         -
@@ -320,11 +320,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00015.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00015.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
               "pbrtMaterialName": "brakeDisc"
               "runtimeApproximationUntilSupported": true
         -
@@ -336,11 +336,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00016.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00016.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
               "pbrtMaterialName": "mattefloor"
               "runtimeApproximationUntilSupported": true
         -
@@ -352,11 +352,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00017.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00017.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/Seal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/Seal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/Seal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/Seal.pbrt-material.yaml"
               "pbrtMaterialName": "Seal"
               "runtimeApproximationUntilSupported": true
         -
@@ -368,11 +368,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00018.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00018.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
               "pbrtMaterialName": "None"
               "runtimeApproximationUntilSupported": true
         -
@@ -384,11 +384,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00019.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00019.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -400,11 +400,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00020.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00020.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -416,11 +416,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00021.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00021.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLight.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLight.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLight.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLight"
               "runtimeApproximationUntilSupported": true
         -
@@ -432,11 +432,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00022.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00022.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -448,11 +448,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00023.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00023.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -464,11 +464,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00024.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00024.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -480,11 +480,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00025.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00025.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -496,11 +496,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00026.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00026.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -512,11 +512,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00027.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00027.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -528,11 +528,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00028.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00028.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -544,11 +544,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00029.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00029.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -560,11 +560,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00030.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00030.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -576,11 +576,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00031.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00031.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -592,11 +592,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00032.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00032.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -608,11 +608,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00033.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00033.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -624,11 +624,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00034.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00034.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
               "pbrtMaterialName": "tiresidewall"
               "runtimeApproximationUntilSupported": true
         -
@@ -640,11 +640,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00035.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00035.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
               "pbrtMaterialName": "tire"
               "runtimeApproximationUntilSupported": true
         -
@@ -656,11 +656,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00036.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00036.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
               "pbrtMaterialName": "tire"
               "runtimeApproximationUntilSupported": true
         -
@@ -672,11 +672,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00037.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00037.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
               "pbrtMaterialName": "tiresidewall"
               "runtimeApproximationUntilSupported": true
         -
@@ -688,11 +688,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00038.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00038.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
               "pbrtMaterialName": "tiresidewall"
               "runtimeApproximationUntilSupported": true
         -
@@ -704,11 +704,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00039.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00039.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
               "pbrtMaterialName": "tire"
               "runtimeApproximationUntilSupported": true
         -
@@ -720,11 +720,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00040.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00040.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -736,11 +736,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00041.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00041.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -752,11 +752,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00042.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00042.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tire.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tire.pbrt-material.yaml"
               "pbrtMaterialName": "tire"
               "runtimeApproximationUntilSupported": true
         -
@@ -768,11 +768,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00043.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00043.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/tiresidewall.pbrt-material.yaml"
               "pbrtMaterialName": "tiresidewall"
               "runtimeApproximationUntilSupported": true
         -
@@ -784,11 +784,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00044.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00044.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brake_clipper.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brake_clipper.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brake_clipper.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brake_clipper.pbrt-material.yaml"
               "pbrtMaterialName": "brake_clipper"
               "runtimeApproximationUntilSupported": true
         -
@@ -800,11 +800,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00045.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00045.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -816,11 +816,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00046.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00046.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoAzure.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoAzure.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoAzure.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoAzure.pbrt-material.yaml"
               "pbrtMaterialName": "LogoAzure"
               "runtimeApproximationUntilSupported": true
         -
@@ -832,11 +832,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00047.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00047.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -848,11 +848,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00048.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00048.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -864,11 +864,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00049.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00049.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoRed.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoRed.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoRed.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoRed.pbrt-material.yaml"
               "pbrtMaterialName": "LogoRed"
               "runtimeApproximationUntilSupported": true
         -
@@ -880,11 +880,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00050.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00050.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -896,11 +896,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00051.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00051.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -912,11 +912,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00052.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00052.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -928,11 +928,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00053.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00053.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -944,11 +944,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00054.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00054.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -960,11 +960,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00055.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00055.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -976,11 +976,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00056.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00056.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -992,11 +992,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00057.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00057.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -1008,11 +1008,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00058.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00058.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -1024,11 +1024,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00059.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00059.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -1040,11 +1040,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00060.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00060.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -1056,11 +1056,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00061.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00061.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -1072,11 +1072,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00062.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00062.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -1088,11 +1088,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00063.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00063.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -1104,11 +1104,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00064.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00064.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlack.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlack.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlack"
               "runtimeApproximationUntilSupported": true
         -
@@ -1120,11 +1120,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00065.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00065.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoBlue.pbrt-material.yaml"
               "pbrtMaterialName": "LogoBlue"
               "runtimeApproximationUntilSupported": true
         -
@@ -1136,11 +1136,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00066.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00066.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoSilver.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoSilver.pbrt-material.yaml"
               "pbrtMaterialName": "LogoSilver"
               "runtimeApproximationUntilSupported": true
         -
@@ -1152,11 +1152,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00067.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00067.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LogoWhite.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LogoWhite.pbrt-material.yaml"
               "pbrtMaterialName": "LogoWhite"
               "runtimeApproximationUntilSupported": true
         -
@@ -1168,11 +1168,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00068.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00068.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
               "pbrtMaterialName": "None"
               "runtimeApproximationUntilSupported": true
         -
@@ -1184,11 +1184,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00069.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00069.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
         -
@@ -1200,11 +1200,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00070.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00070.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
         -
@@ -1216,11 +1216,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00071.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00071.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1232,11 +1232,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00072.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00072.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -1248,11 +1248,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00073.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00073.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -1264,11 +1264,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00074.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00074.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
               "pbrtMaterialName": "mattefloor"
               "runtimeApproximationUntilSupported": true
         -
@@ -1280,11 +1280,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00075.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00075.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/grillmetal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/grillmetal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/grillmetal.pbrt-material.yaml"
               "pbrtMaterialName": "grillmetal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1296,11 +1296,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00076.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00076.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1312,11 +1312,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00077.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00077.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1328,11 +1328,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00078.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00078.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1344,11 +1344,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00079.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00079.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLightGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1360,11 +1360,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00080.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00080.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1376,11 +1376,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00081.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00081.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1392,11 +1392,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00082.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00082.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/mattefloor.pbrt-material.yaml"
               "pbrtMaterialName": "mattefloor"
               "runtimeApproximationUntilSupported": true
         -
@@ -1408,11 +1408,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00083.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00083.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1424,11 +1424,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00084.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00084.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
               "pbrtMaterialName": "None"
               "runtimeApproximationUntilSupported": true
         -
@@ -1440,11 +1440,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00085.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00085.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/None.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/None.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/None.pbrt-material.yaml"
               "pbrtMaterialName": "None"
               "runtimeApproximationUntilSupported": true
         -
@@ -1456,11 +1456,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00086.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00086.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1472,11 +1472,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00087.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00087.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1488,11 +1488,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00088.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00088.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1504,11 +1504,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00089.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00089.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -1520,11 +1520,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00090.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00090.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -1536,11 +1536,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00091.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00091.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WheelRim.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WheelRim.pbrt-material.yaml"
               "pbrtMaterialName": "WheelRim"
               "runtimeApproximationUntilSupported": true
         -
@@ -1552,11 +1552,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00092.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00092.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1568,11 +1568,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00093.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00093.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1584,11 +1584,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00094.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00094.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1600,11 +1600,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00095.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00095.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLightGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1616,11 +1616,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00096.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00096.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
               "pbrtMaterialName": "WindscreenGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1632,11 +1632,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00097.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00097.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
               "pbrtMaterialName": "WindscreenGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1648,11 +1648,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00098.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00098.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1664,11 +1664,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00099.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00099.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1680,11 +1680,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00100.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00100.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
               "pbrtMaterialName": "WindscreenGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1696,11 +1696,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00101.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00101.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
         -
@@ -1712,11 +1712,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00102.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00102.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1728,11 +1728,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00103.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00103.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1744,11 +1744,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00104.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00104.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/carbonfibre.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/carbonfibre.pbrt-material.yaml"
               "pbrtMaterialName": "carbonfibre"
               "runtimeApproximationUntilSupported": true
         -
@@ -1760,11 +1760,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00105.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00105.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindscreenGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindscreenGlass.pbrt-material.yaml"
               "pbrtMaterialName": "WindscreenGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1776,11 +1776,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00107.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00107.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/WindowSeal.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/WindowSeal.pbrt-material.yaml"
               "pbrtMaterialName": "WindowSeal"
               "runtimeApproximationUntilSupported": true
         -
@@ -1792,11 +1792,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00108.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00108.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
         -
@@ -1808,11 +1808,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00109.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00109.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/brakeDisc.pbrt-material.yaml"
               "pbrtMaterialName": "brakeDisc"
               "runtimeApproximationUntilSupported": true
         -
@@ -1824,11 +1824,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00110.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00110.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLightGlass"
               "runtimeApproximationUntilSupported": true
         -
@@ -1840,11 +1840,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00111.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00111.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass01.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass01.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/HeadLightGlass01.pbrt-material.yaml"
               "pbrtMaterialName": "HeadLightGlass01"
               "runtimeApproximationUntilSupported": true
         -
@@ -1856,11 +1856,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00112.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00112.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/CarPaint.pbrt-material.yaml"
               "pbrtMaterialName": "CarPaint"
               "runtimeApproximationUntilSupported": true
         -
@@ -1872,11 +1872,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00113.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00113.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/shinychrome.pbrt-material.yaml"
               "pbrtMaterialName": "shinychrome"
               "runtimeApproximationUntilSupported": true
         -
@@ -1888,11 +1888,11 @@
             "scale": [1.0, 1.0, 1.0]
           "visibilityMask": 4294967295
           "mesh":
-            "uri": "data/scenes/bmw-m6/meshes/mesh_00114.obj"
+            "uri": "assets/models/bmw-m6/meshes/mesh_00114.obj"
           "material":
-            "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+            "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
             "offline":
-              "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
+              "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/LEATHER.pbrt-material.yaml"
               "pbrtMaterialName": "LEATHER"
               "runtimeApproximationUntilSupported": true
     -
@@ -1904,10 +1904,10 @@
         "scale": [1.0, 1.0, 1.0]
       "visibilityMask": 4294967295
       "mesh":
-        "uri": "data/scenes/bmw-m6/meshes/mesh_00106.obj"
+        "uri": "assets/models/bmw-m6/meshes/mesh_00106.obj"
       "material":
-        "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/floor.material"
+        "uri": "assets/models/bmw-m6/materials/runtime-pbr-approx/floor.material"
         "offline":
-          "pbrtSourceMaterialUri": "data/scenes/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
+          "pbrtSourceMaterialUri": "assets/models/bmw-m6/materials/pbrt-source/floor.pbrt-material.yaml"
           "pbrtMaterialName": "floor"
           "runtimeApproximationUntilSupported": true

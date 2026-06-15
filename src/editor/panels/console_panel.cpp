@@ -16,6 +16,9 @@ constexpr ImGuiInputTextFlags kConsoleInputTextFlags =
     ImGuiInputTextFlags_CallbackCompletion |
     ImGuiInputTextFlags_CallbackHistory;
 
+constexpr ImGuiInputTextFlags kConsoleOutputTextFlags =
+    ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_WordWrap;
+
 } // namespace
 
 ConsolePanel::ConsolePanel(CommandBus &commandBus)
@@ -135,6 +138,10 @@ ImGuiInputTextFlags ConsolePanel::inputTextFlags() {
   return kConsoleInputTextFlags;
 }
 
+ImGuiInputTextFlags ConsolePanel::outputTextFlags() {
+  return kConsoleOutputTextFlags;
+}
+
 bool ConsolePanel::usesMultilineInput() { return false; }
 
 void ConsolePanel::setInputText(std::string_view text) { m_inputController.setInputText(text); }
@@ -235,25 +242,11 @@ void ConsolePanel::drawOutputRegion(const float reservedInputHeight) {
     return;
   }
 
-  for (const auto &entry : displayedDisplayEntries()) {
-    drawDisplayEntry(entry);
-    ImGui::Spacing();
-  }
-
-  for (const auto &line : m_orphanSystemLines) {
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(line.c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::Spacing();
-  }
-
-  const std::string helperText = m_inputController.helperOutputText();
-  if (!helperText.empty()) {
-    ImGui::Separator();
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(helperText.c_str());
-    ImGui::PopTextWrapPos();
-  }
+  std::string output = displayedText();
+  output.push_back('\0');
+  ImGui::InputTextMultiline("##console_output_text", output.data(),
+                            output.size(), ImVec2(-1.0f, -1.0f),
+                            outputTextFlags());
 
   if (m_scrollToBottom) {
     ImGui::SetScrollHereY(1.0f);
@@ -261,17 +254,6 @@ void ConsolePanel::drawOutputRegion(const float reservedInputHeight) {
   }
 
   ImGui::EndChild();
-}
-
-void ConsolePanel::drawDisplayEntry(const DisplayEntry &entry) const {
-  ImGui::PushTextWrapPos(0.0f);
-  const std::string commandLine = "> " + entry.historyEntry.line;
-  ImGui::TextUnformatted(commandLine.c_str());
-  ImGui::TextUnformatted(entry.historyEntry.result.message.c_str());
-  for (const auto &attachment : entry.attachments) {
-    ImGui::TextUnformatted(attachment.c_str());
-  }
-  ImGui::PopTextWrapPos();
 }
 
 bool ConsolePanel::isOpen() const { return m_open; }

@@ -73,7 +73,7 @@ bsdf:
   -> SceneDocument / SceneNodeDocument
   -> SceneRuntime
   -> SceneNode + MeshComponent + MaterialComponent
-  -> render queue / draw item
+  -> RenderWorkCompiler / draw input
 ```
 
 当前有几种常见装配路径：
