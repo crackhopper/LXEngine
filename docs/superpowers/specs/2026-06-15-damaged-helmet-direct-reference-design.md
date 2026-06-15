@@ -163,6 +163,12 @@ Required outputs:
 - a short comparison note summarizing visible differences from the Khronos
   screenshot.
 
+The comparison note must be based on direct visual inspection of both images.
+The implementer must open the Khronos reference screenshot and the generated
+render output in the local image viewer, inspect the helmet by eye, and describe
+the most visible differences before deciding whether the slice is done. Numeric
+nonblack/image-stat checks are necessary but not sufficient.
+
 The comparison must explicitly classify remaining differences as one of:
 
 - camera pose/framing;
@@ -198,6 +204,18 @@ Use the editor API under Xvfb to capture at least one debug dump:
 ```bash
 xvfb-run -a python3 -m unittest tests.lxe_editor.test_live_viewport
 ```
+
+Required visual verification:
+
+- open `assets/reference/damaged_helmet/khronos_screenshot.png`;
+- open the generated CPU sRGB PNG from
+  `artifacts/reference/damaged_helmet_direct/`;
+- open the generated `hdr.color` dump when it is viewable as an image;
+- compare helmet orientation, albedo variation, metallic highlight strength,
+  roughness variation, dark damaged regions, and normal-map detail;
+- if a significant mismatch remains, inspect whether it comes from shader BRDF,
+  material texture binding, camera/light setup, or tone mapping before
+  reporting completion.
 
 Required audits:
 
