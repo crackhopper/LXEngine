@@ -256,7 +256,7 @@ def write_scene(path: Path, gltf_uri: str, material_uri: str) -> None:
       width: 192
       height: 192
       outputFormat: exr-png
-      outDir: artifacts/073c/helmet_standard_pbr
+      outDir: artifacts/reference/damaged_helmet_direct
       backgroundColor: [0.0, 0.0, 0.0]
 root:
   nodeName: scene_root
@@ -270,13 +270,13 @@ root:
     - nodeName: game_camera
       name: game_cam
       transform:
-        translation: [0.0, -0.15, 3.6]
-        rotation: [1.0, 0.0, 0.0, 0.0]
+        translation: [-1.2, 0.0, 3.2]
+        rotation: [0.983954, 0.0, -0.178425, 0.0]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       camera:
         type: perspective
-        fovY: 40.0
+        fovY: 35.0
         aspect: 1.0
         nearPlane: 0.1
         farPlane: 20.0
@@ -301,9 +301,9 @@ root:
       visibilityMask: 4294967295
       light:
         kind: Directional
-        direction: [-0.35, -0.85, -0.4]
+        direction: [-0.45, -0.75, -0.48]
         color: [1.0, 1.0, 1.0]
-        intensity: 3.0
+        intensity: 4.0
         shadowStrength: 0.0
         shadowDistance: 80.0
         shadowCascadeCount: 1
