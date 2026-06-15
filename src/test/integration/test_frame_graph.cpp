@@ -38,13 +38,12 @@ void testFrameGraphOrdersProducerBeforeConsumer() {
   registry.registerResource("scene.color");
 
   FramePass producer = makePass(StringID("Producer"), 1);
-  producer.writes.push_back(
-      FrameGraphWrite{FrameGraphResourceRef::colorAttachment(
-                          StringID("scene.color")),
-                      std::nullopt});
+  producer.writes.push_back(FrameGraphWrite{
+      FrameGraphResourceRef::colorAttachment(StringID("scene.color")),
+      std::nullopt});
   FramePass consumer = makePass(StringID("Consumer"), 0);
-  consumer.reads.push_back(FrameGraphRead::sampled(StringID("scene.color"),
-                                                   StringID("SceneColor")));
+  consumer.reads.push_back(
+      FrameGraphRead::sampled(StringID("scene.color"), StringID("SceneColor")));
 
   FrameGraph graph;
   graph.addPass(std::move(consumer));
@@ -63,8 +62,8 @@ void testFrameGraphOrdersProducerBeforeConsumer() {
 void testFrameGraphRejectsUnknownResourceRead() {
   GraphResourceRegistry registry = GraphResourceRegistry::makeDefault();
   FramePass pass = makePass(StringID("Consumer"), 0);
-  pass.reads.push_back(FrameGraphRead::sampled(StringID("missing.target"),
-                                               StringID("Missing")));
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("missing.target"), StringID("Missing")));
 
   FrameGraph graph;
   graph.addPass(std::move(pass));
@@ -80,7 +79,8 @@ void testFullscreenPassProducesAcceptedDesc() {
   pass.shaderUri = ResourceUri("memory://postprocess.fullscreen");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context = RenderWorkBuildContext::realtimeEmpty();
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtimeEmpty();
 
   compiler.buildInputs(pass, context, inputs);
   const std::vector<RenderInputDesc> descs =
@@ -96,12 +96,39 @@ void testFullscreenPassProducesAcceptedDesc() {
          "desc stats should count rejected inputs");
 }
 
+void testRuntimeTargetSyncUpdatesAttachmentContractsAndSignature() {
+  FramePass pass = makePass(Pass_PostProcess, 0);
+  pass.target =
+      RenderTargetDesc::swapchain(ImageFormat::BGRA8, ImageFormat::D32Float);
+  pass.attachments.push_back(RenderPathAttachmentContract{
+      .target = "swapchain.color",
+      .format = ImageFormat::BGRA8,
+      .samples = 1,
+      .layers = 1,
+      .depth = false,
+  });
+  pass.renderPathNodeSignature = getFramePassRenderPathNodeSignature(pass);
+  const StringID unormSignature = pass.renderPathNodeSignature;
+
+  pass.target = RenderTargetDesc::swapchain(ImageFormat::BGRA8Srgb,
+                                            ImageFormat::D32Float);
+  syncFramePassAttachmentContractsWithTarget(pass);
+
+  EXPECT(pass.attachments.size() == 1, "sync should preserve attachment count");
+  EXPECT(pass.attachments.front().format == ImageFormat::BGRA8Srgb,
+         "swapchain attachment contract should follow runtime sRGB target");
+  const StringID srgbSignature = getFramePassRenderPathNodeSignature(pass);
+  EXPECT(srgbSignature != unormSignature,
+         "runtime target sync should invalidate the cached pipeline signature");
+}
+
 } // namespace
 
 int main() {
   testFrameGraphOrdersProducerBeforeConsumer();
   testFrameGraphRejectsUnknownResourceRead();
   testFullscreenPassProducesAcceptedDesc();
+  testRuntimeTargetSyncUpdatesAttachmentContractsAndSignature();
   if (g_failures != 0) {
     std::cerr << g_failures << " frame graph checks failed\n";
     return 1;

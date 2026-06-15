@@ -1424,6 +1424,7 @@ public:
         pass.target = swapchainDesc;
         pass.phase = LX_core::FrameGraphPhase::Debug;
       }
+      LX_core::syncFramePassAttachmentContractsWithTarget(pass);
     };
     const auto expandGraphDeclaredShadowCascadePass =
         [&](const LX_core::FramePass &graphPass) {

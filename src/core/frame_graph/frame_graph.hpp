@@ -80,6 +80,8 @@ struct FramePass {
 [[nodiscard]] StringID
 getFramePassRenderPathNodeSignature(const FramePass &pass);
 
+void syncFramePassAttachmentContractsWithTarget(FramePass &pass);
+
 struct CompiledFrameGraphPass {
   StringID name;
   RenderTargetDesc target;
@@ -128,7 +130,8 @@ private:
 - 在 `compile` 时用 `GraphResourceRegistry` 校验 source / target 名称，
   将非 imported source 连接到对应 producer，并按资源依赖 DAG 排序 pass
 - 编译排序的稳定兜底顺序是 phase、`stableOrder`、原始插入 index；phase
-  约束保证 PreEffect 先于 Material、Material 先于 PostEffect、非 Debug 先于 Debug
+  约束保证 PreEffect 先于 Material、Material 先于 PostEffect、非 Debug 先于
+Debug
 
 注意它仍然不做 attachment 复用，也不持有 backend attachment 资源；这些都留给
 backend 执行层。core 层这里只提供 registry-backed 资源依赖图、稳定 pass 顺序和

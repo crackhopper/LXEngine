@@ -11,15 +11,15 @@
 namespace LX_core {
 namespace {
 
-[[nodiscard]] StringID framePassRenderingModeSignature(
-    RenderPathNodeRenderingMode mode) {
+[[nodiscard]] StringID
+framePassRenderingModeSignature(RenderPathNodeRenderingMode mode) {
   return StringID(mode == RenderPathNodeRenderingMode::Dynamic
                       ? "rendering=dynamic"
                       : "rendering=traditional");
 }
 
-[[nodiscard]] StringID framePassGeometryVertexSignature(
-    RenderPathGeometryVertexContract vertex) {
+[[nodiscard]] StringID
+framePassGeometryVertexSignature(RenderPathGeometryVertexContract vertex) {
   switch (vertex) {
   case RenderPathGeometryVertexContract::PositionOnly:
     return StringID("vertex=position-only");
@@ -40,8 +40,7 @@ framePassGeometrySignature(const RenderPathGeometryContract &geometry) {
 
 [[nodiscard]] StringID
 framePassAttachmentSignature(const RenderPathAttachmentContract &attachment) {
-  return StringID("attachment:target=" + attachment.target +
-                  ";format=" +
+  return StringID("attachment:target=" + attachment.target + ";format=" +
                   std::to_string(static_cast<u32>(attachment.format)) +
                   ";samples=" + std::to_string(attachment.samples) +
                   ";layers=" + std::to_string(attachment.layers) +
@@ -94,30 +93,27 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   fields.reserve(14 + pass.input.object.renderClasses.size() +
                  pass.input.material.types.size() + pass.reads.size() +
                  pass.writes.size() + pass.attachments.size());
-  fields.push_back(StringID("pass=" +
-                            GlobalStringTable::get().toDebugString(pass.name)));
+  fields.push_back(
+      StringID("pass=" + GlobalStringTable::get().toDebugString(pass.name)));
   fields.push_back(StringID("shader=" + pass.shaderUri.string()));
   fields.push_back(StringID(pass.stage == RenderPassStage::Raster
                                 ? "stage=raster"
                                 : "stage=compute"));
-  fields.push_back(StringID(pass.dispatch == RenderPassDispatch::Draw
-                                ? "dispatch=draw"
-                                : pass.dispatch ==
-                                          RenderPassDispatch::Fullscreen
-                                      ? "dispatch=fullscreen"
-                                      : "dispatch=compute"));
+  fields.push_back(StringID(
+      pass.dispatch == RenderPassDispatch::Draw         ? "dispatch=draw"
+      : pass.dispatch == RenderPassDispatch::Fullscreen ? "dispatch=fullscreen"
+                                                        : "dispatch=compute"));
   fields.push_back(pass.renderState.getPipelineSignature());
   fields.push_back(pass.target.getPipelineSignature());
   if (pass.renderingMode.has_value()) {
     fields.push_back(framePassRenderingModeSignature(*pass.renderingMode));
   }
-  fields.push_back(StringID(pass.input.kind ==
-                                    RenderPassInputKind::SceneRenderables
-                                ? "input=scene-renderables"
-                                : pass.input.kind ==
-                                          RenderPassInputKind::FullscreenTriangle
-                                      ? "input=fullscreen-triangle"
-                                      : "input=compute-dispatch"));
+  fields.push_back(
+      StringID(pass.input.kind == RenderPassInputKind::SceneRenderables
+                   ? "input=scene-renderables"
+               : pass.input.kind == RenderPassInputKind::FullscreenTriangle
+                   ? "input=fullscreen-triangle"
+                   : "input=compute-dispatch"));
   for (const std::string &renderClass : pass.input.object.renderClasses) {
     fields.push_back(StringID("object.renderClass=" + renderClass));
   }
@@ -135,15 +131,33 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
         "source=" + GlobalStringTable::get().toDebugString(read.resource)));
   }
   for (const FrameGraphWrite &write : pass.writes) {
-    fields.push_back(StringID(
-        "target=" +
-        GlobalStringTable::get().toDebugString(write.resource.name)));
+    fields.push_back(
+        StringID("target=" +
+                 GlobalStringTable::get().toDebugString(write.resource.name)));
   }
   for (const RenderPathAttachmentContract &attachment : pass.attachments) {
     fields.push_back(framePassAttachmentSignature(attachment));
   }
 
   return GlobalStringTable::get().compose(TypeTag::RenderPathNode, fields);
+}
+
+void syncFramePassAttachmentContractsWithTarget(FramePass &pass) {
+  const std::vector<ImageFormat> colorFormats = pass.target.getColorFormats();
+  usize colorIndex = 0;
+  for (RenderPathAttachmentContract &attachment : pass.attachments) {
+    if (attachment.depth) {
+      if (pass.target.depthFormat.has_value()) {
+        attachment.format = *pass.target.depthFormat;
+      }
+      continue;
+    }
+    if (colorIndex < colorFormats.size()) {
+      attachment.format = colorFormats[colorIndex];
+    }
+    ++colorIndex;
+  }
+  pass.renderPathNodeSignature = {};
 }
 
 void FrameGraph::addPass(FramePass pass) {
@@ -231,18 +245,17 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
       if (!producers.empty()) {
         const auto &previousProducer = producers.back();
         const auto &previousPass = m_passes[previousProducer.passIndex];
-        const auto previousWriteIt =
-            std::find_if(previousPass.writes.begin(), previousPass.writes.end(),
-                         [&](const FrameGraphWrite &candidate) {
-                           return candidate.resource.name ==
-                                  write.resource.name;
-                         });
+        const auto previousWriteIt = std::find_if(
+            previousPass.writes.begin(), previousPass.writes.end(),
+            [&](const FrameGraphWrite &candidate) {
+              return candidate.resource.name == write.resource.name;
+            });
         if (previousWriteIt == previousPass.writes.end() ||
             !sameAllowedWriteMode(*previousWriteIt, write)) {
-          out.m_errors.push_back(
-              "pass " + debugName(pass.name) + " writes duplicate resource " +
-              targetName + " (resource was already written by pass " +
-              debugName(previousPass.name) + ")");
+          out.m_errors.push_back("pass " + debugName(pass.name) +
+                                 " writes duplicate resource " + targetName +
+                                 " (resource was already written by pass " +
+                                 debugName(previousPass.name) + ")");
           continue;
         }
       }
@@ -343,10 +356,10 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
   };
 
   while (!ready.empty()) {
-    const auto bestIt = std::min_element(ready.begin(), ready.end(),
-                                         [&](usize lhs, usize rhs) {
-                                           return isBefore(lhs, rhs);
-                                         });
+    const auto bestIt =
+        std::min_element(ready.begin(), ready.end(), [&](usize lhs, usize rhs) {
+          return isBefore(lhs, rhs);
+        });
     const usize passIndex = *bestIt;
     ready.erase(bestIt);
     sorted.push_back(passIndex);
