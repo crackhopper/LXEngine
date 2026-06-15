@@ -204,21 +204,31 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
   EXPECT(graph.passes.size() == 6,
          "debug graph should declare Forward plus five diagnostic passes");
 
-  bool sawSrgbAttachment = false;
-  bool sawUnormAttachment = false;
+  bool sawFinalSrgbAttachment = false;
+  bool sawRampSrgbAttachment = false;
+  bool sawFinalUnormAttachment = false;
+  bool sawRampUnormAttachment = false;
   bool sawLinearLdr = false;
   for (const auto &pass : graph.passes) {
     for (const auto &attachment : pass.attachments) {
-      if (attachment.target == "debug.final.srgb" ||
-          attachment.target == "debug.ramp.srgb") {
-        sawSrgbAttachment =
-            sawSrgbAttachment ||
+      if (attachment.target == "debug.final.srgb") {
+        sawFinalSrgbAttachment =
+            sawFinalSrgbAttachment ||
             attachment.format == LX_core::ImageFormat::RGBA8Srgb;
       }
-      if (attachment.target == "debug.final.unorm_manual_srgb" ||
-          attachment.target == "debug.ramp.unorm_manual_srgb") {
-        sawUnormAttachment =
-            sawUnormAttachment ||
+      if (attachment.target == "debug.ramp.srgb") {
+        sawRampSrgbAttachment =
+            sawRampSrgbAttachment ||
+            attachment.format == LX_core::ImageFormat::RGBA8Srgb;
+      }
+      if (attachment.target == "debug.final.unorm_manual_srgb") {
+        sawFinalUnormAttachment =
+            sawFinalUnormAttachment ||
+            attachment.format == LX_core::ImageFormat::RGBA8;
+      }
+      if (attachment.target == "debug.ramp.unorm_manual_srgb") {
+        sawRampUnormAttachment =
+            sawRampUnormAttachment ||
             attachment.format == LX_core::ImageFormat::RGBA8;
       }
       if (attachment.target == "debug.ldr.linear") {
@@ -228,9 +238,16 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
       }
     }
   }
-  EXPECT(sawSrgbAttachment, "debug graph should contain SRGB attachments");
-  EXPECT(sawUnormAttachment, "debug graph should contain UNORM attachments");
-  EXPECT(sawLinearLdr, "debug graph should contain linear LDR float target");
+  EXPECT(sawFinalSrgbAttachment,
+         "debug graph should contain final SRGB attachment");
+  EXPECT(sawRampSrgbAttachment,
+         "debug graph should contain ramp SRGB attachment");
+  EXPECT(sawFinalUnormAttachment,
+         "debug graph should contain final UNORM attachment");
+  EXPECT(sawRampUnormAttachment,
+         "debug graph should contain ramp UNORM attachment");
+  EXPECT(sawLinearLdr,
+         "debug graph should contain linear LDR float target");
 
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
