@@ -270,8 +270,8 @@ root:
     - nodeName: game_camera
       name: game_cam
       transform:
-        translation: [-1.2, 0.0, 3.2]
-        rotation: [0.983954, 0.0, -0.178425, 0.0]
+        translation: [2.1, 0.0, -3.6]
+        rotation: [0.26098, 0.0, 0.965344, 0.0]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       camera:
@@ -301,7 +301,7 @@ root:
       visibilityMask: 4294967295
       light:
         kind: Directional
-        direction: [-0.45, -0.75, -0.48]
+        direction: [-0.45, -0.75, 0.48]
         color: [1.0, 1.0, 1.0]
         intensity: 4.0
         shadowStrength: 0.0
