@@ -9,8 +9,8 @@ namespace LX_core {
 namespace {
 
 FrameGraphResourceRef makeWriteRef(const std::string &target) {
-  const bool isDepthTarget =
-      target.find("depth") != std::string::npos || target.rfind("shadow.", 0) == 0;
+  const bool isDepthTarget = target.find("depth") != std::string::npos ||
+                             target.rfind("shadow.", 0) == 0;
   const StringID targetId(target);
   return isDepthTarget ? FrameGraphResourceRef::depthAttachment(targetId)
                        : FrameGraphResourceRef::colorAttachment(targetId);
@@ -32,6 +32,12 @@ StringID bindingNameForSource(const RenderPassNode &node,
     if (source == "bloom.blur") {
       return StringID("BloomColor");
     }
+  }
+  if ((node.id == "DebugToneMapLinear" && source == "hdr.color") ||
+      ((node.id == "DebugSrgbAttachment" ||
+        node.id == "DebugUnormManualSrgb") &&
+       source == "debug.ldr.linear")) {
+    return StringID("SceneColor");
   }
   if (node.id == "DeferredLighting") {
     if (source == "gbuffer.albedoAlpha") {
@@ -63,8 +69,8 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   }
   pass.writes.reserve(node.targets.size());
   for (const std::string &target : node.targets) {
-    pass.writes.push_back(FrameGraphWrite{makeWriteRef(target),
-                                          node.writeMode});
+    pass.writes.push_back(
+        FrameGraphWrite{makeWriteRef(target), node.writeMode});
   }
   pass.shaderUri = node.shaderUri;
   pass.stage = node.stage;
@@ -82,8 +88,8 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
   const std::string graphName =
       graphAsset.name.empty() ? "<unnamed>" : graphAsset.name;
   const std::string passName = node.id.empty() ? "<unnamed>" : node.id;
-  const std::string prefix = "RenderPathGraph '" + graphName + "' pass '" +
-                             passName + "'";
+  const std::string prefix =
+      "RenderPathGraph '" + graphName + "' pass '" + passName + "'";
   if (node.shaderUri.empty()) {
     throw std::invalid_argument(prefix + " missing shader");
   }
@@ -151,9 +157,9 @@ buildFrameGraphFromRenderPathGraph(const RenderPathGraph &graphAsset,
   }
   const CompiledFrameGraph compiled = graph.compile(registry);
   if (!compiled.isValid()) {
-    throw std::invalid_argument("RenderPathGraph '" + graphAsset.name +
-                                "' failed FrameGraph validation: " +
-                                compiled.errorText());
+    throw std::invalid_argument(
+        "RenderPathGraph '" + graphAsset.name +
+        "' failed FrameGraph validation: " + compiled.errorText());
   }
   return graph;
 }

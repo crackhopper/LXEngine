@@ -13,6 +13,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace LX_core::backend {
@@ -205,6 +206,41 @@ std::vector<LX_core::ShaderResourceBinding> bloomBlurBindings() {
                                          {}}};
 }
 
+std::vector<LX_core::ShaderResourceBinding>
+debugColorTransferBindings(const char *shaderName) {
+  std::vector<LX_core::ShaderResourceBinding> bindings;
+  if (std::string_view(shaderName) != "debug_color_transfer_ramp") {
+    bindings.push_back(
+        LX_core::ShaderResourceBinding{"SceneColor",
+                                       0,
+                                       0,
+                                       LX_core::ShaderPropertyType::Texture2D,
+                                       1,
+                                       0,
+                                       0,
+                                       LX_core::ShaderStage::Fragment,
+                                       {}});
+  }
+  bindings.push_back(LX_core::ShaderResourceBinding{
+      "DebugColorTransferUBO",
+      0,
+      1,
+      LX_core::ShaderPropertyType::UniformBuffer,
+      1,
+      16,
+      0,
+      LX_core::ShaderStage::Fragment,
+      {LX_core::StructMemberInfo{"exposure", LX_core::ShaderPropertyType::Float,
+                                 0, 4},
+       LX_core::StructMemberInfo{"toneMappingMode",
+                                 LX_core::ShaderPropertyType::Int, 4, 4},
+       LX_core::StructMemberInfo{"outputEncodingMode",
+                                 LX_core::ShaderPropertyType::Int, 8, 4},
+       LX_core::StructMemberInfo{"gamma", LX_core::ShaderPropertyType::Float,
+                                 12, 4}}});
+  return bindings;
+}
+
 std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
   return {
       LX_core::ShaderResourceBinding{"GBufferAlbedoAlpha",
@@ -391,6 +427,39 @@ VulkanPostProcessBuilder::createBloomBlurMaterial(
   tmpl->setPassDefinition(pass, makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
+  material->syncGpuData();
+  return material;
+}
+
+LX_core::MaterialInstanceUniquePtr
+VulkanPostProcessBuilder::createDebugColorTransferMaterial(
+    LX_core::StringID pass, const char *shaderName,
+    const VulkanPostProcessOutputEncoding outputEncoding) const {
+  auto shader = std::make_shared<StaticFullscreenShader>(
+      shaderName, loadGraphicsShaderStages(shaderName),
+      debugColorTransferBindings(shaderName));
+
+  auto tmpl = LX_core::MaterialTemplate::create(shaderName);
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = shaderName;
+  shaderProgram.shader = shader;
+  tmpl->setPassDefinition(pass, makeFullscreenPassDefinition(shaderProgram));
+  tmpl->rebuildMaterialInterface();
+
+  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
+  material->writeShaderBindingParameter(
+      LX_core::StringID("DebugColorTransferUBO"), LX_core::StringID("exposure"),
+      1.0f);
+  material->writeShaderBindingParameter(
+      LX_core::StringID("DebugColorTransferUBO"),
+      LX_core::StringID("toneMappingMode"), 0);
+  material->writeShaderBindingParameter(
+      LX_core::StringID("DebugColorTransferUBO"),
+      LX_core::StringID("outputEncodingMode"),
+      static_cast<int>(outputEncoding));
+  material->writeShaderBindingParameter(
+      LX_core::StringID("DebugColorTransferUBO"), LX_core::StringID("gamma"),
+      2.2f);
   material->syncGpuData();
   return material;
 }

@@ -187,7 +187,8 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
       "assets/render_paths/debug_color_transfer.render-path.yaml",
-      readTextFile("assets/render_paths/debug_color_transfer.render-path.yaml"));
+      readTextFile(
+          "assets/render_paths/debug_color_transfer.render-path.yaml"));
 
   EXPECT(parsed.renderPathGraph.has_value(),
          "debug color transfer graph asset should parse");
@@ -198,15 +199,14 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
   }
 
   const auto &graph = *parsed.renderPathGraph;
-  EXPECT(graph.name == "DebugColorTransfer",
-         "debug graph should retain name");
+  EXPECT(graph.name == "DebugColorTransfer", "debug graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
          "debug graph should use Forward render path");
   EXPECT(graph.passes.size() == 6,
          "debug graph should declare Forward plus five diagnostic passes");
 
-  const auto findPass = [&](const std::string &id)
-      -> const LX_core::RenderPassNode * {
+  const auto findPass =
+      [&](const std::string &id) -> const LX_core::RenderPassNode * {
     for (const auto &pass : graph.passes) {
       if (pass.id == id) {
         return &pass;
@@ -297,9 +297,8 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
             attachment.format == LX_core::ImageFormat::RGBA8;
       }
       if (attachment.target == "debug.ldr.linear") {
-        sawLinearLdr =
-            sawLinearLdr ||
-            attachment.format == LX_core::ImageFormat::RGBA16Float;
+        sawLinearLdr = sawLinearLdr ||
+                       attachment.format == LX_core::ImageFormat::RGBA16Float;
       }
     }
   }
@@ -311,12 +310,42 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
          "debug graph should contain final UNORM attachment");
   EXPECT(sawRampUnormAttachment,
          "debug graph should contain ramp UNORM attachment");
-  EXPECT(sawLinearLdr,
-         "debug graph should contain linear LDR float target");
+  EXPECT(sawLinearLdr, "debug graph should contain linear LDR float target");
 
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
+  const auto findFramePass =
+      [&](LX_core::StringID id) -> const LX_core::FramePass * {
+    for (const auto &pass : frameGraph.getPasses()) {
+      if (pass.name == id) {
+        return &pass;
+      }
+    }
+    return nullptr;
+  };
+  const auto hasSampledReadBinding = [](const LX_core::FramePass &pass,
+                                        const char *resource,
+                                        const char *binding) {
+    return std::any_of(pass.reads.begin(), pass.reads.end(),
+                       [&](const LX_core::FrameGraphRead &read) {
+                         return read.resource == LX_core::StringID(resource) &&
+                                read.bindingName == LX_core::StringID(binding);
+                       });
+  };
+  const auto *toneMapPass = findFramePass(LX_core::Pass_DebugToneMapLinear);
+  const auto *srgbPass = findFramePass(LX_core::Pass_DebugSrgbAttachment);
+  const auto *unormPass = findFramePass(LX_core::Pass_DebugUnormManualSrgb);
+  EXPECT(toneMapPass != nullptr &&
+             hasSampledReadBinding(*toneMapPass, "hdr.color", "SceneColor"),
+         "DebugToneMapLinear should bind hdr.color as SceneColor");
+  EXPECT(srgbPass != nullptr &&
+             hasSampledReadBinding(*srgbPass, "debug.ldr.linear", "SceneColor"),
+         "DebugSrgbAttachment should bind debug.ldr.linear as SceneColor");
+  EXPECT(
+      unormPass != nullptr &&
+          hasSampledReadBinding(*unormPass, "debug.ldr.linear", "SceneColor"),
+      "DebugUnormManualSrgb should bind debug.ldr.linear as SceneColor");
   const auto compiled =
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),

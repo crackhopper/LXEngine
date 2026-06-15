@@ -1,16 +1,16 @@
-#include "backend/vulkan/vulkan_renderer.hpp"
 #include "backend/vulkan/vulkan_realtime_renderer.hpp"
-#include "editor/commands/command_bus.hpp"
-#include "editor/app/editor_state.hpp"
-#include "editor/app/editor_session.hpp"
+#include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/scene.hpp"
+#include "infra/image/rgba_image_io.hpp"
+#include "editor/app/editor_session.hpp"
+#include "editor/app/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/project/debug_render_export.hpp"
 #include "editor/project/realtime_render_profile.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
-#include "infra/image/rgba_image_io.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -128,17 +128,16 @@ void testRealtimeProfileOutputHelpersBuildStableJson() {
   EXPECT(distinctBase != base,
          "encoded profile path components should avoid sanitizer collisions");
 
-  const std::string json =
-      LX_demo::lxe_editor::realtimeProfileOutputResultJson(
-          "preview:fast",
-          LX_demo::lxe_editor::RealtimeProfileOutputResult{
-              .linearExrPath = base.parent_path() / "linear.exr",
-              .cpuSrgbPngPath = base.parent_path() / "cpu.png",
-              .pipelineSrgbPngPath = base.parent_path() / "pipeline.png",
-              .metadataPath = base.parent_path() / "render.json",
-              .width = output.width,
-              .height = output.height,
-          });
+  const std::string json = LX_demo::lxe_editor::realtimeProfileOutputResultJson(
+      "preview:fast",
+      LX_demo::lxe_editor::RealtimeProfileOutputResult{
+          .linearExrPath = base.parent_path() / "linear.exr",
+          .cpuSrgbPngPath = base.parent_path() / "cpu.png",
+          .pipelineSrgbPngPath = base.parent_path() / "pipeline.png",
+          .metadataPath = base.parent_path() / "render.json",
+          .width = output.width,
+          .height = output.height,
+      });
 
   EXPECT(json.find("\"profile\":\"preview:fast\"") != std::string::npos,
          "result JSON should include escaped profile name");
@@ -171,22 +170,24 @@ void testVulkanRealtimeProfileOutputApiShape() {
   using LX_core::backend::VulkanRealtimeRenderer;
   using LX_core::backend::VulkanRenderer;
 
-  static_assert(std::is_same_v<
-                decltype(std::declval<VulkanRenderer &>()
-                             .generateRealtimeProfileOutput(
-                                 std::declval<LX_core::SceneSharedPtr>(),
-                                 std::declval<
-                                     const LX_core::offline::OutputProfile &>(),
-                                 std::declval<const std::filesystem::path &>())),
-                VulkanRealtimeProfileOutputResult>);
-  static_assert(std::is_same_v<
-                decltype(std::declval<VulkanRealtimeRenderer &>()
-                             .generateRealtimeProfileOutput(
-                                 std::declval<LX_core::SceneSharedPtr>(),
-                                 std::declval<
-                                     const LX_core::offline::OutputProfile &>(),
-                                 std::declval<const std::filesystem::path &>())),
-                VulkanRealtimeProfileOutputResult>);
+  static_assert(
+      std::is_same_v<
+          decltype(std::declval<VulkanRenderer &>()
+                       .generateRealtimeProfileOutput(
+                           std::declval<LX_core::SceneSharedPtr>(),
+                           std::declval<
+                               const LX_core::offline::OutputProfile &>(),
+                           std::declval<const std::filesystem::path &>())),
+          VulkanRealtimeProfileOutputResult>);
+  static_assert(
+      std::is_same_v<
+          decltype(std::declval<VulkanRealtimeRenderer &>()
+                       .generateRealtimeProfileOutput(
+                           std::declval<LX_core::SceneSharedPtr>(),
+                           std::declval<
+                               const LX_core::offline::OutputProfile &>(),
+                           std::declval<const std::filesystem::path &>())),
+          VulkanRealtimeProfileOutputResult>);
 
   VulkanRealtimeProfileOutputResult result{
       .linearExrPath = "linear.exr",
@@ -212,16 +213,14 @@ void testDebugColorTransferExportApiShape() {
   using LX_core::backend::VulkanDebugColorTransferExportRequest;
   using LX_core::backend::VulkanDebugColorTransferExportResult;
   using LX_core::backend::VulkanDebugColorTransferTargetRecord;
-  using LX_core::backend::VulkanRenderer;
   using LX_core::backend::VulkanRealtimeRenderer;
+  using LX_core::backend::VulkanRenderer;
 
-  static_assert(std::is_same_v<
-                decltype(std::declval<VulkanRenderer &>()
-                             .exportDebugColorTransfer(
-                                 std::declval<
-                                     const VulkanDebugColorTransferExportRequest
-                                         &>())),
-                VulkanDebugColorTransferExportResult>);
+  static_assert(
+      std::is_same_v<
+          decltype(std::declval<VulkanRenderer &>().exportDebugColorTransfer(
+              std::declval<const VulkanDebugColorTransferExportRequest &>())),
+          VulkanDebugColorTransferExportResult>);
   static_assert(std::is_same_v<
                 decltype(std::declval<VulkanRealtimeRenderer &>()
                              .exportDebugColorTransfer(
@@ -258,13 +257,14 @@ void testDebugColorTransferExportResultJson() {
   LX_core::backend::VulkanDebugColorTransferExportResult result;
   result.manifestPath = "artifacts/debug/color-transfer/manifest.json";
   result.outputDirectory = "artifacts/debug/color-transfer";
-  result.targets.push_back(LX_core::backend::VulkanDebugColorTransferTargetRecord{
-      .name = "debug.final.srgb",
-      .path = "artifacts/debug/color-transfer/srgb_attachment.png",
-      .format = "R8G8B8A8_SRGB",
-      .width = 64,
-      .height = 32,
-  });
+  result.targets.push_back(
+      LX_core::backend::VulkanDebugColorTransferTargetRecord{
+          .name = "debug.final.srgb",
+          .path = "artifacts/debug/color-transfer/srgb_attachment.png",
+          .format = "R8G8B8A8_SRGB",
+          .width = 64,
+          .height = 32,
+      });
 
   const std::string json =
       LX_demo::lxe_editor::debugColorTransferExportResultJson(result);
@@ -282,15 +282,16 @@ void testDebugColorTransferExportResultJsonEscapesControlBytes() {
       std::filesystem::path("manifest") /
       (std::string("bad") + static_cast<char>(0x01) + ".json");
   result.outputDirectory = std::filesystem::path("out") / "dir";
-  result.targets.push_back(LX_core::backend::VulkanDebugColorTransferTargetRecord{
-      .name = std::string("quote\" slash\\ nl\n cr\r tab\t bs") +
-              static_cast<char>(0x08) + " ff" + static_cast<char>(0x0c) +
-              " low" + static_cast<char>(0x1f),
-      .path = "target.png",
-      .format = "R8G8B8A8_SRGB",
-      .width = 4,
-      .height = 2,
-  });
+  result.targets.push_back(
+      LX_core::backend::VulkanDebugColorTransferTargetRecord{
+          .name = std::string("quote\" slash\\ nl\n cr\r tab\t bs") +
+                  static_cast<char>(0x08) + " ff" + static_cast<char>(0x0c) +
+                  " low" + static_cast<char>(0x1f),
+          .path = "target.png",
+          .format = "R8G8B8A8_SRGB",
+          .width = 4,
+          .height = 2,
+      });
 
   const std::string json =
       LX_demo::lxe_editor::debugColorTransferExportResultJson(result);
@@ -316,15 +317,13 @@ void testDebugColorTransferExportResultJsonEscapesControlBytes() {
 
 void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
   expectRuntimeErrorContaining(
-      []() {
-        LX_infra::image::writeRawRgba8Png("unused.png", 0, 1, {});
-      },
+      []() { LX_infra::image::writeRawRgba8Png("unused.png", 0, 1, {}); },
       "invalid raw RGBA8 PNG payload",
       "raw PNG writer should reject zero width");
   expectRuntimeErrorContaining(
       []() {
-        LX_infra::image::writeRawRgba8Png(
-            "unused.png", 2, 2, std::vector<unsigned char>(4));
+        LX_infra::image::writeRawRgba8Png("unused.png", 2, 2,
+                                          std::vector<unsigned char>(4));
       },
       "invalid raw RGBA8 PNG payload",
       "raw PNG writer should reject payload size mismatch");
@@ -345,6 +344,18 @@ void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
       },
       "invalid raw RGBA8 PNG payload",
       "raw PNG writer should reject expected-size overflow");
+}
+
+void testDebugColorTransferExportRejectsUninitializedRendererBeforeStub() {
+  LX_core::backend::VulkanRealtimeRenderer renderer;
+  expectRuntimeErrorContaining(
+      [&renderer]() {
+        renderer.exportDebugColorTransfer(
+            LX_core::backend::VulkanDebugColorTransferExportRequest{
+                .outputDirectory = "artifacts/debug/color-transfer"});
+      },
+      "renderer is not initialized",
+      "debug color transfer export should not expose the old backend stub");
 }
 
 void testRenderDebugColorTransferCommandUsesExportHook() {
@@ -381,17 +392,16 @@ void testRenderDebugColorTransferCommandUsesExportHook() {
           }};
   LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = bus.dispatch(
-      "render debug export-path color-transfer /editor_cam "
-      "artifacts/debug/color-transfer");
+  const auto response =
+      bus.dispatch("render debug export-path color-transfer /editor_cam "
+                   "artifacts/debug/color-transfer");
 
   EXPECT(response.ok,
          "render debug export-path color-transfer should succeed with hook");
   EXPECT(hookCalled,
          "render debug export-path color-transfer should call export hook");
-  EXPECT(response.message ==
-             "debug color transfer exported: "
-             "artifacts/debug/color-transfer/manifest.json",
+  EXPECT(response.message == "debug color transfer exported: "
+                             "artifacts/debug/color-transfer/manifest.json",
          "debug export response should name manifest path");
   EXPECT(response.structured.find("\"manifestPath\"") != std::string::npos,
          "debug export response should return structured manifest JSON");
@@ -404,8 +414,7 @@ void testRenderDebugColorTransferCommandReportsUnavailableHook() {
   LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks;
   LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = bus.dispatch(
-      "render debug export-path color-transfer");
+  const auto response = bus.dispatch("render debug export-path color-transfer");
 
   EXPECT(!response.ok,
          "render debug export-path color-transfer should fail without hook");
@@ -430,25 +439,23 @@ void testRenderDebugColorTransferCommandReportsUsageError() {
          "extra debug export args should report exact usage");
 }
 
-void testRenderDebugColorTransferCommandReportsStubException() {
+void testRenderDebugColorTransferCommandReportsBackendFailure() {
   LX_core::CommandBus bus;
   LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks{
       .exportColorTransferPath =
           [](const LX_core::backend::VulkanDebugColorTransferExportRequest &)
-              -> LX_core::backend::VulkanDebugColorTransferExportResult {
+          -> LX_core::backend::VulkanDebugColorTransferExportResult {
         throw std::runtime_error(
-            "debug color transfer export is not implemented");
+            "simulated debug color transfer backend failure");
       }};
   LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = bus.dispatch(
-      "render debug export-path color-transfer");
+  const auto response = bus.dispatch("render debug export-path color-transfer");
 
   EXPECT(!response.ok,
          "render debug export-path color-transfer should report hook errors");
-  EXPECT(response.message ==
-             "debug color transfer export is not implemented",
-         "debug export should propagate backend stub diagnostic");
+  EXPECT(response.message == "simulated debug color transfer backend failure",
+         "debug export should propagate backend failure diagnostics");
 }
 } // namespace
 
@@ -460,10 +467,11 @@ int main() {
   testDebugColorTransferExportResultJson();
   testDebugColorTransferExportResultJsonEscapesControlBytes();
   testRawRgba8PngRejectsInvalidPayloadsBeforeStb();
+  testDebugColorTransferExportRejectsUninitializedRendererBeforeStub();
   testRenderDebugColorTransferCommandUsesExportHook();
   testRenderDebugColorTransferCommandReportsUnavailableHook();
   testRenderDebugColorTransferCommandReportsUsageError();
-  testRenderDebugColorTransferCommandReportsStubException();
+  testRenderDebugColorTransferCommandReportsBackendFailure();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";
