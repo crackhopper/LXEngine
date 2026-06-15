@@ -23,9 +23,9 @@
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `techniques/Forward/pbr` | `techniques/Forward/pbr.vert` / `.frag` | Forward surface pass，消费 `material.bsdf`、scene camera/light 和 HDR/depth target contract | `material.bsdf`、`scene.camera`、`scene.lights` |
+| `techniques/Forward/pbr` | `techniques/Forward/pbr.vert` / `.frag` | Forward surface pass，消费 `material.bsdf`、scene camera、directional `LightUBO` 和 HDR/depth target contract | `material.bsdf`、`scene.camera`、`LightUBO` |
 | `techniques/Deferred/pbr_gbuffer` | `techniques/Deferred/pbr_gbuffer.vert` / `.frag` | Deferred GBuffer pass，输出 surface/material 数据 | `material.bsdf`、geometry、scene camera |
-| `techniques/Deferred/deferred_lighting` | `techniques/Deferred/deferred_lighting.vert` / `.frag` | Deferred lighting fullscreen pass，读取 GBuffer 和 scene light | GBuffer targets、scene lights |
+| `techniques/Deferred/deferred_lighting` | `techniques/Deferred/deferred_lighting.vert` / `.frag` | Deferred lighting fullscreen pass，读取 GBuffer 和 directional `LightUBO` | GBuffer targets、`LightUBO` |
 | `common/materials/standard_pbr.contract.glsl` | contract include | standard-pbr BSDF 参数、packed source record 和 accessor ABI | `baseColor`、`metallic`、`roughness`、texture slot 等 material envelope |
 
 PBR shader 的重点是 source contract 和 render path contract 的组合。`.material v2` 提供 `bsdf.source` 和参数 envelope；RenderPathGraph pass 提供 shader URI、attachment、geometry、source/target 和 render state；material source resolver 负责生成会进入 `PipelineKey` 的 material type/source variant。
@@ -90,7 +90,7 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 |---|---|---|
 | `scene_lights_ubo.glsl` | 声明 `DirectionalLightRecord`、`PointLightRecord`、`SpotLightRecord` 和 `SceneLightsUBO` | `layout(set = 0, binding = 1) uniform SceneLightsUBO` |
 
-这是 include 片段，不会单独编译成 `.spv`。它在 shader 目录里保存 scene lights 的统一 UBO layout，避免需要多光源数据的 shader 各自手写不同结构。修改它时，我们需要同步检查引用它的 shader 和 C++ 侧 scene light buffer 布局。
+这是 include 片段，不会单独编译成 `.spv`。它在 shader 目录里保存 scene lights 的聚合 UBO layout，避免需要多光源数据的 shader 各自手写不同结构。当前主 Forward / Deferred shader 仍读取 `LightUBO` 单 directional direct light；修改 `scene_lights_ubo.glsl` 时，需要同步检查引用它的 shader 和 C++ 侧 scene light buffer 布局。
 
 ## 修改 Shader 时先检查这些边界
 

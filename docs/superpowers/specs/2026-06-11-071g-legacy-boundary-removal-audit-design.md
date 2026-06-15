@@ -330,13 +330,14 @@ Linux build/test gates used by the repository, plus video-device tests through
 
 ## Relationship To Existing Specs
 
-This design is narrower than the master `REQ-071` design and stricter than the
-existing `REQ-072-D First: Legacy Removal And Bindless Validation Design`.
+This design is narrower than the master `REQ-071` design and covers the hard
+boundary-removal slice that used to sit inside the now-deleted standalone
+closure design.
 
-`REQ-072` can still prove bindless validation end to end, but `REQ-071-g`
-defines the hard boundary removal that must happen first: old default entry
-points are deleted, not hidden behind strict mode, debug mode, or validation
-mode toggles.
+The later active render/package validation REQs prove bindless validation end
+to end; `REQ-071-g` defines the hard boundary removal that must happen first:
+old default entry points are deleted, not hidden behind strict mode, debug
+mode, or validation mode toggles.
 
 `REQ-071-d` can then implement the real GPUResourceTable and descriptor table
 against a default path that no longer has legacy escape routes.

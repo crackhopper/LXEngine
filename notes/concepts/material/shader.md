@@ -87,11 +87,11 @@ LxMaterialSurface surface =
 | `material.bsdf` | material-owned surface data | `MaterialInstance` envelope + material storage |
 | `feature.toneMapping` 等 | feature-owned | `RenderFeature` |
 | `scene.camera` / `CameraUBO` | scene/system-owned | camera / scene resource |
-| `scene.lights` / `SceneLightsUBO` | scene/system-owned | light collection |
+| `scene.lights` / `LightUBO` / `SceneLightsUBO` | scene/system-owned | directional direct light 与聚合 light collection |
 | `Bones` | renderable/system-owned | `SkeletonComponent` |
 | offline scene SSBO | scene/system-owned | `SceneResourceTableUploadView` |
 
-`.material` 不写 `CameraUBO`、`SceneLightsUBO` 或 offline SSBO。它们由 scene/resource table/graph 路径注入。
+`.material` 不写 `CameraUBO`、`LightUBO`、`SceneLightsUBO` 或 offline SSBO。它们由 scene/resource table/graph 路径注入。当前主 Forward / Deferred shader 的直接光照仍读取 directional `LightUBO`；`SceneLightsUBO` 是三类 light 的聚合数据合同，只有 shader 显式 include/读取后才会参与多光源照明。
 
 ## Variant 靠 source contract 与 graph 边界收敛
 

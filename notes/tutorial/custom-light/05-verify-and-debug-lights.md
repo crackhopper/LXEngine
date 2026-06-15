@@ -8,7 +8,7 @@
 |---|---|---|
 | 1 | 场景树里存在 light 节点 | 确认创建成功 |
 | 2 | Inspector 字段与预期一致 | 确认 scene document 字段可编辑 |
-| 3 | 视口里有视觉变化 | 确认 runtime 和 shader 接上 |
+| 3 | 视口里有视觉变化 | 确认当前 shader 实际消费了对应 light 数据 |
 | 4 | 保存 scene 后检查 YAML | 确认参数持久化 |
 | 5 | 重新加载 scene | 确认 round-trip 没丢字段 |
 
@@ -18,15 +18,13 @@
 |---|---|---|
 | 创建命令没有 light | `builtin_commands.cpp` 的 completion | command surface 可能没有暴露该 kind |
 | Inspector 没有字段 | `LightNodeState` 与 UI 映射 | 文档字段存在不代表 UI 已经展示 |
-| 视口无变化 | `scene_runtime.cpp` 收集逻辑 | scene 节点可能没有进入 `SceneLightsData` |
-| shader 结果异常 | `scene_lights_ubo.glsl` | C++ / GLSL 布局或字段含义可能不一致 |
+| 视口无变化 | 先分清 `LightUBO` 和 `SceneLightsUBO` | Directional direct light 当前走 `LightUBO`；Point/Spot 可能已经进入 `SceneLightsUBO`，但主 PBR shader 未遍历 |
+| shader 结果异常 | `scene_lights_ubo.glsl` / `LightUBO` | C++ / GLSL 布局或字段含义可能不一致 |
 | 保存后丢参数 | scene 序列化逻辑 | 字段需要参与保存和读取 |
 
 ## Debug draw 的角色
 
-Debug draw 像舞台平面图：它不替代真实照明，但能让我们看见光源的方向、范围和 cone。对 light 教程来说，debug draw 很重要，因为许多 light bug 不是“灯坏了”，而是“灯朝向不对”或“范围太小”。
-
-未来 custom light registry 会要求每个 light kind 声明 `debugShape`，这部分同样由 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 跟踪。
+Debug draw 像舞台平面图：它不替代真实照明，但能让我们看见光源的方向、范围和 cone。对 light 教程来说，debug draw 很重要，因为许多 light bug 不是“灯坏了”，而是“灯朝向不对”“范围太小”，或者“数据已经收集但当前 shader 没有消费”。
 
 ## 我们已经学会了什么
 

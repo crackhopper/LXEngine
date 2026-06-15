@@ -1,4 +1,0 @@
-interface:
-  display_name: "Render 071 Guardrails"
-  short_description: "Guardrails for LXEngine 071 render work"
-  default_prompt: "Use $render-071-agent-guardrails to scope and verify the next LXEngine 071 rendering architecture task."

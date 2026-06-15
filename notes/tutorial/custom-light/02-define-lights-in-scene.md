@@ -10,7 +10,7 @@
 |---|---|---|
 | `kind` | `Directional` / `Point` / `Spot` | 选择灯具型号 |
 | `color` | RGB 颜色 | 灯片颜色 |
-| `intensity` | 光照强度 | 调光台推杆 |
+| `intensity` | 当前字段名；按入射照度/irradiance 倍率理解 | 调光台推杆 |
 | `range` | 点光源和聚光灯影响距离 | 灯能照到多远 |
 | `direction` | 平行光和聚光灯方向 | 灯头朝向 |
 | `innerConeDegrees` / `outerConeDegrees` | 聚光灯内外锥角 | 光束中心和边缘 |
@@ -36,6 +36,8 @@ nodes:
 
 这里的关键不是背字段，而是看懂映射关系：YAML 是记录单，`LightNodeState` 是内存里的记录，`SpotLight` 是渲染真正使用的灯具。
 
+注意 `intensity` 是历史字段名。对当前 shader 合同来说，它最终会和 RGB color 相乘，表示这盏灯给直接光照贡献的 irradiance scale。Point / Spot 如果进入后续 shader light loop，还需要结合 `range`、距离衰减和 cone 衰减，先算出当前 shading point 的入射照度。
+
 ## 通过 command 创建和修改 light
 
 当前 command surface 已经包含三类 light 的创建与字段编辑能力。教程里推荐先走 command，再观察 Inspector 和保存文件。
@@ -43,8 +45,8 @@ nodes:
 | 动作 | 当前命令意图 | 我们检查什么 |
 |---|---|---|
 | 创建平行光 | `light:directional` | 场景中出现 directional light 节点 |
-| 创建点光源 | `light:point` | 节点位置影响照明中心 |
-| 创建聚光灯 | `light:spot` | cone 参数影响光束范围 |
+| 创建点光源 | `light:point` | 节点位置和 range 会进入 light 数据；当前 PBR shader 未完成 point direct loop |
+| 创建聚光灯 | `light:spot` | cone 参数会进入 light 数据；当前 PBR shader 未完成 spot direct loop |
 | 修改字段 | `light.color` / `light.intensity` 等 | Inspector 与保存后的 scene 同步 |
 
 命令名和参数以当前 command completion 为准。需要确认时，先看 `src/core/editor/commands/builtin_commands.cpp`，那里是当前权威入口。

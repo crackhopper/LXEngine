@@ -18,17 +18,16 @@ v0.1.1 的渲染主线已经从单一 forward draw 进入 shadow-era：同一个
 1. [打开 Shadow 教程场景](01-open-shadow-scene.md)：确认 scene 能被 editor 加载、保存和重载。
 2. [Shadow pass 怎样写资源](02-shadow-pass-flow.md)：理解 `Pass_Shadow` 为什么先写 depth。
 3. [Forward pass 怎样读 CSM](03-csm-reading-path.md)：理解四个 cascade 如何变成 shader binding。
-4. [调节阴影时先看哪些边界](04-shadow-tuning-and-limits.md)：理解当前可调入口和 pending 扩展。
+4. [调节阴影时先看哪些边界](04-shadow-tuning-and-limits.md)：理解当前 directional shadow 可调入口和边界。
 
 ## 当前能力和后续扩展分开看
 
-| 路径 | 当前状态 | Requirement |
+| 路径 | 当前状态 | 说明 |
 |---|---|---|
-| directional light 作为 CSM 主光源 | 当前可用 | 当前代码事实 |
-| shadow strength / distance / cascade count | 当前可通过 scene YAML、command、Inspector 调整 | 当前代码事实 |
-| light kind registry | pending | [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) |
-| toolbar / command 扩展注册 | pending | [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) |
-| custom scene node registry | pending | [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) |
+| directional light 作为 CSM 主光源 | 当前可用 | shadow pass 和 Forward pass 都围绕 directional `LightUBO` / cascade 数据工作 |
+| shadow strength / distance / cascade count | 当前可通过 scene YAML、command、Inspector 调整 | 字段保存在 light state，并回写到 scene |
+| point / spot shadow | 当前未完成 | Point/Spot 可创建和保存，但没有对应 shadow map 管线 |
+| 多光源 shadow | 当前未完成 | 需要先完成 shader 多光源直接光照和 light buffer 语义，再设计 shadow/probe 索引 |
 
 ## 下一步
 

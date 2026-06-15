@@ -40,7 +40,7 @@
 
 ## 当前边界
 
-这组设计文档描述当前代码事实，不把未来 registry、Web Editor、engine MCP 方案当成已实现能力。未来 toolbar / command metadata 的整理由 [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 跟踪；更长期的 roadmap 对应 [Roadmap 边界](06-roadmap-boundaries.md)。
+这组设计文档描述当前代码事实，不把旧 registry 占位、Web Editor、engine MCP 方案当成已实现能力。toolbar / command / node / light 的扩展说明以当前手工合同为准；更长期的 roadmap 对应 [Roadmap 边界](06-roadmap-boundaries.md)。
 
 ## 继续阅读
 

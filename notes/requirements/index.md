@@ -3,11 +3,11 @@
 本目录由 `scripts/notes/generate_site_config.py` 自动生成，列出 `notes/requirements/` 下尚未归档的需求文档；文件名编号即建议实施顺序，一个 REQ 文件只覆盖一个连续实施周期。
 
 - [REQ-053-b: Assets Downloader 外部资源下载与导入工具](053-b-assets-downloader-external-resource-importer.md)
-- [REQ-072: REQ-071 Closure Audit And Validation Fixes](072-071-closure-audit-and-validation-fixes.md)
-- [REQ-073-e: RenderPathNode Indirect Batching And Diagnostics](073-e-indirect-material-batching-and-diagnostics.md)
+- [REQ-073-e: Realtime RenderInput Batching And Diagnostics](073-e-indirect-material-batching-and-diagnostics.md)
+- [REQ-073-e2: Render Work Compiler Single Path Hard Cut](073-e-render-work-compiler-single-path-hard-cut.md)
 - [REQ-073-f: Transparent BMW Material Path And Smoke](073-f-realtime-material-path-hard-cut-and-smoke.md)
 - [REQ-073-g: OfflineRT RenderPathGraph Compute Path](073-g-offlinert-render-path-graph-compute-path.md)
-- [REQ-073-h: OfflineRT Config Hard Cut And Smoke](073-h-offlinert-config-hard-cut-and-smoke.md)
+- [REQ-073-h: OfflineRT Smoke And Package Readiness Gate](073-h-offlinert-config-hard-cut-and-smoke.md)
 - [REQ-073-i: Specialized PBRT BSDF Contracts](073-i-specialized-pbrt-bsdf-contracts.md)
 - [REQ-074-a: Texture Compression Pipeline With BC7](074-a-texture-compression-pipeline-bc7.md)
 - [REQ-074-b: Package Canonical State Readiness Gate](074-b-package-canonical-state-readiness-gate.md)
@@ -26,3 +26,4 @@
 - [REQ-077-c: 3DGS Vulkan Splat Pass](077-c-3dgs-vulkan-splat-pass.md)
 - [REQ-077-d: 3DGS Editor Scene Validation](077-d-3dgs-editor-scene-validation.md)
 - [REQ-077-e: 3DGS System Design And Tutorial](077-e-3dgs-system-design-and-tutorial.md)
+- [REQ-078-a: Async FrameGraph Execution And Multi-Queue Synchronization](078-a-async-framegraph-execution-and-multi-queue-synchronization.md)

@@ -37,7 +37,7 @@
 | save / load | scene document 能 round-trip |
 | debug draw | 能提供 bounds 或 helper |
 
-未来自定义节点 kind 的目标，就是自动声明这些操作需要的规则。
+新增一种节点语义时，当前要手工确认这些操作仍然成立。
 
 ## 我们已经学会了什么
 

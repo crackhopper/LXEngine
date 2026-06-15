@@ -250,7 +250,7 @@ upload view / validation profile SHALL 输出可审计 diagnostics：
 ## 依赖
 
 - `REQ-073-a`: Material v3 source contract、source signature 和 accessor ABI。
-- `REQ-072`: RenderPathGraph / SceneResourceTable closure audit 基础。
+- 后续 active `REQ-073-*` / `REQ-074-*`: RenderPathGraph / SceneResourceTable closure audit 基础已拆散承接。
 
 ## 后续工作
 

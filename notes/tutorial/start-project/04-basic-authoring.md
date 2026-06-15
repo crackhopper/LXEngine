@@ -49,7 +49,7 @@ redo
 | 现象 | 解释 |
 |---|---|
 | 物体选不中 | 可能没有可用 bounds，或当前在 Preview 模式 |
-| 调了 light 但画面不明显 | 当前 shader 是否消费 `SceneLightsUBO` 或 light 参数 |
+| 调了 light 但画面不明显 | 先确认当前 shader 读的是 directional `LightUBO`，还是已经接入 `SceneLightsUBO` 多光源 loop |
 | 保存后路径变化 | asset 场景在 user 模式下会重定向到 local |
 
 ## 我们已经学会了什么

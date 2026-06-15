@@ -12,11 +12,11 @@
 | 扩展命令 | `builtin_commands.cpp` | command bus 要能创建和修改新字段 |
 | 扩展 Inspector | editor UI 相关代码 | 作者要能看到和编辑字段 |
 | 扩展 debug draw | editor helper 相关代码 | 视口里要能看懂 light 范围 |
-| 扩展 shader 合同 | `scene_lights_ubo.glsl` 与相关 shader | 渲染公式要能使用新数据 |
+| 扩展 shader 合同 | `scene_lights_ubo.glsl`、`LightUBO` 或新的 light buffer | 渲染公式要能使用新数据 |
 
 这张表就是“新增 light kind”的真实成本。教程可以带我们理解它，但不能把这条手工路径说成轻量扩展点。
 
-## 一个假想的 TubeLight
+## 一个假想的 TubeLight 为什么不该急着进当前教程
 
 我们用 `TubeLight` 做教学例子：它像一根发光灯管，需要两个端点、颜色、强度和影响半径。
 
@@ -25,16 +25,29 @@
 | `start` | 灯管起点 | 类似 point light 的位置 |
 | `end` | 灯管终点 | 新增形状信息 |
 | `color` | 颜色 | 与现有 light 一致 |
-| `intensity` | 强度 | 与现有 light 一致 |
+| `intensity` | 当前字段名；语义应收敛到 irradiance scale | 与现有 light 一致 |
 | `range` | 影响距离 | 与 point / spot 类似 |
 
 如果今天手工实现它，第一步会是在 C++ light 数据里表达这些字段。随后每个使用 light 数据的层都要回答同一个问题：`TubeLight` 应该怎样保存、怎样编辑、怎样画 debug helper、怎样传给 shader。
 
-## 为什么需要未来注册表
+当前教程不把 `TubeLight` 当作下一步要求。它只是帮助我们看清楚新增 light kind 的成本。当前真正需要先补齐的是：Point / Spot 已经能创建和收集，但 realtime PBR/Deferred/offline 还没有完整消费多光源直接照明。
 
-当前三类 light 是内置形状，代码可以直接写死分支。自定义 light 则需要一个集中登记处，像剧院的设备清单：登记一次，灯控台、舞台图和调试工具都能查到它。
+## 多光源 ABI 更适合怎样演进
 
-[REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md) 计划把这些分散知识收束成 light kind registry。未来教程会从“注册一种 light”开始，而不是让新人同时追七个模块。
+当前 `SceneLightsUBO` 是三组数组：directional、point、spot 分开存。考虑到项目已经有 bindless / indirect draw 方向，后续多光源 shader ABI 可以考虑收敛成一组统一 `LightRecord`，用 `type` 区分三类 light：
+
+| 字段 | Directional | Point | Spot |
+|---|---|---|---|
+| `positionRange.xyz/w` | 可空 / 未用 | world position / range | world position / range |
+| `directionCone.xyz/w` | direction / 未用 | 可空 / 未用 | direction / outer cone |
+| `colorIrradiance.rgb/w` | color / irradiance | color / irradiance scale | color / irradiance scale |
+| `meta` | type、flags、shadow index | type、flags | type、flags、cone packing |
+
+这样 shader loop 可以遍历同一组 light record，再按 `type` 调用 directional、point、spot 的 evaluate 函数。bindless / indirect draw 本身不自动带来多光源 ABI，但它让“draw 侧资源索引”和“scene-level light buffer”更适合保持稳定、统一、批量友好的结构。
+
+## Area light 先不要混进当前 direct light
+
+面光源不是当前三类 direct light 的自然延伸。等 IBL 测试全部验收后，它更可能和 emissive geometry、lightmap、light probe、environment importance sampling 这类资产一起设计，而不是急着塞进当前 point/spot/directional 的 UBO。
 
 ## 我们已经学会了什么
 
@@ -42,4 +55,4 @@
 
 ## 下一步
 
-进入 [04 光源资产与注册表](04-light-assets-and-registry.md)，用未来路径把这条链路整理成更容易学习的模型。
+进入 [04 SceneLightsUBO 与 shader 边界](04-scene-lights-shader-boundary.md)，把当前 light 数据和 shader 真实消费范围对齐。

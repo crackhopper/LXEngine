@@ -19,12 +19,12 @@ Debug draw 像舞台平面图上的虚线框，picking 像我们用手指点图�
 | explicit bounds | 非渲染节点 | kind 声明自己的选择范围 |
 | debug shape bounds | helper 节点 | 用 helper 形状辅助选择 |
 
-当前 editor 已经在选择命中后显示 world-space AABB 和交点辅助标记。未来自定义节点 kind 需要声明 `boundsPolicy`，让 picking 不必猜。
+当前 editor 已经在选择命中后显示 world-space AABB 和交点辅助标记。新增非渲染节点语义时，需要在手工接入点里明确 bounds 来源，让 picking 不必猜。
 
 ## ProbeVolume 的 debug draw 示例
 
 ```yaml
-kind: ProbeVolume                       # -> future node kind registry
+kind: ProbeVolume                       # -> hypothetical node payload
 payload:
   size: [2.0, 1.5, 2.0]                 # -> explicit bounds
   color: [0.2, 0.8, 1.0, 1.0]           # -> debug draw style
@@ -33,7 +33,7 @@ debugDraw:
   boundsPolicy: payload.size            # -> picking bounds source
 ```
 
-这仍然是未来目标格式，由 [REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md) 跟踪。当前教程用它帮助我们理解“payload、debug draw、picking bounds”之间的关系。
+这不是当前可直接加载的 scene 格式。它只是帮助我们理解“payload、debug draw、picking bounds”之间的关系；真正落地时仍要回到当前 scene document、runtime factory、debug draw 和 picking 代码。
 
 ## 验证清单
 
@@ -51,4 +51,4 @@ debugDraw:
 
 ## 下一步
 
-进入 [05 未来节点注册表](05-future-node-kind-registry.md)，把这些规则整理成 kind metadata。
+进入 [05 节点操作合同](05-node-operation-contract.md)，把这些规则整理成当前手工扩展必须检查的合同。

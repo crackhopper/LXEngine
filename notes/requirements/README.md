@@ -40,12 +40,11 @@
 
 ## 当前 active REQ（实施顺序快照，2026-06-14）
 
-2026-06-14 复核先处理 `REQ-072` 之前的 active 文件；随后把旧 `REQ-054-a`、`REQ-057-a`、`REQ-058-a`、`REQ-059-a`、`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 按当前代码事实归档、合并或重排。大文件拆分类需求合并后置到 `REQ-076-d`，3DGS 链路按当前代码事实重排到队尾 `REQ-077-a` 到 `REQ-077-e`。
+2026-06-14 复核 active 文件后，把旧 `REQ-054-a`、`REQ-057-a`、`REQ-058-a`、`REQ-059-a`、`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 按当前代码事实归档、合并或重排。大文件拆分类需求合并后置到 `REQ-076-d`，3DGS 链路按当前代码事实重排到队尾 `REQ-077-a` 到 `REQ-077-e`。
 
 | REQ | 主题 | 实施窗口 |
 |---|---|---|
 | `REQ-053-b` | Assets Downloader 外部资源下载与导入工具 | 外部/内置资产下载、导入、转换、路径管理 |
-| `REQ-072` | REQ-071 Closure Audit And Validation Fixes | 071 收口审计；本轮未处理 |
 | `REQ-073-e` | Indirect Material Batching And Diagnostics | indirect batching；本轮未处理 |
 | `REQ-073-f` | Realtime Material Path Hard Cut And Smoke | realtime clean gate；本轮未处理 |
 | `REQ-073-g` | OfflineRT RenderPathGraph Compute Path | OfflineRT graph path；本轮未处理 |
@@ -68,6 +67,7 @@
 | `REQ-077-c` | 3DGS Vulkan Splat Pass | 首个可视化渲染闭环；队尾后置 |
 | `REQ-077-d` | 3DGS Editor Scene Validation | Editor 验收；队尾后置 |
 | `REQ-077-e` | 3DGS System Design And Tutorial | 文档收口；队尾后置 |
+| `REQ-078-a` | Async FrameGraph Execution And Multi-Queue Synchronization | realtime/offline/3DGS 可用后的异步执行、barrier plan 与多 queue 性能升级 |
 
 ## 当前 planned REQ（已讨论，当前不实现，2026-06-01）
 
@@ -85,9 +85,6 @@
 
 | REQ | 主题 | 后置原因 |
 |---|---|---|
-| `REQ-042-a` | 光源资产与自定义光源注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
-| `REQ-042-b` | Editor toolbar 与 command 扩展注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
-| `REQ-042-c` | 自定义场景节点类型注册入口 | 教程扩展 API，不是 shadow/CSM 前置 |
 | `REQ-043` | 内置 OBJ 资产材质槽与 MTL 颜色支持 | 资产质量修补，不是 v0.1.1 主线前置 |
 | `REQ-044-a` | Web Editor Shell 与 IPC 合同 | Phase 9 后续 |
 | `REQ-044-b` | Engine CLI / MCP / Agent 入口 | Phase 10 后续 |
@@ -106,7 +103,10 @@
 
 ## 历史
 
+- 2026-06-14：删除 active `REQ-072`。原 071 收口审计、legacy hard cut、bindless validation、package 和 equivalence 工作已由后续 active `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-*` 承接，不再保留独立 active 需求；同步删除 072 专属 Superpowers spec / plan。
+- 2026-06-14：移除旧 tutorial registry pending 候选 `REQ-042-a/b/c`。教程和 editor design 改为只讲当前 command-first、scene-node、light 数据/shader 边界；light asset/custom light registry、toolbar registry、node kind registry 不再作为当前 roadmap 或教程 future workflow 暴露。
 - 2026-06-14：继续整理 active 顺序。`REQ-054-a` 归档，offline graph/default path 并入 `REQ-073-g`，old config bridge 删除并入 `REQ-073-h`，renderer 大文件拆分并入 `REQ-076-d`。旧 `REQ-057-a`、`REQ-058-a`、`REQ-059-a` 重排为 `REQ-076-a`、`REQ-076-b`、`REQ-076-c`，其中 `REQ-076-c` 改写为支持 3DGS 等非 mesh 渲染结构的 RenderPathGraph/material/effect 架构扩展。`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 归档，剩余事项由 `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-b/c` 承接。
+- 2026-06-14：新增 `REQ-078-a`，把 FrameGraph barrier plan、split barrier、timeline semaphore、multi-queue scheduling、async compute 和 secondary command buffer parallel recording 集中后置到 realtime / OfflineRT / 3DGS 可用闭环之后，避免打断 `REQ-073-*` 短期渲染目标。
 - 2026-06-14：继续整理 active 顺序。旧 `REQ-069-a/b/c` 合并为 `REQ-076-d` 并移到 `REQ-076-c` 之后；3DGS active 链从旧 `REQ-061-a` 到 `REQ-065-a` 重排为 `REQ-077-a` 到 `REQ-077-e`，并按当前代码事实修正为“只有 assets-downloader cache 表面，尚无 loader/runtime/render/editor 闭环”。
 - 2026-06-14：按当前代码复核 `REQ-072` 之前的 active 需求。已完成或已由当前架构取代的 `REQ-045-a/b/c`、`REQ-046-a` 到 `REQ-052-a`、`REQ-053-a`、`REQ-054-b`、`REQ-055-a`、`REQ-056-a`、`REQ-060-a`、`REQ-063-a`、`REQ-066-a`、`REQ-067-b`、`REQ-070-a`、`REQ-071-a/d/e/f/g` 归档到 `finished/`；仍未完成的 `REQ-053-b`、`REQ-054-a`、`REQ-057-a` 到 `REQ-059-a`、`REQ-061-a`、`REQ-062-a`、`REQ-063-b` 到 `REQ-065-a`、`REQ-067-a` 到 `REQ-069-c`、`REQ-071-b/c` 当时保留在 active，并同步实施状态到当前代码事实。后续同日整理又把其中一部分继续归档或重排。
 - 2026-06-10：新增 `REQ-071-a` 到 `REQ-071-f`，把 SurfaceMaterial pure envelope、RenderPathGraph/RenderFeature、SceneResourceTable parser/resource ownership、GPUResourceTable/pipeline cache/upload task、scene package 和 helmet/BMW offline-realtime 渲染等价验证收敛为一个连续需求族。该族承接 `REQ-067-a/b` 的 SceneResourceTable 资源模型和 `REQ-070-a` 的 BMW M6 转换输入，目标是先把材质/渲染合同说清楚，再实现加载性能和对齐验收。

@@ -1,6 +1,6 @@
 # REQ-073-a: Material v3 PBRT Source Contract And Metallic Extension
 
-> 2026-06-12 更新：本 REQ 承接 `REQ-071` / `REQ-072` 的 Material v2 与 Helmet/BMW 验证工作。目标是在 PBRT-style SurfaceMaterial 合同上增加 metallic / factor × texture 表达，并把材质结构定义从 C++ per-type schema 硬切到 `.material` 中显式声明的 `bsdf.source`。`bsdf.source` 指向可反射的 material contract source；C++ 只负责通用反射、校验、依赖注册和按反射 layout 打包，不再为每个材质 type 手写 schema/packing 类。
+> 2026-06-12 更新：本 REQ 承接 `REQ-071` 后续 Material v2 与 Helmet/BMW 验证工作中仍未落地的材质合同部分。目标是在 PBRT-style SurfaceMaterial 合同上增加 metallic / factor × texture 表达，并把材质结构定义从 C++ per-type schema 硬切到 `.material` 中显式声明的 `bsdf.source`。`bsdf.source` 指向可反射的 material contract source；C++ 只负责通用反射、校验、依赖注册和按反射 layout 打包，不再为每个材质 type 手写 schema/packing 类。
 
 ## 背景
 
@@ -379,7 +379,7 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 ## 依赖
 
-- `REQ-072`: 071 closure audit 和 validation 修复。
+- 后续 active `REQ-073-*` / `REQ-074-*`: 071 closure audit 和 validation 修复已拆散承接。
 - `REQ-049-a`: 旧 PBR IBL material contract 的当前 shader/IBL 背景。
 
 ## 后续工作

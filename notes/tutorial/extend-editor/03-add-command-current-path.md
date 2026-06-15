@@ -37,9 +37,9 @@
 | 是否可撤销 | editor 行为要符合作者预期 |
 | 是否影响保存 | scene 文件 round-trip 要明确 |
 
-## 未来会怎样变简单
+## 当前要主动保持一致的地方
 
-[REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 计划让 command 有 metadata。未来教程会先声明 command schema，再绑定 handler，completion、API 查询和 toolbar action 都能读取同一份 metadata。
+当前没有独立的 command metadata 注册 API。新增命令时，我们要手工保持 handler、completion、help 文案、API/MCP 可观察状态和测试一致。这个成本是真实存在的，教程不能把它说成已经被 registry 自动解决。
 
 ## 我们已经学会了什么
 

@@ -101,7 +101,7 @@ glslc --version
 | 启动项目 | 安装、构建、启动 editor、加载和保存场景 | [Tutorial / 启动项目](tutorial/start-project/index.md) |
 | Offline Renderer | scene profile、offline ray tracer、headless FrameGraph、EXR/PNG 输出 | [Tutorial / Offline Renderer](tutorial/offline-renderer/index.md) |
 | 自定义材质 | `.material`、contract shader、参数、Gooch 材质、editor 验证 | [Tutorial / 自定义材质](tutorial/custom-material/index.md) |
-| 自定义灯光 | 当前 light 底座、scene YAML、未来 light asset / custom light 扩展 | [Tutorial / 自定义灯光](tutorial/custom-light/index.md) |
+| 自定义灯光 | 三类内置 light、scene YAML、`SceneLightsUBO` 与当前 shader 边界 | [Tutorial / 自定义灯光](tutorial/custom-light/index.md) |
 | Shadow 阶段 | Shadow pass、CSM、depth target 和多 pass 读写关系 | [Tutorial / Shadow 阶段](tutorial/shadow-era/index.md) |
 | PBR + IBL | HDR/PBR/IBL 金属球场景、资源与 shader 合同 | [Tutorial / PBR + IBL](tutorial/pbr-ibl/index.md) |
 | 扩展编辑器 | toolbar 按钮、command、undo/API/MCP 复用 | [Tutorial / 扩展编辑器](tutorial/extend-editor/index.md) |
@@ -117,20 +117,11 @@ glslc --version
 
 Assets Downloader 保留在“相关工具”中，方便继续开发和验证；它暂时不作为 GetStarted、Tutorial 或 offline ray tracer 的必经步骤。
 
-## 当前能力和未来能力
+## 当前教程边界
 
-有些教程会讲“今天就能做”的路径，有些会讲“未来应该这样做”的顺滑路径。我们用这个规则区分：
+GetStarted 和 Tutorial 只把当前代码可验证的路径放在主线里。读者可以按这些页面启动 editor、运行 offline ray tracer、保存 scene、调材质、看 directional shadow、验证 PBR/IBL，并阅读当前 command / toolbar / scene node 的手工扩展触点。
 
-| 标记 | 含义 |
-|---|---|
-| 当前可用 | 已经能在当前代码中验证 |
-| 未来工作流 | 教程会讲设计方向，但必须链接到 `notes/requirements/` 下的 active REQ |
-
-目前教程里涉及的未来工作流会链接到：
-
-- `REQ-042-a`：光源资产与自定义光源注册入口
-- `REQ-042-b`：Editor toolbar 与 command 扩展注册入口
-- `REQ-042-c`：自定义场景节点类型注册入口
+如果某个能力还没有落到当前代码中，它不应该在教程里伪装成“下一步工作流”。例如 light asset、custom light registry、toolbar registry、node kind registry 这类旧占位说法已经从教程主线清理掉；后续若重新设计，需要先回到 active requirement 或设计 spec，再进入教程。
 
 ## 继续阅读
 

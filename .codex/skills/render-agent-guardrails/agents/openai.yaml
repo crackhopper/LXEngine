@@ -1,0 +1,4 @@
+interface:
+  display_name: "Render Guardrails"
+  short_description: "Guardrails for LXEngine render architecture work"
+  default_prompt: "Use $render-agent-guardrails to scope, review, or verify the next LXEngine rendering architecture or requirement-analysis task."

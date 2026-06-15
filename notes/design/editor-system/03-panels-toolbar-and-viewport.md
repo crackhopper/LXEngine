@@ -45,7 +45,7 @@ Toolbar 里当前直接写了两组 palette：
 | primitive | Cube / Sphere / Plane / Cylinder / Cone | `dispatchCreatePaletteItem("primitive:...", ...)` |
 | scene object | Directional Light / Point Light / Spot Light / Camera | `dispatchCreatePaletteItem("light:..." / "camera:...", ...)` |
 
-这能满足当前 editor，但还不是未来的扩展模型。未来我们希望这些条目来自 command / node / light registry，让新增一种对象时不必同时改 toolbar、command handler、Inspector 和 scene runtime。相关需求分散在 [REQ-042-a](../../requirements/pending/042-a-tutorial-light-asset-and-custom-light-registry.md)、[REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md)、[REQ-042-c](../../requirements/pending/042-c-tutorial-custom-scene-node-registry.md)。
+这能满足当前 editor，但它仍是手写 UI 区域。新增一种对象时，需要按当前代码手工同步 toolbar、command handler、Inspector、scene runtime、debug helper 和保存/加载路径；不要把旧的 registry 占位需求当成当前 roadmap。
 
 ## 面板怎样复用同一条命令线
 

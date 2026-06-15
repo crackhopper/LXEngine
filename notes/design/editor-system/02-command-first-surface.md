@@ -81,7 +81,7 @@ CommandBus 不直接拥有 `EngineLoop`，所以一些全局副作用由 session
 
 ## 当前边界
 
-当前 command metadata 已经有 `brief`、`inverse`、`mutatesState` 等基础，但 toolbar action 还没有统一 metadata registry。toolbar 按钮仍在 `UiOverlay` 中手写，future registry 由 [REQ-042-b](../../requirements/pending/042-b-tutorial-editor-extension-registry.md) 跟踪。
+当前 command metadata 已经有 `brief`、`inverse`、`mutatesState` 等基础，但 toolbar action 还没有统一 metadata registry。toolbar 按钮仍在 `UiOverlay` 中手写。新增入口时按当前合同手工同步 handler、completion、toolbar dispatch、API snapshot 和测试。
 
 ## 继续阅读
 

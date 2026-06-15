@@ -41,7 +41,7 @@ nodes:
 | 应用 camera / light state | 让节点成为相机或光源 |
 | 建立 path 查找表 | 支持选择、命令和 API |
 
-未来自定义节点 kind 需要进入这条流：document 能描述它，runtime 能构建它，editor 能操作它。
+新增节点语义也必须进入这条流：document 能描述它，runtime 能构建它，editor 能操作它。
 
 ## 我们已经学会了什么
 

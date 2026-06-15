@@ -51,4 +51,4 @@ Toolbar 按钮像遥控器上的快捷键。它本身不应该保存业务规则
 
 ## 下一步
 
-进入 [05 未来扩展注册表](05-future-extension-registry.md)，看 metadata 如何让 command、toolbar、API 自动对齐。
+进入 [05 Command / Toolbar 合同](05-command-toolbar-contract.md)，看当前怎样让 command、toolbar、API 和测试保持一致。
