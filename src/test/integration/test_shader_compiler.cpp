@@ -276,9 +276,18 @@ static bool testPbrShadersUseMaterialAccessorAbi(
                 << " should call lxLoadMaterialSurface\n";
       return false;
     }
-    if (source.find("lxEvaluateBsdf") == std::string::npos) {
+    const bool expectsDirectBsdfEvaluate =
+        std::string(shader.label) != "Deferred GBuffer";
+    if (expectsDirectBsdfEvaluate &&
+        source.find("lxEvaluateBsdf") == std::string::npos) {
       std::cerr << "  FAIL: " << shader.label
                 << " should call lxEvaluateBsdf\n";
+      return false;
+    }
+    if (!expectsDirectBsdfEvaluate &&
+        source.find("outNormalRoughness") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should write material properties to the GBuffer\n";
       return false;
     }
     if (std::string(shader.label) == "OfflineRT direct ray" &&

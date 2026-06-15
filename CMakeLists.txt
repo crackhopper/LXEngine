@@ -75,19 +75,14 @@ if(TARGET imgui)
   target_link_libraries(${CORE_LIB} PRIVATE imgui)
 endif()
 
-# REQ-019: demo executables (default ON). Not registered with CTest.
-option(LX_BUILD_DEMOS "Build demo executables" ON)
-if(LX_BUILD_DEMOS)
-  add_subdirectory(src/demos)
-endif()
-
-
-
 
 # -------------------------------
 # 构建期 runtime-root 同步：build/assets 作为统一资产根。
 # 非 shader 资产做 symlink/copy；shader source+spv 由 assets/shaders 维护。
 # -------------------------------
+if(IS_SYMLINK "${CMAKE_BINARY_DIR}/assets")
+  file(REMOVE "${CMAKE_BINARY_DIR}/assets")
+endif()
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/assets")
 
 function(lx_sync_asset_subdir subdir_name)
@@ -116,6 +111,29 @@ lx_sync_asset_subdir("textures")
 lx_sync_asset_subdir("materials")
 lx_sync_asset_subdir("scenes")
 lx_sync_asset_subdir("render_paths")
+
+file(GLOB LX_CONFIGURE_TIME_TMP_PATHS
+  LIST_DIRECTORIES true
+  "${CMAKE_SOURCE_DIR}/tmp_*"
+)
+file(GLOB_RECURSE LX_CONFIGURE_TIME_SOURCE_SPV
+  "${CMAKE_SOURCE_DIR}/assets/shaders/*.spv"
+)
+set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES
+  "${CMAKE_SOURCE_DIR}/artifacts"
+  "${CMAKE_SOURCE_DIR}/.pytest_cache"
+  ${LX_CONFIGURE_TIME_TMP_PATHS}
+  ${LX_CONFIGURE_TIME_SOURCE_SPV}
+)
+
+add_custom_target(lxe_clean_workspace
+  COMMAND ${CMAKE_COMMAND}
+    -D "LXE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/lxe_clean_workspace.cmake"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Remove LXEngine workspace temporary files"
+  VERBATIM
+)
 
 # 引入 shader 编译 target
 add_subdirectory(assets/shaders)

@@ -271,7 +271,7 @@ PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
 3. `storageField` 只能引用已声明 parameter，texture field 要写 `defaultTexture=white/black/flatNormal`。
 4. 新 `.material` 的 `bsdf.type` 必须和 contract `type` 一致。
 5. Graph pass 的 `input.material.type` 必须包含新 type；pass shader 如果 include contract source，`sources` 必须包含 `material.bsdf`。
-6. 跑 `ninja test_material_v2_parser test_material_source_contract test_material_source_variant_pipeline`，再用 `lxe_editor` 验证 scene 中 material URI、graph input 和 shader variant 都接通。
+6. 跑 `ninja test_render_resource_parsers test_material_source_variant_pipeline`，再用 `lxe_editor` 验证 scene 中 material URI、graph input 和 shader variant 都接通。
 
 ## 我们已经学会了什么
 

@@ -155,8 +155,7 @@ passes:
 
 ```bash
 cd build
-ninja test_material_v2_parser
-ninja test_material_source_contract
+ninja test_render_resource_parsers
 ninja test_material_source_variant_pipeline
 ```
 

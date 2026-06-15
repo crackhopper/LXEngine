@@ -83,7 +83,7 @@ Offline renderer 像一条离线实验流水线：editor 产出场景说明书�
 | `buildOfflineSceneStorageResources()` | 生成 SSBO、frame params 和 output buffer |
 | `SceneSoftwareBvh` | 构建派生 BVH 节点和 primitive 重排引用 |
 | GLSL compute shader | 按同一 layout 读取 |
-| `test_offline_gpu_scene` | 固定 layout 和基础数据 |
+| `test_scene_resource_upload_view_v2` | 固定 upload view layout 和基础数据 |
 
 ## VulkanOfflineRenderer 的职责边界
 

@@ -57,12 +57,11 @@ sources:
 
 ```bash
 cd build
-ninja test_material_v2_parser
-ninja test_material_source_contract
+ninja test_render_resource_parsers
 ninja test_material_source_variant_pipeline
 ```
 
-这三个测试分别覆盖 `.material v2` envelope、contract metadata / packer、以及 `LX_MATERIAL_CONTRACT_SOURCE` shader variant。
+这些测试覆盖当前资源 parser、contract source variant，以及 `LX_MATERIAL_CONTRACT_SOURCE` shader variant。
 
 ## 我们已经学会了什么
 

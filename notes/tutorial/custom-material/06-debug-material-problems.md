@@ -19,11 +19,9 @@
 
 | 工具 | 用途 |
 |---|---|
-| `ninja test_material_v2_parser` | 验证 `.material v2` schema、root allowlist、envelope 和资源依赖 |
-| `ninja test_material_source_contract` | 验证 contract metadata、storage packer、source signature |
+| `ninja test_render_resource_parsers` | 验证 render/material resource parser 和依赖解析 |
 | `ninja test_material_source_variant_pipeline` | 验证 graph + material source shader variant + pipeline identity |
 | `ninja test_render_path_graph_pass_contract` | 验证 RenderPathGraph pass 必填字段、source/target 和 render state contract |
-| `ninja test_default_material_asset_audit` | 验证默认 `.material` 资产符合当前 schema 和 root allowlist |
 
 ## 一步一步排查
 
@@ -49,8 +47,7 @@ rg -n "type: .*gooch|gooch" assets/render_paths
 
 ```bash
 cd build
-ninja test_material_v2_parser
-ninja test_material_source_contract
+ninja test_render_resource_parsers
 ninja test_material_source_variant_pipeline
 ```
 

@@ -19,14 +19,6 @@ python3 src/tools/lxe_pbrt_scene_convert/lxe_pbrt_scene_convert.py \
   --scene assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml
 ```
 
-Equivalent CMake target:
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DLXE_PBRT_BMW_M6_SOURCE=<pbrt-v3-scenes>/bmw-m6/bmw-m6.pbrt
-ninja RunPbrtBmwM6Convert
-```
-
 ## Outputs
 
 ```text
@@ -46,7 +38,15 @@ assets/models/bmw-m6/
 Offline smoke render target:
 
 ```bash
-ninja RunPbrtBmwM6OfflineSmoke
+cmake --build build --target lxe_offline_render
+./build/src/tools/lxe_offline_render/lxe_offline_render \
+  --scene assets/models/bmw-m6/pbrt_bmw_m6.scene.yaml \
+  --profile offline-pbrt-reference \
+  --width 320 \
+  --height 228 \
+  --samples 1 \
+  --max-bounce 1 \
+  --out artifacts/pbrt/bmw-m6/offline-smoke/render
 ```
 
 The scene file references only runtime-supported assets for actual rendering.

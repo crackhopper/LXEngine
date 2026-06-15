@@ -71,5 +71,6 @@ PostProcess 链路。它面向实现验收，不是逐像素截图基准。
   再确认当前 renderer 已至少绘制过一帧。
 - 背景纯黑：确认 scene document 中 `scene.environment.enabled: true`，且
   `intensity > 0`，HDR 路径可读。
-- 金属球没有 IBL 观感：运行 `test_scene_runtime`，确认 sphere draw item 收到
-  `IrradianceMap`、`PrefilteredEnvMap`、`BrdfLut` 和 `EnvironmentUBO`。
+- 金属球没有 IBL 观感：运行 `test_render_resource_parsers` 和
+  `test_shader_compiler`，确认 graph/material/shader 合同仍然接通，再 dump
+  renderer 目标检查 IBL 资源是否实际上传。

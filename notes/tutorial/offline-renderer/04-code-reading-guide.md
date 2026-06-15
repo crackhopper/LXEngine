@@ -116,7 +116,7 @@ src/core/offline/offline_scene_storage_resources.cpp
 src/core/raytracing/software_bvh.hpp
 src/core/raytracing/software_bvh.cpp
 assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
-src/test/integration/test_offline_gpu_scene.cpp
+src/test/integration/test_scene_resource_upload_view_v2.cpp
 ```
 
 `SceneResourceTable::buildUploadView()` 导出 shader storage buffer 所需的统一 GPU records；`buildOfflineSceneStorageResources()` 从 upload view 派生 BVH、`SceneFrameParams` 和 `OutputPixels`；`SceneSoftwareBvh::build()` 只从这份只读 upload view 派生 BVH 节点和 primitive 重排引用。这里最重要的不是算法，而是 layout 合同和索引关系。
@@ -254,7 +254,7 @@ assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp
 ```text
 src/infra/offline/offline_image_writer.hpp
 src/infra/offline/offline_image_writer.cpp
-src/test/integration/test_offline_image_writer.cpp
+src/infra/offline/offline_image_writer.cpp
 ```
 
 `OfflineImageWriter` 的输入是 `OfflineReadbackImage`：一张 CPU 侧 RGBA float 图。它不关心这张图来自 Vulkan、CPU path tracer 还是未来的 ray tracing pipeline。
@@ -274,25 +274,21 @@ src/test/integration/test_offline_image_writer.cpp
 
 | 测试 | 主要保护 |
 |---|---|
-| `test_offline_render_cli` | CLI 参数和 profile override |
-| `test_offline_scene_loader` | scene YAML 到 `SceneResourceTable` |
-| `test_offline_gpu_scene` | C++ GPU struct layout、offline storage resources、compute input 和 input desc |
+| `test_render_work_compiler` | FrameGraph 到 render input |
+| `test_scene_resource_upload_view_v2` | `SceneResourceTable` 到 typed upload view |
 | `test_vulkan_offline_renderer` | headless Vulkan runtime、offline graph compute 和 readback |
-| `test_offline_image_writer` | EXR / PNG / JSON / raw 输出 |
 
 常用验证命令：
 
 ```bash
 cmake --build build --target \
   lxe_offline_render \
-  test_offline_render_cli \
-  test_offline_scene_loader \
-  test_offline_gpu_scene \
-  test_vulkan_offline_renderer \
-  test_offline_image_writer
+  test_render_work_compiler \
+  test_scene_resource_upload_view_v2 \
+  test_vulkan_offline_renderer
 
 ctest --test-dir build --output-on-failure \
-  -R 'test_offline_render_cli|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_image_writer'
+  -R 'test_render_work_compiler|test_scene_resource_upload_view_v2|test_vulkan_offline_renderer'
 ```
 
 如果 CLI smoke 失败，先看错误发生在哪一层：

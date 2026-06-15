@@ -68,11 +68,11 @@ scene open ibl_metal_sphere
 如果只想验证全局 scene asset，不启动 editor，我们先跑测试路径：
 
 ```bash
-./build/src/test/test_scene_document
-./build/src/test/test_scene_runtime
+./build/src/test/test_gltf_scene_asset_loader
+./build/src/test/test_render_resource_parsers
 ```
 
-这两个测试会确认 scene asset 存在、environment 配置能 round-trip、`metal_sphere` 使用 `pbr_gold.material`，并且 PBR draw input 能收到 scene-level IBL resources。
+这两个测试会确认 scene / model / material 资产能加载，并且 render resource parser 保持当前 graph/material 依赖合同。
 
 ## 当前能看到什么
 

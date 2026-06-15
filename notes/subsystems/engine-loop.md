@@ -135,9 +135,10 @@ App / Demo
 
 已经完成的接入：
 
-- `src/demos/lxe_editor/main.cpp` 以 `EngineLoop::run()` 为正式交互编辑器入口
-- `src/test/test_render_triangle.cpp` 已从手写 while-loop 改为 `EngineLoop`
-- `src/test/integration/test_engine_loop.cpp` 锁定了以下行为：
+- `src/editor/main.cpp` 以 `EngineLoop::run()` 为正式交互编辑器入口
+- 旧 standalone triangle / engine-loop 小测试已从精简后的 CMake
+  回归集合中移除；当前以 `lxe_editor` 构建和 editor/source boundary 测试保护入口边界。
+- 原 `test_engine_loop.cpp` 覆盖过以下行为：
   - `startScene()` 不是 per-frame
   - update hook 先于 `uploadData()/draw()`
   - `requestSceneRebuild()` 触发显式重建

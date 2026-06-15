@@ -8,18 +8,16 @@
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_image_writer test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target CompileShaders lxe_offline_render test_render_work_compiler test_scene_resource_upload_view_v2 test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_render_work_compiler|test_scene_resource_upload_view_v2|test_vulkan_offline_renderer'
 ```
 
 | 目标 | 验证内容 |
 |---|---|
 | `CompileShaders` | `techniques/OfflineRT/offline_pbr_direct_ray.comp` 被编译成 `build/assets/shaders/glsl/techniques/OfflineRT/offline_pbr_direct_ray.comp.spv` |
-| `test_offline_scene_loader` | scene YAML 能编译成 `SceneResourceTable` |
-| `test_offline_gpu_scene` | `SceneResourceTable` 能打包成 offline storage buffer、BVH、`RenderComputeInput` 和 `RenderInputDesc` |
+| `test_render_work_compiler` | `FrameGraph` / `RenderWorkCompiler` 能生成当前 render input |
+| `test_scene_resource_upload_view_v2` | `SceneResourceTable` 能生成当前 upload view 和 typed GPU 记录 |
 | `test_vulkan_offline_renderer` | headless Vulkan renderer 能初始化 |
-| `test_offline_image_writer` | readback 能写成 EXR、PNG、JSON 和 raw dump |
-| `test_offline_render_cli` | CLI 参数和 profile override 行为稳定 |
 
 ## Output Profile 是输出参数单
 
@@ -109,7 +107,7 @@ artifacts/offline/smoke.rgba32f
 |---|---|
 | 找不到 compute shader SPIR-V | 先跑 `cmake --build build --target CompileShaders`；CLI 会从 `build/assets/shaders/glsl/` 查找离线 compute shader |
 | 没有 Vulkan 物理设备 | 在 Linux headless 环境确认 Vulkan loader / llvmpipe / 驱动可用 |
-| 画面全黑或中心像素为 0 | 检查 scene 是否有 camera、mesh、directional light；再跑 `test_offline_scene_loader` |
+| 画面全黑或中心像素为 0 | 检查 scene 是否有 camera、mesh、directional light；再跑 `test_gltf_scene_asset_loader` 和 `test_render_resource_parsers` |
 | EXR 打不开 | 先看同 basename 的 `.png`；再确认我们使用支持 OpenEXR 的图像查看器 |
 | PNG 过亮或过暗 | 当前 preview 使用 exposure 1.0、ACES、gamma 2.2；EXR 不做 tone mapping |
 

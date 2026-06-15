@@ -8,7 +8,7 @@
 |---|---|---|
 | CMake 配置失败 | `cmake .. -G Ninja` | 依赖没找到 |
 | shader 编译失败 | `ninja test_shader_compiler` | shaderc / glslc / GLSL 问题 |
-| Vulkan 窗口失败 | `ninja test_render_triangle` | driver / window / swapchain 问题 |
+| Vulkan / offline backend 失败 | `ninja test_vulkan_offline_renderer` | driver / Vulkan device / offline backend 问题 |
 | editor 失败 | `ninja lxe_editor` 后运行 | editor session / project / UI 状态问题 |
 | project / scene 保存异常 | `project status`、`scene list`、`scene save` | project 是否打开、active scene 是否绑定、document capture |
 

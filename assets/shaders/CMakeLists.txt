@@ -28,6 +28,7 @@ endif()
 file(GLOB_RECURSE GLSL_RUNTIME_SOURCE_FILES CONFIGURE_DEPENDS
   "${GLSL_INPUT_DIR}/*"
 )
+list(FILTER GLSL_RUNTIME_SOURCE_FILES EXCLUDE REGEX "\\.spv$")
 add_custom_target(SyncShaderRuntimeSources
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${SHADER_OUTPUT_DIR}"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${GLSL_INPUT_DIR}" "${SHADER_OUTPUT_DIR}"

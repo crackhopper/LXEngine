@@ -9,8 +9,8 @@
 | 配置工程 | `cmake -S . -B build -G Ninja` |
 | 验证 shader 编译 | `cmake --build build --target test_shader_compiler && ./build/src/test/test_shader_compiler` |
 | 构建 editor | `cmake --build build --target lxe_editor -j2` |
-| 启动 editor | `./build/src/demos/lxe_editor/lxe_editor` |
-| 构建 offline ray tracer | `cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2` |
+| 启动 editor | `./build/src/editor/lxe_editor` |
+| 构建 offline ray tracer | `cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2` |
 
 如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
 
@@ -21,7 +21,7 @@
 | `lxe_editor` | 交互式实时 editor，负责打开 project、加载 scene、创建节点、调材质和保存场景 | 打开空 project，创建一个 primitive，保存 scene |
 | `lxe_offline_render` | headless offline ray tracer / compute renderer，读取同一份 scene，输出 EXR/PNG/JSON/raw readback | 对内置 metal sphere scene 跑 64x64 smoke |
 | `test_shader_compiler` | shader 编译与反射 smoke | 检查本机 shader 工具链 |
-| `test_render_triangle` | 最小窗口和 Vulkan draw loop smoke | 排查窗口 / Vulkan backend 基础问题 |
+| `test_vulkan_offline_renderer` | headless Vulkan offline renderer smoke | 排查 Vulkan device / offline backend 基础问题 |
 
 新人教程默认从 `lxe_editor` 开始，因为 editor 能把场景、材质、光源、CommandBus、保存/加载和自动化状态放在同一个工作台里。Offline ray tracer 是第二个核心入口：它不依赖 swapchain，适合做可复现渲染输出、后续 path tracing、AOV 和质量参考实验。
 
@@ -30,7 +30,7 @@
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build --target lxe_editor -j2
-./build/src/demos/lxe_editor/lxe_editor
+./build/src/editor/lxe_editor
 ```
 
 启动后，我们优先验证三件事：
@@ -48,8 +48,8 @@ cmake --build build --target lxe_editor -j2
 Offline ray tracer 像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `SceneResourceTable`，再通过 offline `FrameGraph` 生成 compute work，最后输出线性 float 图。
 
 ```bash
-cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_render_cli|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer'
+cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_vulkan_offline_renderer'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
   --scene assets/scenes/ibl_metal_sphere.scene.yaml \
   --profile mvp \

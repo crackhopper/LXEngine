@@ -76,7 +76,7 @@ struct lxSceneMaterialRecord {
 
 | 改动类型 | 必须同步的位置 |
 |---|---|
-| 新增材质参数 | `SceneGpuMaterialRecord`、GLSL `lxSceneMaterialRecord`、`SceneResourceTable` packing、`test_offline_gpu_scene` |
+| 新增材质参数 | `SceneGpuMaterialRecord`、GLSL `lxSceneMaterialRecord`、`SceneResourceTable` packing、`test_scene_resource_upload_view_v2` |
 | 新增 texture index | `MaterialInstance`、`SceneGpuMaterialRecord`、storage resource、shader sampling |
 | 新增 light buffer | `SceneResourceTable`、GPU light struct、storage resource、shader light loop |
 | 新增 output AOV | `OfflineReadbackImage` 或新增 output resource、CLI 输出模块、测试文件大小 |
@@ -130,8 +130,8 @@ vec3 tracePath(vec3 origin, vec3 dir, uint pixelIndex, uint sampleIndex) {
 
 | 测试 | 应覆盖的风险 |
 |---|---|
-| `test_offline_scene_loader` | scene/profile/light/material 字段没有被丢掉 |
-| `test_offline_gpu_scene` | std430 大小、offline storage resources、primitive/material/light buffer 合同稳定 |
+| `test_gltf_scene_asset_loader` | scene/profile/light/material 字段没有被丢掉 |
+| `test_scene_resource_upload_view_v2` | std430 大小、upload view、primitive/material/light buffer 合同稳定 |
 | `test_vulkan_offline_renderer` | headless Vulkan 初始化、offline graph executor 和 renderer 生命周期稳定 |
 | CLI smoke | shader、resource binding、dispatch、readback 能跑完整链路 |
 | 小尺寸 golden / statistics | 固定 seed 下中心像素、平均亮度、NaN/Inf 检查稳定 |

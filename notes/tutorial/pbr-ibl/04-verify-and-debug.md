@@ -5,33 +5,24 @@ PBR + IBL 问题通常像摄影棚调试：先确认布景在，再确认灯光�
 ## 最小验证命令
 
 ```bash
-cmake --build build --target CompileShaders test_scene_document test_scene_runtime test_frame_graph test_shader_compiler -j2
-./build/src/test/test_scene_document
-./build/src/test/test_scene_runtime
-./build/src/test/test_frame_graph
+cmake --build build --target CompileShaders test_gltf_scene_asset_loader test_render_path_graph_pass_contract test_shader_compiler -j2
+./build/src/test/test_gltf_scene_asset_loader
+./build/src/test/test_render_path_graph_pass_contract
 ./build/src/test/test_shader_compiler
-```
-
-有窗口/Vulkan 环境时再跑：
-
-```bash
-xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 ```
 
 | 验证 | 说明 |
 |---|---|
-| scene document | `ibl_metal_sphere.scene.yaml` 存在，environment / PBR material 能 round-trip |
-| scene runtime | `metal_sphere` 能加载，PBR draw input 收到 scene-level IBL resources |
-| frame graph | Forward/Post/Bloom 的资源关系能编译 |
+| glTF scene asset loader | scene/model/material 资源加载链路稳定 |
+| render path graph pass contract | Forward/Post/Bloom 的 pass contract 稳定 |
 | shader compiler | PBR、post、bloom、IBL bake shader 合同稳定 |
-| Vulkan frame graph | backend pass 顺序和 bloom toggle 可运行 |
 
 ## Editor 与 render dump
 
 从 build 目录启动：
 
 ```bash
-./src/demos/lxe_editor/lxe_editor
+./src/editor/lxe_editor
 ```
 
 在 Console 中打开 project 内场景后，可以 dump 当前 FrameGraph attachment
@@ -48,7 +39,7 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 
 | 现象 | 优先检查 |
 |---|---|
-| 金属球发黑 | `test_scene_runtime` 是否通过；PBR draw input 是否收到 `IrradianceMap` / `PrefilteredEnvMap` / `BrdfLut` / `EnvironmentUBO` |
+| 金属球发黑 | 先跑 `test_render_resource_parsers` / `test_shader_compiler`；再 dump renderer 目标检查 IBL binding 是否实际上传 |
 | 画面过曝或过暗 | `PostProcessUBO.exposure`、tone mapping mode、HDR 输入是否仍是线性值 |
 | 反射方向不对 | cubemap face orientation；真实 bake 接入后需要 dump cubemap face 对照 HDR 方向 |
 | 没有 bloom | `VulkanRenderer::PostProcessSettings::bloomEnabled`、threshold、`bloomIntensity` |

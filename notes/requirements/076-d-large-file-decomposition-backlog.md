@@ -100,7 +100,8 @@ src/core/editor/commands/
 - `builtin_commands.hpp` 对外入口保持稳定。
 - 不复制 parser、JSON formatter、scene lookup 或 material helper；共享逻辑集中到 helper 文件。
 - dispatch、help、completion、structured JSON 输出保持等价。
-- `test_command_bus`、`test_command_bus_v2` 继续覆盖代表命令。
+- `test_lxe_editor_source_boundary` 继续覆盖 editor 与 core/source boundary；
+  命令行为回归需要在本 REQ 实施时补新的小型 focused test。
 
 ### R4: LXE Editor SceneRuntime 拆分
 
@@ -123,7 +124,9 @@ src/demos/lxe_editor/
 - document capture/restore 复用 `infra/scene_io` 类型，不扩展 YAML schema。
 - asset discovery 不复制 project/session path 逻辑。
 - material surface 复用 `MaterialInstance`、material loader 和 component API。
-- `test_scene_runtime` 继续覆盖 load/save、material、procedural state、camera/light capture。
+- 场景加载侧以 `test_gltf_scene_asset_loader` 和
+  `test_render_resource_parsers` 作为当前保留回归；更细的 scene runtime
+  focused tests 需要在本 REQ 实施时补回。
 
 ### R5: Source Analysis And Docs
 
@@ -143,17 +146,14 @@ src/demos/lxe_editor/
 ```bash
 cmake --build build --target \
   lxe_editor \
-  test_vulkan_frame_graph \
-  test_vulkan_ibl_bake \
-  test_realtime_render_profile_commands \
   test_bindless_validation_contract \
   test_bindless_indirect_contract \
-  test_command_bus \
-  test_command_bus_v2 \
-  test_scene_runtime -j2
+  test_lxe_editor_source_boundary \
+  test_gltf_scene_asset_loader \
+  test_render_resource_parsers -j2
 
 ctest --test-dir build --output-on-failure -R \
-  "test_(vulkan_frame_graph|vulkan_ibl_bake|realtime_render_profile_commands|bindless_validation_contract|bindless_indirect_contract|command_bus|command_bus_v2|scene_runtime)"
+  "test_(bindless_validation_contract|bindless_indirect_contract|lxe_editor_source_boundary|gltf_scene_asset_loader|render_resource_parsers)"
 ```
 
 如果运行环境没有 video device，按仓库约定对 Vulkan/windowed tests 使用 `xvfb-run -a`。
