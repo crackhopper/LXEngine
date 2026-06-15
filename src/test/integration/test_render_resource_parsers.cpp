@@ -323,6 +323,29 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
          "debug graph asset should compile into a FrameGraph plan");
 }
 
+void testDebugColorTransferRenderPathGraphAssetResolvesShaderPayloads() {
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  LX_core::SceneResourceTable table;
+  const LX_core::ResourceUri graphUri(
+      "assets/render_paths/debug_color_transfer.render-path.yaml");
+
+  const auto parsed =
+      registry.parse(table, LX_core::SceneResourceType::RenderPathGraph,
+                     graphUri, LX_infra::SceneResourceParseContext{});
+
+  EXPECT(parsed.diagnostics.empty(),
+         "debug color transfer graph should resolve shader dependencies "
+         "without diagnostics");
+  EXPECT(parsed.identity.isValid(),
+         "debug color transfer graph should register through parser registry");
+  EXPECT(parsed.metadata.state != LX_core::ResourceState::Failed,
+         "debug color transfer graph registry parse should not fail");
+  EXPECT(table.shaderCount() == 4,
+         "debug color transfer graph should register unique shader "
+         "descriptors for Forward plus three utility shaders");
+}
+
 void testRenderPathGraphParsesSrgbSwapchainAttachment() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://srgb-swapchain.render-path.yaml",
@@ -977,6 +1000,7 @@ int main() {
   testDefaultRenderFeatureAssetParses();
   testDefaultRenderPathGraphAssetParses();
   testDebugColorTransferRenderPathGraphAssetParses();
+  testDebugColorTransferRenderPathGraphAssetResolvesShaderPayloads();
   testRenderPathGraphParsesSrgbSwapchainAttachment();
   testDefaultDeferredRenderPathGraphAssetParses();
   testRenderFeatureRejectsPassAndShaderFields();

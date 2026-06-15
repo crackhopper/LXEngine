@@ -70,9 +70,16 @@ pathFromUri(const LX_core::ResourceUri &uri) {
 }
 
 [[nodiscard]] bool isAllowedRootUtilityShader(std::string_view shader) {
-  static constexpr std::array<std::string_view, 6> kAllowedRootUtilities{
-      "post_process",    "debug_overlay", "bloom_threshold",
-      "bloom_blur_h",    "bloom_blur_v",  "skybox",
+  static constexpr std::array<std::string_view, 9> kAllowedRootUtilities{
+      "post_process",
+      "debug_overlay",
+      "bloom_threshold",
+      "bloom_blur_h",
+      "bloom_blur_v",
+      "skybox",
+      "debug_color_transfer_tonemap",
+      "debug_color_transfer_copy",
+      "debug_color_transfer_ramp",
   };
   for (const std::string_view allowed : kAllowedRootUtilities) {
     if (shader == allowed) {
