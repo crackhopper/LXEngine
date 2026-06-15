@@ -1,10 +1,12 @@
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
 #include "infra/scene_io/scene_document.hpp"
+#include "infra/texture_loader/texture_loader.hpp"
 
 #include "core/frame_graph/pass.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -197,6 +199,60 @@ void expectTextureEnvelope(const LX_core::MaterialInstanceSharedPtr &material,
          "expected texture envelope rgb sampled value type");
   expect(envelope.uri.has_value(), "expected texture envelope uri");
   expect(*envelope.uri == uri, "texture envelope uri mismatch");
+}
+
+struct ChannelStats {
+  std::uint64_t sum = 0;
+  int min = 255;
+  int max = 0;
+  int lowCount = 0;
+  int highCount = 0;
+};
+
+ChannelStats channelStats(const unsigned char *rgba, int pixelCount,
+                          int channel) {
+  ChannelStats stats;
+  for (int index = 0; index < pixelCount; ++index) {
+    const int value = rgba[index * 4 + channel];
+    stats.sum += std::uint64_t(value);
+    stats.min = std::min(stats.min, value);
+    stats.max = std::max(stats.max, value);
+    if (value < 64) {
+      ++stats.lowCount;
+    }
+    if (value >= 180) {
+      ++stats.highCount;
+    }
+  }
+  return stats;
+}
+
+void testDamagedHelmetMetallicRoughnessTextureHasVariation() {
+  const bool found =
+      cdToWhereAssetsExist("models/damaged_helmet/Default_metalRoughness.jpg");
+  expect(found, "DamagedHelmet metallic-roughness texture must exist");
+
+  infra::TextureLoader loader;
+  loader.load("assets/models/damaged_helmet/Default_metalRoughness.jpg");
+  expect(loader.getWidth() == 2048, "metallic-roughness texture width");
+  expect(loader.getHeight() == 2048, "metallic-roughness texture height");
+  const int pixelCount = loader.getWidth() * loader.getHeight();
+  const unsigned char *rgba = loader.getData();
+  expect(rgba != nullptr, "metallic-roughness texture pixels");
+
+  const ChannelStats roughness = channelStats(rgba, pixelCount, 1);
+  const ChannelStats metallic = channelStats(rgba, pixelCount, 2);
+  expect(roughness.min < 32, "roughness green channel should include low values");
+  expect(roughness.max > 220,
+         "roughness green channel should include high values");
+  expect(roughness.lowCount > pixelCount / 5,
+         "roughness green channel should vary across material regions");
+  expect(roughness.highCount > pixelCount / 10,
+         "roughness green channel should include rough material regions");
+  expect(metallic.max > 220,
+         "metallic blue channel should include metallic regions");
+  expect(metallic.highCount > pixelCount / 4,
+         "metallic blue channel should not be mostly zero");
 }
 
 void testGltfLoaderExtractsMetallicRoughnessFactorsAndTextures() {
@@ -654,6 +710,7 @@ void testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave() {
 int main() {
   testGltfLoaderExtractsMetallicRoughnessFactorsAndTextures();
   testDamagedHelmetLoadsStandardPbrCleanPath();
+  testDamagedHelmetMetallicRoughnessTextureHasVariation();
   testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers();
   testGltfTextureContractCheckUsesInstanceReflection();
   testGltfTextureContractCheckRejectsMissingInstanceReflection();

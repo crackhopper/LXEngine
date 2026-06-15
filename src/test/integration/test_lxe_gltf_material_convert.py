@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -22,6 +23,47 @@ class GltfMaterialConvertTest(unittest.TestCase):
         import lxe_gltf_material_convert as converter
 
         cls.converter = converter
+
+    def test_damaged_helmet_source_is_single_standard_pbr_material(self) -> None:
+        gltf_path = (
+            self.source_dir
+            / "assets"
+            / "models"
+            / "damaged_helmet"
+            / "DamagedHelmet.gltf"
+        )
+        doc = json.loads(gltf_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(len(doc["materials"]), 1)
+        self.assertEqual(len(doc["meshes"]), 1)
+        primitives = doc["meshes"][0]["primitives"]
+        self.assertEqual(len(primitives), 1)
+        self.assertEqual(primitives[0]["material"], 0)
+        self.assertEqual(
+            sorted(primitives[0]["attributes"].keys()),
+            ["NORMAL", "POSITION", "TEXCOORD_0"],
+        )
+
+        material = doc["materials"][0]
+        self.assertEqual(material["name"], "Material_MR")
+        pbr = material["pbrMetallicRoughness"]
+        self.assertIn("baseColorTexture", pbr)
+        self.assertIn("metallicRoughnessTexture", pbr)
+        self.assertIn("normalTexture", material)
+        self.assertIn("occlusionTexture", material)
+        self.assertIn("emissiveTexture", material)
+
+        images = [image["uri"] for image in doc["images"]]
+        self.assertEqual(
+            images,
+            [
+                "Default_albedo.jpg",
+                "Default_metalRoughness.jpg",
+                "Default_emissive.jpg",
+                "Default_AO.jpg",
+                "Default_normal.jpg",
+            ],
+        )
 
     def test_damaged_helmet_conversion_writes_standard_pbr_scene(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -73,6 +115,17 @@ class GltfMaterialConvertTest(unittest.TestCase):
 
             scene_text = scene_path.read_text(encoding="utf-8")
             self.assertIn("name: Helmet Standard PBR", scene_text)
+            self.assertIn("enabled: false", scene_text)
+            self.assertIn("skyboxEnabled: false", scene_text)
+            self.assertIn("shadows: false", scene_text)
+            self.assertIn("outDir: artifacts/reference/damaged_helmet_direct", scene_text)
+            self.assertIn("translation: [-1.2, 0.0, 3.2]", scene_text)
+            self.assertIn("rotation: [0.983954, 0.0, -0.178425, 0.0]", scene_text)
+            self.assertIn("fovY: 35.0", scene_text)
+            self.assertIn("kind: Directional", scene_text)
+            self.assertIn("direction: [-0.45, -0.75, -0.48]", scene_text)
+            self.assertIn("intensity: 4.0", scene_text)
+            self.assertNotIn("ground", scene_text.lower())
             self.assertIn("uri: assets/models/damaged_helmet/DamagedHelmet.gltf", scene_text)
             self.assertIn(
                 "uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material",
