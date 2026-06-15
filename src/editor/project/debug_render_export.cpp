@@ -1,5 +1,6 @@
 #include "editor/project/debug_render_export.hpp"
 
+#include <iomanip>
 #include <sstream>
 
 namespace LX_demo::lxe_editor {
@@ -8,8 +9,9 @@ namespace {
 [[nodiscard]] std::string jsonEscape(std::string_view text) {
   std::string out;
   out.reserve(text.size());
-  for (const char ch : text) {
-    switch (ch) {
+  std::ostringstream escapedControl;
+  for (const unsigned char c : text) {
+    switch (c) {
     case '\\':
       out += "\\\\";
       break;
@@ -19,8 +21,28 @@ namespace {
     case '\n':
       out += "\\n";
       break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
     default:
-      out.push_back(ch);
+      if (c < 0x20u) {
+        escapedControl.str({});
+        escapedControl.clear();
+        escapedControl << "\\u" << std::hex << std::setw(4)
+                       << std::setfill('0') << static_cast<int>(c);
+        out += escapedControl.str();
+      } else {
+        out.push_back(static_cast<char>(c));
+      }
       break;
     }
   }

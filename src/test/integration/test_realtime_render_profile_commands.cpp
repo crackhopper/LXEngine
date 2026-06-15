@@ -5,13 +5,17 @@
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/scene.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
+#include "editor/project/debug_render_export.hpp"
 #include "editor/project/realtime_render_profile.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
+#include "infra/image/rgba_image_io.hpp"
 
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -29,6 +33,22 @@ int failures = 0;
       ++failures;                                                              \
     }                                                                          \
   } while (0)
+
+template <typename Fn>
+void expectRuntimeErrorContaining(Fn &&fn, std::string_view expected,
+                                  std::string_view message) {
+  try {
+    fn();
+  } catch (const std::runtime_error &err) {
+    const std::string what = err.what();
+    EXPECT(what.find(expected) != std::string::npos, message);
+    return;
+  } catch (...) {
+    EXPECT(false, message);
+    return;
+  }
+  EXPECT(false, message);
+}
 
 void testRealtimeRenderLsAndRun() {
   LX_core::CommandBus bus;
@@ -232,6 +252,77 @@ void testDebugColorTransferExportApiShape() {
   EXPECT(result.targets.size() == 1,
          "debug export result should expose target records");
 }
+
+void testDebugColorTransferExportResultJsonEscapesControlBytes() {
+  LX_core::backend::VulkanDebugColorTransferExportResult result;
+  result.manifestPath =
+      std::filesystem::path("manifest") /
+      (std::string("bad") + static_cast<char>(0x01) + ".json");
+  result.outputDirectory = std::filesystem::path("out") / "dir";
+  result.targets.push_back(LX_core::backend::VulkanDebugColorTransferTargetRecord{
+      .name = std::string("quote\" slash\\ nl\n cr\r tab\t bs") +
+              static_cast<char>(0x08) + " ff" + static_cast<char>(0x0c) +
+              " low" + static_cast<char>(0x1f),
+      .path = "target.png",
+      .format = "R8G8B8A8_SRGB",
+      .width = 4,
+      .height = 2,
+  });
+
+  const std::string json =
+      LX_demo::lxe_editor::debugColorTransferExportResultJson(result);
+  EXPECT(json.find("\\\"") != std::string::npos,
+         "debug export JSON should escape quotes");
+  EXPECT(json.find("\\\\") != std::string::npos,
+         "debug export JSON should escape backslashes");
+  EXPECT(json.find("\\n") != std::string::npos,
+         "debug export JSON should escape newlines");
+  EXPECT(json.find("\\r") != std::string::npos,
+         "debug export JSON should escape carriage returns");
+  EXPECT(json.find("\\t") != std::string::npos,
+         "debug export JSON should escape tabs");
+  EXPECT(json.find("\\b") != std::string::npos,
+         "debug export JSON should escape backspace");
+  EXPECT(json.find("\\f") != std::string::npos,
+         "debug export JSON should escape form feed");
+  EXPECT(json.find("\\u0001") != std::string::npos,
+         "debug export JSON should escape low control bytes in paths");
+  EXPECT(json.find("\\u001f") != std::string::npos,
+         "debug export JSON should escape generic low control bytes");
+}
+
+void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
+  expectRuntimeErrorContaining(
+      []() {
+        LX_infra::image::writeRawRgba8Png("unused.png", 0, 1, {});
+      },
+      "invalid raw RGBA8 PNG payload",
+      "raw PNG writer should reject zero width");
+  expectRuntimeErrorContaining(
+      []() {
+        LX_infra::image::writeRawRgba8Png(
+            "unused.png", 2, 2, std::vector<unsigned char>(4));
+      },
+      "invalid raw RGBA8 PNG payload",
+      "raw PNG writer should reject payload size mismatch");
+  expectRuntimeErrorContaining(
+      []() {
+        const u32 tooWide =
+            static_cast<u32>(std::numeric_limits<int>::max()) + 1u;
+        LX_infra::image::writeRawRgba8Png("unused.png", tooWide, 1, {});
+      },
+      "invalid raw RGBA8 PNG payload",
+      "raw PNG writer should reject dimensions outside stb int bounds");
+  expectRuntimeErrorContaining(
+      []() {
+        const u32 overflowDimension =
+            (static_cast<u32>(std::numeric_limits<int>::max()) + 1u);
+        LX_infra::image::writeRawRgba8Png("unused.png", overflowDimension,
+                                          overflowDimension, {});
+      },
+      "invalid raw RGBA8 PNG payload",
+      "raw PNG writer should reject expected-size overflow");
+}
 } // namespace
 
 int main() {
@@ -239,6 +330,8 @@ int main() {
   testRealtimeProfileOutputHelpersBuildStableJson();
   testVulkanRealtimeProfileOutputApiShape();
   testDebugColorTransferExportApiShape();
+  testDebugColorTransferExportResultJsonEscapesControlBytes();
+  testRawRgba8PngRejectsInvalidPayloadsBeforeStb();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";

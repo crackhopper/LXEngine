@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -95,16 +96,30 @@ void writeToneMappedPng(const std::filesystem::path &path,
 
 void writeRawRgba8Png(const std::filesystem::path &path, u32 width, u32 height,
                       const std::vector<unsigned char> &rgba) {
-  const usize expectedSize =
-      static_cast<usize>(width) * static_cast<usize>(height) * 4u;
-  if (width == 0 || height == 0 || rgba.size() != expectedSize) {
+  constexpr usize kChannels = 4u;
+  constexpr usize kIntMax = static_cast<usize>(std::numeric_limits<int>::max());
+  constexpr usize kUsizeMax = std::numeric_limits<usize>::max();
+  const usize widthSize = static_cast<usize>(width);
+  const usize heightSize = static_cast<usize>(height);
+  if (width == 0 || height == 0 || widthSize > kIntMax ||
+      heightSize > kIntMax || widthSize > kUsizeMax / kChannels) {
+    throw std::runtime_error("invalid raw RGBA8 PNG payload for " +
+                             path.string());
+  }
+  const usize stride = widthSize * kChannels;
+  if (stride > kIntMax || heightSize > kUsizeMax / stride) {
+    throw std::runtime_error("invalid raw RGBA8 PNG payload for " +
+                             path.string());
+  }
+  const usize expectedSize = heightSize * stride;
+  if (rgba.size() != expectedSize) {
     throw std::runtime_error("invalid raw RGBA8 PNG payload for " +
                              path.string());
   }
   const int ok =
       stbi_write_png(path.string().c_str(), static_cast<int>(width),
                      static_cast<int>(height), 4, rgba.data(),
-                     static_cast<int>(width * 4u));
+                     static_cast<int>(stride));
   if (ok == 0) {
     throw std::runtime_error("failed to write raw RGBA8 PNG " + path.string());
   }
