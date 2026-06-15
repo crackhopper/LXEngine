@@ -942,6 +942,7 @@ int main(int argc, char **argv) {
     demo::UiOverlay ui;
     demo::LxeEditorSession session(rig, ui, editorState);
     session.editorConfig() = editorConfig;
+    EngineLoop *renderLoop = nullptr;
     demo::LxeEditorSession::DisplayCommandHooks displayCommandHooks{
         .displayListJson =
             [&]() {
@@ -1069,6 +1070,11 @@ int main(int argc, char **argv) {
                   .meanValue = stats.meanValue,
                   .nonZeroRatio = stats.nonZeroRatio,
               };
+            },
+        .liveRenderSubmissionStats =
+            [&renderLoop]() {
+              return renderLoop ? renderLoop->liveRenderSubmissionStats()
+                                : LX_core::gpu::LiveRenderSubmissionStats{};
             },
     };
     demo::LxeEditorSession::RealtimeRenderProfileHooks
@@ -1226,6 +1232,7 @@ int main(int argc, char **argv) {
 
     EngineLoop loop;
     loop.initialize(window, renderer);
+    renderLoop = &loop;
     LX_core::DebugDraw::setMaterialProvider([] {
       return createDebugOverlayMaterial();
     });

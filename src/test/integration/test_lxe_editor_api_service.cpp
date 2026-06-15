@@ -5,10 +5,13 @@
 #include "editor/api/api_token_state.hpp"
 #include "editor/api/lxe_editor_api_protocol.hpp"
 #include "editor/api/lxe_editor_api_service.hpp"
+#include "editor/app/editor_session.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
+#include "editor/runtime/camera_rig.hpp"
 #include "editor/runtime/recording_controller.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
+#include "editor/ui/ui_overlay.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -271,6 +274,83 @@ void testDisplayCommandsReturnStructuredHookJson() {
   EXPECT(next.structuredJson.find("\"activeDisplay\":\"display-b\"") !=
              std::string::npos,
          "display next should return structured next-display hook JSON");
+}
+
+void testRenderDebugLiveStatsCommandReturnsLiveStatsJson() {
+  EditorState editorState;
+  CameraRig rig;
+  UiOverlay ui;
+  LxeEditorSession session(rig, ui, editorState);
+  bool liveStatsCalled = false;
+  session.initialize(
+      {},
+      LxeEditorSession::RenderDebugCommandHooks{
+          .liveRenderSubmissionStats = [&liveStatsCalled]() {
+            liveStatsCalled = true;
+            return LX_core::gpu::LiveRenderSubmissionStats{
+                .compilerInputCount = 12,
+                .acceptedInputCount = 10,
+                .rejectedInputCount = 2,
+                .submittedDrawCount = 8,
+                .submittedDispatchCount = 1,
+                .fallbackObservedCount = 0,
+                .descPipelineLookupCount = 3,
+                .descBoundInputCount = 4,
+                .descExecutedInputCount = 5,
+                .bindlessSceneDescriptorCount = 6,
+                .usedExplicitCamera = true,
+                .usedBindlessSceneDescriptors = false,
+            };
+          }},
+      {});
+  LxeEditorApiService service(session.commandBus(), editorState,
+                              *session.scene(), LxeEditorApiService::Hooks{});
+
+  const ApiCommandResponse response =
+      service.executeCommand(
+          ApiCommandRequest{.line = "render debug live-stats"});
+  EXPECT(response.ok,
+         "executeCommand should succeed when render debug live-stats is wired");
+  EXPECT(response.message == "render debug live-stats",
+         "response should use the command label from the render handler");
+  EXPECT(liveStatsCalled,
+         "render debug live-stats should reach command bus handler");
+  EXPECT(response.structuredJson.find("\"compilerInputCount\":12") !=
+             std::string::npos,
+         "response should include compilerInputCount");
+  EXPECT(response.structuredJson.find("\"acceptedInputCount\":10") !=
+             std::string::npos,
+         "response should include acceptedInputCount");
+  EXPECT(response.structuredJson.find("\"rejectedInputCount\":2") !=
+             std::string::npos,
+         "response should include rejectedInputCount");
+  EXPECT(response.structuredJson.find("\"submittedDrawCount\":8") !=
+             std::string::npos,
+         "response should include submittedDrawCount");
+  EXPECT(response.structuredJson.find("\"submittedDispatchCount\":1") !=
+             std::string::npos,
+         "response should include submittedDispatchCount");
+  EXPECT(response.structuredJson.find("\"fallbackObservedCount\":0") !=
+             std::string::npos,
+         "response should include fallbackObservedCount");
+  EXPECT(response.structuredJson.find("\"descPipelineLookupCount\":3") !=
+             std::string::npos,
+         "response should include descPipelineLookupCount");
+  EXPECT(response.structuredJson.find("\"descBoundInputCount\":4") !=
+             std::string::npos,
+         "response should include descBoundInputCount");
+  EXPECT(response.structuredJson.find("\"descExecutedInputCount\":5") !=
+             std::string::npos,
+         "response should include descExecutedInputCount");
+  EXPECT(response.structuredJson.find("\"bindlessSceneDescriptorCount\":6") !=
+             std::string::npos,
+         "response should include bindlessSceneDescriptorCount");
+  EXPECT(response.structuredJson.find("\"usedExplicitCamera\":true") !=
+             std::string::npos,
+         "response should include usedExplicitCamera");
+  EXPECT(response.structuredJson.find(
+             "\"usedBindlessSceneDescriptors\":false") != std::string::npos,
+         "response should include usedBindlessSceneDescriptors");
 }
 
 void testRecordingToolsRecordMcpCommand() {
@@ -1123,6 +1203,7 @@ int main() {
   testCaptureStateSerializesNullProject();
   testRefreshEmitsDirtyAndPreviewChangeEvents();
   testRefreshProjectDirtyChangePayloadIncludesProject();
+  testRenderDebugLiveStatsCommandReturnsLiveStatsJson();
   testRuntimeSceneNodeMutationEmitsApiSceneNodeChangedEvent();
   testCommandDrivenSceneMutationKeepsCommandEventBeforeSceneNodeChanged();
   testExecuteCommandFlushesOlderQueuedRuntimeEventsBeforeNewCommand();

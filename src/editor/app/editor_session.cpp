@@ -1333,9 +1333,41 @@ void LxeEditorSession::rebuildBindings(
       });
   m_commandBus->registerHandler(
       "render",
-      "render debug dump <target> [camera-path] [path] | render debug stats "
-      "<target>",
+      "render debug dump <target> [camera-path] [path] | render debug "
+      "stats <target> | render debug live-stats",
       [this](std::vector<std::string> args) {
+        if (args.size() == 2 && args[0] == "debug" &&
+            args[1] == "live-stats") {
+          if (!m_renderDebugCommandHooks.liveRenderSubmissionStats) {
+            return makeCommandError("render debug live-stats unavailable");
+          }
+          const auto stats =
+              m_renderDebugCommandHooks.liveRenderSubmissionStats();
+          std::ostringstream structured;
+          structured << "{"
+                     << "\"compilerInputCount\":" << stats.compilerInputCount
+                     << ",\"acceptedInputCount\":" << stats.acceptedInputCount
+                     << ",\"rejectedInputCount\":" << stats.rejectedInputCount
+                     << ",\"submittedDrawCount\":" << stats.submittedDrawCount
+                     << ",\"submittedDispatchCount\":"
+                     << stats.submittedDispatchCount
+                     << ",\"fallbackObservedCount\":"
+                     << stats.fallbackObservedCount
+                     << ",\"descPipelineLookupCount\":"
+                     << stats.descPipelineLookupCount
+                     << ",\"descBoundInputCount\":"
+                     << stats.descBoundInputCount
+                     << ",\"descExecutedInputCount\":"
+                     << stats.descExecutedInputCount
+                     << ",\"bindlessSceneDescriptorCount\":"
+                     << stats.bindlessSceneDescriptorCount
+                     << ",\"usedExplicitCamera\":"
+                     << (stats.usedExplicitCamera ? "true" : "false")
+                     << ",\"usedBindlessSceneDescriptors\":"
+                     << (stats.usedBindlessSceneDescriptors ? "true" : "false")
+                     << "}";
+          return makeCommandOk("render debug live-stats", structured.str());
+        }
         if (args.size() == 3 && args[0] == "debug" &&
             args[1] == "stats") {
           if (!m_renderDebugCommandHooks.statsRenderTarget) {
@@ -1363,7 +1395,7 @@ void LxeEditorSession::rebuildBindings(
             args.size() > 5) {
           return makeCommandError(
               "usage: render debug dump <target> [camera-path] [path] | "
-              "render debug stats <target>");
+              "render debug stats <target> | render debug live-stats");
         }
         if (!m_renderDebugCommandHooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");

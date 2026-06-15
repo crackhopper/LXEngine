@@ -65,6 +65,8 @@ public:
         const std::filesystem::path &)>
         dumpRenderTarget;
     std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;
+    std::function<LX_core::gpu::LiveRenderSubmissionStats()>
+        liveRenderSubmissionStats;
   };
 
   struct RealtimeRenderProfileHooks final {

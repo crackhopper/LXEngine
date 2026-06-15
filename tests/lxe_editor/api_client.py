@@ -173,6 +173,11 @@ class LxeEditorClient:
     def get_toolbar(self) -> dict[str, Any]:
         return self._request_json("GET", "/api/state/toolbar")
 
+    def live_render_stats(self) -> dict[str, Any]:
+        return self.decode_structured_json(
+            self.command("render debug live-stats")
+        )
+
     def set_mode(self, mode: str) -> dict[str, Any]:
         return self._request_json("POST", "/api/mode", {"mode": mode})
 
