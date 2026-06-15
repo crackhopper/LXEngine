@@ -8,10 +8,8 @@
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/project/debug_render_export.hpp"
 #include "editor/project/realtime_render_profile.hpp"
-#include "editor/runtime/camera_rig.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
-#include "editor/ui/ui_overlay.hpp"
 #include "infra/image/rgba_image_io.hpp"
 
 #include <filesystem>
@@ -350,45 +348,40 @@ void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
 }
 
 void testRenderDebugColorTransferCommandUsesExportHook() {
-  LX_core::EditorState editorState;
-  LX_demo::lxe_editor::CameraRig rig;
-  LX_demo::lxe_editor::UiOverlay ui;
-  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  LX_core::CommandBus bus;
   bool hookCalled = false;
-  session.initialize(
-      {},
-      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
-          .exportColorTransferPath =
-              [&hookCalled](
-                  const LX_core::backend::VulkanDebugColorTransferExportRequest
-                      &request) {
-                hookCalled = true;
-                EXPECT(request.cameraPath.has_value(),
-                       "debug export should pass camera path to hook");
-                EXPECT(*request.cameraPath == "/editor_cam",
-                       "debug export should preserve camera path");
-                EXPECT(request.outputDirectory.generic_string() ==
-                           "artifacts/debug/color-transfer",
-                       "debug export should pass output directory to hook");
+  LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks{
+      .exportColorTransferPath =
+          [&hookCalled](
+              const LX_core::backend::VulkanDebugColorTransferExportRequest
+                  &request) {
+            hookCalled = true;
+            EXPECT(request.cameraPath.has_value(),
+                   "debug export should pass camera path to hook");
+            EXPECT(*request.cameraPath == "/editor_cam",
+                   "debug export should preserve camera path");
+            EXPECT(request.outputDirectory.generic_string() ==
+                       "artifacts/debug/color-transfer",
+                   "debug export should pass output directory to hook");
 
-                LX_core::backend::VulkanDebugColorTransferExportResult result;
-                result.manifestPath =
-                    "artifacts/debug/color-transfer/manifest.json";
-                result.outputDirectory = "artifacts/debug/color-transfer";
-                result.targets.push_back(
-                    LX_core::backend::VulkanDebugColorTransferTargetRecord{
-                        .name = "debug.final.srgb",
-                        .path =
-                            "artifacts/debug/color-transfer/srgb_attachment.png",
-                        .format = "R8G8B8A8_SRGB",
-                        .width = 64,
-                        .height = 32,
-                    });
-                return result;
-              }},
-      {});
+            LX_core::backend::VulkanDebugColorTransferExportResult result;
+            result.manifestPath =
+                "artifacts/debug/color-transfer/manifest.json";
+            result.outputDirectory = "artifacts/debug/color-transfer";
+            result.targets.push_back(
+                LX_core::backend::VulkanDebugColorTransferTargetRecord{
+                    .name = "debug.final.srgb",
+                    .path = "artifacts/debug/color-transfer/"
+                            "srgb_attachment.png",
+                    .format = "R8G8B8A8_SRGB",
+                    .width = 64,
+                    .height = 32,
+                });
+            return result;
+          }};
+  LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = session.commandBus().dispatch(
+  const auto response = bus.dispatch(
       "render debug export-path color-transfer /editor_cam "
       "artifacts/debug/color-transfer");
 
@@ -407,13 +400,11 @@ void testRenderDebugColorTransferCommandUsesExportHook() {
 }
 
 void testRenderDebugColorTransferCommandReportsUnavailableHook() {
-  LX_core::EditorState editorState;
-  LX_demo::lxe_editor::CameraRig rig;
-  LX_demo::lxe_editor::UiOverlay ui;
-  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
-  session.initialize({}, {}, {});
+  LX_core::CommandBus bus;
+  LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks;
+  LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = session.commandBus().dispatch(
+  const auto response = bus.dispatch(
       "render debug export-path color-transfer");
 
   EXPECT(!response.ok,
@@ -424,22 +415,11 @@ void testRenderDebugColorTransferCommandReportsUnavailableHook() {
 }
 
 void testRenderDebugColorTransferCommandReportsUsageError() {
-  LX_core::EditorState editorState;
-  LX_demo::lxe_editor::CameraRig rig;
-  LX_demo::lxe_editor::UiOverlay ui;
-  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
-  session.initialize(
-      {},
-      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
-          .exportColorTransferPath =
-              [](const LX_core::backend::VulkanDebugColorTransferExportRequest
-                     &) {
-                return LX_core::backend::
-                    VulkanDebugColorTransferExportResult{};
-              }},
-      {});
+  LX_core::CommandBus bus;
+  LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks;
+  LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = session.commandBus().dispatch(
+  const auto response = bus.dispatch(
       "render debug export-path color-transfer /editor_cam out extra");
 
   EXPECT(!response.ok,
@@ -451,23 +431,17 @@ void testRenderDebugColorTransferCommandReportsUsageError() {
 }
 
 void testRenderDebugColorTransferCommandReportsStubException() {
-  LX_core::EditorState editorState;
-  LX_demo::lxe_editor::CameraRig rig;
-  LX_demo::lxe_editor::UiOverlay ui;
-  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
-  session.initialize(
-      {},
-      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
-          .exportColorTransferPath =
-              [](const LX_core::backend::VulkanDebugColorTransferExportRequest
-                     &) -> LX_core::backend::
-                         VulkanDebugColorTransferExportResult {
-                throw std::runtime_error(
-                    "debug color transfer export is not implemented");
-              }},
-      {});
+  LX_core::CommandBus bus;
+  LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks hooks{
+      .exportColorTransferPath =
+          [](const LX_core::backend::VulkanDebugColorTransferExportRequest &)
+              -> LX_core::backend::VulkanDebugColorTransferExportResult {
+        throw std::runtime_error(
+            "debug color transfer export is not implemented");
+      }};
+  LX_demo::lxe_editor::LxeEditorSession::registerRenderDebugCommand(bus, hooks);
 
-  const auto response = session.commandBus().dispatch(
+  const auto response = bus.dispatch(
       "render debug export-path color-transfer");
 
   EXPECT(!response.ok,

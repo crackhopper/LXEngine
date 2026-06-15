@@ -86,6 +86,8 @@ public:
   void initialize(DisplayCommandHooks displayCommandHooks = {},
                   RenderDebugCommandHooks renderDebugCommandHooks = {},
                   RealtimeRenderProfileHooks realtimeRenderProfileHooks = {});
+  static void registerRenderDebugCommand(LX_core::CommandBus &bus,
+                                         RenderDebugCommandHooks &hooks);
 
   [[nodiscard]] LX_core::SceneSharedPtr scene() const;
   [[nodiscard]] LX_core::CameraComponent &editorCamera() const;

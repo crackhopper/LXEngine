@@ -218,6 +218,147 @@ LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
 
 LxeEditorSession::~LxeEditorSession() = default;
 
+void LxeEditorSession::registerRenderDebugCommand(
+    LX_core::CommandBus &bus, RenderDebugCommandHooks &hooks) {
+  bus.registerHandler(
+      "render",
+      "render debug dump <target> [camera-path] [path] | render debug "
+      "stats <target> | render debug live-stats | render debug export-path "
+      "color-transfer [camera-path] [out-dir]",
+      [&hooks](std::vector<std::string> args) {
+        if (args.size() == 2 && args[0] == "debug" &&
+            args[1] == "live-stats") {
+          if (!hooks.liveRenderSubmissionStats) {
+            return makeCommandError("render debug live-stats unavailable");
+          }
+          const auto stats = hooks.liveRenderSubmissionStats();
+          std::ostringstream structured;
+          structured << "{"
+                     << "\"compilerInputCount\":" << stats.compilerInputCount
+                     << ",\"acceptedInputCount\":" << stats.acceptedInputCount
+                     << ",\"rejectedInputCount\":" << stats.rejectedInputCount
+                     << ",\"submittedDrawCount\":" << stats.submittedDrawCount
+                     << ",\"submittedDispatchCount\":"
+                     << stats.submittedDispatchCount
+                     << ",\"fallbackObservedCount\":"
+                     << stats.fallbackObservedCount
+                     << ",\"descPipelineLookupCount\":"
+                     << stats.descPipelineLookupCount
+                     << ",\"descBoundInputCount\":"
+                     << stats.descBoundInputCount
+                     << ",\"descExecutedInputCount\":"
+                     << stats.descExecutedInputCount
+                     << ",\"bindlessSceneDescriptorCount\":"
+                     << stats.bindlessSceneDescriptorCount
+                     << ",\"usedExplicitCamera\":"
+                     << (stats.usedExplicitCamera ? "true" : "false")
+                     << ",\"usedBindlessSceneDescriptors\":"
+                     << (stats.usedBindlessSceneDescriptors ? "true" : "false")
+                     << "}";
+          return makeCommandOk("render debug live-stats", structured.str());
+        }
+        if (args.size() == 3 && args[0] == "debug" &&
+            args[1] == "stats") {
+          if (!hooks.statsRenderTarget) {
+            return makeCommandError("render debug stats unavailable");
+          }
+          try {
+            const RenderDebugDumpResult dump = hooks.statsRenderTarget(args[2]);
+            std::ostringstream structured;
+            structured << "{\"width\":" << dump.width
+                       << ",\"height\":" << dump.height << ",\"format\":\""
+                       << jsonEscape(dump.format) << "\""
+                       << ",\"stats\":{\"min\":" << dump.minValue
+                       << ",\"max\":" << dump.maxValue
+                       << ",\"mean\":" << dump.meanValue
+                       << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
+            return makeCommandOk("render target stats: " + args[2],
+                                 structured.str());
+          } catch (const std::exception &e) {
+            return makeCommandError(e.what());
+          }
+        }
+        if (args.size() >= 3 && args[0] == "debug" &&
+            args[1] == "export-path" && args[2] == "color-transfer") {
+          if (args.size() > 5) {
+            return makeCommandError(
+                "usage: render debug export-path color-transfer "
+                "[camera-path] [out-dir]");
+          }
+          if (!hooks.exportColorTransferPath) {
+            return makeCommandError(
+                "render debug export-path color-transfer unavailable");
+          }
+
+          LX_core::backend::VulkanDebugColorTransferExportRequest request;
+          if (args.size() >= 4) {
+            request.cameraPath = args[3];
+          }
+          if (args.size() == 5) {
+            request.outputDirectory = std::filesystem::path(args[4]);
+          }
+
+          try {
+            const auto result = hooks.exportColorTransferPath(request);
+            return makeCommandOk(
+                "debug color transfer exported: " +
+                    result.manifestPath.generic_string(),
+                debugColorTransferExportResultJson(result));
+          } catch (const std::exception &e) {
+            return makeCommandError(e.what());
+          }
+        }
+
+        if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
+            args.size() > 5) {
+          return makeCommandError(
+              "usage: render debug dump <target> [camera-path] [path] | "
+              "render debug stats <target> | render debug live-stats | "
+              "render debug export-path color-transfer [camera-path] "
+              "[out-dir]");
+        }
+        if (!hooks.dumpRenderTarget) {
+          return makeCommandError("render debug dump unavailable");
+        }
+
+        const bool targetIsPass =
+            args[2] == "Forward" || args[2] == "DebugOverlay";
+        std::optional<std::string> cameraPath;
+        std::filesystem::path outputPath = defaultDumpPathForTarget(args[2]);
+        if (args.size() == 4 && targetIsPass) {
+          cameraPath = args[3];
+        } else if (args.size() == 4) {
+          outputPath = std::filesystem::path(args[3]);
+        } else if (args.size() == 5) {
+          cameraPath = args[3];
+          outputPath = std::filesystem::path(args[4]);
+        }
+        try {
+          const RenderDebugDumpResult dump =
+              hooks.dumpRenderTarget(args[2], cameraPath, outputPath);
+          std::ostringstream structured;
+          structured << "{\"path\":\""
+                     << jsonEscape(dump.path.generic_string()) << "\"";
+          if (!dump.screenPath.empty()) {
+            structured << ",\"screenPath\":\""
+                       << jsonEscape(dump.screenPath.generic_string()) << "\"";
+          }
+          structured << ",\"width\":" << dump.width
+                     << ",\"height\":" << dump.height << ",\"format\":\""
+                     << jsonEscape(dump.format) << "\""
+                     << ",\"stats\":{\"min\":" << dump.minValue
+                     << ",\"max\":" << dump.maxValue
+                     << ",\"mean\":" << dump.meanValue
+                     << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
+          return makeCommandOk(
+              "render target dumped: " + dump.path.generic_string(),
+              structured.str());
+        } catch (const std::exception &e) {
+          return makeCommandError(e.what());
+        }
+      });
+}
+
 void LxeEditorSession::initialize(
     DisplayCommandHooks displayCommandHooks,
     RenderDebugCommandHooks renderDebugCommandHooks,
@@ -1332,147 +1473,7 @@ void LxeEditorSession::rebuildBindings(
                 return setRealtimeRenderMode(modeName);
               },
       });
-  m_commandBus->registerHandler(
-      "render",
-      "render debug dump <target> [camera-path] [path] | render debug "
-      "stats <target> | render debug live-stats | render debug export-path "
-      "color-transfer [camera-path] [out-dir]",
-      [this](std::vector<std::string> args) {
-        if (args.size() == 2 && args[0] == "debug" &&
-            args[1] == "live-stats") {
-          if (!m_renderDebugCommandHooks.liveRenderSubmissionStats) {
-            return makeCommandError("render debug live-stats unavailable");
-          }
-          const auto stats =
-              m_renderDebugCommandHooks.liveRenderSubmissionStats();
-          std::ostringstream structured;
-          structured << "{"
-                     << "\"compilerInputCount\":" << stats.compilerInputCount
-                     << ",\"acceptedInputCount\":" << stats.acceptedInputCount
-                     << ",\"rejectedInputCount\":" << stats.rejectedInputCount
-                     << ",\"submittedDrawCount\":" << stats.submittedDrawCount
-                     << ",\"submittedDispatchCount\":"
-                     << stats.submittedDispatchCount
-                     << ",\"fallbackObservedCount\":"
-                     << stats.fallbackObservedCount
-                     << ",\"descPipelineLookupCount\":"
-                     << stats.descPipelineLookupCount
-                     << ",\"descBoundInputCount\":"
-                     << stats.descBoundInputCount
-                     << ",\"descExecutedInputCount\":"
-                     << stats.descExecutedInputCount
-                     << ",\"bindlessSceneDescriptorCount\":"
-                     << stats.bindlessSceneDescriptorCount
-                     << ",\"usedExplicitCamera\":"
-                     << (stats.usedExplicitCamera ? "true" : "false")
-                     << ",\"usedBindlessSceneDescriptors\":"
-                     << (stats.usedBindlessSceneDescriptors ? "true" : "false")
-                     << "}";
-          return makeCommandOk("render debug live-stats", structured.str());
-        }
-        if (args.size() == 3 && args[0] == "debug" &&
-            args[1] == "stats") {
-          if (!m_renderDebugCommandHooks.statsRenderTarget) {
-            return makeCommandError("render debug stats unavailable");
-          }
-          try {
-            const RenderDebugDumpResult dump =
-                m_renderDebugCommandHooks.statsRenderTarget(args[2]);
-            std::ostringstream structured;
-            structured << "{\"width\":" << dump.width
-                       << ",\"height\":" << dump.height << ",\"format\":\""
-                       << jsonEscape(dump.format) << "\""
-                       << ",\"stats\":{\"min\":" << dump.minValue
-                       << ",\"max\":" << dump.maxValue
-                       << ",\"mean\":" << dump.meanValue
-                       << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
-            return makeCommandOk("render target stats: " + args[2],
-                                 structured.str());
-          } catch (const std::exception &e) {
-            return makeCommandError(e.what());
-          }
-        }
-        if (args.size() >= 3 && args[0] == "debug" &&
-            args[1] == "export-path" && args[2] == "color-transfer") {
-          if (!m_renderDebugCommandHooks.exportColorTransferPath) {
-            return makeCommandError(
-                "render debug export-path color-transfer unavailable");
-          }
-          if (args.size() > 5) {
-            return makeCommandError(
-                "usage: render debug export-path color-transfer "
-                "[camera-path] [out-dir]");
-          }
-
-          LX_core::backend::VulkanDebugColorTransferExportRequest request;
-          if (args.size() >= 4) {
-            request.cameraPath = args[3];
-          }
-          if (args.size() == 5) {
-            request.outputDirectory = std::filesystem::path(args[4]);
-          }
-
-          try {
-            const auto result =
-                m_renderDebugCommandHooks.exportColorTransferPath(request);
-            return makeCommandOk(
-                "debug color transfer exported: " +
-                    result.manifestPath.generic_string(),
-                debugColorTransferExportResultJson(result));
-          } catch (const std::exception &e) {
-            return makeCommandError(e.what());
-          }
-        }
-
-        if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
-            args.size() > 5) {
-          return makeCommandError(
-              "usage: render debug dump <target> [camera-path] [path] | "
-              "render debug stats <target> | render debug live-stats | "
-              "render debug export-path color-transfer [camera-path] "
-              "[out-dir]");
-        }
-        if (!m_renderDebugCommandHooks.dumpRenderTarget) {
-          return makeCommandError("render debug dump unavailable");
-        }
-
-        const bool targetIsPass =
-            args[2] == "Forward" || args[2] == "DebugOverlay";
-        std::optional<std::string> cameraPath;
-        std::filesystem::path outputPath = defaultDumpPathForTarget(args[2]);
-        if (args.size() == 4 && targetIsPass) {
-          cameraPath = args[3];
-        } else if (args.size() == 4) {
-          outputPath = std::filesystem::path(args[3]);
-        } else if (args.size() == 5) {
-          cameraPath = args[3];
-          outputPath = std::filesystem::path(args[4]);
-        }
-        try {
-          const RenderDebugDumpResult dump =
-              m_renderDebugCommandHooks.dumpRenderTarget(args[2], cameraPath,
-                                                         outputPath);
-          std::ostringstream structured;
-          structured << "{\"path\":\""
-                     << jsonEscape(dump.path.generic_string()) << "\"";
-          if (!dump.screenPath.empty()) {
-            structured << ",\"screenPath\":\""
-                       << jsonEscape(dump.screenPath.generic_string()) << "\"";
-          }
-          structured << ",\"width\":" << dump.width
-                     << ",\"height\":" << dump.height << ",\"format\":\""
-                     << jsonEscape(dump.format) << "\""
-                     << ",\"stats\":{\"min\":" << dump.minValue
-                     << ",\"max\":" << dump.maxValue
-                     << ",\"mean\":" << dump.meanValue
-                     << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
-          return makeCommandOk(
-              "render target dumped: " + dump.path.generic_string(),
-              structured.str());
-        } catch (const std::exception &e) {
-          return makeCommandError(e.what());
-        }
-      });
+  registerRenderDebugCommand(*m_commandBus, m_renderDebugCommandHooks);
 
   m_ui.attach(
       m_rig, *m_commandBus, m_editorState, m_editorConfig, *m_viewportOverlay,
