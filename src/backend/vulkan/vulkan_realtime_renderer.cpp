@@ -147,6 +147,58 @@ void validateDebugColorTransferExtent(const VkExtent2D extent) {
   }
 }
 
+void validateDebugColorTransferForwardMaterialsReady(
+    const LX_core::Scene &scene, const LX_core::RenderPathGraph &graph,
+    const LX_core::ResourceUri &graphUri) {
+  const LX_core::RenderPassNode *forwardPass = nullptr;
+  for (const LX_core::RenderPassNode &pass : graph.passes) {
+    if (LX_core::StringID(pass.id) == LX_core::Pass_Forward) {
+      forwardPass = &pass;
+      break;
+    }
+  }
+  if (forwardPass == nullptr) {
+    throw std::runtime_error(
+        "debug color transfer graph has no Forward pass: " +
+        graphUri.string());
+  }
+
+  const auto acceptsMaterial = [&](const LX_core::MaterialInstance &material) {
+    const std::string &bsdfType = material.getBsdfType();
+    if (bsdfType.empty()) {
+      return false;
+    }
+    const auto &types = forwardPass->input.material.types;
+    return types.empty() || std::find(types.begin(), types.end(), bsdfType) !=
+                                types.end();
+  };
+
+  scene.resources().forEachMaterialInstance(
+      [&](LX_core::MaterialHandle, const LX_core::MaterialInstance &material,
+          const LX_core::ResourceUri &materialUri) {
+        if (!acceptsMaterial(material)) {
+          return;
+        }
+        const auto materialTemplate = material.getTemplate();
+        const bool hasForwardDefinition =
+            materialTemplate &&
+            materialTemplate->getPassDefinition(LX_core::Pass_Forward)
+                .has_value();
+        if (hasForwardDefinition && material.isPassEnabled(LX_core::Pass_Forward) &&
+            material.getPassShaderProgram(LX_core::Pass_Forward).has_value()) {
+          return;
+        }
+
+        throw std::runtime_error(
+            "debug color transfer export requires production Forward material "
+            "variants to be prepared before export; unresolved material=" +
+            (materialUri.empty() ? std::string("<anonymous>")
+                                 : materialUri.string()) +
+            " bsdfType=" + material.getBsdfType() + " graph=" +
+            graphUri.string());
+      });
+}
+
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
 /// RGBA8 and log a debug warning rather than throwing — initScene must be
@@ -262,6 +314,45 @@ std::string imageFormatName(LX_core::ImageFormat format) {
     return "BGRA8Srgb";
   }
   return "ImageFormat(" + std::to_string(static_cast<u32>(format)) + ")";
+}
+
+std::string outputEncodingModeName(
+    LX_core::backend::VulkanPostProcessOutputEncoding encoding) {
+  switch (encoding) {
+  case LX_core::backend::VulkanPostProcessOutputEncoding::Linear:
+    return "Linear";
+  case LX_core::backend::VulkanPostProcessOutputEncoding::Srgb:
+    return "Srgb";
+  }
+  return "Unknown";
+}
+
+std::string debugColorTransferOutputEncodingModeForMaterial(
+    const LX_core::MaterialInstance &material) {
+  const std::optional<LX_core::MaterialParameterValue> value =
+      material.readShaderBindingParameterValue(
+          LX_core::StringID("DebugColorTransferUBO"),
+          LX_core::StringID("outputEncodingMode"));
+  if (!value.has_value() ||
+      value->type != LX_core::MaterialParameterValueType::Int) {
+    throw std::runtime_error(
+        "debug color transfer material missing DebugColorTransferUBO."
+        "outputEncodingMode");
+  }
+  switch (value->intValue) {
+  case static_cast<i32>(
+      LX_core::backend::VulkanPostProcessOutputEncoding::Linear):
+    return outputEncodingModeName(
+        LX_core::backend::VulkanPostProcessOutputEncoding::Linear);
+  case static_cast<i32>(
+      LX_core::backend::VulkanPostProcessOutputEncoding::Srgb):
+    return outputEncodingModeName(
+        LX_core::backend::VulkanPostProcessOutputEncoding::Srgb);
+  default:
+    throw std::runtime_error(
+        "debug color transfer material has unsupported outputEncodingMode: " +
+        std::to_string(value->intValue));
+  }
 }
 
 VkDeviceSize dumpByteSize(VkFormat format, u32 width, u32 height) {
@@ -844,6 +935,20 @@ void writeDebugColorTransferManifest(
   }
 
   out << "{\n"
+      << "  \"graphUri\": \"" << jsonEscape(result.graphUri) << "\",\n";
+  if (result.cameraPath.has_value()) {
+    out << "  \"cameraPath\": \"" << jsonEscape(*result.cameraPath) << "\",\n";
+  } else {
+    out << "  \"cameraPath\": null,\n";
+  }
+  out << "  \"previewTransform\": {\n"
+      << "    \"kind\": \""
+      << jsonEscape(result.previewTransform.kind) << "\",\n"
+      << "    \"toneMappingMode\": \""
+      << jsonEscape(result.previewTransform.toneMappingMode) << "\",\n"
+      << "    \"exposure\": " << result.previewTransform.exposure << ",\n"
+      << "    \"gamma\": " << result.previewTransform.gamma << "\n"
+      << "  },\n"
       << "  \"surfaceFormat\": \""
       << jsonEscape(result.formatFacts.surfaceFormat) << "\",\n"
       << "  \"surfaceColorSpace\": \""
@@ -854,6 +959,20 @@ void writeDebugColorTransferManifest(
       << jsonEscape(result.formatFacts.swapchainTargetFormat) << "\",\n"
       << "  \"outputDirectory\": \""
       << jsonEscape(result.outputDirectory.generic_string()) << "\",\n"
+      << "  \"passes\": [\n";
+  for (usize i = 0; i < result.passes.size(); ++i) {
+    const auto &pass = result.passes[i];
+    out << "    {\"pass\":\"" << jsonEscape(pass.pass) << "\",\"target\":\""
+        << jsonEscape(pass.target) << "\",\"shader\":\""
+        << jsonEscape(pass.shader) << "\",\"attachmentFormat\":\""
+        << jsonEscape(pass.attachmentFormat)
+        << "\",\"pipelineColorFormat\":\""
+        << jsonEscape(pass.pipelineColorFormat)
+        << "\",\"outputEncodingMode\":\""
+        << jsonEscape(pass.outputEncodingMode) << "\"}";
+    out << (i + 1 == result.passes.size() ? "\n" : ",\n");
+  }
+  out << "  ],\n"
       << "  \"targets\": [\n";
   for (usize i = 0; i < result.targets.size(); ++i) {
     const auto &target = result.targets[i];
@@ -2743,7 +2862,7 @@ public:
     };
     LX_core::validateRenderPathGraphPassSet(debugGraph, expectedPasses,
                                             expectedPasses);
-    resolveMaterialSourceVariantsOrThrow(
+    validateDebugColorTransferForwardMaterialsReady(
         *m_scene, debugGraph, LX_core::ResourceUri(kDebugGraphAsset));
 
     m_frameGraph = LX_core::buildFrameGraphFromRenderPathGraph(
@@ -2766,11 +2885,16 @@ public:
     };
 
     VulkanPostProcessBuilder builder(m_postProcessSettings);
+    std::unordered_map<LX_core::StringID, std::string,
+                       LX_core::StringID::Hash>
+        actualDebugOutputEncodings;
     const auto installDebugMaterial =
         [&](LX_core::StringID pass, const char *shaderName,
             VulkanPostProcessOutputEncoding outputEncoding) {
           auto material = builder.createDebugColorTransferMaterial(
               pass, shaderName, outputEncoding);
+          actualDebugOutputEncodings[pass] =
+              debugColorTransferOutputEncodingModeForMaterial(*material);
           m_basePassPreparationFacts[pass] =
               fullscreenMaterialFacts(pass, *material);
           debugMaterials.push_back(std::move(material));
@@ -2937,6 +3061,8 @@ public:
     };
 
     VulkanDebugColorTransferExportResult result;
+    result.graphUri = kDebugGraphAsset;
+    result.cameraPath = request.cameraPath;
     result.outputDirectory = outputDir;
     result.manifestPath = outputDir / "manifest.json";
     const VkSurfaceFormatKHR surfaceFormat = device().getSurfaceFormat();
@@ -2969,6 +3095,54 @@ public:
         .gamma = 2.2f,
         .mode = LX_core::image::ToneMappingMode::Aces,
     };
+    result.previewTransform = VulkanDebugColorTransferPreviewTransform{
+        .kind = "cpu-tone-mapped-png",
+        .toneMappingMode =
+            LX_core::image::toneMappingModeName(previewToneMapping.mode),
+        .exposure = previewToneMapping.exposure,
+        .gamma = previewToneMapping.gamma,
+    };
+    const auto appendPassRecords = [&]() {
+      for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
+        const std::vector<LX_core::ImageFormat> colorFormats =
+            pass.target.getColorFormats();
+        usize colorIndex = 0;
+        for (const LX_core::RenderPathAttachmentContract &attachment :
+             pass.attachments) {
+          if (attachment.depth) {
+            continue;
+          }
+          const std::string pipelineColorFormat =
+              colorIndex < colorFormats.size()
+                  ? imageFormatName(colorFormats[colorIndex])
+                  : std::string("<missing>");
+          std::string outputEncodingMode;
+          if (pass.name == LX_core::Pass_Forward) {
+            outputEncodingMode = "LinearHdr";
+          } else {
+            const auto encodingIt = actualDebugOutputEncodings.find(pass.name);
+            if (encodingIt == actualDebugOutputEncodings.end()) {
+              throw std::runtime_error(
+                  "debug color transfer pass has no installed debug material "
+                  "output encoding: " +
+                  LX_core::GlobalStringTable::get().toDebugString(pass.name));
+            }
+            outputEncodingMode = encodingIt->second;
+          }
+          result.passes.push_back(VulkanDebugColorTransferPassRecord{
+              .pass = LX_core::GlobalStringTable::get().toDebugString(
+                  pass.name),
+              .target = attachment.target,
+              .shader = pass.shaderUri.string(),
+              .attachmentFormat = imageFormatName(attachment.format),
+              .pipelineColorFormat = pipelineColorFormat,
+              .outputEncodingMode = outputEncodingMode,
+          });
+          ++colorIndex;
+        }
+      }
+    };
+    appendPassRecords();
 
     AttachmentReadback hdr = readAttachment("hdr.color");
     LX_core::offline::OfflineReadbackImage hdrImage = makeRgba32fImageFromDump(

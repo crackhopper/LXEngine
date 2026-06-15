@@ -266,8 +266,10 @@ void testVulkanRealtimeProfileOutputApiShape() {
 }
 
 void testDebugColorTransferExportApiShape() {
+  using LX_core::backend::VulkanDebugColorTransferPassRecord;
   using LX_core::backend::VulkanDebugColorTransferExportRequest;
   using LX_core::backend::VulkanDebugColorTransferExportResult;
+  using LX_core::backend::VulkanDebugColorTransferPreviewTransform;
   using LX_core::backend::VulkanDebugColorTransferTargetRecord;
   using LX_core::backend::VulkanRealtimeRenderer;
   using LX_core::backend::VulkanRenderer;
@@ -295,6 +297,14 @@ void testDebugColorTransferExportApiShape() {
          "debug export request should expose output directory");
 
   VulkanDebugColorTransferExportResult result;
+  result.graphUri = "assets/render_paths/debug_color_transfer.render-path.yaml";
+  result.cameraPath = request.cameraPath;
+  result.previewTransform = VulkanDebugColorTransferPreviewTransform{
+      .kind = "cpu-tone-mapped-png",
+      .toneMappingMode = "aces",
+      .exposure = 1.0f,
+      .gamma = 2.2f,
+  };
   result.manifestPath = "manifest.json";
   result.targets.push_back(VulkanDebugColorTransferTargetRecord{
       .name = "debug.ramp.srgb",
@@ -303,6 +313,26 @@ void testDebugColorTransferExportApiShape() {
       .width = 64,
       .height = 64,
   });
+  result.passes.push_back(VulkanDebugColorTransferPassRecord{
+      .pass = "DebugSrgbAttachment",
+      .target = "debug.final.srgb",
+      .shader = "assets://shaders/glsl/render_paths/debug_color_transfer_copy.frag",
+      .attachmentFormat = "RGBA8Srgb",
+      .pipelineColorFormat = "RGBA8Srgb",
+      .outputEncodingMode = "Linear",
+  });
+  EXPECT(result.graphUri.find("debug_color_transfer") != std::string::npos,
+         "debug export result should expose render-path graph URI");
+  EXPECT(result.cameraPath == "/editor_cam",
+         "debug export result should expose camera path");
+  EXPECT(result.previewTransform.toneMappingMode == "aces",
+         "debug export result should expose preview tone mapping mode");
+  EXPECT(result.passes.size() == 1,
+         "debug export result should expose pass records");
+  EXPECT(result.passes.front().target == "debug.final.srgb",
+         "debug export pass record should expose logical target");
+  EXPECT(result.passes.front().outputEncodingMode == "Linear",
+         "debug export pass record should expose shader output encoding");
   EXPECT(result.manifestPath.filename() == "manifest.json",
          "debug export result should expose manifest path");
   EXPECT(result.targets.size() == 1,

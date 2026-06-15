@@ -360,6 +360,180 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             ):
                 module.require_debug_color_transfer_bundle(root, json.dumps(payload))
 
+    def test_require_debug_color_transfer_bundle_rejects_missing_surface_facts(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=lambda manifest: manifest.pop("surfaceFormat"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "missing surfaceFormat"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_missing_target_stats(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def remove_hdr_target(manifest: dict[str, object]) -> None:
+                manifest["targets"] = [
+                    target
+                    for target in manifest["targets"]
+                    if target["name"] != "hdr.color"
+                ]
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=remove_hdr_target,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "missing required target.*hdr.color",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_black_hdr_stats(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def blacken_hdr(manifest: dict[str, object]) -> None:
+                for target in manifest["targets"]:
+                    if target["name"] == "hdr.color":
+                        target["max"] = 0.0
+                        target["nonZeroRatio"] = 0.0
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=blacken_hdr,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "hdr.color.*nonzero"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_missing_pass_metadata(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=lambda manifest: manifest.pop("passes"),
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "missing passes"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_wrong_output_encoding(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def corrupt_encoding(manifest: dict[str, object]) -> None:
+                for pass_record in manifest["passes"]:
+                    if pass_record["target"] == "debug.final.srgb":
+                        pass_record["outputEncodingMode"] = "Srgb"
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=corrupt_encoding,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "debug.final.srgb.*outputEncodingMode",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_wrong_target_path(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def corrupt_path(manifest: dict[str, object]) -> None:
+                for target in manifest["targets"]:
+                    if target["name"] == "debug.final.srgb":
+                        target["path"] = "wrong.png"
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=corrupt_path,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "debug.final.srgb.*path mismatch",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_wrong_target_format(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def corrupt_format(manifest: dict[str, object]) -> None:
+                for target in manifest["targets"]:
+                    if target["name"] == "debug.final.srgb":
+                        target["format"] = "R8G8B8A8_UNORM"
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=corrupt_format,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "debug.final.srgb.*format mismatch",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_missing_pipeline_format(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def corrupt_pipeline_format(manifest: dict[str, object]) -> None:
+                for pass_record in manifest["passes"]:
+                    if pass_record["target"] == "hdr.color":
+                        pass_record["pipelineColorFormat"] = "<missing>"
+
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                manifest_mutator=corrupt_pipeline_format,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "hdr.color.*pipelineColorFormat",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
     def test_require_debug_color_transfer_bundle_accepts_ramp_probes(self) -> None:
         module = self._load_realtime_render_module()
         self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
@@ -372,7 +546,12 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                 root, json.dumps(payload)
             )
 
-            self.assertEqual(result["manifest"], {"probes": probes})
+            self.assertEqual(result["manifest"]["probes"], probes)
+            self.assertEqual(result["manifest"]["graphUri"], "assets/render_paths/debug_color_transfer.render-path.yaml")
+            self.assertEqual(
+                result["manifest"]["previewTransform"]["toneMappingMode"],
+                "aces",
+            )
 
     @classmethod
     def _load_realtime_render_module(cls):
@@ -489,6 +668,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         root: Path,
         probes: list[dict[str, object]],
         empty_files: set[str] | None = None,
+        manifest_mutator=None,
     ) -> dict[str, object]:
         empty_files = empty_files or set()
         output_dir = root / "debug"
@@ -505,7 +685,12 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         ]:
             (output_dir / name).write_bytes(b"" if name in empty_files else b"debug")
         manifest_path = output_dir / "manifest.json"
-        manifest_path.write_text(json.dumps({"probes": probes}), encoding="utf-8")
+        manifest = HelmetStandardPbrRealtimeSmokeTest._debug_color_transfer_manifest(
+            probes
+        )
+        if manifest_mutator is not None:
+            manifest_mutator(manifest)
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return {
             "manifestPath": str(manifest_path.relative_to(root)),
             "targets": [
@@ -516,6 +701,80 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                 "debug.ramp.srgb",
                 "debug.ramp.unorm_manual_srgb",
             ],
+        }
+
+    @staticmethod
+    def _debug_color_transfer_manifest(
+        probes: list[dict[str, object]],
+    ) -> dict[str, object]:
+        def target(
+            name: str,
+            path: str,
+            fmt: str,
+            min_value: float,
+            max_value: float,
+            mean_value: float,
+            non_zero: float,
+        ) -> dict[str, object]:
+            return {
+                "name": name,
+                "path": path,
+                "format": fmt,
+                "width": 64,
+                "height": 64,
+                "min": min_value,
+                "max": max_value,
+                "mean": mean_value,
+                "nonZeroRatio": non_zero,
+            }
+
+        def pass_record(
+            pass_name: str,
+            target_name: str,
+            shader: str,
+            attachment_format: str,
+            pipeline_format: str,
+            output_encoding: str,
+        ) -> dict[str, object]:
+            return {
+                "pass": pass_name,
+                "target": target_name,
+                "shader": shader,
+                "attachmentFormat": attachment_format,
+                "pipelineColorFormat": pipeline_format,
+                "outputEncodingMode": output_encoding,
+            }
+
+        return {
+            "graphUri": "assets/render_paths/debug_color_transfer.render-path.yaml",
+            "cameraPath": "/editor_cam",
+            "surfaceFormat": "B8G8R8A8_SRGB",
+            "surfaceColorSpace": "SRGB_NONLINEAR_KHR",
+            "swapchainImageViewFormat": "B8G8R8A8_SRGB",
+            "swapchainTargetFormat": "BGRA8Srgb",
+            "previewTransform": {
+                "kind": "cpu-tone-mapped-png",
+                "toneMappingMode": "aces",
+                "exposure": 1.0,
+                "gamma": 2.2,
+            },
+            "targets": [
+                target("hdr.color", "hdr_color.exr", "R16G16B16A16_SFLOAT", 0.0, 8.0, 0.35, 0.4),
+                target("debug.ldr.linear", "tone_mapped_linear.exr", "R16G16B16A16_SFLOAT", 0.0, 1.0, 0.2, 0.4),
+                target("debug.final.srgb", "srgb_attachment.png", "R8G8B8A8_SRGB", 0.0, 255.0, 64.0, 0.4),
+                target("debug.final.unorm_manual_srgb", "unorm_manual_srgb.png", "R8G8B8A8_UNORM", 0.0, 255.0, 64.0, 0.4),
+                target("debug.ramp.srgb", "ramp_srgb_attachment.png", "R8G8B8A8_SRGB", 0.0, 255.0, 147.0, 0.8),
+                target("debug.ramp.unorm_manual_srgb", "ramp_unorm_manual_srgb.png", "R8G8B8A8_UNORM", 0.0, 255.0, 147.0, 0.8),
+            ],
+            "passes": [
+                pass_record("Forward", "hdr.color", "render_paths/Forward/pbr", "RGBA16Float", "RGBA16Float", "LinearHdr"),
+                pass_record("DebugToneMapLinear", "debug.ldr.linear", "assets://shaders/glsl/render_paths/debug_color_transfer_tonemap.frag", "RGBA16Float", "RGBA16Float", "Linear"),
+                pass_record("DebugSrgbAttachment", "debug.final.srgb", "assets://shaders/glsl/render_paths/debug_color_transfer_copy.frag", "RGBA8Srgb", "RGBA8Srgb", "Linear"),
+                pass_record("DebugUnormManualSrgb", "debug.final.unorm_manual_srgb", "assets://shaders/glsl/render_paths/debug_color_transfer_copy.frag", "RGBA8", "RGBA8", "Srgb"),
+                pass_record("DebugRampSrgb", "debug.ramp.srgb", "assets://shaders/glsl/render_paths/debug_color_transfer_ramp.frag", "RGBA8Srgb", "RGBA8Srgb", "Linear"),
+                pass_record("DebugRampUnormManualSrgb", "debug.ramp.unorm_manual_srgb", "assets://shaders/glsl/render_paths/debug_color_transfer_ramp.frag", "RGBA8", "RGBA8", "Srgb"),
+            ],
+            "probes": probes,
         }
 
 

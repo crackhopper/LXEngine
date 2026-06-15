@@ -76,6 +76,15 @@ format, dynamic rendering pipeline format, image view format, or readback. If
 the ramp targets agree but the helmet targets diverge, the bug is probably in
 PBR/tone mapping/input data rather than Vulkan sRGB attachment conversion.
 
+`manifest.json` is part of the evidence, not just an index. It records the
+render-path graph URI, camera path, CPU preview tone-mapping transform,
+surface/swapchain formats, per-target stats, and per-pass attachment contract,
+pipeline color format, shader URI, and `outputEncodingMode`. For the canonical
+comparison, `debug.final.srgb` must use an sRGB attachment with linear shader
+output, while `debug.final.unorm_manual_srgb` must use a UNORM attachment with
+manual sRGB shader output. A mismatch in those fields means the render boundary
+is wrong before any image comparison is meaningful.
+
 ## 阴影调试复盘
 
 方向光阴影像一台临时搬到灯光方向上的正交相机：我们先用 active camera 的视锥决定要覆盖的世界范围，再从灯光方向渲染一张深度图，Forward pass 里的像素再拿自己的世界坐标回到这张深度图里查深度。

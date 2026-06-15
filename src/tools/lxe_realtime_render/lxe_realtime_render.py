@@ -440,6 +440,173 @@ def require_debug_color_transfer_bundle(
             raise RuntimeError(f"debug color-transfer output missing: {path}")
         if path.stat().st_size <= 0:
             raise RuntimeError(f"debug color-transfer output empty: {path}")
+    for key in (
+        "graphUri",
+        "surfaceFormat",
+        "surfaceColorSpace",
+        "swapchainImageViewFormat",
+        "swapchainTargetFormat",
+    ):
+        value = manifest.get(key)
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"debug color-transfer manifest missing {key}")
+    preview_transform = manifest.get("previewTransform")
+    if not isinstance(preview_transform, dict):
+        raise RuntimeError("debug color-transfer manifest missing previewTransform")
+    for key in ("kind", "toneMappingMode"):
+        value = preview_transform.get(key)
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(
+                f"debug color-transfer manifest previewTransform missing {key}"
+            )
+    for key in ("exposure", "gamma"):
+        value = preview_transform.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise RuntimeError(
+                f"debug color-transfer manifest previewTransform missing {key}"
+            )
+
+    targets = manifest.get("targets")
+    if not isinstance(targets, list):
+        raise RuntimeError("debug color-transfer manifest missing targets")
+    target_by_name: dict[str, dict[str, object]] = {}
+    for target in targets:
+        if not isinstance(target, dict):
+            raise RuntimeError("debug color-transfer manifest target is not an object")
+        name = target.get("name")
+        if isinstance(name, str) and name:
+            target_by_name[name] = target
+    required_targets = (
+        "hdr.color",
+        "debug.ldr.linear",
+        "debug.final.srgb",
+        "debug.final.unorm_manual_srgb",
+        "debug.ramp.srgb",
+        "debug.ramp.unorm_manual_srgb",
+    )
+    expected_target_files = {
+        "hdr.color": "hdr_color.exr",
+        "debug.ldr.linear": "tone_mapped_linear.exr",
+        "debug.final.srgb": "srgb_attachment.png",
+        "debug.final.unorm_manual_srgb": "unorm_manual_srgb.png",
+        "debug.ramp.srgb": "ramp_srgb_attachment.png",
+        "debug.ramp.unorm_manual_srgb": "ramp_unorm_manual_srgb.png",
+    }
+    expected_target_formats = {
+        "hdr.color": "R16G16B16A16_SFLOAT",
+        "debug.ldr.linear": "R16G16B16A16_SFLOAT",
+        "debug.final.srgb": "R8G8B8A8_SRGB",
+        "debug.final.unorm_manual_srgb": "R8G8B8A8_UNORM",
+        "debug.ramp.srgb": "R8G8B8A8_SRGB",
+        "debug.ramp.unorm_manual_srgb": "R8G8B8A8_UNORM",
+    }
+    for name in required_targets:
+        if name not in target_by_name:
+            raise RuntimeError(
+                f"debug color-transfer manifest missing required target: {name}"
+            )
+        target = target_by_name[name]
+        for key in ("path", "format"):
+            value = target.get(key)
+            if not isinstance(value, str) or not value:
+                raise RuntimeError(
+                    f"debug color-transfer manifest target {name} missing {key}"
+                )
+        actual_file = Path(str(target["path"])).name
+        if actual_file != expected_target_files[name]:
+            raise RuntimeError(
+                "debug color-transfer manifest "
+                f"{name} path mismatch: actual={actual_file} "
+                f"expected={expected_target_files[name]}"
+            )
+        if target["format"] != expected_target_formats[name]:
+            raise RuntimeError(
+                "debug color-transfer manifest "
+                f"{name} format mismatch: actual={target['format']} "
+                f"expected={expected_target_formats[name]}"
+            )
+        for key in ("width", "height"):
+            value = target.get(key)
+            if isinstance(value, bool) or type(value) is not int or value <= 0:
+                raise RuntimeError(
+                    f"debug color-transfer manifest target {name} missing {key}"
+                )
+        for key in ("min", "max", "mean", "nonZeroRatio"):
+            value = target.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise RuntimeError(
+                    f"debug color-transfer manifest target {name} missing {key}"
+                )
+    hdr_target = target_by_name["hdr.color"]
+    if float(hdr_target["max"]) <= 0.0 or float(hdr_target["nonZeroRatio"]) <= 0.0:
+        raise RuntimeError("debug color-transfer hdr.color has no nonzero HDR data")
+    linear_target = target_by_name["debug.ldr.linear"]
+    if float(linear_target["min"]) < -0.01 or float(linear_target["max"]) > 1.01:
+        raise RuntimeError(
+            "debug color-transfer debug.ldr.linear is outside tone-mapped 0..1 range"
+        )
+
+    passes = manifest.get("passes")
+    if not isinstance(passes, list):
+        raise RuntimeError("debug color-transfer manifest missing passes")
+    pass_by_target: dict[str, dict[str, object]] = {}
+    for pass_record in passes:
+        if not isinstance(pass_record, dict):
+            raise RuntimeError("debug color-transfer manifest pass is not an object")
+        target = pass_record.get("target")
+        if isinstance(target, str) and target:
+            pass_by_target[target] = pass_record
+    expected_pass_contracts = {
+        "hdr.color": ("LinearHdr", "RGBA16Float"),
+        "debug.ldr.linear": ("Linear", "RGBA16Float"),
+        "debug.final.srgb": ("Linear", "RGBA8Srgb"),
+        "debug.final.unorm_manual_srgb": ("Srgb", "RGBA8"),
+        "debug.ramp.srgb": ("Linear", "RGBA8Srgb"),
+        "debug.ramp.unorm_manual_srgb": ("Srgb", "RGBA8"),
+    }
+    for target_name, (expected_encoding, expected_color_format) in (
+        expected_pass_contracts.items()
+    ):
+        pass_record = pass_by_target.get(target_name)
+        if pass_record is None:
+            raise RuntimeError(
+                "debug color-transfer manifest missing pass metadata for "
+                f"{target_name}"
+            )
+        for key in (
+            "pass",
+            "shader",
+            "attachmentFormat",
+            "pipelineColorFormat",
+            "outputEncodingMode",
+        ):
+            value = pass_record.get(key)
+            if not isinstance(value, str) or not value:
+                raise RuntimeError(
+                    "debug color-transfer manifest pass metadata for "
+                    f"{target_name} missing {key}"
+                )
+        if pass_record["outputEncodingMode"] != expected_encoding:
+            raise RuntimeError(
+                "debug color-transfer manifest "
+                f"{target_name} outputEncodingMode mismatch: "
+                f"actual={pass_record['outputEncodingMode']} "
+                f"expected={expected_encoding}"
+            )
+        if pass_record["attachmentFormat"] != expected_color_format:
+            raise RuntimeError(
+                "debug color-transfer manifest "
+                f"{target_name} attachmentFormat mismatch: "
+                f"actual={pass_record['attachmentFormat']} "
+                f"expected={expected_color_format}"
+            )
+        if pass_record["pipelineColorFormat"] != expected_color_format:
+            raise RuntimeError(
+                "debug color-transfer manifest "
+                f"{target_name} pipelineColorFormat mismatch: "
+                f"actual={pass_record['pipelineColorFormat']} "
+                f"expected={expected_color_format}"
+            )
     probes = manifest.get("probes", [])
     if not isinstance(probes, list) or not probes:
         raise RuntimeError("debug color-transfer manifest has no probes")

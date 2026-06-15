@@ -85,6 +85,22 @@ struct VulkanDebugColorTransferFormatFacts final {
   std::string swapchainTargetFormat;
 };
 
+struct VulkanDebugColorTransferPreviewTransform final {
+  std::string kind;
+  std::string toneMappingMode;
+  float exposure = 1.0f;
+  float gamma = 2.2f;
+};
+
+struct VulkanDebugColorTransferPassRecord final {
+  std::string pass;
+  std::string target;
+  std::string shader;
+  std::string attachmentFormat;
+  std::string pipelineColorFormat;
+  std::string outputEncodingMode;
+};
+
 struct VulkanDebugColorTransferExportRequest final {
   std::optional<std::string> cameraPath;
   std::filesystem::path outputDirectory;
@@ -93,10 +109,14 @@ struct VulkanDebugColorTransferExportRequest final {
 };
 
 struct VulkanDebugColorTransferExportResult final {
+  std::string graphUri;
+  std::optional<std::string> cameraPath;
   std::filesystem::path manifestPath;
   std::filesystem::path outputDirectory;
   VulkanDebugColorTransferFormatFacts formatFacts;
+  VulkanDebugColorTransferPreviewTransform previewTransform;
   std::vector<VulkanDebugColorTransferTargetRecord> targets;
+  std::vector<VulkanDebugColorTransferPassRecord> passes;
   std::vector<VulkanDebugColorTransferProbeRecord> probes;
 };
 

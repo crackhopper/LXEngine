@@ -479,6 +479,68 @@ void testRendererNamesLoadedScenePipelinePreparationPhase(
   }
 }
 
+void testDebugColorTransferExportDoesNotMutateMaterialSourceVariants(
+    const fs::path &repoRoot) {
+  const fs::path rendererPath =
+      repoRoot / "src/backend/vulkan/vulkan_realtime_renderer.cpp";
+  const std::string rendererSource = readTextFile(rendererPath);
+  const std::string rendererLabel = rendererPath.generic_string();
+  const std::optional<std::string_view> exportBody =
+      functionBody(rendererSource,
+                   "VulkanDebugColorTransferExportResult exportDebugColorTransfer");
+  EXPECT(exportBody.has_value(),
+         rendererLabel +
+             " must define exportDebugColorTransfer for debug color transfer");
+  if (!exportBody.has_value()) {
+    return;
+  }
+
+  const std::string_view body = *exportBody;
+  EXPECT(body.find("resolveMaterialSourceVariantsOrThrow") ==
+             std::string_view::npos,
+         rendererLabel +
+             " exportDebugColorTransfer must not resolve material source "
+             "variants against the live scene resource table");
+  EXPECT(body.find("validateDebugColorTransferForwardMaterialsReady") !=
+             std::string_view::npos,
+         rendererLabel +
+             " exportDebugColorTransfer must use a read-only material "
+             "readiness check before rendering debug passes");
+}
+
+void testDebugColorTransferManifestUsesInstalledMaterialEncoding(
+    const fs::path &repoRoot) {
+  const fs::path rendererPath =
+      repoRoot / "src/backend/vulkan/vulkan_realtime_renderer.cpp";
+  const std::string rendererSource = readTextFile(rendererPath);
+  const std::string rendererLabel = rendererPath.generic_string();
+  const std::optional<std::string_view> exportBody =
+      functionBody(rendererSource,
+                   "VulkanDebugColorTransferExportResult exportDebugColorTransfer");
+  EXPECT(exportBody.has_value(),
+         rendererLabel +
+             " must define exportDebugColorTransfer for debug color transfer");
+  if (!exportBody.has_value()) {
+    return;
+  }
+
+  const std::string_view body = *exportBody;
+  EXPECT(rendererSource.find("debugColorTransferOutputEncodingModeForMaterial") !=
+             std::string::npos,
+         rendererLabel +
+             " must expose a helper that reads debug material outputEncodingMode");
+  EXPECT(body.find("debugColorTransferOutputEncodingModeForMaterial(*material)") !=
+             std::string_view::npos,
+         rendererLabel +
+             " exportDebugColorTransfer must record the installed debug "
+             "material outputEncodingMode");
+  EXPECT(body.find("debugColorTransferOutputEncodingModeForPass(pass.name)") ==
+             std::string_view::npos,
+         rendererLabel +
+             " exportDebugColorTransfer manifest must not infer "
+             "outputEncodingMode from pass name");
+}
+
 bool shouldScanFile(const fs::path &path) {
   const std::string filename = path.filename().string();
   if (filename == "test_073d_render_path_hard_cut.cpp") {
@@ -553,6 +615,8 @@ int main() {
   testLegacyTechniqueUriRejectedByResourceParser();
   testLegacyTechniqueUriRejectedByMaterialSourceVariantResolver();
   testRendererNamesLoadedScenePipelinePreparationPhase(repoRoot);
+  testDebugColorTransferExportDoesNotMutateMaterialSourceVariants(repoRoot);
+  testDebugColorTransferManifestUsesInstalledMaterialEncoding(repoRoot);
   testProductionOldTokenAudit(repoRoot);
 
   if (g_failures != 0) {
