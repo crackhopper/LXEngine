@@ -1,684 +1,94 @@
 #include "core/asset/material_instance.hpp"
-#include "core/asset/shader.hpp"
-#include "core/asset/shader_binding_ownership.hpp"
-#include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
-#include "core/scene/ibl_environment.hpp"
-#include "core/scene/scene.hpp"
-#include "core/utils/env.hpp"
-#include "core/utils/string_table.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
-#include "infra/shader_compiler/compiled_shader.hpp"
-#include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/shader_reflector.hpp"
+#include "core/scene/scene_resource_table.hpp"
+#include "infra/material_loader/material_resource_parser.hpp"
 
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
 #include <iostream>
-#include <string>
-#include <vector>
+#include <string_view>
 
 using namespace LX_core;
-using namespace LX_infra;
 
 namespace {
 
-int s_failures = 0;
+int g_failures = 0;
 
-#define REQUIRE(cond)                                                          \
-  do {                                                                         \
-    if (!(cond)) {                                                             \
-      std::cerr << "  FAIL: " #cond "  (" << __FILE__ << ":" << __LINE__       \
-                << ")\n";                                                      \
-      ++s_failures;                                                            \
-      return;                                                                  \
-    }                                                                          \
-  } while (0)
-
-class FakeShader : public IShader {
-public:
-  explicit FakeShader(std::vector<ShaderResourceBinding> bindings)
-      : m_bindings(std::move(bindings)) {}
-
-  const std::vector<ShaderStageCode> &getAllStages() const override {
-    return m_stages;
+void expect(bool condition, std::string_view message) {
+  if (!condition) {
+    std::cerr << "[FAIL] " << message << '\n';
+    ++g_failures;
   }
-  const std::vector<ShaderResourceBinding> &
-  getReflectionBindings() const override {
-    return m_bindings;
-  }
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(u32 set, u32 binding) const override {
-    for (const auto &item : m_bindings) {
-      if (item.set == set && item.binding == binding)
-        return std::cref(item);
-    }
-    return std::nullopt;
-  }
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &name) const override {
-    for (const auto &item : m_bindings) {
-      if (item.name == name)
-        return std::cref(item);
-    }
-    return std::nullopt;
-  }
-  usize getProgramHash() const override { return 0; }
-
-private:
-  std::vector<ShaderStageCode> m_stages;
-  std::vector<ShaderResourceBinding> m_bindings;
-};
-
-std::filesystem::path findShaderDir() {
-  std::filesystem::path cwd = std::filesystem::current_path();
-  for (int i = 0; i < 4; ++i) {
-    for (const auto &candidate :
-         {cwd / "assets" / "shaders" / "glsl", cwd / "shaders" / "glsl"}) {
-      if (std::filesystem::exists(candidate / "blinnphong_0.vert") &&
-          std::filesystem::exists(candidate / "blinnphong_0.frag"))
-        return candidate;
-    }
-    auto parent = cwd.parent_path();
-    if (parent == cwd)
-      break;
-    cwd = parent;
-  }
-  return {};
 }
 
-MaterialInstanceSharedPtr buildInstanceFromBlinnPhong() {
-  auto dir = findShaderDir();
-  if (dir.empty()) {
-    std::cerr << "  SETUP: blinnphong_0 shaders not found; skipping test\n";
+MaterialInstanceSharedPtr parseDefaultMaterial(SceneResourceTable &table) {
+  LX_infra::MaterialResourceParser parser;
+  auto parsed = parser.parse(table, "memory://default.material", R"(
+schema: lxe.material.v2
+bsdf:
+  type: uber
+  source: assets://shaders/glsl/common/materials/uber.contract.glsl
+  parameters:
+    Kd: { kind: texture, valueType: rgb, uri: textures/kd.png }
+    Ks: { kind: rgb, value: [0.04, 0.04, 0.04] }
+)");
+
+  expect(parsed.instance != nullptr, "valid v2 material should parse");
+  expect(parsed.diagnostics.empty(),
+         "valid v2 material should parse without diagnostics");
+  if (!parsed.instance) {
     return nullptr;
   }
-  auto compile = ShaderCompiler::compileProgram(dir / "blinnphong_0.vert",
-                                                dir / "blinnphong_0.frag", {});
-  if (!compile.success) {
-    std::cerr << "  SETUP: compile failed: " << compile.errorMessage << "\n";
-    return nullptr;
-  }
-  auto bindings = ShaderReflector::reflect(compile.stages);
-  auto vertexInputs = ShaderReflector::reflectVertexInputs(compile.stages);
-  auto shader = std::make_shared<CompiledShader>(
-      std::move(compile.stages), bindings, vertexInputs, "blinnphong_0");
 
-  auto tmpl = MaterialTemplate::create("blinnphong_0");
-  ShaderProgramSet set;
-  set.shaderName = "blinnphong_0";
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  entry.renderState = RenderState{};
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-
-  return MaterialInstance::create(tmpl);
+  return MaterialInstanceSharedPtr(std::move(parsed.instance));
 }
 
-MaterialTemplate::SharedPtr
-buildMultiPassTemplate(const RenderState &forwardState,
-                       const RenderState &shadowState) {
-  ShaderResourceBinding binding;
-  binding.name = "MaterialUBO";
-  binding.set = 2;
-  binding.binding = 0;
-  binding.type = ShaderPropertyType::UniformBuffer;
-  binding.size = 32;
-
-  auto shader =
-      std::make_shared<FakeShader>(std::vector<ShaderResourceBinding>{binding});
-  auto tmpl = MaterialTemplate::create("multi_pass_fake");
-
-  ShaderProgramSet forwardSet;
-  forwardSet.shaderName = "fake_forward";
-  forwardSet.shader = shader;
-  MaterialPassDefinition forwardEntry;
-  forwardEntry.shaderProgram = forwardSet;
-  forwardEntry.renderState = forwardState;
-  tmpl->setPassDefinition(Pass_Forward, std::move(forwardEntry));
-
-  ShaderProgramSet shadowSet;
-  shadowSet.shaderName = "fake_shadow";
-  shadowSet.shader = shader;
-  MaterialPassDefinition shadowEntry;
-  shadowEntry.shaderProgram = shadowSet;
-  shadowEntry.renderState = shadowState;
-  tmpl->setPassDefinition(Pass_Shadow, std::move(shadowEntry));
-
-  tmpl->rebuildMaterialInterface();
-  return tmpl;
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-void test_ubo_buffer_sized_from_reflection() {
-  std::cout << "\n-- test_ubo_buffer_sized_from_reflection --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-  const auto &buf = mat->getParameterBufferBytes();
-  REQUIRE(!buf.empty());
-  REQUIRE(mat->getParameterBufferLayout().has_value());
-  // blinnphong_0 MaterialUBO:
-  // vec3(12) + shininess(4) + specular(4) + ambient(4) + 3*int(12) = 36
-  REQUIRE(buf.size() == 36);
-  std::cout << "  buffer size = " << buf.size() << "\n";
-}
-
-void test_setVec3_writes_12_bytes_only() {
-  std::cout << "\n-- test_setVec3_writes_12_bytes_only --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-  // Seed shininess first so we can verify setVec3 does not clobber it.
-  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 99.0f);
-  const auto &buf = mat->getParameterBufferBytes();
-  float shiny = 0.0f;
-  std::memcpy(&shiny, buf.data() + 12, sizeof(float));
-  REQUIRE(shiny == 99.0f);
-
-  mat->setParameter(StringID("MaterialUBO"), StringID("baseColor"),
-                    Vec3f{1.0f, 0.25f, 0.5f});
-  float v0 = 0, v1 = 0, v2 = 0;
-  std::memcpy(&v0, buf.data() + 0, sizeof(float));
-  std::memcpy(&v1, buf.data() + 4, sizeof(float));
-  std::memcpy(&v2, buf.data() + 8, sizeof(float));
-  REQUIRE(v0 == 1.0f);
-  REQUIRE(v1 == 0.25f);
-  REQUIRE(v2 == 0.5f);
-
-  // shininess at offset 12 must still be 99.0 — setVec3 wrote only 12 bytes.
-  std::memcpy(&shiny, buf.data() + 12, sizeof(float));
-  REQUIRE(shiny == 99.0f);
-  std::cout << "  baseColor written, shininess preserved\n";
-}
-
-void test_setFloat_and_setInt_at_reflected_offsets() {
-  std::cout << "\n-- test_setFloat_and_setInt_at_reflected_offsets --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-
-  mat->setParameter(StringID("MaterialUBO"), StringID("specularIntensity"),
-                    2.5f);
-  mat->setParameter(StringID("MaterialUBO"), StringID("ambientIntensity"),
-                    0.0f);
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
-
-  const auto &buf = mat->getParameterBufferBytes();
-  float spec = 0.0f, ambient = -1.0f;
-  i32 ea = -1, en = -1;
-  std::memcpy(&spec, buf.data() + 16, sizeof(float));
-  std::memcpy(&ambient, buf.data() + 20, sizeof(float));
-  std::memcpy(&ea, buf.data() + 24, sizeof(i32));
-  std::memcpy(&en, buf.data() + 28, sizeof(i32));
-  REQUIRE(spec == 2.5f);
-  REQUIRE(ambient == 0.0f);
-  REQUIRE(ea == 1);
-  REQUIRE(en == 0);
-  std::cout << "  specularIntensity=2.5, ambientIntensity=0, enableAlbedo=1, "
-               "enableNormal=0 OK\n";
-}
-
-void test_parameter_resource_stable_ubo_identity() {
-  std::cout << "\n-- test_parameter_resource_stable_ubo_identity --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-  auto a = mat->getParameterResource(StringID("MaterialUBO"));
-  auto b = mat->getParameterResource(StringID("MaterialUBO"));
-  REQUIRE(a.isValid());
-  REQUIRE(b.isValid());
-  REQUIRE(&a.get() == &b.get());
-  REQUIRE(a.get().getType() == ResourceType::UniformBuffer);
-  REQUIRE(a.get().getByteSize() == 36);
-  std::cout << "  UBO IGpuResource identity stable\n";
-}
-
-void test_parameter_resource_reflects_buffer_writes() {
-  std::cout << "\n-- test_parameter_resource_reflects_buffer_writes --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
-  auto resource = mat->getParameterResource(StringID("MaterialUBO"));
-  REQUIRE(resource.isValid());
-  auto *raw = reinterpret_cast<const u8 *>(resource.get().getRawData());
-  float shiny = 0.0f;
-  std::memcpy(&shiny, raw + 12, sizeof(float));
-  REQUIRE(shiny == 7.0f);
-  std::cout << "  wrapper reads live bytes\n";
-}
-
-void test_loader_produces_valid_instance() {
-  std::cout << "\n-- test_loader_produces_valid_instance --\n";
-  auto dir = findShaderDir();
-  if (dir.empty()) {
-    std::cerr << "  SETUP: skip\n";
+void testEnvelopeState() {
+  SceneResourceTable table;
+  auto material = parseDefaultMaterial(table);
+  if (!material) {
     return;
   }
-  // The loader walks the cwd upward for the shader dir, so chdir first.
-  auto prev = std::filesystem::current_path();
-  std::filesystem::current_path(dir.parent_path().parent_path());
-  MaterialInstanceSharedPtr mat;
-  try {
-    mat = loadGenericMaterial("assets/materials/blinnphong_default.material");
-  } catch (const std::exception &e) {
-    std::cerr << "  FAIL: loader threw: " << e.what() << "\n";
-    ++s_failures;
-    std::filesystem::current_path(prev);
+
+  expect(material->getBsdfType() == "uber",
+         "material instance should expose parsed BSDF type");
+  expect(material->getMaterialEnvelopeCount() == 2,
+         "material instance should expose parsed envelope table");
+
+  const auto kd = material->getMaterialEnvelope(StringID("Kd"));
+  expect(kd.has_value(), "Kd envelope should exist");
+  expect(kd.has_value() && kd->get().kind == MaterialEnvelopeKind::Texture,
+         "Kd envelope should retain texture kind");
+  expect(material->getMaterialDependencies().size() == 1,
+         "texture envelope should produce one material dependency");
+}
+
+void testClonePreservesV2State() {
+  SceneResourceTable table;
+  auto material = parseDefaultMaterial(table);
+  if (!material) {
     return;
   }
-  std::filesystem::current_path(prev);
-  REQUIRE(mat != nullptr);
-  REQUIRE(!mat->getParameterBufferBytes().empty());
-  REQUIRE(mat->getPassShader(Pass_Forward) != nullptr);
 
-  // Seeded defaults: baseColor == {0.8, 0.8, 0.8}
-  const auto &buf = mat->getParameterBufferBytes();
-  float r = 0, g = 0, b = 0;
-  std::memcpy(&r, buf.data() + 0, sizeof(float));
-  std::memcpy(&g, buf.data() + 4, sizeof(float));
-  std::memcpy(&b, buf.data() + 8, sizeof(float));
-  REQUIRE(r == 0.8f);
-  REQUIRE(g == 0.8f);
-  REQUIRE(b == 0.8f);
-
-  float shiny = 0;
-  std::memcpy(&shiny, buf.data() + 12, sizeof(float));
-  REQUIRE(shiny == 12.0f);
-  std::cout << "  loader returned a seeded MaterialInstance\n";
-}
-
-void test_ubo_layout_comes_from_enabled_pass_shader() {
-  std::cout << "\n-- test_ubo_layout_comes_from_enabled_pass_shader --\n";
-  RenderState forwardState;
-  RenderState shadowState;
-  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
-  auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getParameterBufferLayout().has_value());
-  REQUIRE(mat->getParameterBufferBytes().size() == 32);
-  std::cout << "  shared UBO layout accepted across all defined passes\n";
-}
-
-void test_instances_default_enable_all_template_passes() {
-  std::cout << "\n-- test_instances_default_enable_all_template_passes --\n";
-  RenderState forwardState;
-  RenderState shadowState;
-  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
-  auto mat = MaterialInstance::create(tmpl);
-
-  REQUIRE(mat->isPassEnabled(Pass_Forward));
-  REQUIRE(mat->isPassEnabled(Pass_Shadow));
-  REQUIRE(mat->getEnabledPasses().size() == 2);
-  std::cout
-      << "  new instances start with every template-defined pass enabled\n";
-}
-
-void test_enabled_passes_follow_mutations() {
-  std::cout << "\n-- test_enabled_passes_follow_mutations --\n";
-  RenderState forwardState;
-  RenderState shadowState;
-  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
-  auto mat = MaterialInstance::create(tmpl);
-
-  mat->setPassEnabled(Pass_Shadow, false);
-  REQUIRE(mat->isPassEnabled(Pass_Forward));
-  REQUIRE(!mat->isPassEnabled(Pass_Shadow));
-  mat->setPassEnabled(Pass_Forward, false);
-  REQUIRE(!mat->isPassEnabled(Pass_Forward));
-  REQUIRE(mat->getEnabledPasses().empty());
-  mat->setPassEnabled(Pass_Shadow, true);
-  REQUIRE(!mat->isPassEnabled(Pass_Forward));
-  REQUIRE(mat->isPassEnabled(Pass_Shadow));
-  std::cout << "  enabled pass set follows the toggled subset only\n";
-}
-
-void test_render_state_is_pass_aware() {
-  std::cout << "\n-- test_render_state_is_pass_aware --\n";
-  RenderState forwardState;
-  forwardState.cullMode = CullMode::Front;
-  RenderState shadowState;
-  shadowState.depthWriteEnable = false;
-  shadowState.blendEnable = true;
-  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
-  auto mat = MaterialInstance::create(tmpl);
-
-  REQUIRE(mat->getPassRenderState(Pass_Forward) == forwardState);
-  REQUIRE(mat->getPassRenderState(Pass_Shadow) == shadowState);
-  std::cout << "  render state is resolved from the queried pass entry\n";
-}
-
-void test_non_structural_writes_do_not_notify_pass_listeners() {
-  std::cout
-      << "\n-- test_non_structural_writes_do_not_notify_pass_listeners --\n";
-  auto mat = buildInstanceFromBlinnPhong();
-  if (!mat)
-    return;
-
-  int notifications = 0;
-  const auto listenerId =
-      mat->addPassStateListener([&notifications]() { ++notifications; });
-
-  mat->setParameter(StringID("MaterialUBO"), StringID("shininess"), 7.0f);
-  mat->setParameter(StringID("MaterialUBO"), StringID("enableAlbedo"), 1);
-  mat->syncGpuData();
-  REQUIRE(notifications == 0);
-
-  mat->setPassEnabled(Pass_Forward, false);
-  REQUIRE(notifications == 1);
-  mat->removePassStateListener(listenerId);
-  std::cout << "  only structural pass changes notify listeners\n";
-}
-
-void test_setPassEnabled_throws_on_undefined_pass() {
-  std::cout << "\n-- test_setPassEnabled_throws_on_undefined_pass --\n";
-  RenderState forwardState;
-  RenderState shadowState;
-  auto tmpl = buildMultiPassTemplate(forwardState, shadowState);
-  auto mat = MaterialInstance::create(tmpl);
-  bool threw = false;
-  try {
-    mat->setPassEnabled(Pass_Deferred, false);
-  } catch (const std::logic_error &) {
-    threw = true;
-  }
-  REQUIRE(threw);
-  std::cout << "  undefined pass throws logic_error\n";
-}
-
-void test_isSystemOwnedBinding_classification() {
-  std::cout << "\n-- test_isSystemOwnedBinding_classification --\n";
-  REQUIRE(isSystemOwnedBinding("CameraUBO") == true);
-  REQUIRE(isSystemOwnedBinding("LightUBO") == true);
-  REQUIRE(isSystemOwnedBinding("SceneLightsUBO") == true);
-  REQUIRE(isSystemOwnedBinding("BloomSource") == true);
-  REQUIRE(isSystemOwnedBinding("BloomColor") == true);
-  REQUIRE(isSystemOwnedBinding("SkyboxMap") == true);
-  REQUIRE(isSystemOwnedBinding("IrradianceMap") == true);
-  REQUIRE(isSystemOwnedBinding("PrefilteredEnvMap") == true);
-  REQUIRE(isSystemOwnedBinding("BrdfLut") == true);
-  REQUIRE(isSystemOwnedBinding("EnvironmentUBO") == true);
-  REQUIRE(isSystemOwnedBinding("Bones") == true);
-  REQUIRE(isSystemOwnedBinding("MaterialUBO") == false);
-  REQUIRE(isSystemOwnedBinding("SurfaceParams") == false);
-  REQUIRE(isSystemOwnedBinding("albedoMap") == false);
-  REQUIRE(isSystemOwnedBinding("") == false);
-  REQUIRE(getExpectedTypeForSystemBinding("IrradianceMap") ==
-          ShaderPropertyType::TextureCube);
-  REQUIRE(getExpectedTypeForSystemBinding("SkyboxMap") ==
-          ShaderPropertyType::TextureCube);
-  REQUIRE(getExpectedTypeForSystemBinding("BloomSource") ==
-          ShaderPropertyType::Texture2D);
-  REQUIRE(getExpectedTypeForSystemBinding("BloomColor") ==
-          ShaderPropertyType::Texture2D);
-  REQUIRE(getExpectedTypeForSystemBinding("PrefilteredEnvMap") ==
-          ShaderPropertyType::TextureCube);
-  REQUIRE(getExpectedTypeForSystemBinding("BrdfLut") ==
-          ShaderPropertyType::Texture2D);
-  REQUIRE(getExpectedTypeForSystemBinding("EnvironmentUBO") ==
-          ShaderPropertyType::UniformBuffer);
-  std::cout << "  ownership classification correct\n";
-}
-
-void test_environment_data_setters_mark_dirty() {
-  std::cout << "\n-- test_environment_data_setters_mark_dirty --\n";
-  EnvironmentData data;
-  REQUIRE(data.getIblIntensity() == 0.0f);
-  REQUIRE(data.getPrefilteredMipCount() == 1.0f);
-  REQUIRE(!data.isDirty());
-  data.setParams(2.0f, 6.0f);
-  REQUIRE(data.isDirty());
-  REQUIRE(data.getIblIntensity() == 2.0f);
-  REQUIRE(data.getPrefilteredMipCount() == 6.0f);
-  std::cout << "  environment setters mark dirty\n";
-}
-
-void test_material_instance_with_non_MaterialUBO_name() {
-  std::cout << "\n-- test_material_instance_with_non_MaterialUBO_name --\n";
-
-  // Build a shader with a UBO named "SurfaceParams" instead of "MaterialUBO".
-  StructMemberInfo baseColor{"baseColor", ShaderPropertyType::Vec3, 0, 12};
-  StructMemberInfo roughness{"roughness", ShaderPropertyType::Float, 12, 4};
-
-  ShaderResourceBinding uboBinding;
-  uboBinding.name = "SurfaceParams";
-  uboBinding.set = 2;
-  uboBinding.binding = 0;
-  uboBinding.type = ShaderPropertyType::UniformBuffer;
-  uboBinding.size = 16;
-  uboBinding.members = {baseColor, roughness};
-
-  ShaderResourceBinding cameraBinding;
-  cameraBinding.name = "CameraUBO";
-  cameraBinding.set = 0;
-  cameraBinding.binding = 0;
-  cameraBinding.type = ShaderPropertyType::UniformBuffer;
-  cameraBinding.size = 144;
-
-  auto shader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{uboBinding, cameraBinding});
-  auto tmpl = MaterialTemplate::create("surface_test");
-  ShaderProgramSet set;
-  set.shaderName = "surface_test";
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  entry.renderState = RenderState{};
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-
-  auto mat = MaterialInstance::create(tmpl);
-
-  // Buffer should be sized from SurfaceParams, not empty.
-  REQUIRE(mat->getParameterBufferLayout().has_value());
-  REQUIRE(mat->getParameterBufferBytes().size() == 16);
-
-  // Setters should work by member name.
-  mat->setParameter(StringID("SurfaceParams"), StringID("baseColor"),
-                    Vec3f{0.5f, 0.6f, 0.7f});
-  mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.3f);
-
-  const auto &buf = mat->getParameterBufferBytes();
-  float r = 0, g = 0, b = 0, rough = 0;
-  std::memcpy(&r, buf.data() + 0, sizeof(float));
-  std::memcpy(&g, buf.data() + 4, sizeof(float));
-  std::memcpy(&b, buf.data() + 8, sizeof(float));
-  std::memcpy(&rough, buf.data() + 12, sizeof(float));
-  REQUIRE(r == 0.5f);
-  REQUIRE(g == 0.6f);
-  REQUIRE(b == 0.7f);
-  REQUIRE(rough == 0.3f);
-
-  auto resource = mat->getParameterResource(StringID("SurfaceParams"));
-  REQUIRE(resource.isValid());
-  REQUIRE(resource.get().getBindingName() == StringID("SurfaceParams"));
-
-  std::cout << "  SurfaceParams UBO works as material-owned binding\n";
-}
-
-void test_multi_buffer_setParameter() {
-  std::cout << "\n-- test_multi_buffer_setParameter --\n";
-
-  StructMemberInfo baseColor{"baseColor", ShaderPropertyType::Vec3, 0, 12};
-  StructMemberInfo roughness{"roughness", ShaderPropertyType::Float, 12, 4};
-
-  ShaderResourceBinding surfaceBinding;
-  surfaceBinding.name = "SurfaceParams";
-  surfaceBinding.set = 2;
-  surfaceBinding.binding = 0;
-  surfaceBinding.type = ShaderPropertyType::UniformBuffer;
-  surfaceBinding.size = 16;
-  surfaceBinding.members = {baseColor, roughness};
-
-  StructMemberInfo detailScale{"detailScale", ShaderPropertyType::Float, 0, 4};
-  StructMemberInfo detailOffset{"detailOffset", ShaderPropertyType::Float, 4,
-                                4};
-
-  ShaderResourceBinding detailBinding;
-  detailBinding.name = "DetailParams";
-  detailBinding.set = 2;
-  detailBinding.binding = 1;
-  detailBinding.type = ShaderPropertyType::UniformBuffer;
-  detailBinding.size = 8;
-  detailBinding.members = {detailScale, detailOffset};
-
-  auto shader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{surfaceBinding, detailBinding});
-  auto tmpl = MaterialTemplate::create("multi_buffer");
-  ShaderProgramSet set;
-  set.shaderName = "multi_buffer";
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  entry.renderState = RenderState{};
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-
-  auto mat = MaterialInstance::create(tmpl);
-  REQUIRE(mat->getParameterBufferCount() == 2);
-
-  // Write via setParameter (primary API).
-  mat->setParameter(StringID("SurfaceParams"), StringID("roughness"), 0.8f);
-  mat->setParameter(StringID("DetailParams"), StringID("detailScale"), 2.0f);
-
-  const auto &surfBuf = mat->getParameterBufferBytes(StringID("SurfaceParams"));
-  const auto &detBuf = mat->getParameterBufferBytes(StringID("DetailParams"));
-  REQUIRE(surfBuf.size() == 16);
-  REQUIRE(detBuf.size() == 8);
-
-  float rough = 0, scale = 0;
-  std::memcpy(&rough, surfBuf.data() + 12, sizeof(float));
-  std::memcpy(&scale, detBuf.data() + 0, sizeof(float));
-  REQUIRE(rough == 0.8f);
-  REQUIRE(scale == 2.0f);
-
-  std::cout << "  multi-buffer setParameter works independently\n";
-}
-
-void test_descriptor_resources_resolve_through_scene_resource_table() {
-  std::cout
-      << "\n-- test_descriptor_resources_resolve_through_scene_resource_table "
-         "--\n";
-
-  StructMemberInfo baseColor{"baseColor", ShaderPropertyType::Vec3, 0, 12};
-
-  ShaderResourceBinding uboBinding;
-  uboBinding.name = "MaterialUBO";
-  uboBinding.set = 2;
-  uboBinding.binding = 0;
-  uboBinding.type = ShaderPropertyType::UniformBuffer;
-  uboBinding.size = 12;
-  uboBinding.members = {baseColor};
-
-  ShaderResourceBinding texBinding;
-  texBinding.name = "albedoMap";
-  texBinding.set = 2;
-  texBinding.binding = 1;
-  texBinding.type = ShaderPropertyType::Texture2D;
-
-  // Forward shader has UBO + texture.
-  auto forwardShader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{uboBinding, texBinding});
-  // Shadow shader has only UBO.
-  auto shadowShader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{uboBinding});
-
-  auto tmpl = MaterialTemplate::create("pass_test");
-
-  ShaderProgramSet fwdSet;
-  fwdSet.shaderName = "forward";
-  fwdSet.shader = forwardShader;
-  MaterialPassDefinition fwdEntry;
-  fwdEntry.shaderProgram = fwdSet;
-  fwdEntry.renderState = RenderState{};
-  tmpl->setPassDefinition(Pass_Forward, std::move(fwdEntry));
-
-  ShaderProgramSet shadSet;
-  shadSet.shaderName = "shadow";
-  shadSet.shader = shadowShader;
-  MaterialPassDefinition shadEntry;
-  shadEntry.shaderProgram = shadSet;
-  shadEntry.renderState = RenderState{};
-  tmpl->setPassDefinition(Pass_Shadow, std::move(shadEntry));
-
-  tmpl->rebuildMaterialInterface();
-
-  auto mat = MaterialInstance::create(tmpl);
-  auto texture = std::make_shared<CombinedTextureSampler>(createWhiteTexture());
-  texture->setBindingName(StringID("albedoMap"));
-  mat->setTexture(StringID("albedoMap"), texture);
-
-  auto scene = Scene::create(nullptr);
-  const MaterialHandle materialHandle =
-      scene->resources().registerMaterial(mat->cloneInstanceDataUnique());
-
-  ValidatedRenderablePassData fwdRenderable;
-  fwdRenderable.materialHandle = materialHandle;
-  fwdRenderable.shaderInfo = forwardShader;
-  auto fwdRes = buildSceneDescriptorResources(SceneDescriptorResourceContext{
-      .scene = *scene,
-      .renderable = fwdRenderable,
-      .pass = Pass_Forward,
-      .target = RenderTarget{},
-      .sceneResources = {},
-  });
-
-  ValidatedRenderablePassData shadRenderable;
-  shadRenderable.materialHandle = materialHandle;
-  shadRenderable.shaderInfo = shadowShader;
-  auto shadRes = buildSceneDescriptorResources(SceneDescriptorResourceContext{
-      .scene = *scene,
-      .renderable = shadRenderable,
-      .pass = Pass_Shadow,
-      .target = RenderTarget{},
-      .sceneResources = {},
-  });
-  REQUIRE(fwdRes.size() == 2);
-  REQUIRE(shadRes.size() == 1);
-  REQUIRE(fwdRes[0].getBindingName() == StringID("MaterialUBO"));
-  REQUIRE(fwdRes[1].getBindingName() == StringID("albedoMap"));
-  REQUIRE(shadRes[0].getBindingName() == StringID("MaterialUBO"));
-
-  std::cout
-      << "  resolver descriptor resources come from scene resource table\n";
+  auto clone = material->cloneInstanceData();
+  expect(clone != nullptr, "clone should be created");
+  expect(clone->getBsdfType() == material->getBsdfType(),
+         "clone should preserve BSDF type");
+  expect(clone->getMaterialEnvelopeCount() ==
+             material->getMaterialEnvelopeCount(),
+         "clone should preserve envelope count");
+  expect(clone->getMaterialDependencies().size() ==
+             material->getMaterialDependencies().size(),
+         "clone should preserve dependency metadata");
 }
 
 } // namespace
 
-int main(int argc, char **argv) {
-  expSetEnvVK();
-  test_ubo_buffer_sized_from_reflection();
-  test_setVec3_writes_12_bytes_only();
-  test_setFloat_and_setInt_at_reflected_offsets();
-  test_parameter_resource_stable_ubo_identity();
-  test_parameter_resource_reflects_buffer_writes();
-  test_loader_produces_valid_instance();
-  test_ubo_layout_comes_from_enabled_pass_shader();
-  test_instances_default_enable_all_template_passes();
-  test_enabled_passes_follow_mutations();
-  test_render_state_is_pass_aware();
-  test_non_structural_writes_do_not_notify_pass_listeners();
-  test_isSystemOwnedBinding_classification();
-  test_environment_data_setters_mark_dirty();
-  test_material_instance_with_non_MaterialUBO_name();
-  test_multi_buffer_setParameter();
-  test_descriptor_resources_resolve_through_scene_resource_table();
-  test_setPassEnabled_throws_on_undefined_pass();
+int main() {
+  testEnvelopeState();
+  testClonePreservesV2State();
 
-  std::cout << "\n========================================\n";
-  if (s_failures == 0) {
-    std::cout << "test_material_instance: PASS\n";
-  } else {
-    std::cout << "test_material_instance: " << s_failures << " FAILURE(S)\n";
+  if (g_failures != 0) {
+    std::cerr << g_failures << " material instance checks failed\n";
+    return 1;
   }
-  std::cout << "========================================\n";
-  return s_failures;
+  std::cout << "material instance v2 checks passed\n";
+  return 0;
 }

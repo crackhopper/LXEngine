@@ -1,99 +1,81 @@
-# MaterialInstance：运行时状态
+# MaterialInstance：运行时材质账本
 
-如果 `MaterialTemplate` 是菜谱，`MaterialInstance` 就是这一次真正端上桌的菜。它不重新定义 pass，不决定 shader 编译，也不直接创建 pipeline；它只记录“这个实例现在用哪些参数、哪些纹理、哪些 pass 参与渲染”。
+如果 `.material` 是表面材质说明书，`MaterialInstance` 就是这份说明书进入运行时后的账本。它不重新定义 pass，不决定 shader 编译，也不直接创建 pipeline；它记录 BSDF type、source contract、参数 envelope、资源依赖和材质状态版本。
 
 ## Instance 保存的状态
 
 | 字段 | 当前职责 |
 |---|---|
-| `m_template` | 指向共享的 `MaterialTemplate` |
-| `m_parameterBuffersByName` | 每个 material-owned UBO/SSBO 一个 `ParameterBuffer` |
-| `m_textureBindingsByName` | 每个 material-owned texture binding 一个 `CombinedTextureSampler` |
-| `m_enabledPasses` | 当前实例启用的 pass 集合 |
-| `m_passStateListeners` | pass 启用状态变化时通知外层重建结构缓存 |
+| `m_bsdfType` | 当前材质的 BSDF 类型，例如 `uber`、`standard-pbr` |
+| `m_materialSourceUri` / `m_materialSourceSignature` | contract source 和 material-side pipeline identity 输入 |
+| `m_materialSourceReflectionHash` | source reflection 的稳定校验信息 |
+| `m_materialContractReflection` | 参数、storage ABI、accessor ABI 的反射结果 |
+| `m_renderClass` / `m_tags` | render path filter 和 authoring metadata |
+| `m_materialEnvelopesByName` | `bsdf.parameters.*` 的 typed envelope |
+| `m_materialDependencies` | texture、spectrum、bsdf table、material ref 等资源依赖 |
+| `m_materialStateVersion` / `m_materialStateDirty` | 上传和验证可观察的版本/脏标记 |
 
-instance 构造时会遍历 template 的 canonical material binding 表。只有 `UniformBuffer` 和 `StorageBuffer` 会创建 `ParameterBuffer`；texture binding 只有在 `.material resources` 或代码调用 `setTexture()` 后才有实际资源。
+这些字段共同组成 material-side runtime state。Graph pass、shader URI、attachment 和 render state 不在 `MaterialInstance` 里定义。
 
-## 参数写入按 binding.member 定位
+## 参数写入按 envelope 保存
 
-当前 `.material parameters` 和 editor material override 都使用同一种 key：
+当前 v2 material 的参数来自 YAML envelope：
 
 ```yaml
-parameters:
-  MaterialUBO.surfaceColor: [0.8, 0.35, 0.25] # -> setParameter("MaterialUBO", "surfaceColor", Vec3f)
-  MaterialUBO.mixAmount: 0.35                 # -> setParameter("MaterialUBO", "mixAmount", float)
-  MaterialUBO.mode: 0                         # -> setParameter("MaterialUBO", "mode", int)
+bsdf:
+  parameters:
+    baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }
+    roughness: { kind: float, value: 0.35 }
+    normalTexture: { kind: texture, valueType: rgb, uri: assets://textures/helmet_normal.png }
 ```
 
-`MaterialInstance` 不靠字符串拼接猜 offset。它先通过 `getParameterBufferLayout(bindingName)` 找到 reflected `ShaderResourceBinding`，再根据 member 的类型和 offset 写入 `ParameterBuffer`。
+parser 会对照 `MaterialContractReflection` 校验参数名和 kind，然后调用 instance 保存 envelope。普通参数值不会改变 pipeline key；会影响的是 BSDF type、contract source signature 和 shader/material source variant。
 
-| API | 当前用途 |
+## 资源依赖必须是真资源
+
+`MaterialResourceDependency` 记录：
+
+| 字段 | 含义 |
 |---|---|
-| `setParameter(binding, member, float/int/Vec3/Vec4)` | 写入 UBO/SSBO 成员 |
-| `setParameterValue(binding, member, value)` | editor/runtime override 的统一入口 |
-| `findParameterMember(binding, member)` | 按 reflection 查询成员是否存在和类型 |
-| `readParameterValue(binding, member)` | 复制 instance 数据或 editor 读取当前值 |
-| `syncGpuData()` | 把 pending parameter writes 标记为 dirty，等待 backend 上传 |
+| `kind` | texture、spectrum、material ref、bsdf table 等 envelope kind |
+| `uri` | material 文件中声明的资源 URI |
+| `resourceHandle` | `SceneResourceTable` 中注册出的 typed handle |
+| `parameterName` | 哪个 material 参数引用了该资源 |
 
-参数值变化不会改变 pipeline。它只是改变 buffer 字节内容。
+这条依赖不能用空 payload 或 metadata-only entry 顶替。资源要么被解析/注册为真实 payload，要么加载或上传路径给出诊断。
 
-## 纹理绑定按 canonical binding 名保存
+## Pass 选择属于 RenderPathGraph
 
-```yaml
-resources:
-  albedoMap: white      # -> placeholder texture
-  normalMap: normal     # -> placeholder texture
-```
+pass 是否存在、是否匹配某个 material，由 active `RenderPathGraph` 的 pass filter 和 validation 决定。`MaterialInstance` 提供 `renderClass`、`bsdf.type`、source signature 和 envelope，RenderWorkQueue 再把它与 graph pass 组合成 work item。
 
-loader 会先确认 `albedoMap` / `normalMap` 是 shader reflection 中的 material-owned texture binding，然后调用 `MaterialInstance::setTexture()`。如果值是 `white`、`black`、`normal`，走内置占位纹理；否则按 material 文件所在目录相对路径或运行时路径加载真实图片。
-
-`resources` 不负责 UBO/SSBO，也不负责系统资源。材质 UBO 默认值走 `parameters`，系统 UBO 走 scene/camera/light/skeleton 注入。
-
-## getDescriptorResources(pass) 是 pass-aware 的
-
-一个 instance 可能有多组 canonical binding，但某个 pass 只使用其中一部分。`getDescriptorResources(pass)` 会：
-
-1. 从 template 读取本 pass 的 material binding id 列表。
-2. 对 buffer binding 找 `ParameterBuffer`。
-3. 对 texture binding 找 `CombinedTextureSampler`。
-4. 按 `set/binding` 排序后返回给 scene validation / backend。
-
-缺失 texture 不会在这个函数里直接补齐；真正的缺失检查发生在 `SceneNode::rebuildValidatedCache()`。那里会遍历 shader reflection，确认每个需要的 material-owned resource 都能在 descriptor resources 里找到。
-
-## pass enable 是结构状态
-
-新建 instance 时，template 里定义的所有 pass 默认启用。调用 `setPassEnabled(pass, false)` 会让这个实例跳过该 pass。
-
-这和普通参数不同：
-
-| 改动 | 是否改变 pipeline key | 是否改变 draw 是否存在 |
+| 改动 | 是否改变 pipeline key | 是否改变 work item |
 |---|---|---|
-| 改 `MaterialUBO.baseColor` | 否 | 否 |
-| 改 `albedoMap` 绑定 | 否 | 否 |
-| 关闭 `Forward` pass | 否，key 本身不变 | 是，该 pass 跳过 `RenderWorkItem` 生成 |
-| 换另一个 template/shader | 是 | 可能改变 |
-
-因此 pass enable 变化会通知外层重建 `SceneNode` 的 validated cache。
+| 改 BSDF 参数值 | 否 | 否，只改变材质数据 |
+| 改 texture resource URI | 通常否 | 否，只改变资源 handle |
+| 改 BSDF type / contract source | 是 | 可能改变 shader variant |
+| graph filter 未匹配该 material | 否，key 本身不变 | 是，不为该 pass 产出 item |
+| 改 RenderPathGraph pass shader/renderState/attachment | 是 | 可能改变 pipeline 和 pass 输出 |
 
 ## Scene 文件里的材质覆盖
 
-`lxe_editor` 加载 scene 时，会先通过 `loadGenericMaterial(uri)` 得到一个新的 `MaterialInstance`，再按顺序应用 material-level override 和 node-level override：
+scene 可以覆盖材质 envelope，覆盖目标是 contract 中声明的 v2 参数名：
 
-```text
-loadGenericMaterial(uri)
-  -> apply materialOverrides
-  -> apply nodeMaterialOverrides
-  -> syncGpuData()
+```yaml
+material:
+  uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material
+materialOverrides:
+  roughness: { kind: float, value: 0.2 }
+  baseColor: { kind: rgb, value: [0.9, 0.7, 0.45] }
 ```
 
-override 仍然要经过 reflection 校验：binding/member 必须存在，值类型要能匹配或被允许地转换。
+覆盖仍然必须经过 contract 校验：参数要存在，kind 要匹配，资源 URI 要能解析。
 
 ## 我们已经学会了什么
 
-`MaterialInstance` 是运行时账本。它把 template 给出的 canonical binding 接口填上具体值，并按 pass 输出 descriptor resources。它能改变 draw 使用的数据，也能关闭某些 pass，但普通参数和纹理更新不会改变 pipeline identity。
+`MaterialInstance` 是运行时账本。它保存 surface envelope、source signature 和资源依赖；pass、shader 和 render state 由 RenderPathGraph 提供。
 
 ## 下一步
 
-- [多 Pass 材质怎样变成 Draw](pass-rendering-flow.md)
-- [模板如何影响 Pipeline](template-and-pipeline.md)
+- [从 .material 到 MaterialInstance](file-to-instance.md)
+- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
 - [MaterialInstance 源码分析](../../source_analysis/src/core/asset/material_instance.md)

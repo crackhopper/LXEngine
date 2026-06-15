@@ -70,12 +70,9 @@ struct LightNodeState final {
 };
 
 struct MaterialOverrideState final {
-  std::optional<LX_core::Vec3f> baseColor;
   std::unordered_map<std::string, LX_core::MaterialParameterValue> parameters;
 
-  [[nodiscard]] bool empty() const {
-    return !baseColor.has_value() && parameters.empty();
-  }
+  [[nodiscard]] bool empty() const { return parameters.empty(); }
 };
 
 struct ProceduralMaterialState final {
@@ -100,7 +97,6 @@ struct EnvironmentState final {
 };
 
 struct MaterialBindingDocument final {
-  std::string tag;
   std::string uri;
   std::string source;
   std::optional<std::string> offlineYaml;
@@ -118,7 +114,6 @@ struct SceneNodeDocument final {
   std::optional<std::string> meshOfflineYaml;
   std::optional<std::string> materialUri;
   std::optional<std::string> materialOfflineYaml;
-  std::vector<MaterialBindingDocument> materials;
   ProceduralMaterialState proceduralMaterial;
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;

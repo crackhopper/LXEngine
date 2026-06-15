@@ -12,7 +12,7 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
+#include "scene_test_helpers.hpp"
 
 #if defined(USE_SDL)
 #include "backend/vulkan/vulkan_renderer.hpp"
@@ -48,7 +48,7 @@ int skipped = 0;
 }
 
 [[nodiscard]] usize requestedFrameCount(const usize fallback) {
-  const char* value = std::getenv("LX_MEMORY_PROBE_FRAMES");
+  const char *value = std::getenv("LX_MEMORY_PROBE_FRAMES");
   if (!value || !*value) {
     return fallback;
   }
@@ -88,14 +88,11 @@ int skipped = 0;
         {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
   });
   auto indexBuffer = IndexBuffer::create({0u, 1u, 2u});
-  auto mesh = Mesh::create(vertexBuffer, indexBuffer,
-                           BoundingBox{{-1.0f, -1.0f, 0.0f},
-                                       {1.0f, 1.0f, 0.0f}});
+  auto mesh =
+      Mesh::create(vertexBuffer, indexBuffer,
+                   BoundingBox{{-1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 
-  auto material =
-      LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
-  material->setParameter(StringID("MaterialUBO"), StringID("enableNormal"), 0);
-  material->syncGpuData();
+  auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
 
   auto node = SceneNode::create("memory_probe_triangle");
   node->addComponent<MeshComponent>(mesh);
@@ -132,38 +129,33 @@ enum class ProbeUiMode {
 struct RendererProbeScenario final {
   ProbeUiMode uiMode = ProbeUiMode::None;
   bool initializeScene = false;
-  const char* label = "no_scene_no_ui";
+  const char *label = "no_scene_no_ui";
 };
 
 [[nodiscard]] std::optional<RendererProbeScenario> requestedScenario() {
-  const char* value = std::getenv("LX_RENDERER_MEMORY_PROBE_SCENARIO");
+  const char *value = std::getenv("LX_RENDERER_MEMORY_PROBE_SCENARIO");
   if (!value || !*value) {
     return std::nullopt;
   }
   const std::string_view text(value);
   if (text == "no_scene_no_ui") {
-    return RendererProbeScenario{
-        .uiMode = ProbeUiMode::None,
-        .initializeScene = false,
-        .label = "no_scene_no_ui"};
+    return RendererProbeScenario{.uiMode = ProbeUiMode::None,
+                                 .initializeScene = false,
+                                 .label = "no_scene_no_ui"};
   }
   if (text == "no_ui") {
     return RendererProbeScenario{
-        .uiMode = ProbeUiMode::None,
-        .initializeScene = true,
-        .label = "no_ui"};
+        .uiMode = ProbeUiMode::None, .initializeScene = true, .label = "no_ui"};
   }
   if (text == "simple_ui") {
-    return RendererProbeScenario{
-        .uiMode = ProbeUiMode::SimpleText,
-        .initializeScene = true,
-        .label = "simple_ui"};
+    return RendererProbeScenario{.uiMode = ProbeUiMode::SimpleText,
+                                 .initializeScene = true,
+                                 .label = "simple_ui"};
   }
   if (text == "multi_window_ui") {
-    return RendererProbeScenario{
-        .uiMode = ProbeUiMode::MultiWindowWidgets,
-        .initializeScene = true,
-        .label = "multi_window_ui"};
+    return RendererProbeScenario{.uiMode = ProbeUiMode::MultiWindowWidgets,
+                                 .initializeScene = true,
+                                 .label = "multi_window_ui"};
   }
   return std::nullopt;
 }
@@ -177,7 +169,8 @@ struct RendererProbeScenario final {
 
   auto window =
       std::make_shared<LX_infra::Window>("renderer-memory-probe", 800, 600);
-  auto renderer = backend::VulkanRenderer::create(backend::VulkanRenderer::Token{});
+  auto renderer =
+      backend::VulkanRenderer::create(backend::VulkanRenderer::Token{});
   renderer->initialize(window, "renderer-memory-probe");
   if (initializeScene) {
     renderer->initScene(makeStaticScene());
@@ -256,14 +249,12 @@ void testRendererMemoryProbe() {
     const auto scenario = requestedScenario();
 
     if (scenario.has_value()) {
-      const ProbeResult result = runRendererProbe(
-          scenario->uiMode, frameCount, scenario->initializeScene);
+      const ProbeResult result = runRendererProbe(scenario->uiMode, frameCount,
+                                                  scenario->initializeScene);
       const usize growthKb = result.rssPeakKb - result.rssStartKb;
-      std::cout << "[probe] " << scenario->label
-                << " frames=" << frameCount
+      std::cout << "[probe] " << scenario->label << " frames=" << frameCount
                 << " start=" << result.rssStartKb
-                << " peak=" << result.rssPeakKb
-                << " end=" << result.rssEndKb
+                << " peak=" << result.rssPeakKb << " end=" << result.rssEndKb
                 << " growth_kb=" << growthKb << "\n";
       return;
     }
@@ -290,14 +281,12 @@ void testRendererMemoryProbe() {
               << " end=" << noSceneNoUi.rssEndKb
               << " growth_kb=" << noSceneNoUiGrowthKb << "\n";
     std::cout << "[probe] no_ui frames=" << frameCount
-              << " start=" << noUi.rssStartKb
-              << " peak=" << noUi.rssPeakKb
-              << " end=" << noUi.rssEndKb
-              << " growth_kb=" << noUiGrowthKb << "\n";
+              << " start=" << noUi.rssStartKb << " peak=" << noUi.rssPeakKb
+              << " end=" << noUi.rssEndKb << " growth_kb=" << noUiGrowthKb
+              << "\n";
     std::cout << "[probe] simple_ui frames=" << frameCount
               << " start=" << simpleUi.rssStartKb
-              << " peak=" << simpleUi.rssPeakKb
-              << " end=" << simpleUi.rssEndKb
+              << " peak=" << simpleUi.rssPeakKb << " end=" << simpleUi.rssEndKb
               << " growth_kb=" << simpleUiGrowthKb << "\n";
     std::cout << "[probe] multi_window_ui frames=" << frameCount
               << " start=" << multiWindowUi.rssStartKb
@@ -312,7 +301,8 @@ void testRendererMemoryProbe() {
     EXPECT(simpleUiGrowthKb <= kMaxUiGrowthKb,
            "VulkanRenderer + simple ImGui probe exceeded UI RSS growth budget");
     EXPECT(multiWindowUiGrowthKb <= kMaxUiGrowthKb,
-           "VulkanRenderer + multi-window ImGui probe exceeded UI RSS growth budget");
+           "VulkanRenderer + multi-window ImGui probe exceeded UI RSS growth "
+           "budget");
   } catch (const std::exception &e) {
     std::cout << "[SKIP] renderer_memory_probe (exception: " << e.what()
               << ")\n";

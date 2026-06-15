@@ -27,7 +27,7 @@
 
 | 目录 | 当前用途 |
 |---|---|
-| `assets/materials/` | `.material` 文件，描述 shader 名、pass、variant、默认参数和默认纹理资源 |
+| `assets/materials/` | `.material v2` 文件，描述 BSDF type、contract source、参数 envelope 和材质资源 URI |
 | `assets/shaders/glsl/` | GLSL 源文件，以及当前仓库里已有的 `.spv` 编译产物 |
 | `assets/models/` | 测试模型、示例模型、内置模型包 |
 | `assets/models/builtin/` | editor 内置模型目录，子目录里的 `asset.yaml` 会被扫描 |
@@ -36,7 +36,7 @@
 | `assets/scenes/` | 仓库自带 scene 文档 |
 | `assets/project_templates/` | 新建 project 时复制的只读模板 |
 
-这套布局对应 `openspec/specs/asset-directory-convention/spec.md`。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
+这套布局对应当前资产目录约定。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
 
 ## 逻辑路径和真实路径分开
 
@@ -46,7 +46,7 @@
 mesh:
   uri: assets/models/damaged_helmet/DamagedHelmet.gltf # -> resolveRuntimePath(...)
 material:
-  uri: assets/materials/blinnphong_textured.material   # -> loadGenericMaterial(...)
+  uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material # -> MaterialResourceParser
 ```
 
 这让同一份 scene 文件可以在仓库根、build 目录、远程 editor 进程或测试环境中工作。只要 `LX_RUNTIME_ROOT` 或自动发现结果正确，逻辑路径就不需要知道实际磁盘绝对路径。

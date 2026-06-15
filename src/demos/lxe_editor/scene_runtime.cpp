@@ -1,6 +1,7 @@
 #include "demos/lxe_editor/scene_runtime.hpp"
 
 #include "core/asset/audio_spectrum_texture.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
@@ -8,6 +9,7 @@
 #include "core/scene/light.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/resource_parsers/texture_resource_parser.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/scene_asset/scene_material_loader.hpp"
 #include "infra/scene_asset/scene_mesh_loader.hpp"
@@ -19,8 +21,8 @@
 #include "demos/lxe_editor/scene_document.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <functional>
@@ -55,6 +57,9 @@ struct SceneLoadTimingStats final {
   double sceneRegisterMs = 0.0;
   usize nodeCount = 0;
   usize meshLoadCount = 0;
+  usize meshVertexCount = 0;
+  usize meshIndexCount = 0;
+  usize meshTriangleCount = 0;
   usize materialLoadCount = 0;
   usize materialPrototypeLoadCount = 0;
   usize materialCacheHitCount = 0;
@@ -70,6 +75,17 @@ thread_local SceneLoadMaterialCache *g_sceneLoadMaterialCache = nullptr;
 thread_local std::optional<
     std::reference_wrapper<const LX_core::SceneRealtimeRenderSettings>>
     g_sceneRealtimeRenderSettings;
+
+void accumulateLoadedMeshStats(const LX_core::MeshSharedPtr &mesh) {
+  if (g_sceneLoadTimingStats == nullptr || !mesh) {
+    return;
+  }
+  const usize vertexCount = mesh->getVertexCount();
+  const usize indexCount = mesh->getIndexCount();
+  g_sceneLoadTimingStats->meshVertexCount += vertexCount;
+  g_sceneLoadTimingStats->meshIndexCount += indexCount;
+  g_sceneLoadTimingStats->meshTriangleCount += indexCount / 3u;
+}
 
 struct ScopedSceneLoadTimingContext final {
   ScopedSceneLoadTimingContext(SceneLoadTimingStats &stats,
@@ -130,40 +146,74 @@ currentGenericMaterialLoadOptions() {
   if (g_sceneRealtimeRenderSettings.has_value()) {
     const auto &settings = g_sceneRealtimeRenderSettings->get();
     options.forceIbl = settings.ibl;
-    options.alphaTransparency =
-        settings.alphaTransparency;
-    options.enableDeferredPass =
-        settings.mode == LX_core::SceneRealtimeRenderMode::Deferred;
+    options.alphaTransparency = settings.alphaTransparency;
   }
   return options;
+}
+
+void resolveMaterialTextureDependencies(
+    LX_core::MaterialInstance &material,
+    LX_core::SceneResourceTable &resourceTable) {
+  LX_infra::TextureResourceParser parser;
+  for (const auto &dependency : material.getMaterialDependencies()) {
+    if (dependency.kind != LX_core::MaterialEnvelopeKind::Texture) {
+      continue;
+    }
+
+    const auto parsed = parser.parse(
+        resourceTable, dependency.uri,
+        LX_infra::SceneResourceParseContext{});
+    if (!parsed.diagnostics.empty() ||
+        parsed.metadata.state == LX_core::ResourceState::Failed) {
+      std::string message =
+          "failed to load material texture dependency '" +
+          dependency.uri.string() + "'";
+      for (const std::string &diagnostic : parsed.diagnostics) {
+        message += "\n  ";
+        message += diagnostic;
+      }
+      throw std::runtime_error(message);
+    }
+
+    const auto textureHandle = resourceTable.findTexture(dependency.uri);
+    if (!textureHandle.has_value()) {
+      throw std::runtime_error(
+          "material texture dependency did not register a texture handle: " +
+          dependency.uri.string());
+    }
+    material.setTextureHandle(LX_core::StringID(dependency.parameterName),
+                              *textureHandle);
+  }
 }
 
 [[nodiscard]] std::string
 materialCacheKey(const std::filesystem::path &path,
                  const LX_infra::GenericMaterialLoadOptions &options) {
-  std::string key = path.is_absolute() ? path.lexically_normal().generic_string()
-                                       : std::filesystem::absolute(path)
-                                             .lexically_normal()
-                                             .generic_string();
+  std::string key =
+      path.is_absolute()
+          ? path.lexically_normal().generic_string()
+          : std::filesystem::absolute(path).lexically_normal().generic_string();
   if (options.forceIbl.has_value()) {
     key += *options.forceIbl ? "|ibl=1" : "|ibl=0";
   }
   if (options.alphaTransparency.has_value()) {
     key += *options.alphaTransparency ? "|alpha=1" : "|alpha=0";
   }
-  key += options.enableDeferredPass ? "|deferred=1" : "|deferred=0";
   return key;
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
-loadCachedGenericMaterial(const std::filesystem::path &path) {
+loadCachedGenericMaterial(const std::filesystem::path &path,
+                          LX_core::SceneResourceTable &resourceTable) {
   const LX_infra::GenericMaterialLoadOptions options =
       currentGenericMaterialLoadOptions();
   if (g_sceneLoadMaterialCache == nullptr) {
     if (g_sceneLoadTimingStats != nullptr) {
       ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
     }
-    return LX_infra::loadGenericMaterial(path, options);
+    auto material = LX_infra::loadGenericMaterial(path, resourceTable, options);
+    resolveMaterialTextureDependencies(*material, resourceTable);
+    return material;
   }
 
   const std::string key = materialCacheKey(path, options);
@@ -179,10 +229,11 @@ loadCachedGenericMaterial(const std::filesystem::path &path) {
   if (g_sceneLoadTimingStats != nullptr) {
     ++g_sceneLoadTimingStats->materialPrototypeLoadCount;
   }
-  auto prototype = LX_infra::loadGenericMaterial(path, options);
+  auto prototype = LX_infra::loadGenericMaterial(path, resourceTable, options);
   if (!prototype) {
     return nullptr;
   }
+  resolveMaterialTextureDependencies(*prototype, resourceTable);
   auto instance = prototype->cloneInstanceData();
   prototypes.emplace(key, std::move(prototype));
   return instance;
@@ -195,10 +246,8 @@ constexpr const char *BuiltinPrimitivePrefix =
     "builtin://lxe_editor/primitives/";
 constexpr const char *BuiltinPatchPrefix = "builtin://lxe_editor/patches/";
 constexpr const char *BuiltinPrimitiveMaterial =
-    "assets/materials/blinnphong_lit.material";
-constexpr const char *BuiltinModelPrefix = "assets/models/builtin/";
-constexpr const char *kDefaultGroundMaterial =
-    "assets/materials/blinnphong_lit.material";
+    "assets/materials/pbr.material";
+constexpr const char *kDefaultGroundMaterial = "assets/materials/pbr.material";
 
 struct SceneRuntimeData final {
   std::optional<std::filesystem::path> documentPath;
@@ -551,7 +600,8 @@ isRuntimeDebugDrawNode(const LX_core::SceneNodeSharedPtr &node) {
 }
 
 [[nodiscard]] bool isBuiltinModelMeshUri(const std::string &uri) {
-  return uri.rfind(BuiltinModelPrefix, 0) == 0;
+  (void)uri;
+  return false;
 }
 
 [[nodiscard]] bool isGltfMeshUri(const std::string &uri) {
@@ -630,11 +680,7 @@ modelAssetIdFromNodeName(const std::string &nodeName) {
   return nodeName.substr(begin, suffixPos - begin);
 }
 
-[[nodiscard]] BuiltinAssetCatalog loadBuiltinAssetCatalog() {
-  BuiltinAssetCatalog catalog;
-  catalog.refresh(resolveRuntimePath("assets/models/builtin"));
-  return catalog;
-}
+[[nodiscard]] BuiltinAssetCatalog loadBuiltinAssetCatalog() { return {}; }
 
 [[nodiscard]] std::string stripCopySuffix(const std::string &name) {
   const std::string suffix = ".copy";
@@ -743,10 +789,7 @@ makeMaterialValueJson(const LX_core::MaterialParameterValue &value) {
 
 [[nodiscard]] const std::vector<std::string> &materialPresetUris() {
   static const std::vector<std::string> kPresets = {
-      "assets/materials/blinnphong_lit.material",
-      "assets/materials/blinnphong_default.material",
-      "assets/materials/blinnphong_textured.material",
-      "assets/materials/pbr_gold.material",
+      "assets/materials/pbr.material",
   };
   return kPresets;
 }
@@ -816,23 +859,6 @@ documentNodeHasMaterialSurface(const SceneNodeDocument &node) {
   return node.meshUri.has_value() || node.materialUri.has_value();
 }
 
-[[nodiscard]] bool
-materialHasBaseColor(const LX_core::MaterialInstanceSharedPtr &material) {
-  if (!material) {
-    return false;
-  }
-  const auto layout =
-      material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
-  if (!layout.has_value()) {
-    return false;
-  }
-  const auto &members = layout->get().members;
-  return std::any_of(members.begin(), members.end(), [](const auto &member) {
-    return member.name == "baseColor" &&
-           member.type == LX_core::ShaderPropertyType::Vec3;
-  });
-}
-
 [[nodiscard]] const LX_core::MaterialInstance *
 activeMaterialForNode(const LX_core::Scene &scene,
                       const LX_core::SceneNode &node) {
@@ -860,23 +886,6 @@ activeMaterialForNode(LX_core::Scene &scene, LX_core::SceneNode &node) {
     return &material->get();
   }
   return materialComponent->get().getPendingMaterialInstance().get();
-}
-
-[[nodiscard]] bool
-materialHasBaseColor(const LX_core::MaterialInstance *material) {
-  if (!material) {
-    return false;
-  }
-  const auto layout =
-      material->getParameterBufferLayout(LX_core::StringID("MaterialUBO"));
-  if (!layout.has_value()) {
-    return false;
-  }
-  const auto &members = layout->get().members;
-  return std::any_of(members.begin(), members.end(), [](const auto &member) {
-    return member.name == "baseColor" &&
-           member.type == LX_core::ShaderPropertyType::Vec3;
-  });
 }
 
 void configureProceduralMaterialResources(
@@ -912,6 +921,7 @@ void applyMaterialStateOverrides(
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
+                         LX_core::SceneResourceTable &resourceTable,
                          const std::string &uri,
                          const MaterialOverrideState &materialOverrides,
                          const MaterialOverrideState &nodeOverrides,
@@ -933,10 +943,10 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
           [&assetRoots](const std::string &assetUri) {
             return resolveProjectAssetPath(assetRoots, assetUri)
                 .value_or(std::filesystem::path(assetUri));
-          },
+      },
       .loadGenericMaterial =
-          [](const std::filesystem::path &path) {
-            return loadCachedGenericMaterial(path);
+          [&resourceTable](const std::filesystem::path &path) {
+            return loadCachedGenericMaterial(path, resourceTable);
           },
   });
   configureProceduralMaterialResources(material, proceduralMaterial);
@@ -946,6 +956,7 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadEffectiveMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
+    LX_core::SceneResourceTable &resourceTable,
     const SceneNodeDocument &nodeDocument, const std::string &uri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
@@ -955,7 +966,8 @@ loadEffectiveMaterialForSceneNode(
       isGltfMeshUri(*nodeDocument.meshUri)) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
-  return loadMaterialForSceneNode(assetRoots, uri, materialOverrides,
+  return loadMaterialForSceneNode(assetRoots, resourceTable, uri,
+                                  materialOverrides,
                                   nodeOverrides, proceduralMaterial);
 }
 
@@ -971,30 +983,36 @@ void applyEffectiveMaterialStateToExisting(
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadEffectiveMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
+    LX_core::SceneResourceTable &resourceTable,
     const SceneNodeDocument &nodeDocument, const std::string &uri) {
   return loadEffectiveMaterialForSceneNode(
-      assetRoots, nodeDocument, uri, nodeDocument.materialOverrides,
+      assetRoots, resourceTable, nodeDocument, uri,
+      nodeDocument.materialOverrides,
       nodeDocument.nodeMaterialOverrides, nodeDocument.proceduralMaterial);
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
 loadEffectiveMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
+    LX_core::SceneResourceTable &resourceTable,
     const SceneNodeDocument &nodeDocument,
     const MaterialOverrideState &nodeOverrides) {
-  if (nodeDocument.meshUri.has_value() && isGltfMeshUri(*nodeDocument.meshUri) &&
-      nodeDocument.materials.empty() && !nodeDocument.materialUri.has_value()) {
+  if (nodeDocument.meshUri.has_value() &&
+      isGltfMeshUri(*nodeDocument.meshUri) &&
+      !nodeDocument.materialUri.has_value()) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
 
   return loadEffectiveMaterialForSceneNode(
-      assetRoots, nodeDocument, normalizeMaterialUri(nodeDocument),
+      assetRoots, resourceTable, nodeDocument,
+      normalizeMaterialUri(nodeDocument),
       nodeDocument.materialOverrides, nodeOverrides,
       nodeDocument.proceduralMaterial);
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr loadModelMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
+    LX_core::SceneResourceTable &resourceTable,
     const std::string &uri, const std::string &albedoTextureUri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
@@ -1008,7 +1026,7 @@ loadEffectiveMaterialForSceneNode(
   const std::filesystem::path materialPath =
       resolveProjectAssetPath(assetRoots, uri)
           .value_or(std::filesystem::path(uri));
-  auto material = loadCachedGenericMaterial(materialPath);
+  auto material = loadCachedGenericMaterial(materialPath, resourceTable);
   if (!material) {
     throw std::runtime_error("failed to load material: " + uri);
   }
@@ -1071,7 +1089,9 @@ loadTimedGltfMeshAsset(const std::filesystem::path &meshPath) {
     timer.emplace(g_sceneLoadTimingStats->meshMs);
     ++g_sceneLoadTimingStats->meshLoadCount;
   }
-  return LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+  auto result = LX_infra::scene_asset::loadGltfMeshAsset(meshPath);
+  accumulateLoadedMeshStats(result.mesh);
+  return result;
 }
 
 [[nodiscard]] LX_core::MeshSharedPtr
@@ -1081,84 +1101,9 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     timer.emplace(g_sceneLoadTimingStats->meshMs);
     ++g_sceneLoadTimingStats->meshLoadCount;
   }
-  return LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
-}
-
-[[nodiscard]] LX_core::MaterialInstanceSharedPtr loadTaggedMaterialForSceneNode(
-    const std::vector<std::filesystem::path> &assetRoots,
-    const SceneNodeDocument &nodeDocument,
-    const LX_infra::scene_io::MaterialBindingDocument &binding) {
-  std::optional<ScopedAccumulatedTimer> timer;
-  if (g_sceneLoadTimingStats != nullptr) {
-    timer.emplace(g_sceneLoadTimingStats->materialMs);
-    ++g_sceneLoadTimingStats->materialLoadCount;
-  }
-  LX_core::MaterialInstanceSharedPtr material;
-  if (binding.source == "gltf") {
-    material = LX_infra::scene_asset::loadSceneMaterialBinding({
-        .meshUri = nodeDocument.meshUri,
-        .binding = binding,
-        .materialOverrides = nodeDocument.materialOverrides,
-        .nodeMaterialOverrides = nodeDocument.nodeMaterialOverrides,
-        .resolveAssetPath =
-            [&assetRoots](const std::string &assetUri) {
-              return resolveRuntimeOrProjectAssetPath(assetRoots, assetUri);
-            },
-        .loadGenericMaterial =
-            [](const std::filesystem::path &path) {
-              return loadCachedGenericMaterial(path);
-            },
-    });
-  } else {
-    material = LX_infra::scene_asset::loadSceneMaterialBinding({
-        .meshUri = nodeDocument.meshUri,
-        .binding = binding,
-        .materialOverrides = nodeDocument.materialOverrides,
-        .nodeMaterialOverrides = nodeDocument.nodeMaterialOverrides,
-        .resolveAssetPath =
-            [&assetRoots](const std::string &assetUri) {
-              return resolveProjectAssetPath(assetRoots, assetUri)
-                  .value_or(std::filesystem::path(assetUri));
-            },
-        .loadGenericMaterial =
-            [](const std::filesystem::path &path) {
-              return loadCachedGenericMaterial(path);
-            },
-    });
-  }
-  configureProceduralMaterialResources(material,
-                                       nodeDocument.proceduralMaterial);
-  return material;
-}
-
-[[nodiscard]] LX_core::SceneNodeSharedPtr
-makeTaggedRenderableNode(const std::string &nodeName,
-                         LX_core::MeshSharedPtr mesh,
-                         const SceneNodeDocument &nodeDocument,
-                         const std::vector<std::filesystem::path> &assetRoots) {
-  if (nodeDocument.materials.empty()) {
-    throw std::logic_error("tagged renderable node requires materials");
-  }
-
-  auto node = LX_core::SceneNode::create(nodeName);
-  node->addComponent<LX_core::MeshComponent>(std::move(mesh));
-
-  const auto &firstBinding = nodeDocument.materials.front();
-  auto firstMaterial =
-      loadTaggedMaterialForSceneNode(assetRoots, nodeDocument, firstBinding);
-  auto materialComponent = node->addComponent<LX_core::MaterialComponent>(
-      firstBinding.tag, std::move(firstMaterial));
-  if (!materialComponent) {
-    throw std::runtime_error("failed to attach tagged material component");
-  }
-
-  for (usize index = 1; index < nodeDocument.materials.size(); ++index) {
-    const auto &binding = nodeDocument.materials[index];
-    materialComponent->get().setTaggedMaterial(
-        binding.tag,
-        loadTaggedMaterialForSceneNode(assetRoots, nodeDocument, binding));
-  }
-  return node;
+  auto mesh = LX_infra::scene_asset::loadSceneMeshAsset(meshPath);
+  accumulateLoadedMeshStats(mesh);
+  return mesh;
 }
 
 [[nodiscard]] std::string cameraPathToDisplayName(const std::string &path,
@@ -1252,7 +1197,8 @@ makeTaggedRenderableNode(const std::string &nodeName,
 
 [[nodiscard]] LX_core::SceneNodeSharedPtr buildRenderableNodeFromDocument(
     const SceneNodeDocument &nodeDocument,
-    const std::vector<std::filesystem::path> &assetRoots) {
+    const std::vector<std::filesystem::path> &assetRoots,
+    LX_core::SceneResourceTable &resourceTable) {
   if (!nodeDocument.meshUri.has_value()) {
     return LX_core::SceneNode::create(nodeDocument.nodeName);
   }
@@ -1268,7 +1214,8 @@ makeTaggedRenderableNode(const std::string &nodeName,
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
         auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument, uri);
+            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
+                                              nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1278,19 +1225,14 @@ makeTaggedRenderableNode(const std::string &nodeName,
   if (isGltfMeshUri(*nodeDocument.meshUri)) {
     const std::filesystem::path meshPath =
         resolveGltfMeshPath(assetRoots, *nodeDocument.meshUri);
-    if (!nodeDocument.materials.empty()) {
-      auto meshAsset = loadTimedGltfMeshAsset(meshPath);
-      return makeTaggedRenderableNode(nodeDocument.nodeName,
-                                      std::move(meshAsset.mesh), nodeDocument,
-                                      assetRoots);
-    }
     if (nodeDocument.materialUri.has_value()) {
       auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
       return makeRenderableNode(nodeDocument.nodeName,
                                 std::move(meshAsset.mesh),
                                 loadEffectiveMaterialForSceneNode(
-                                    assetRoots, nodeDocument, materialUri));
+                                    assetRoots, resourceTable, nodeDocument,
+                                    materialUri));
     }
 
     throw std::runtime_error("glTF scene node requires explicit material uri");
@@ -1308,7 +1250,8 @@ makeTaggedRenderableNode(const std::string &nodeName,
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
         auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument, uri);
+            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
+                                              nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1327,7 +1270,8 @@ makeTaggedRenderableNode(const std::string &nodeName,
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
         auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument, uri);
+            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
+                                              nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1350,7 +1294,7 @@ makeTaggedRenderableNode(const std::string &nodeName,
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
         materialComponent->get().setMaterialInstance(
-            loadModelMaterialForSceneNode(assetRoots, materialUri,
+            loadModelMaterialForSceneNode(assetRoots, resourceTable, materialUri,
                                           asset ? asset->albedoTextureUri
                                                 : std::string{},
                                           nodeDocument.materialOverrides,
@@ -1366,19 +1310,16 @@ makeTaggedRenderableNode(const std::string &nodeName,
         resolveProjectAssetPath(assetRoots, *nodeDocument.meshUri)
             .value_or(std::filesystem::path(*nodeDocument.meshUri));
     auto mesh = loadTimedSceneMeshAsset(meshPath);
-    if (!nodeDocument.materials.empty()) {
-      return makeTaggedRenderableNode(nodeDocument.nodeName, std::move(mesh),
-                                      nodeDocument, assetRoots);
-    }
     if (nodeDocument.materialUri.has_value()) {
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
-      return makeRenderableNode(
-          nodeDocument.nodeName, std::move(mesh),
-          loadEffectiveMaterialForSceneNode(assetRoots, nodeDocument,
-                                            materialUri));
+      return makeRenderableNode(nodeDocument.nodeName, std::move(mesh),
+                                loadEffectiveMaterialForSceneNode(
+                                    assetRoots, resourceTable, nodeDocument,
+                                    materialUri));
     }
-    throw std::runtime_error("scene mesh node requires explicit material uri: " +
-                             *nodeDocument.meshUri);
+    throw std::runtime_error(
+        "scene mesh node requires explicit material uri: " +
+        *nodeDocument.meshUri);
   }
 
   return LX_core::SceneNode::create(nodeDocument.nodeName);
@@ -1460,7 +1401,8 @@ void buildSceneNodesRecursive(
                                                     : nodeDocument.name,
                           nodeDocument.camera->cullingMask);
   } else {
-    node = buildRenderableNodeFromDocument(nodeDocument, runtime->assetRoots);
+    node = buildRenderableNodeFromDocument(nodeDocument, runtime->assetRoots,
+                                           runtime->scene->resources());
   }
 
   applyNodeIdentityAndTransform(*node, nodeDocument);
@@ -1516,7 +1458,7 @@ void buildSceneNodesRecursive(
               << nodeDocument.nodeName << "' name='" << nodeDocument.name
               << "' meshUri='"
               << (nodeDocument.meshUri.has_value() ? *nodeDocument.meshUri
-                                                    : std::string{})
+                                                   : std::string{})
               << "' ms=" << nodeMs << "\n";
   }
 
@@ -1753,8 +1695,9 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
   document.setGameplayCameraPath(runtime->gameCameraNode
                                      ? runtime->gameCameraNode->getPath()
                                      : "/game_cam");
-  document.setRenderSettings(runtime->scene ? runtime->scene->renderSettings()
-                                            : runtime->document.renderSettings());
+  document.setRenderSettings(runtime->scene
+                                 ? runtime->scene->renderSettings()
+                                 : runtime->document.renderSettings());
   document.setRealtimeRenderSettings(
       runtime->document.realtimeRenderSettings());
   if (runtime->document.hasEnvironment()) {
@@ -1896,14 +1839,16 @@ void SceneRuntime::loadFromDocumentPath(const std::filesystem::path &path) {
     timing.buildRuntimeMs = elapsedMs(begin, SceneLoadClock::now());
   }
   const double totalMs = elapsedMs(totalBegin, SceneLoadClock::now());
-  std::cerr << "[lxe_editor][scene-load] path='"
-            << pathForLog(normalizedPath) << "' totalMs=" << totalMs
-            << " documentMs=" << timing.documentMs
+  std::cerr << "[lxe_editor][scene-load] path='" << pathForLog(normalizedPath)
+            << "' totalMs=" << totalMs << " documentMs=" << timing.documentMs
             << " assetRootMs=" << timing.assetRootMs
             << " buildRuntimeMs=" << timing.buildRuntimeMs
             << " environmentMs=" << timing.environmentMs
             << " nodeCount=" << timing.nodeCount
             << " meshLoadCount=" << timing.meshLoadCount
+            << " meshVertexCount=" << timing.meshVertexCount
+            << " meshIndexCount=" << timing.meshIndexCount
+            << " meshTriangleCount=" << timing.meshTriangleCount
             << " meshMs=" << timing.meshMs
             << " materialLoadCount=" << timing.materialLoadCount
             << " materialPrototypeLoadCount="
@@ -1967,40 +1912,14 @@ SceneRuntime::materialUriForNode(const std::string &path) const {
 
 std::optional<LX_core::Vec3f>
 SceneRuntime::nodeMaterialBaseColorForNode(const std::string &path) const {
-  const auto runtime = requireRuntimeData(m_impl);
-  if (!runtime->scene) {
-    return std::nullopt;
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return std::nullopt;
-  }
-  const LX_core::MaterialInstance *material =
-      activeMaterialForNode(*runtime->scene, *node);
-  if (!material) {
-    return std::nullopt;
-  }
-  const auto value = material->readParameterValue(
-      LX_core::StringID("MaterialUBO"), LX_core::StringID("baseColor"));
-  if (!value.has_value() ||
-      value->type != LX_core::MaterialParameterValueType::Vec3) {
-    return std::nullopt;
-  }
-  return LX_core::Vec3f{value->vectorValue.x, value->vectorValue.y,
-                        value->vectorValue.z};
+  (void)path;
+  return std::nullopt;
 }
 
 bool SceneRuntime::nodeMaterialBaseColorEditable(
     const std::string &path) const {
-  const auto runtime = requireRuntimeData(m_impl);
-  if (!runtime->scene) {
-    return false;
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return false;
-  }
-  return materialHasBaseColor(activeMaterialForNode(*runtime->scene, *node));
+  (void)path;
+  return false;
 }
 
 std::vector<std::string> SceneRuntime::materialPresets() const {
@@ -2029,8 +1948,8 @@ SceneRuntime::nodeMaterialParameterForNode(const std::string &path,
   if (!material) {
     return std::nullopt;
   }
-  return material->readParameterValue(LX_core::StringID(binding),
-                                      LX_core::StringID(member));
+  return material->readShaderBindingParameterValue(LX_core::StringID(binding),
+                                                   LX_core::StringID(member));
 }
 
 std::vector<RuntimeMaterialParameterValue>
@@ -2079,7 +1998,7 @@ SceneRuntime::nodeMaterialParametersForNode(const std::string &path) const {
           member.type != LX_core::ShaderPropertyType::Vec4) {
         continue;
       }
-      const auto value = material->readParameterValue(
+      const auto value = material->readShaderBindingParameterValue(
           bindingId, LX_core::StringID(member.name));
       if (!value.has_value()) {
         continue;
@@ -2120,7 +2039,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
   const auto writeRequiredFloat = [&](LX_core::MaterialInstance &material,
                                       const ProceduralMaterialState &state,
                                       const std::string &path) {
-    const auto member = material.findParameterMember(
+    const auto member = material.findShaderBindingParameterMember(
         LX_core::StringID(state.binding), LX_core::StringID(state.timeMember));
     if (!member.has_value()) {
       diagnostics.push_back("procedural time member missing on " + path + ": " +
@@ -2132,16 +2051,17 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
                             ": " + state.binding + "." + state.timeMember);
       return;
     }
-    material.setParameter(LX_core::StringID(state.binding),
-                          LX_core::StringID(state.timeMember), totalTime);
+    material.writeShaderBindingParameter(LX_core::StringID(state.binding),
+                                         LX_core::StringID(state.timeMember),
+                                         totalTime);
   };
 
   const auto writeRequiredResolution = [&](LX_core::MaterialInstance &material,
                                            const ProceduralMaterialState &state,
                                            const std::string &path) {
-    const auto member =
-        material.findParameterMember(LX_core::StringID(state.binding),
-                                     LX_core::StringID(state.resolutionMember));
+    const auto member = material.findShaderBindingParameterMember(
+        LX_core::StringID(state.binding),
+        LX_core::StringID(state.resolutionMember));
     if (!member.has_value()) {
       diagnostics.push_back("procedural resolution member missing on " + path +
                             ": " + state.binding + "." +
@@ -2156,7 +2076,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
     }
     const float width = std::max(resolution.x, 1.0f);
     const float height = std::max(resolution.y, 1.0f);
-    material.setParameter(
+    material.writeShaderBindingParameter(
         LX_core::StringID(state.binding),
         LX_core::StringID(state.resolutionMember),
         LX_core::Vec4f{width, height, 1.0f / width, 1.0f / height});
@@ -2168,7 +2088,7 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
         if (!state.audioBandsMember.has_value()) {
           return;
         }
-        const auto member = material.findParameterMember(
+        const auto member = material.findShaderBindingParameterMember(
             LX_core::StringID(state.binding),
             LX_core::StringID(*state.audioBandsMember));
         if (!member.has_value()) {
@@ -2181,9 +2101,10 @@ SceneRuntime::updateProceduralMaterials(const float totalTime,
         }
         const float bass = 0.45f + 0.25f * std::sin(totalTime * 1.7f);
         const float mid = 0.35f + 0.20f * std::sin(totalTime * 2.3f + 0.4f);
-        material.setParameter(LX_core::StringID(state.binding),
-                              LX_core::StringID(*state.audioBandsMember),
-                              LX_core::Vec4f{bass, mid, 0.0f, 0.0f});
+        material.writeShaderBindingParameter(
+            LX_core::StringID(state.binding),
+            LX_core::StringID(*state.audioBandsMember),
+            LX_core::Vec4f{bass, mid, 0.0f, 0.0f});
       };
 
   const auto writeOptionalAudioChannel =
@@ -2251,8 +2172,8 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
   }
 
   try {
-    auto material = loadEffectiveMaterialForSceneNode(runtime->assetRoots,
-                                                      *documentNode, uri);
+    auto material = loadEffectiveMaterialForSceneNode(
+        runtime->assetRoots, runtime->scene->resources(), *documentNode, uri);
     auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
     if (materialComponent.has_value()) {
       materialComponent->get().setMaterialInstance(std::move(material));
@@ -2273,58 +2194,14 @@ SceneRuntime::setNodeMaterialUri(const std::string &path,
 LX_core::CommandResult
 SceneRuntime::setNodeMaterialBaseColor(const std::string &path,
                                        const LX_core::Vec3f &color) {
-  const auto runtime = requireRuntimeData(m_impl);
-  auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
-  if (!documentNode) {
-    return makeCommandError("scene document node not found: " + path);
-  }
-  LX_core::SceneNode *node = runtime->scene->findByPath(path);
-  if (!node) {
-    return makeCommandError("node not found: " + path);
-  }
-  auto materialComponent = node->getComponent<LX_core::MaterialComponent>();
-  if (!materialComponent.has_value()) {
-    return makeCommandError("node has no material component: " + path);
-  }
-
-  const std::string uri = normalizeMaterialUri(*documentNode);
-  try {
-    MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
-    nodeOverrides.baseColor = color;
-    auto material = loadEffectiveMaterialForSceneNode(
-        runtime->assetRoots, *documentNode, nodeOverrides);
-    if (!materialHasBaseColor(material)) {
-      return makeCommandError(
-          "material does not expose MaterialUBO.baseColor: " + uri);
-    }
-    materialComponent->get().setMaterialInstance(std::move(material));
-    if (!uri.empty()) {
-      setDocumentNodeMaterialUri(*documentNode, uri);
-    }
-    documentNode->nodeMaterialOverrides = nodeOverrides;
-  } catch (const std::exception &error) {
-    return makeCommandError(
-        std::string("failed to set node material baseColor: ") + error.what());
-  }
-
-  return makeCommandOk("node material baseColor updated",
-                       "{\"path\":\"" + jsonEscape(path) +
-                           "\",\"baseColor\":" + makeVec3Json(color) + "}");
+  (void)color;
+  return makeCommandError(
+      "legacy node material baseColor override is removed: " + path);
 }
 
 LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     const std::string &path, const std::string &binding,
     const std::string &member, const LX_core::MaterialParameterValue &value) {
-  if (binding == "MaterialUBO" && member == "baseColor") {
-    if (value.type != LX_core::MaterialParameterValueType::Vec3) {
-      return makeCommandError(
-          "MaterialUBO.baseColor requires Vec3 material parameter value");
-    }
-    return setNodeMaterialBaseColor(path, LX_core::Vec3f{value.vectorValue.x,
-                                                         value.vectorValue.y,
-                                                         value.vectorValue.z});
-  }
-
   const auto runtime = requireRuntimeData(m_impl);
   auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
   if (!documentNode) {
@@ -2345,8 +2222,9 @@ LX_core::CommandResult SceneRuntime::setNodeMaterialParameter(
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters[key] = value;
     auto material = loadEffectiveMaterialForSceneNode(
-        runtime->assetRoots, *documentNode, nodeOverrides);
-    const auto reflectedMember = material->findParameterMember(
+        runtime->assetRoots, runtime->scene->resources(), *documentNode,
+        nodeOverrides);
+    const auto reflectedMember = material->findShaderBindingParameterMember(
         LX_core::StringID(binding), LX_core::StringID(member));
     if (!reflectedMember.has_value()) {
       return makeCommandError("material parameter not found: " + key);
@@ -2389,30 +2267,6 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
 
   const std::string uri = normalizeMaterialUri(*documentNode);
   const std::string key = binding + "." + member;
-  if (binding == "MaterialUBO" && member == "baseColor") {
-    if (!documentNode->nodeMaterialOverrides.baseColor.has_value()) {
-      return makeCommandError("node has no baseColor override: " + path);
-    }
-    try {
-      MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
-      nodeOverrides.baseColor.reset();
-      auto material = loadEffectiveMaterialForSceneNode(
-          runtime->assetRoots, *documentNode, nodeOverrides);
-      materialComponent->get().setMaterialInstance(std::move(material));
-      if (!uri.empty()) {
-        setDocumentNodeMaterialUri(*documentNode, uri);
-      }
-      documentNode->nodeMaterialOverrides = std::move(nodeOverrides);
-    } catch (const std::exception &error) {
-      return makeCommandError(
-          std::string("failed to clear node material baseColor: ") +
-          error.what());
-    }
-    return makeCommandOk(
-        "node material baseColor override cleared",
-        "{\"path\":\"" + jsonEscape(path) +
-            "\",\"binding\":\"MaterialUBO\",\"member\":\"baseColor\"}");
-  }
   if (documentNode->nodeMaterialOverrides.parameters.find(key) ==
       documentNode->nodeMaterialOverrides.parameters.end()) {
     return makeCommandError("node has no material parameter override: " + key);
@@ -2421,7 +2275,8 @@ SceneRuntime::clearNodeMaterialParameter(const std::string &path,
     MaterialOverrideState nodeOverrides = documentNode->nodeMaterialOverrides;
     nodeOverrides.parameters.erase(key);
     auto material = loadEffectiveMaterialForSceneNode(
-        runtime->assetRoots, *documentNode, nodeOverrides);
+        runtime->assetRoots, runtime->scene->resources(), *documentNode,
+        nodeOverrides);
     materialComponent->get().setMaterialInstance(std::move(material));
     if (!uri.empty()) {
       setDocumentNodeMaterialUri(*documentNode, uri);
@@ -2464,7 +2319,7 @@ SceneRuntime::setNodeProceduralMaterialEnabled(const std::string &path,
     ProceduralMaterialState proceduralState = documentNode->proceduralMaterial;
     proceduralState.enabled = enabled;
     auto material = loadEffectiveMaterialForSceneNode(
-        runtime->assetRoots, *documentNode, uri,
+        runtime->assetRoots, runtime->scene->resources(), *documentNode, uri,
         documentNode->materialOverrides, documentNode->nodeMaterialOverrides,
         proceduralState);
     materialComponent->get().setMaterialInstance(std::move(material));
@@ -2484,72 +2339,9 @@ SceneRuntime::setNodeProceduralMaterialEnabled(const std::string &path,
 LX_core::CommandResult
 SceneRuntime::applyMaterialOverride(const std::string &path,
                                     const std::string &field) {
-  if (field != "baseColor") {
-    return makeCommandError("unknown material override field: " + field);
-  }
-
-  const auto runtime = requireRuntimeData(m_impl);
-  auto *documentNode = findDocumentNodeForRuntimePath(*runtime, path);
-  if (!documentNode) {
-    return makeCommandError("scene document node not found: " + path);
-  }
-  const auto color = documentNode->nodeMaterialOverrides.baseColor;
-  if (!color.has_value()) {
-    return makeCommandError("node has no baseColor override: " + path);
-  }
-
-  const std::string uri = normalizeMaterialUri(*documentNode);
-  usize updatedDocuments = 0;
-  forEachDocumentNode(runtime->document.mutableRootNode(),
-                      [&](SceneNodeDocument &candidate) {
-                        if (!documentNodeHasMaterialSurface(candidate)) {
-                          return;
-                        }
-                        if (normalizeMaterialUri(candidate) != uri) {
-                          return;
-                        }
-                        setDocumentNodeMaterialUri(candidate, uri);
-                        candidate.materialOverrides.baseColor = *color;
-                        ++updatedDocuments;
-                      });
-
-  usize updatedRuntimeNodes = 0;
-  forEachRuntimeNode(
-      runtime->scene->getRootNode(), [&](LX_core::SceneNode &node) {
-        auto *candidateDocument = findDocumentNodeByName(
-            runtime->document.mutableRootNode(), node.getNodeName());
-        if (!candidateDocument ||
-            !documentNodeHasMaterialSurface(*candidateDocument) ||
-            normalizeMaterialUri(*candidateDocument) != uri) {
-          return;
-        }
-        const auto materialComponent =
-            node.getComponent<LX_core::MaterialComponent>();
-        if (!materialComponent.has_value()) {
-          return;
-        }
-        const auto effectiveNodeOverride =
-            candidateDocument->nodeMaterialOverrides.baseColor;
-        try {
-          auto material = loadEffectiveMaterialForSceneNode(
-              runtime->assetRoots, *candidateDocument, uri,
-              candidateDocument->materialOverrides,
-              MaterialOverrideState{.baseColor = effectiveNodeOverride},
-              candidateDocument->proceduralMaterial);
-          materialComponent->get().setMaterialInstance(std::move(material));
-          ++updatedRuntimeNodes;
-        } catch (const std::exception &error) {
-          std::cerr << "[lxe_editor] failed to apply material override to "
-                    << node.getPath() << ": " << error.what() << "\n";
-        }
-      });
-
-  return makeCommandOk(
-      "material baseColor override applied",
-      "{\"materialUri\":\"" + jsonEscape(uri) +
-          "\",\"updatedDocuments\":" + std::to_string(updatedDocuments) +
-          ",\"updatedRuntimeNodes\":" + std::to_string(updatedRuntimeNodes) +
-          ",\"baseColor\":" + makeVec3Json(*color) + "}");
+  (void)path;
+  return makeCommandError("legacy material override field is removed: " +
+                          field);
 }
 
 } // namespace LX_demo::lxe_editor

@@ -25,12 +25,25 @@ struct VulkanFrameGraphAttachmentDumpResult final {
   double nonZeroRatio = 0.0;
 };
 
+struct VulkanRealtimeRenderInputStats final {
+  usize compilerInputCount = 0;
+  usize acceptedInputCount = 0;
+  usize rejectedInputCount = 0;
+  usize submittedDrawCount = 0;
+  usize submittedDispatchCount = 0;
+  usize fallbackObservedCount = 0;
+  usize descPipelineLookupCount = 0;
+  usize descBoundInputCount = 0;
+  usize descExecutedInputCount = 0;
+};
+
 struct VulkanRealtimeProfileOutputResult final {
   std::filesystem::path linearExrPath;
   std::filesystem::path cpuSrgbPngPath;
   std::filesystem::path pipelineSrgbPngPath;
   std::filesystem::path depthDebugPath;
   std::filesystem::path metadataPath;
+  VulkanRealtimeRenderInputStats renderInputStats;
   u32 width = 0;
   u32 height = 0;
 };

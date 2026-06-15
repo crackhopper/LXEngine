@@ -6,23 +6,16 @@ namespace LX_core {
 
 /*
 @source_analysis.section PipelineKey：pipeline 身份的最终句柄
-`PipelineKey` 故意只包一个结构化 `StringID`。它不保存 shader、render state、
-vertex layout 的副本，而是要求调用方先把 object-side 和 material-side 的结构事实
-各自归约成 signature，并在 RenderWorkQueue 已知 render target 时把 target signature
-一起传入这里做最后一次 compose。
+`PipelineKey` 故意只包一个结构化 `StringID`。073-c 之后它只接受两类已经
+归约好的事实：
 
-当前 queue build 之后的完整形状是：
+- MaterialTypeVariant：材质类型、source 契约和已解析 shader variant 身份。
+- RenderPathNode：pass id、shader、render state、rendering mode、attachment
+  contract、resource flow 和 geometry/topology 合约。
 
-```text
-PipelineKey(
-  ObjectRender(mesh signature),
-  MaterialRender(material pass signature),
-  TargetRender(render target signature)
-)
-```
-
-这样 cache lookup 的键很小，调试时又可以通过
-`GlobalStringTable::toDebugString(key.id)` 展开整棵树。
+object/mesh 不再是 key 轴；它只参与 RenderPathNode geometry contract 的兼容性
+校验。target 格式也不再作为独立 TargetRender 轴，而是由 RenderPathNode 的
+attachment contract 包含。
 */
 struct PipelineKey {
   StringID id;
@@ -36,14 +29,8 @@ struct PipelineKey {
     }
   };
 
-  static PipelineKey build(StringID objectSig, StringID materialSig);
-
-  /// 三级 compose：object signature + material signature + target signature。
-  /// 调用方通过 `IRenderable::getPipelineSignature(pass)`、
-  /// `MaterialInstance::getPipelineSignature(pass)` 与
-  /// `RenderTargetDesc::getPipelineSignature()` 组装结构化签名，再传入本函数。
-  static PipelineKey build(StringID objectSig, StringID materialSig,
-                           StringID targetSig);
+  static PipelineKey build(StringID materialTypeVariant,
+                           StringID renderPathNodeSignature);
 };
 
 } // namespace LX_core

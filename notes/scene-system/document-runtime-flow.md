@@ -42,7 +42,7 @@
   mesh:
     uri: assets/models/damaged_helmet/DamagedHelmet.gltf # -> MeshComponent
   material:
-    uri: assets/materials/blinnphong_textured.material   # -> MaterialComponent
+    uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material # -> MaterialComponent
 ```
 
 这里的 URI 解析和 loader 属于资产系统；把 mesh/material 放到 `SceneNode` 上，属于场景系统。

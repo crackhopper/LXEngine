@@ -2,6 +2,7 @@
 
 #include "core/asset/texture.hpp"
 
+#include <memory>
 #include <unordered_set>
 
 namespace LX_core {
@@ -48,39 +49,37 @@ void appendUniqueDescriptorResource(
   resources.push_back(resource.resource());
 }
 
-void appendUniquePushConstant(std::vector<PerDrawDataSharedPtr> &pushConstants,
-                              std::unordered_set<const PerDrawData *> &seen,
-                              const PerDrawDataSharedPtr &pushConstant) {
-  if (!pushConstant) {
-    return;
+void appendTypedInputResources(std::vector<GpuResourceRef> &resources,
+                               std::unordered_set<ResourceCacheIdentity> &seen,
+                               const RenderInput &input) {
+  if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
+    appendUniqueResource(resources, seen, draw->vertexBuffer);
+    appendUniqueResource(resources, seen, draw->indexBuffer);
   }
-  if (!seen.insert(pushConstant.get()).second) {
-    return;
-  }
-  pushConstants.push_back(pushConstant);
 }
 
 } // namespace
 
-RenderUploadPlan buildRenderUploadPlan(const RenderWorkQueue &queue) {
+RenderUploadPlan
+buildRenderUploadPlan(const std::vector<std::unique_ptr<RenderInput>> &inputs,
+                      const std::vector<RenderInputDesc> &descs) {
   RenderUploadPlan plan;
   std::unordered_set<ResourceCacheIdentity> seenResources;
-  std::unordered_set<const PerDrawData *> seenPushConstants;
 
-  for (const RenderWorkItem &item : queue.getItems()) {
-    plan.domain = item.domain;
-    if (item.kind == RenderWorkKind::RasterDraw ||
-        item.kind == RenderWorkKind::RasterBatch) {
-      appendUniqueResource(plan.resources, seenResources,
-                           item.raster.vertexBuffer);
-      appendUniqueResource(plan.resources, seenResources,
-                           item.raster.indexBuffer);
-      appendUniquePushConstant(plan.pushConstants, seenPushConstants,
-                               item.raster.drawData);
+  for (const RenderInputDesc &desc : descs) {
+    if (!desc.accepted()) {
+      continue;
     }
-
-    for (const DescriptorResourceRef &resource : item.descriptorResources) {
+    for (const DescriptorResourceRef &resource :
+         desc.bindingPlan.descriptors) {
       appendUniqueDescriptorResource(plan.resources, seenResources, resource);
+    }
+    for (const GpuResourceRef &resource : desc.resourceDependencies) {
+      appendUniqueResource(plan.resources, seenResources, resource);
+    }
+    if (desc.inputIndex < inputs.size() && inputs[desc.inputIndex]) {
+      appendTypedInputResources(plan.resources, seenResources,
+                                *inputs[desc.inputIndex]);
     }
   }
 

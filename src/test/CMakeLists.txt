@@ -18,20 +18,37 @@ set(TEST_INTEGRATION_EXE_LIST
   test_string_table
   test_tone_mapping
   test_material_instance
+  test_material_source_contract
+  test_material_v2_parser
+  test_material_v2_resource_dependencies
+  test_material_v2_converter_defaults
+  test_default_material_asset_audit
+  test_render_path_graph_pass_contract
+  test_render_resource_parsers
+  test_default_forward_render_path_graph_source
+  test_default_deferred_render_path_graph_source
+  test_render_work_compiler
+  test_frame_graph_registry
+  test_scene_resource_abstraction
+  test_scene_resource_upload_view_v2
+  test_gpu_resource_table_contract
+  test_upload_task_graph
+  test_bindless_indirect_contract
+  test_material_source_variant_pipeline
+  test_073d_render_path_hard_cut
+  test_bindless_validation_contract
+  test_071g_legacy_boundary_removal
+  test_scene_package_round_trip
+  test_render_validation_profile
+  test_diagnostics_compare
   test_audio_spectrum_texture
   test_pipeline_identity
   test_pipeline_build_info
   test_frame_graph
-  test_scene_node_validation
   test_scene_resource_table
   test_scene_path_lookup
   test_pipeline_cache
   test_engine_loop
-  test_debug_draw
-  test_mesh_debug_geometry
-  test_generic_material_loader
-  test_material_variant_rules
-  test_assets_layout
   test_input_state
   test_clock
   test_math
@@ -44,11 +61,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_offscreen_submit_memory_probe
   test_command_bus
   test_command_bus_v2
-  test_scene_document
   test_project_document
-  test_project_catalog
-  test_project_session
-  test_scene_runtime
   test_scene_events
   test_debug_ui_smoke
   test_scene_tree_panel
@@ -61,19 +74,14 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_layout
   test_lxe_editor_interaction
   test_realtime_render_profile_commands
-  test_lxe_editor_session
   test_lxe_editor_api_service
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
-  test_gltf_loader
   test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
-  test_offline_render_cli
   test_offline_integrator_selection
-  test_offline_image_writer
-  test_offline_scene_loader
   test_offline_gpu_scene
 
   # test_render_sphere
@@ -133,19 +141,6 @@ function(lx_register_python_ctest test_name)
 endfunction()
 
 add_test(
-  NAME test_realtime_offline_compare_flat
-  COMMAND
-    ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_realtime_offline_compare_flat.py
-    --source-dir ${CMAKE_SOURCE_DIR}
-    --binary-dir ${CMAKE_BINARY_DIR}
-)
-set_tests_properties(test_realtime_offline_compare_flat PROPERTIES
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  LABELS "auto;requires_video_device"
-)
-
-add_test(
   NAME test_lxe_pbrt_scene_convert
   COMMAND
     ${Python3_EXECUTABLE}
@@ -155,6 +150,31 @@ add_test(
 set_tests_properties(test_lxe_pbrt_scene_convert PROPERTIES
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   LABELS "auto;headless_ok"
+)
+
+add_test(
+  NAME test_lxe_gltf_material_convert
+  COMMAND
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_lxe_gltf_material_convert.py
+    --source-dir ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(test_lxe_gltf_material_convert PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  LABELS "auto;headless_ok"
+)
+
+add_test(
+  NAME test_helmet_standard_pbr_realtime_smoke
+  COMMAND
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_helmet_standard_pbr_realtime_smoke.py
+    --source-dir ${CMAKE_SOURCE_DIR}
+    --editor $<TARGET_FILE:lxe_editor>
+)
+set_tests_properties(test_helmet_standard_pbr_realtime_smoke PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  LABELS "auto;requires_video_device"
 )
 
 add_custom_target(BuildTest)
@@ -173,6 +193,9 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   )
 
   add_dependencies(BuildTest ${TEST_EXE})
+  if(TARGET SyncShaderRuntimeSources)
+    add_dependencies(${TEST_EXE} SyncShaderRuntimeSources)
+  endif()
   lx_register_ctest(${TEST_EXE})
 
   # set_target_properties(${TEST_EXE} PROPERTIES
@@ -182,6 +205,77 @@ endforeach()
 
 if(TARGET test_lxe_compare_exr_metrics)
   target_link_libraries(test_lxe_compare_exr_metrics PRIVATE lxe_compare_exr_core)
+endif()
+
+if(TARGET test_diagnostics_compare)
+  target_link_libraries(test_diagnostics_compare PRIVATE lxe_compare_exr_core)
+endif()
+
+if(TARGET test_default_material_asset_audit)
+  target_link_libraries(test_default_material_asset_audit PRIVATE yaml-cpp::yaml-cpp)
+endif()
+
+if(TARGET test_material_source_contract)
+  target_compile_definitions(test_material_source_contract
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_material_source_variant_pipeline)
+  target_compile_definitions(test_material_source_variant_pipeline
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_073d_render_path_hard_cut)
+  target_compile_definitions(test_073d_render_path_hard_cut
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_071g_legacy_boundary_removal)
+  target_compile_definitions(test_071g_legacy_boundary_removal
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_render_resource_parsers)
+  target_compile_definitions(test_render_resource_parsers
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_render_work_compiler)
+  target_compile_definitions(test_render_work_compiler
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_scene_resource_abstraction)
+  target_compile_definitions(test_scene_resource_abstraction
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_default_forward_render_path_graph_source)
+  target_compile_definitions(test_default_forward_render_path_graph_source
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
+if(TARGET test_default_deferred_render_path_graph_source)
+  target_compile_definitions(test_default_deferred_render_path_graph_source
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
 endif()
 
 set(LXE_EDITOR_COMMAND_SOURCES

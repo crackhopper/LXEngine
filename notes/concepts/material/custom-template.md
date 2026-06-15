@@ -1,122 +1,172 @@
 # 创建与排错自定义材质
 
-写一个自定义材质，可以理解成给厨房增加一道新菜：我们要先写菜谱需要的工具，也就是 shader；再写点菜单，也就是 `.material`；最后让 scene 或 editor 加载它。当前最稳妥的路径是 YAML + GLSL，不需要为普通材质写 C++。
+写自定义材质分两层：最常见的是“复用现有 contract，新建一份 `.material`”；更深入的是“新增一种 BSDF contract，并让 RenderPathGraph 的 pass 接受它”。材质文件负责 surface envelope；graph 文件负责 shader/pass/render state。
 
 ## 当前推荐路径
 
 | 步骤 | 文件或 API | 目标 |
 |---|---|---|
-| 写 shader | `assets/shaders/glsl/<name>.vert/.frag` | 声明 vertex inputs、material binding、system binding |
-| 写 material | `assets/materials/<name>.material` | 指向 shader，提供 variants、passes、默认参数和纹理 |
-| 加载材质 | `LX_infra::loadGenericMaterial(uri)` | 得到 `MaterialInstance` |
-| 放进场景 | scene document 或 editor runtime | 节点获得 `MaterialComponent` |
-| 验证渲染 | `lxe_editor` 或集成测试 | 触发 scene validation 和 pipeline preload |
+| 复用 contract 写 `.material` | `assets/materials/<name>.material` | 选择 supported `bsdf.type`，填写参数 envelope 和资源 URI |
+| 新增 material contract | `assets/shaders/glsl/common/materials/<type>.contract.glsl` | 定义 BSDF 参数、storage/accessor ABI 和 shader 入口 |
+| 写或复用 render path graph | `assets/render_paths/*.render-path.yaml` | 声明 pass、shader、source/target、geometry/attachment contract，并让 `filters.bsdf` 包含新类型 |
+| 注册进场景 | scene document 或 editor runtime | 节点引用 mesh/material |
+| 验证渲染 | `lxe_editor` 或集成测试 | 触发 scene/resource/graph validation 和 pipeline preload |
 
-## 写 shader 时先分清资源归属
+普通材质 authoring 不需要为每个材质写 C++。新增 BSDF contract 通常也先不需要 C++，因为当前 reflector 读取 `.contract.glsl` metadata；C++ 只在新增 envelope kind、资源类型、renderer 注入资源或新的 scene/upload ABI 时介入。
 
-```glsl
-layout(set = 2, binding = 0) uniform MaterialUBO {
-    vec3 baseColor;
-    float shininess;
-} material;
-
-layout(set = 1, binding = 0) uniform CameraUBO {
-    mat4 view;
-    mat4 proj;
-    vec3 eyePos;
-} camera;
-```
-
-| Binding | 应该由谁提供 |
-|---|---|
-| `MaterialUBO` | material-owned，`.material parameters` 写默认值 |
-| `albedoMap` / `normalMap` 等 texture | material-owned，`.material resources` 写默认纹理 |
-| `CameraUBO` | system-owned，scene/camera 注入 |
-| `SceneLightsUBO` / `LightUBO` | system-owned，light/scene 注入 |
-| `Bones` | skeleton/renderable 路径注入 |
-
-不要在 `.material resources` 里写 `CameraUBO: system` 或 `SceneLightsUBO: system`。当前 loader 会把 `resources` 当作 material-owned texture 默认值表来校验。
-
-## 写 .material 时保持一套 canonical 参数
+## 路径一：复用现有 contract
 
 ```yaml
-shader: my_toon
+schema: lxe.material.v2
+renderClass: surface.opaque
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }
+    metallic: { kind: float, value: 1.0 }
+    roughness: { kind: float, value: 0.35 }
+    normalTexture: { kind: texture, valueType: rgb, uri: assets://textures/helmet_normal.png }
+```
 
-variants:
-  USE_LIGHTING: true
+这类自定义材质只改参数值或资源 URI。`standard-pbr` 适合 glTF/PBR 贴图链路；`matte`、`uber`、`metal`、`substrate` 适合 PBRT-style 参数 envelope。
 
+如果材质需要透明 pass、deferred GBuffer 或 offline compute 支持，改的是 graph 和 shader contract。
+
+## 路径二：新增一个 BSDF contract
+
+新增类型时，我们先写一份 contract source。它的 metadata 是 parser 和 resolver 的入口：
+
+```glsl
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: gooch
+// status: supported
+// reflectionHash: gooch-source-contract-v1
+// storageAbiHash: gooch-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: warmColor required rgb
+// parameter: coolColor required rgb
+// parameter: intensity optional float
+// storageField: warmColor vec4 parameter warmColor value default=1,0.85,0.25,1
+// storageField: coolColor vec4 parameter coolColor value default=0.15,0.25,1,1
+// storageField: intensity float parameter intensity value default=1
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
+// LX_MATERIAL_CONTRACT_END
+
+#include "../material_surface.glsl"
+#include "../material_bsdf.glsl"
+
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv,
+                                        vec3 geometricNormal,
+                                        mat3 tangentFrame) {
+  LxMaterialSurface surface;
+  surface.baseColor = vec3(1.0);
+  surface.alpha = 1.0;
+  surface.metallic = 0.0;
+  surface.roughness = 0.5;
+  surface.normal = normalize(geometricNormal);
+  surface.ao = 1.0;
+  surface.emissive = vec3(0.0);
+  return surface;
+}
+```
+
+这只是最小接入示例。真正要让 `warmColor/coolColor/intensity` 影响画面，还要在 contract shader 中定义 source record 读取逻辑，或者写一条专门的 pass shader 读取这些 storage field。当前 `standard_pbr.contract.glsl` 是更完整的读取模板。
+
+对应 `.material`：
+
+```yaml
+schema: lxe.material.v2
+renderClass: surface.opaque
+bsdf:
+  type: gooch
+  source: assets://shaders/glsl/common/materials/gooch.contract.glsl
+  parameters:
+    warmColor: { kind: rgb, value: [1.0, 0.8, 0.25] }
+    coolColor: { kind: rgb, value: [0.15, 0.25, 1.0] }
+    intensity: { kind: float, value: 1.0 }
+```
+
+然后让 graph 接收这个类型：
+
+## RenderPathGraph 决定怎样画
+
+```yaml
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
 passes:
-  Forward:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/pbr
+    filters:
+      renderClass: [surface.opaque]
+      bsdf: [standard-pbr, uber, metal, matte, gooch]
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+    targets: [hdr.color, depth.main]
     renderState:
       cullMode: Back
       depthTest: true
       depthWrite: true
-
-parameters:
-  MaterialUBO.baseColor: [0.9, 0.7, 0.4]
-  MaterialUBO.shininess: 24.0
-
-resources:
-  albedoMap: white
+      depthOp: LessEqual
+      blendEnable: false
 ```
 
-当前 `parameters` 和 `resources` 是 instance 级默认值。我们不在 pass 下面写另一套参数：
+这个 pass 通过 `filters.bsdf` 说明它支持哪些 material type，通过 `sources` 说明它需要 `material.bsdf`。如果 shader 需要某个材质 contract 的 specialized variant，variant 由 material source resolver 和 shader variant pipeline 处理，而不是 material YAML 直接塞宏。
 
-```yaml
-passes:
-  Forward:
-    parameters:          # 当前会被 loader 拒绝
-      MaterialUBO.baseColor: [1.0, 0.0, 0.0]
-```
-
-如果多个 pass 都需要 `MaterialUBO`，它们要共享同一个 binding 名和同一个 member layout。
+如果 pass shader 包含 `LX_MATERIAL_CONTRACT_SOURCE`，它必须声明 `material.bsdf`；如果它不包含该宏，就不能声明 `material.bsdf`。这条一致性由 `MaterialSourceVariantResolver` 校验。
 
 ## 常见报错从这几类查
 
 | 现象 | 先检查 |
 |---|---|
-| `missing required 'shader' field` | `.material` 顶层是否有 `shader` |
-| `shader files not found` | `assets/shaders/glsl/<shader>.vert/.frag` 是否同时存在 |
-| `parameter binding not found` | GLSL 是否声明了同名 material-owned UBO/SSBO |
-| `member not found` | YAML key 的 member 是否和 GLSL block 成员名一致 |
-| `resource ... not found as a texture binding` | `resources` 是否只写了 texture binding |
-| `pass-scoped parameters/resources ...` | 参数和资源是否写在了 pass 内 |
-| `reserved binding ... wrong descriptor type` | `CameraUBO` 等系统名字是否声明成了 UBO |
-| `missing vertex input` | mesh vertex layout 是否提供 shader 需要的 location/type |
-| `shader variant / Bones binding mismatch` | `USE_SKINNING` 和 `Bones` binding 是否同时出现 |
-
-## 多 pass 材质的 authoring 思路
-
-多 pass 不是把所有差异都塞进一份 fragment shader。我们先按“这一步的输出和状态是否不同”来决定是否拆 pass：
-
-| 情况 | 当前表达方式 |
-|---|---|
-| 同一 Forward pass 内切换颜色 | parameter |
-| 是否采样某张贴图，且 shader 已支持 | parameter + texture |
-| 是否编译 normal map 代码路径 | variant |
-| Forward 与 Shadow 使用不同 shader/render state | 多 pass |
-| 同一 shader 但 blend/cull/depth 不同 | 不同 pass 或不同 material/template |
-
-这能帮助我们避免把 pipeline 结构差异误写成普通参数，也避免把普通运行时数据误写成 variant。
+| schema 不匹配 | `.material` 是否写了 `schema: lxe.material.v2` |
+| unknown field | root 或 envelope 字段是否在当前 allowlist 中 |
+| BSDF type 不匹配 | `bsdf.type` 是否等于 contract metadata 的 `type` |
+| missing contract source | `bsdf.source` URI 是否能解析到 `.contract.glsl` |
+| parameter kind mismatch | YAML 中的 `kind` 是否符合 `MaterialContractReflection` 允许的 kind |
+| missing resource dependency | texture/spectrum/bsdf-table URI 是否真实注册，不能用空 payload 充数 |
+| graph pass 不产出 draw | `filters.renderClass` / `filters.bsdf` 是否匹配 material instance |
+| pipeline key 不符合预期 | 检查 material type/source variant 和 RenderPathNode signature |
+| shader 裸编译失败 | surface pass shader 是否需要 `LX_MATERIAL_CONTRACT_SOURCE`，应由 resolver 编译 variant |
 
 ## C++ 路径适合少数情况
 
-普通材质优先走 `.material`。直接用 C++ 创建 template/instance 适合这些情况：
-
 | 场景 | 原因 |
 |---|---|
-| 程序化生成材质 | 没有固定资产文件 |
-| 测试特定结构错误 | 需要构造最小对象 |
-| 实验新的 loader 或 variant 规则 | YAML 表达能力还不够 |
+| 新增 BSDF contract 类型 | 需要同步 contract metadata、reflection、packer 和测试 |
+| 新增资源 envelope kind | 需要 `SceneResourceTable` 与 dependency registration 支持 |
+| 新增 RenderPathGraph 字段 | 需要 parser allowlist、model 字段和 contract 测试一起更新 |
+| 新增 renderer 注入资源 | 需要 shader binding ownership、upload view 和 backend descriptor 路径一起更新 |
 
-即便走 C++，也应保持同样边界：template 管结构，instance 管运行时值。
+## 最小验证命令
+
+```bash
+cd build
+ninja test_material_v2_parser
+ninja test_material_source_contract
+ninja test_material_source_variant_pipeline
+```
+
+如果改了 graph 字段，再跑：
+
+```bash
+ninja test_render_path_graph_pass_contract
+```
 
 ## 我们已经学会了什么
 
-自定义材质的稳定路径是 shader + `.material` + scene/editor 验证。写之前先分清 material-owned 和 system-owned binding，再判断一个差异应该落在 parameter、resource、variant、pass 还是 template 上。
+自定义材质的稳定路径是：`.material v2` 写 surface envelope，`.contract.glsl` 写参数和 shader ABI，RenderPathGraph 写 pass/shader/render state，SceneResourceTable 管资源依赖。
 
 ## 下一步
 
 - [从 .material 到 MaterialInstance](file-to-instance.md)
-- [Shader 在材质中的角色](shader.md)
-- [自定义材质 Tutorial](../../tutorial/custom-material/index.md)
+- [Material Contract v2](material-contract-v2.md)
+- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)

@@ -32,73 +32,6 @@ namespace detail {
 
 using ShaderPtr = IShaderSharedPtr;
 
-enum class RenderDomain {
-  Realtime,
-  Offline,
-};
-
-enum class RenderWorkKind {
-  RasterDraw,
-  RasterBatch,
-  ComputeDispatch,
-  RayTracingDispatch,
-};
-
-struct RasterDrawWorkPayload final {
-  PerDrawDataSharedPtr drawData;
-  GpuResourceRef vertexBuffer;
-  GpuResourceRef indexBuffer;
-  u32 indexCount = 0;
-  u32 firstIndex = 0;
-  i32 vertexOffset = 0;
-  u32 instanceCount = 1;
-};
-
-struct ComputeDispatchWorkPayload final {
-  u32 groupCountX = 1;
-  u32 groupCountY = 1;
-  u32 groupCountZ = 1;
-};
-
-/*
-@source_analysis.section RenderWorkItem：一次 pipeline work 的最小稳定记录
-这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
-真正消费的契约，而不是 queue 的内部状态。任何把"一个 pass 内需要执行的一份
-GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结构体上。
-
-字段拆分体现两个边界：
-
-- `domain / kind / shaderInfo / pipelineKey / pass / target`：决定走哪条
-  pipeline，以及这份 work 是 raster draw、compute dispatch 还是后续 RT work
-- `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
-  binding name 命中，不依赖位置
-- `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
-  vertex/index/drawData 当成所有 render work 的公共字段
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
-  不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
-  work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable
-  解析。
-*/
-struct RenderWorkItem final {
-  RenderDomain domain = RenderDomain::Realtime;
-  RenderWorkKind kind = RenderWorkKind::RasterDraw;
-  ShaderPtr shaderInfo;
-  RenderState renderState;
-  Vec3f sortCenter{0.0f, 0.0f, 0.0f};
-
-  RasterDrawWorkPayload raster;
-  ComputeDispatchWorkPayload compute;
-
-  DescriptorResourceList descriptorResources; // 材质 + skeleton 等资源
-
-  StringID pass;
-  RenderTargetDesc target;
-  StringID debugId;
-  StringID objectSignature;
-  StringID materialSignature;
-  PipelineKey pipelineKey;
-};
-
 /*
 @source_analysis.section Scene：扁平容器
 Scene 是一层薄壳：三个平铺 vector（renderables / cameras / lights）+ 一个
@@ -149,6 +82,14 @@ public:
 
   const std::vector<IRenderableSharedPtr> &getRenderables() const {
     return m_renderables;
+  }
+
+  void rebuildRenderableCaches() {
+    for (const auto &renderable : m_renderables) {
+      if (const auto node = std::dynamic_pointer_cast<SceneNode>(renderable)) {
+        node->rebuildValidatedCache();
+      }
+    }
   }
 
   /*
@@ -292,7 +233,6 @@ public:
   SceneNode *findByPath(const std::string &path) const;
   [[nodiscard]] std::vector<std::string> listAllPaths() const;
   std::string dumpTree() const;
-  void setActiveMaterialTagForRenderables(const std::string &tag);
   [[nodiscard]] SceneEventHub &events() { return m_events; }
   [[nodiscard]] const SceneEventHub &events() const { return m_events; }
   [[nodiscard]] SceneResourceTable &resources() { return m_resources; }

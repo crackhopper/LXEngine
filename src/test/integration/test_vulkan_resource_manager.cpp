@@ -7,6 +7,7 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/asset/texture.hpp"
 #include "core/debug_draw/debug_draw.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -16,7 +17,6 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -28,6 +28,7 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -35,12 +36,23 @@ static_assert(
     std::variant_size_v<
         decltype(std::declval<LX_core::backend::VulkanResourceManager &>()
                      .getOrCreatePipeline(
-                         std::declval<const LX_core::RenderWorkItem &>()))> ==
+                         std::declval<
+                             const LX_core::RenderInputDesc &>()))> ==
         2,
-    "VulkanResourceManager must expose one pipeline resolution entry for "
-    "graphics and compute work items");
+    "VulkanResourceManager must expose RenderInputDesc-based pipeline "
+    "resolution for graphics and compute pipelines");
 
 namespace {
+
+bool isKnownEnvironmentSetupFailure(const std::string_view message) {
+  return message.find("No available video device") != std::string_view::npos ||
+         message.find("Failed to find GPUs with Vulkan support") !=
+             std::string_view::npos ||
+         message.find("Failed to find a suitable GPU") !=
+             std::string_view::npos ||
+         message.find("Failed to create Vulkan surface handle") !=
+             std::string_view::npos;
+}
 
 struct TestUniformResource final : public LX_core::IGpuResource {
   explicit TestUniformResource(u32 value) : value(value) {}
@@ -60,6 +72,44 @@ std::shared_ptr<T> makePlacementShared(void *storage, Args &&...args) {
   return std::shared_ptr<T>(ptr, [](T *p) { p->~T(); });
 }
 
+LX_core::IShaderSharedPtr makeDebugOverlayShader() {
+  constexpr const char *kShaderName = "debug_overlay";
+  std::vector<LX_core::ShaderStageCode> stages{
+      LX_test::loadTestShaderStage(kShaderName, "vert.spv",
+                                   LX_core::ShaderStage::Vertex),
+      LX_test::loadTestShaderStage(kShaderName, "frag.spv",
+                                   LX_core::ShaderStage::Fragment),
+  };
+  return std::make_shared<LX_infra::CompiledShader>(
+      stages, LX_infra::ShaderReflector::reflect(stages),
+      LX_infra::ShaderReflector::reflectVertexInputs(stages), kShaderName);
+}
+
+LX_core::MaterialInstanceSharedPtr makeDebugOverlayMaterial() {
+  constexpr const char *kShaderName = "debug_overlay";
+  auto shader = makeDebugOverlayShader();
+
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = kShaderName;
+  shaderProgram.shader = std::move(shader);
+
+  LX_core::MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram = std::move(shaderProgram);
+  passDefinition.renderState.cullMode = LX_core::CullMode::None;
+  passDefinition.renderState.depthTestEnable = false;
+  passDefinition.renderState.depthWriteEnable = false;
+  passDefinition.renderState.blendEnable = false;
+
+  auto tmpl = LX_core::MaterialTemplate::create("debug_overlay_test");
+  tmpl->setPassDefinition(LX_core::Pass_DebugOverlay,
+                          std::move(passDefinition));
+  tmpl->rebuildMaterialInterface();
+
+  auto material = LX_core::MaterialInstance::create(tmpl);
+  material->syncGpuData();
+  return material;
+}
+
 LX_core::SceneSharedPtr makeOverlayScene() {
   auto scene = LX_core::Scene::create("vulkan_debugdraw_growth");
   auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
@@ -71,40 +121,146 @@ LX_core::SceneSharedPtr makeOverlayScene() {
   camera->get().updateMatrices();
   scene->addCamera(cameraNode);
   LX_core::DebugDraw::reset();
+  LX_core::DebugDraw::setMaterialProvider(
+      [] { return makeDebugOverlayMaterial(); });
   LX_core::DebugDraw::attachScene(scene);
   return scene;
 }
 
-void syncRenderWorkItemResources(
+void syncDebugOverlayResources(
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    const LX_core::RenderWorkItem &item) {
-  LX_core::RenderWorkQueue queue;
-  queue.addItem(item);
+    const LX_core::RenderDrawInput &input,
+    const LX_core::RenderInputDesc &desc) {
+  std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
+  inputs.push_back(std::make_unique<LX_core::RenderDrawInput>(input));
+  std::vector<LX_core::RenderInputDesc> descs{desc};
   const LX_core::RenderUploadPlan uploadPlan =
-      LX_core::buildRenderUploadPlan(queue);
+      LX_core::buildRenderUploadPlan(inputs, descs);
   for (const auto &resource : uploadPlan.resources) {
     resourceManager.syncResource(cmdBufferMgr, resource);
   }
   resourceManager.collectGarbage();
 }
 
-LX_core::RenderWorkItem
+LX_core::RenderDrawInput makeDebugOverlayInputFromScene(
+    const LX_core::Scene &scene) {
+  for (const auto &renderable : scene.getRenderables()) {
+    if (!renderable || !renderable->isDebugOnlyRenderable() ||
+        !renderable->supportsPass(LX_core::Pass_DebugOverlay)) {
+      continue;
+    }
+    LX_core::RenderDrawInput input;
+    input.source = LX_core::RenderDrawInputSource::SceneRenderable;
+    input.pass = LX_core::Pass_DebugOverlay;
+    input.debugId = renderable->getDebugId();
+    input.vertexBuffer = renderable->getVertexBuffer();
+    input.indexBuffer = renderable->getIndexBuffer();
+    const auto *indexBuffer =
+        input.indexBuffer.isValid()
+            ? dynamic_cast<const LX_core::IndexBuffer *>(
+                  &input.indexBuffer.get())
+            : nullptr;
+    if (!input.vertexBuffer.isValid() || indexBuffer == nullptr ||
+        indexBuffer->indexCount() == 0) {
+      continue;
+    }
+    input.drawCommands.push_back(LX_core::RenderDrawCommand{
+        .indexCount = static_cast<u32>(indexBuffer->indexCount()),
+        .instanceCount = 1,
+    });
+    return input;
+  }
+  throw std::runtime_error("debug overlay scene produced no draw input");
+}
+
+LX_core::RenderInputDesc makeDebugOverlayDesc(
+    const LX_core::Scene &scene, const LX_core::RenderDrawInput &input) {
+  auto shader = makeDebugOverlayShader();
+  LX_core::ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = "debug_overlay";
+  shaderProgram.shader = shader;
+
+  LX_core::RenderState renderState;
+  renderState.cullMode = LX_core::CullMode::None;
+  renderState.depthTestEnable = false;
+  renderState.depthWriteEnable = false;
+
+  const auto *vertexBuffer =
+      dynamic_cast<const LX_core::IVertexBuffer *>(&input.vertexBuffer.get());
+  const auto *indexBuffer =
+      dynamic_cast<const LX_core::IndexBuffer *>(&input.indexBuffer.get());
+  if (vertexBuffer == nullptr || indexBuffer == nullptr) {
+    throw std::runtime_error("debug overlay draw input missing typed geometry");
+  }
+
+  LX_core::FramePass pass;
+  pass.name = LX_core::Pass_DebugOverlay;
+  pass.stage = LX_core::RenderPassStage::Raster;
+  pass.dispatch = LX_core::RenderPassDispatch::Draw;
+  pass.input.kind = LX_core::RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.input.geometry = LX_core::RenderPathGeometryContract{
+      .vertex = LX_core::RenderPathGeometryVertexContract::PositionOnly,
+      .topology = LX_core::PrimitiveTopology::LineList,
+  };
+  pass.shaderUri = LX_core::ResourceUri("debug_overlay");
+
+  const LX_core::PipelineKey pipelineKey = LX_core::PipelineKey::build(
+      shaderProgram.getPipelineSignature(),
+      LX_core::getFramePassRenderPathNodeSignature(pass));
+
+  LX_core::RenderInputDesc desc;
+  desc.status = LX_core::RenderInputStatus::Accepted;
+  desc.inputIndex = input.inputIndex;
+  desc.pass = input.pass;
+  desc.debugId = input.debugId;
+  desc.pipelineKey = pipelineKey;
+  desc.pipelineBuildDesc = LX_core::PipelineBuildDesc::graphics(
+      pipelineKey, shaderProgram.getPipelineSignature(), pass.target,
+      shader->getAllStages(), shader->getReflectionBindings(),
+      vertexBuffer->getLayout(), renderState, indexBuffer->getTopology(),
+      pass.renderingMode, pass.attachments);
+  desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
+  desc.bindingPlan.descriptors =
+      scene.getSceneLevelResources(LX_core::Pass_DebugOverlay,
+                                   LX_core::RenderTarget{});
+  desc.resourceDependencies.push_back(input.vertexBuffer);
+  desc.resourceDependencies.push_back(input.indexBuffer);
+  for (const LX_core::DescriptorResourceRef &resource :
+       desc.bindingPlan.descriptors) {
+    if (resource.isResource()) {
+      desc.resourceDependencies.push_back(resource.resource());
+    }
+  }
+  return desc;
+}
+
+struct SyncedDebugOverlayItem final {
+  LX_core::RenderDrawInput input;
+  LX_core::RenderInputDesc desc;
+};
+
+SyncedDebugOverlayItem
 syncDebugOverlayItem(LX_core::backend::VulkanResourceManager &resourceManager,
                      LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
                      LX_core::Scene &scene) {
-  auto item = LX_test::firstItemFromScene(scene, LX_core::Pass_DebugOverlay);
-  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, item);
-  return item;
+  LX_core::RenderDrawInput input = makeDebugOverlayInputFromScene(scene);
+  LX_core::RenderInputDesc desc = makeDebugOverlayDesc(scene, input);
+  syncDebugOverlayResources(resourceManager, cmdBufferMgr, input, desc);
+  return SyncedDebugOverlayItem{
+      .input = std::move(input),
+      .desc = std::move(desc),
+  };
 }
 
 bool drawDebugOverlayItem(
     LX_core::backend::VulkanDevice &device,
     LX_core::backend::VulkanResourceManager &resourceManager,
     LX_core::backend::VulkanCommandBufferManager &cmdBufferMgr,
-    const LX_core::RenderWorkItem &item) {
+    const SyncedDebugOverlayItem &work) {
   auto &renderPass = resourceManager.getRenderPass();
-  auto pipeline = resourceManager.getOrCreatePipeline(item);
+  auto pipeline = resourceManager.getOrCreatePipeline(work.desc);
   const VkPipeline pipelineHandle =
       std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
   if (pipelineHandle == VK_NULL_HANDLE) {
@@ -139,8 +295,8 @@ bool drawDebugOverlayItem(
   cmd->setViewport(extent.width, extent.height);
   cmd->setScissor(extent.width, extent.height);
   cmd->bindPipeline(pipeline);
-  cmd->bindResources(resourceManager, pipeline, item);
-  cmd->executeWorkItem(item);
+  cmd->bindResources(resourceManager, pipeline, work.input, work.desc);
+  cmd->executeRenderInput(work.input, work.desc);
   cmd->endRenderPass();
 
   if (vkEndCommandBuffer(cmd->getHandle()) != VK_SUCCESS) {
@@ -176,9 +332,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (smallVkVertex->get().getSize() !=
-          smallItem.raster.vertexBuffer.get().getByteSize() ||
+          smallItem.input.vertexBuffer.get().getByteSize() ||
       smallVkIndex->get().getSize() !=
-          smallItem.raster.indexBuffer.get().getByteSize()) {
+          smallItem.input.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Initial DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -228,9 +384,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (grownVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer.get().getByteSize() ||
+          grownItem.input.vertexBuffer.get().getByteSize() ||
       grownVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer.get().getByteSize()) {
+          grownItem.input.indexBuffer.get().getByteSize()) {
     std::cerr
         << "Grown DebugDraw GPU buffer sizes do not match CPU resources\n";
     return false;
@@ -275,7 +431,8 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
 
-  syncRenderWorkItemResources(resourceManager, cmdBufferMgr, grownItem);
+  syncDebugOverlayResources(resourceManager, cmdBufferMgr, grownItem.input,
+                            grownItem.desc);
   auto retainedVkVertex = resourceManager.getBuffer(retainedVertexIdentity);
   auto retainedVkIndex = resourceManager.getBuffer(retainedIndexIdentity);
   if (!retainedVkVertex || !retainedVkIndex) {
@@ -283,9 +440,9 @@ bool verifyDebugDrawGrowthSync(
     return false;
   }
   if (retainedVkVertex->get().getSize() !=
-          grownItem.raster.vertexBuffer.get().getByteSize() ||
+          grownItem.input.vertexBuffer.get().getByteSize() ||
       retainedVkIndex->get().getSize() !=
-          grownItem.raster.indexBuffer.get().getByteSize()) {
+          grownItem.input.indexBuffer.get().getByteSize()) {
     std::cerr << "Within-capacity DebugDraw GPU sizes no longer match retained "
                  "CPU capacity\n";
     return false;
@@ -308,6 +465,7 @@ bool verifyDebugDrawGrowthSync(
 
 int main() {
   expSetEnvVK();
+  bool environmentSetupComplete = false;
   try {
     auto success = initializeRuntimeAssetRoot();
     if (!success) {
@@ -331,6 +489,7 @@ int main() {
         LX_core::backend::VulkanResourceManager::create(*device);
     resourceManager->initializeRenderPassAndPipeline(surfaceFormat,
                                                      depthFormat);
+    environmentSetupComplete = true;
 
     const VkExtent2D frameGraphExtent{64, 64};
     auto &frameGraphDepth = resourceManager->createOrGetFrameGraphAttachment(
@@ -507,20 +666,14 @@ int main() {
       return 1;
     }
 
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/blinnphong_default.material");
-    auto node = LX_core::SceneNode::create("vulkan_resource_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-    auto pipeline = resourceManager->getOrCreatePipeline(item);
+    auto input = LX_test::makeMinimalRenderDrawInputForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto desc =
+        LX_test::makeAcceptedRenderInputDescForVulkanTests(pipelineDesc, input);
+    auto pipeline = resourceManager->getOrCreatePipeline(desc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {
@@ -624,7 +777,11 @@ int main() {
 
     return 0;
   } catch (const std::exception &e) {
-    std::cerr << "SKIP VulkanResourceManager test: " << e.what() << "\n";
-    return 0;
+    if (!environmentSetupComplete && isKnownEnvironmentSetupFailure(e.what())) {
+      std::cerr << "SKIP VulkanResourceManager test: " << e.what() << "\n";
+      return 0;
+    }
+    std::cerr << "FAIL VulkanResourceManager test: " << e.what() << "\n";
+    return 1;
   }
 }

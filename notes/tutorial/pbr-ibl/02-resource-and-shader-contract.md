@@ -4,56 +4,48 @@ PBR + IBL 的 binding 边界像摄影棚里的两类物品：材质自带的是�
 
 ## PBR material 只描述表面
 
-`assets/materials/pbr_gold.material` 的关键字段：
+`assets/materials/pbr_gold.material` 当前使用 `.material v2` surface envelope：
 
 ```yaml
-shader: pbr
-
-passes:
-  Forward:                         # -> MaterialTemplate::setPassDefinition(Pass_Forward, ...)
-    renderState:
-      cullMode: Back
-      depthTest: true
-      depthWrite: true
-
-parameters:
-  MaterialUBO.baseColorFactor: [1.0, 0.766, 0.336, 1.0]
-  MaterialUBO.metallicFactor: 1.0
-  MaterialUBO.roughnessFactor: 0.25
-  MaterialUBO.ao: 1.0
-
-resources:
-  albedoMap: white                 # -> material-owned Texture2D fallback
+schema: lxe.material.v2
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [1.0, 0.766, 0.336] }
+    metallic: { kind: float, value: 1.0 }
+    roughness: { kind: float, value: 0.25 }
+    ao: { kind: float, value: 1.0 }
 ```
 
 | 字段 | 归属 | 运行时对象 |
 |---|---|---|
-| `MaterialUBO.baseColorFactor` | material-owned | `MaterialInstance` 参数缓冲 |
-| `MaterialUBO.metallicFactor` | material-owned | 金属度，金属球为 `1.0` |
-| `MaterialUBO.roughnessFactor` | material-owned | 粗糙度，当前为 `0.25` |
-| `albedoMap` | material-owned | 材质贴图资源 |
+| `baseColor` | material-owned envelope | `MaterialInstance` 参数 envelope / packed material storage |
+| `metallic` | material-owned envelope | 金属度 |
+| `roughness` | material-owned envelope | 粗糙度 |
+| texture 参数 | material-owned dependency | `SceneResourceTable` typed texture handle |
 
 ## IBL bindings 来自 scene
 
-PBR shader 还声明这组 scene-level binding：
+PBR shader 还会消费 scene-level IBL 资源：
 
-| Binding | 类型 | Set / Binding | 归属 |
-|---|---|---|---|
-| `IrradianceMap` | `TextureCube` | set 3 binding 0 | scene-level IBL |
-| `PrefilteredEnvMap` | `TextureCube` | set 3 binding 1 | scene-level IBL |
-| `BrdfLut` | `Texture2D` | set 3 binding 2 | scene-level IBL |
-| `EnvironmentUBO` | `UniformBuffer` | set 3 binding 3 | scene-level IBL |
+| Binding | 类型 | 归属 |
+|---|---|---|
+| `IrradianceMap` | `TextureCube` | scene-level IBL |
+| `PrefilteredEnvMap` | `TextureCube` | scene-level IBL |
+| `BrdfLut` | `Texture2D` | scene-level IBL |
+| `EnvironmentUBO` | `UniformBuffer` | scene-level IBL |
 
-这些名字由 `shader_binding_ownership.hpp` 标记为系统归属。`RenderQueue` 在发现 shader 消费 IBL binding 时，会把 `Scene::getIblEnvironmentResources()` 的结果追加到该 draw item。普通 BlinnPhong 材质不会收到这组资源。
+这些资源由 scene/environment 或 bake pipeline 提供，不写进 `.material`。RenderWorkQueue / descriptor resolver 会在 pass 生成 work item 时把 scene-level resources 拼进去。
 
-## 为什么不写进 `.material resources`
+## 为什么不写进 `.material`
 
 | 资源 | 不放在 material 的原因 | 正确入口 |
 |---|---|---|
 | `IrradianceMap` | 同一场景内所有 PBR 物体共享 diffuse 环境光 | `Scene::setIblEnvironmentResources(...)` |
-| `PrefilteredEnvMap` | mip 链来自同一个 HDR environment bake | `Scene::setIblEnvironmentResources(...)` |
+| `PrefilteredEnvMap` | mip 链来自同一个 HDR environment bake | IBL bake / scene environment |
 | `BrdfLut` | 是全局 BRDF 查表，不属于某个表面 | 默认或 bake pipeline 生成 |
-| `EnvironmentUBO` | 控制环境强度和 roughness mip 数 | `scene.environment` -> `EnvironmentData` |
+| `EnvironmentUBO` | 控制环境强度和 roughness mip 数 | `scene.environment` / renderer environment data |
 
 这样拆分后，金属球换材质不会破坏环境；场景换 HDR 环境也不需要改每个材质文件。
 
@@ -68,7 +60,7 @@ PBR shader 还声明这组 scene-level binding：
 | `ibl_prefilter_env` | 生成 roughness mip prefiltered cubemap | renderer bake 已执行 |
 | `ibl_brdf_lut` | 生成 BRDF LUT | renderer bake 已执行 |
 
-GPU bake executor 会创建 cubemap face/mip attachment，执行上述 shader，并把结果 alias 成可被 descriptor lookup 消费的 scene-level resources；`test_vulkan_ibl_bake` 和 `test_vulkan_frame_graph` 覆盖这条路径。
+GPU bake executor 创建 cubemap face/mip attachment，执行上述 shader，并把结果注册成可被 descriptor lookup 消费的 scene-level resources。
 
 ## 下一步
 

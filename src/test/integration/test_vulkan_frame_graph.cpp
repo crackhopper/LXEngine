@@ -1,4 +1,5 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
+#include "core/asset/material_pass_definition.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/ibl_environment.hpp"
@@ -8,13 +9,12 @@
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/material_loader/material_contract_reflector.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <cmath>
 #include <string>
@@ -35,42 +35,51 @@ bool isKnownEnvironmentFailure(const std::string &message) {
 }
 
 LX_core::MaterialInstanceSharedPtr loadFrameGraphDepthMaterial() {
-  const auto materialPath = getRuntimeAssetRoot() / "assets" / "materials" /
-                            "test_frame_graph_depth.material";
-  {
-    std::ofstream out(materialPath);
-    out << "shader: blinnphong_0\n\n"
-           "variants:\n"
-           "  USE_LIGHTING: true\n\n"
-           "parameters:\n"
-           "  MaterialUBO.baseColor: [0.8, 0.8, 0.8]\n"
-           "  MaterialUBO.shininess: 12.0\n"
-           "  MaterialUBO.specularIntensity: 1.0\n"
-           "  MaterialUBO.enableAlbedo: 0\n"
-           "  MaterialUBO.enableNormal: 0\n\n"
-           "passes:\n"
-           "  Forward:\n"
-           "    shader: blinnphong_0\n"
-           "    renderState:\n"
-           "      cullMode: Back\n"
-           "      depthTest: true\n"
-           "      depthWrite: true\n"
-           "  Shadow:\n"
-           "    shader: shadow_depth_only\n"
-           "    renderState:\n"
-           "      cullMode: Front\n"
-           "      depthTest: true\n"
-           "      depthWrite: true\n";
+  auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
+  const LX_core::ResourceUri sourceUri(
+      "assets://shaders/glsl/common/materials/uber.contract.glsl");
+  auto reflected =
+      LX_infra::loadAndReflectMaterialContractSource(sourceUri);
+  if (!reflected.reflection.has_value()) {
+    std::string message = "failed to reflect frame graph test material source";
+    for (const auto &diagnostic : reflected.diagnostics) {
+      message += "\n  ";
+      message += diagnostic;
+    }
+    throw std::runtime_error(message);
   }
+  material->setMaterialSourceUri(sourceUri);
+  material->setMaterialSourceReflectionHash(
+      reflected.reflection->reflectionHash);
+  material->setMaterialSourceSignature(
+      reflected.reflection->sourceSignature());
+  material->setMaterialContractReflection(std::move(*reflected.reflection));
 
-  try {
-    auto material = LX_infra::loadGenericMaterial(materialPath);
-    std::filesystem::remove(materialPath);
-    return material;
-  } catch (...) {
-    std::filesystem::remove(materialPath);
-    throw;
+  auto shaderProgram = material->getPassShaderProgram(LX_core::Pass_Forward);
+  if (!shaderProgram.has_value()) {
+    throw std::runtime_error(
+        "frame graph test material missing Forward shader program");
   }
+  LX_core::ShaderProgramSet sourceShaderProgram = shaderProgram->get();
+  sourceShaderProgram.variants.push_back(LX_core::ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .materialContractSource = sourceUri,
+      .materialSourceSignature = material->getMaterialSourceSignature(),
+  });
+  LX_core::MaterialPassDefinition definition;
+  definition.renderState =
+      material->getPassRenderState(LX_core::Pass_Forward);
+  definition.shaderProgram = std::move(sourceShaderProgram);
+  auto materialTemplate = material->getTemplate();
+  if (!materialTemplate) {
+    throw std::runtime_error("frame graph test material missing template");
+  }
+  materialTemplate->setPassDefinition(LX_core::Pass_Forward,
+                                      std::move(definition));
+  materialTemplate->rebuildMaterialInterface();
+  material->syncGpuData();
+  return material;
 }
 
 LX_core::SceneSharedPtr makeFrameGraphScene() {
@@ -95,6 +104,9 @@ LX_core::SceneSharedPtr makeFrameGraphScene() {
   node->addComponent<LX_core::SkeletonComponent>(LX_core::Skeleton::create({}));
 
   auto scene = LX_core::Scene::create(node);
+  LX_core::SceneRenderSettings renderSettings;
+  renderSettings.shadows = true;
+  scene->setRenderSettings(renderSettings);
   scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
   auto shadowCamera = LX_test::makeDefaultCameraNodeWithTarget();
   auto shadowCameraComponent =
@@ -135,7 +147,7 @@ LX_core::IblEnvironmentResources makeSmallIblEnvironmentResources() {
       LX_core::StringID("EquirectangularMap"));
   resources.equirectangularMap->setDirty();
   resources.environmentUbo =
-      std::make_unique<LX_core::EnvironmentData>(0.0f, 4.0f);
+      std::make_unique<LX_core::EnvironmentData>(1.0f, 4.0f);
   return resources;
 }
 
@@ -270,18 +282,17 @@ int main() {
     }
 
     const auto hdrDumpPath =
-        std::filesystem::temp_directory_path() / "lxe_scene_hdr_color_dump.bmp";
+        std::filesystem::temp_directory_path() / "lxe_hdr_color_dump.bmp";
     std::filesystem::remove(hdrDumpPath);
-    const auto hdrDump =
-        renderer->dumpFrameGraphAttachment("scene.hdrColor", hdrDumpPath);
+    const auto hdrDump = renderer->dumpFrameGraphAttachment("hdr.color", hdrDumpPath);
     if (hdrDump.format != "R16G16B16A16_SFLOAT") {
-      std::cerr << "scene.hdrColor dump should preserve HDR attachment format\n";
+      std::cerr << "hdr.color dump should preserve HDR attachment format\n";
       return 1;
     }
     if (hdrDump.width == 0 || hdrDump.height == 0 ||
         !std::filesystem::exists(hdrDumpPath) ||
         std::filesystem::file_size(hdrDumpPath) <= 54u) {
-      std::cerr << "scene.hdrColor dump should write a non-empty BMP\n";
+      std::cerr << "hdr.color dump should write a non-empty BMP\n";
       return 1;
     }
     std::filesystem::remove(hdrDumpPath);

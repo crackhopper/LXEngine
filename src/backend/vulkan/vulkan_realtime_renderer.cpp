@@ -3,8 +3,13 @@
 #include "core/asset/material_pass_definition.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/frame_graph_build_plan.hpp"
+#include "core/frame_graph/graph_resource_registry.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
+#include "core/frame_graph/render_validation_contract.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
+#include "core/frame_graph/render_work_compiler.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/image/tone_mapping.hpp"
 #include "core/offline/offline_render_job.hpp"
@@ -19,6 +24,8 @@
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/image/rgba_image_io.hpp"
+#include "infra/resource_parsers/material_source_variant_resolver.hpp"
+#include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
 #include "details/descriptors/descriptor_manager.hpp"
@@ -40,15 +47,86 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 namespace {
 constexpr const char *kBloomBlurHShaderName = "bloom_blur_h";
 constexpr const char *kBloomBlurVShaderName = "bloom_blur_v";
+constexpr const char *kDefaultForwardRenderPathGraphAsset =
+    "assets/render_paths/forward_main.render-path.yaml";
+constexpr const char *kDefaultForwardBloomRenderPathGraphAsset =
+    "assets/render_paths/forward_bloom.render-path.yaml";
+constexpr const char *kDefaultDeferredRenderPathGraphAsset =
+    "assets/render_paths/deferred_main.render-path.yaml";
+constexpr const char *kDefaultDeferredBloomRenderPathGraphAsset =
+    "assets/render_paths/deferred_bloom.render-path.yaml";
+
+bool strictBindlessValidationEnabled() {
+  return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
+}
+
+bool isMigratedBindlessValidationPass(LX_core::StringID pass) {
+  return pass == LX_core::Pass_Forward || pass == LX_core::Pass_Deferred;
+}
+
+LX_core::RenderPathGraph
+loadRenderPathGraphAsset(const char *assetPath,
+                         LX_core::RenderPath expectedRenderPath) {
+  const auto graphPath = resolveRuntimePath(assetPath);
+  std::ifstream file(graphPath);
+  if (!file.is_open()) {
+    throw std::runtime_error("failed to open RenderPathGraph asset: " +
+                             graphPath.string());
+  }
+
+  const std::string yamlText((std::istreambuf_iterator<char>(file)),
+                             std::istreambuf_iterator<char>());
+  LX_infra::RenderPathGraphResourceParser parser;
+  auto parsed = parser.parse(assetPath, yamlText);
+  if (!parsed.renderPathGraph.has_value()) {
+    std::string message = "RenderPathGraph asset did not parse: ";
+    message += assetPath;
+    for (const std::string &diagnostic : parsed.diagnostics) {
+      message += "\n  ";
+      message += diagnostic;
+    }
+    throw std::runtime_error(message);
+  }
+  if (parsed.renderPathGraph->renderPath != expectedRenderPath) {
+    throw std::runtime_error("RenderPathGraph asset declares the wrong "
+                             "renderPath: " +
+                             std::string(assetPath));
+  }
+  return std::move(*parsed.renderPathGraph);
+}
+
+void resolveMaterialSourceVariantsOrThrow(
+    LX_core::Scene &scene, const LX_core::RenderPathGraph &graph,
+    const LX_core::ResourceUri &graphUri) {
+  const LX_infra::MaterialSourceVariantResolverResult resolved =
+      LX_infra::resolveMaterialSourceVariants(scene.resources(), graph,
+                                              graphUri);
+  if (resolved.success) {
+    scene.rebuildRenderableCaches();
+    return;
+  }
+
+  std::string message =
+      "failed to resolve material source shader variants for RenderPathGraph " +
+      graphUri.string();
+  for (const std::string &diagnostic : resolved.diagnostics) {
+    message += "\n  ";
+    message += diagnostic;
+  }
+  throw std::runtime_error(message);
+}
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
 /// Only covers the swapchain-relevant VkFormats. Unknown inputs fall back to
@@ -288,9 +366,11 @@ DumpScalarStats computeDumpScalarStats(VkFormat format, u32 width, u32 height,
     const auto *pixels = static_cast<const unsigned char *>(mappedData);
     for (usize i = 0; i < pixelCount; ++i) {
       const usize base = i * 4u;
-      const double r = pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 2u : 0u)] / 255.0;
+      const double r =
+          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 2u : 0u)] / 255.0;
       const double g = pixels[base + 1u] / 255.0;
-      const double b = pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 0u : 2u)] / 255.0;
+      const double b =
+          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 0u : 2u)] / 255.0;
       pushScalar(std::max({r, g, b}));
     }
   } else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
@@ -316,8 +396,8 @@ DumpScalarStats computeDumpScalarStats(VkFormat format, u32 width, u32 height,
   }
 
   stats.meanValue /= static_cast<double>(pixelCount);
-  stats.nonZeroRatio = static_cast<double>(nonZeroCount) /
-                       static_cast<double>(pixelCount);
+  stats.nonZeroRatio =
+      static_cast<double>(nonZeroCount) / static_cast<double>(pixelCount);
   if (stats.minValue == std::numeric_limits<double>::max()) {
     stats.minValue = 0.0;
   }
@@ -360,6 +440,14 @@ struct ProjectedBoundsDebug final {
   float maxY = 0.0f;
 };
 
+struct PipelineIdentityDebug final {
+  std::string materialTypeVariant;
+  std::string renderPathNodeSignature;
+  std::string pipelineKey;
+  std::string shaderName;
+  std::vector<std::string> finalShaderReflection;
+};
+
 struct RealtimeProfileDebugInfo final {
   float profileAspect = 0.0f;
   float cameraAspect = 0.0f;
@@ -370,6 +458,7 @@ struct RealtimeProfileDebugInfo final {
   LX_core::Vec4f lightDirection{};
   LX_core::Mat4f cameraView = LX_core::Mat4f::identity();
   LX_core::Mat4f cameraProj = LX_core::Mat4f::identity();
+  std::vector<PipelineIdentityDebug> pipelineIdentity;
   std::vector<ProjectedBoundsDebug> projectedBounds;
 };
 
@@ -391,6 +480,66 @@ void writeMat4Json(std::ostream &out, const LX_core::Mat4f &matrix) {
   out << "]";
 }
 
+[[nodiscard]] std::string jsonEscape(std::string_view text);
+
+[[nodiscard]] std::string debugString(LX_core::StringID id) {
+  if (id.id == 0) {
+    return "<empty>";
+  }
+  return LX_core::GlobalStringTable::get().toDebugString(id);
+}
+
+void writeStringArrayJson(std::ostream &out,
+                          const std::vector<std::string> &values) {
+  out << "[";
+  for (usize i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      out << ", ";
+    }
+    out << "\"" << jsonEscape(values[i]) << "\"";
+  }
+  out << "]";
+}
+
+[[nodiscard]] PipelineIdentityDebug
+makePipelineIdentityDebug(const LX_core::FramePass &pass,
+                          const LX_core::RenderInputDesc &desc) {
+  PipelineIdentityDebug out;
+  out.materialTypeVariant = debugString(desc.pipelineBuildDesc.shaderVariantKey);
+  out.renderPathNodeSignature =
+      debugString(LX_core::getFramePassRenderPathNodeSignature(pass));
+  out.pipelineKey = debugString(desc.pipelineKey.id);
+  out.shaderName = debugString(desc.shaderUri);
+  for (const auto &binding : desc.pipelineBuildDesc.bindings) {
+    out.finalShaderReflection.push_back(binding.name);
+  }
+  return out;
+}
+
+[[nodiscard]] usize
+executableDrawCommandCount(const LX_core::RenderDrawInput &draw) {
+  if (draw.source == LX_core::RenderDrawInputSource::FullscreenTriangle) {
+    return 1;
+  }
+  return static_cast<usize>(std::count_if(
+      draw.drawCommands.begin(), draw.drawCommands.end(),
+      [](const LX_core::RenderDrawCommand &command) {
+        return command.indexCount > 0 && command.instanceCount > 0;
+      }));
+}
+
+void recordExecutedRenderInputStats(
+    LX_core::backend::VulkanRealtimeRenderInputStats &stats,
+    const LX_core::RenderInput &input) {
+  if (const auto *draw = dynamic_cast<const LX_core::RenderDrawInput *>(&input)) {
+    stats.submittedDrawCount += executableDrawCommandCount(*draw);
+    return;
+  }
+  if (dynamic_cast<const LX_core::RenderComputeInput *>(&input) != nullptr) {
+    ++stats.submittedDispatchCount;
+  }
+}
+
 [[nodiscard]] u32
 countCameraResources(const LX_core::DescriptorResourceList &resources) {
   u32 count = 0;
@@ -401,6 +550,19 @@ countCameraResources(const LX_core::DescriptorResourceList &resources) {
     }
   }
   return count;
+}
+
+[[nodiscard]] std::unique_ptr<LX_core::CameraData>
+makeProfileCameraUbo(const LX_core::CameraResource &camera) {
+  auto ubo = std::make_unique<LX_core::CameraData>();
+  ubo->param = LX_core::CameraData::Param{
+      .view = camera.view,
+      .proj = camera.proj,
+      .eyePos = camera.pose.eye,
+      .pad = 0.0f,
+  };
+  ubo->setDirty();
+  return ubo;
 }
 
 [[nodiscard]] u32
@@ -415,8 +577,8 @@ countLightResources(const LX_core::DescriptorResourceList &resources) {
   return count;
 }
 
-[[nodiscard]] LX_core::Vec4f findLightDirection(
-    const LX_core::DescriptorResourceList &resources) {
+[[nodiscard]] LX_core::Vec4f
+findLightDirection(const LX_core::DescriptorResourceList &resources) {
   const LX_core::StringID lightBinding("LightUBO");
   for (const auto &resource : resources) {
     if (!resource.isResource() || resource.getBindingName() != lightBinding ||
@@ -430,80 +592,6 @@ countLightResources(const LX_core::DescriptorResourceList &resources) {
     return param->dir;
   }
   return {};
-}
-
-[[nodiscard]] std::optional<LX_core::Mat4f>
-extractModelMatrix(const LX_core::PerDrawDataSharedPtr &drawData) {
-  if (!drawData || drawData->byteSize() < sizeof(LX_core::Mat4f)) {
-    return std::nullopt;
-  }
-  LX_core::Mat4f model = LX_core::Mat4f::identity();
-  std::memcpy(&model, drawData->rawData(), sizeof(model));
-  return model;
-}
-
-[[nodiscard]] ProjectedBoundsDebug makeProjectedBoundsDebug(
-    const LX_core::IRenderable &renderable, const LX_core::RenderWorkItem &item,
-    const LX_core::Mat4f &viewProj, u32 width, u32 height) {
-  ProjectedBoundsDebug out;
-  out.nodeName = renderable.getNodeName();
-  out.objectSignature =
-      LX_core::GlobalStringTable::get().getName(item.objectSignature.id);
-  out.indexCount = item.raster.indexBuffer.isValid()
-                       ? item.raster.indexBuffer.get().getByteSize() /
-                             sizeof(u32)
-                       : 0;
-
-  auto modelOpt = extractModelMatrix(item.raster.drawData);
-  if (!modelOpt.has_value()) {
-    return out;
-  }
-  const auto &sceneNode = dynamic_cast<const LX_core::SceneNode &>(renderable);
-  const LX_core::BoundingBox localBounds = sceneNode.getLocalBounds();
-  if (!localBounds.isValid()) {
-    return out;
-  }
-
-  const LX_core::Mat4f model = *modelOpt;
-  const LX_core::Mat4f mvp = viewProj * model;
-  const LX_core::Vec4f corners[8] = {
-      {localBounds.min.x, localBounds.min.y, localBounds.min.z, 1.0f},
-      {localBounds.max.x, localBounds.min.y, localBounds.min.z, 1.0f},
-      {localBounds.min.x, localBounds.max.y, localBounds.min.z, 1.0f},
-      {localBounds.max.x, localBounds.max.y, localBounds.min.z, 1.0f},
-      {localBounds.min.x, localBounds.min.y, localBounds.max.z, 1.0f},
-      {localBounds.max.x, localBounds.min.y, localBounds.max.z, 1.0f},
-      {localBounds.min.x, localBounds.max.y, localBounds.max.z, 1.0f},
-      {localBounds.max.x, localBounds.max.y, localBounds.max.z, 1.0f},
-  };
-
-  float minX = std::numeric_limits<float>::infinity();
-  float minY = std::numeric_limits<float>::infinity();
-  float maxX = -std::numeric_limits<float>::infinity();
-  float maxY = -std::numeric_limits<float>::infinity();
-  for (const auto &corner : corners) {
-    const LX_core::Vec4f clip = mvp * corner;
-    if (std::abs(clip.w) <= std::numeric_limits<float>::epsilon()) {
-      continue;
-    }
-    const float ndcX = clip.x / clip.w;
-    const float ndcY = clip.y / clip.w;
-    const float px = (ndcX * 0.5f + 0.5f) * static_cast<float>(width);
-    const float py = (ndcY * 0.5f + 0.5f) * static_cast<float>(height);
-    minX = std::min(minX, px);
-    minY = std::min(minY, py);
-    maxX = std::max(maxX, px);
-    maxY = std::max(maxY, py);
-  }
-  if (std::isfinite(minX) && std::isfinite(minY) && std::isfinite(maxX) &&
-      std::isfinite(maxY)) {
-    out.valid = true;
-    out.minX = minX;
-    out.minY = minY;
-    out.maxX = maxX;
-    out.maxY = maxY;
-  }
-  return out;
 }
 
 [[nodiscard]] std::string jsonEscape(std::string_view text) {
@@ -583,6 +671,24 @@ void writeRealtimeProfileMetadata(
       << "    \"cameraProj\": ";
   writeMat4Json(out, debugInfo.cameraProj);
   out << ",\n"
+      << "    \"pipelineIdentity\": [\n";
+  for (usize i = 0; i < debugInfo.pipelineIdentity.size(); ++i) {
+    const auto &pipeline = debugInfo.pipelineIdentity[i];
+    out << "      {\"MaterialTypeVariant\": \""
+        << jsonEscape(pipeline.materialTypeVariant)
+        << "\", \"RenderPathNodeSignature\": \""
+        << jsonEscape(pipeline.renderPathNodeSignature)
+        << "\", \"PipelineKey\": \"" << jsonEscape(pipeline.pipelineKey)
+        << "\", \"final shader reflection\": {\"shaderName\": \""
+        << jsonEscape(pipeline.shaderName) << "\", \"bindings\": ";
+    writeStringArrayJson(out, pipeline.finalShaderReflection);
+    out << "}}";
+    if (i + 1 < debugInfo.pipelineIdentity.size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << "    ],\n"
       << "    \"projectedBounds\": [\n";
   for (usize i = 0; i < debugInfo.projectedBounds.size(); ++i) {
     const auto &bounds = debugInfo.projectedBounds[i];
@@ -599,6 +705,26 @@ void writeRealtimeProfileMetadata(
     out << "\n";
   }
   out << "    ]\n"
+      << "  },\n"
+      << "  \"renderInputStats\": {\n"
+      << "    \"compilerInputCount\": "
+      << result.renderInputStats.compilerInputCount << ",\n"
+      << "    \"acceptedInputCount\": "
+      << result.renderInputStats.acceptedInputCount << ",\n"
+      << "    \"rejectedInputCount\": "
+      << result.renderInputStats.rejectedInputCount << ",\n"
+      << "    \"submittedDrawCount\": "
+      << result.renderInputStats.submittedDrawCount << ",\n"
+      << "    \"submittedDispatchCount\": "
+      << result.renderInputStats.submittedDispatchCount << ",\n"
+      << "    \"fallbackObservedCount\": "
+      << result.renderInputStats.fallbackObservedCount << ",\n"
+      << "    \"descPipelineLookupCount\": "
+      << result.renderInputStats.descPipelineLookupCount << ",\n"
+      << "    \"descBoundInputCount\": "
+      << result.renderInputStats.descBoundInputCount << ",\n"
+      << "    \"descExecutedInputCount\": "
+      << result.renderInputStats.descExecutedInputCount << "\n"
       << "  }\n"
       << "}\n";
 }
@@ -680,6 +806,14 @@ LX_core::StringID passIdFromDebugName(std::string_view passName) {
   }
   throw std::runtime_error("unsupported debug render target pass: " +
                            std::string(passName));
+}
+
+LX_core::StringID transientRenderPathNodeSignature(
+    LX_core::StringID passName, const LX_core::RenderTarget &target) {
+  LX_core::FramePass pass;
+  pass.name = passName;
+  pass.target = target.toDesc();
+  return LX_core::getFramePassRenderPathNodeSignature(pass);
 }
 
 void writeLe16(std::ostream &out, u16 value) {
@@ -865,6 +999,8 @@ public:
     m_swapchain =
         VulkanSwapchain::create(device(), _window, kMaxFramesInFlight);
     m_swapchain->initialize(resourceManager().getRenderPass());
+    m_swapchainImageLayouts.assign(m_swapchain->getImageCount(),
+                                   VK_IMAGE_LAYOUT_UNDEFINED);
 
     // REQ-017: bring up ImGui overlay inside the swapchain render pass.
     infra::Gui::InitParams guiParams{};
@@ -877,7 +1013,9 @@ public:
     guiParams.presentQueue = device().getPresentQueue();
     guiParams.surface = device().getSurface();
     guiParams.nativeWindowHandle = _window->getNativeHandle();
-    guiParams.renderPass = resourceManager().getRenderPass().getHandle();
+    guiParams.renderPass = VK_NULL_HANDLE;
+    guiParams.useDynamicRendering = true;
+    guiParams.colorAttachmentFormat = device().getSurfaceFormat().format;
     guiParams.swapchainImageCount = m_swapchain->getImageCount();
     m_gui.init(guiParams);
   }
@@ -903,20 +1041,218 @@ public:
     return m_foundation->commandBufferManager();
   }
 
-  void syncRenderUploadPlan(const LX_core::RenderWorkQueue &queue) {
+  void syncRenderUploadPlan(
+      const std::vector<std::unique_ptr<LX_core::RenderInput>> &inputs,
+      const std::vector<LX_core::RenderInputDesc> &descs) {
     const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(queue);
+        LX_core::buildRenderUploadPlan(inputs, descs);
     for (const auto &resource : uploadPlan.resources) {
       resourceManager().syncResource(commandBufferManager(), resource);
     }
   }
 
   [[nodiscard]] bool uploadPlanRequiresSharedHostBufferSync(
-      const LX_core::RenderWorkQueue &queue) const {
+      const std::vector<std::unique_ptr<LX_core::RenderInput>> &inputs,
+      const std::vector<LX_core::RenderInputDesc> &descs) const {
     const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(queue);
+        LX_core::buildRenderUploadPlan(inputs, descs);
     for (const auto &resource : uploadPlan.resources) {
       if (isDirtyHostBufferResource(resource)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void syncDescriptorResource(const LX_core::DescriptorResourceRef &resource) {
+    if (resource.isTextureArray()) {
+      for (const LX_core::TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid()) {
+          resourceManager().syncResource(commandBufferManager(),
+                                         LX_core::GpuResourceRef{texture.get()});
+        }
+      }
+      return;
+    }
+    if (resource.resource().isValid()) {
+      resourceManager().syncResource(commandBufferManager(),
+                                     resource.resource());
+    }
+  }
+
+  [[nodiscard]] bool descriptorResourceRequiresSharedHostBufferSync(
+      const LX_core::DescriptorResourceRef &resource) const {
+    if (resource.isTextureArray()) {
+      for (const LX_core::TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid() &&
+            isDirtyHostBufferResource(LX_core::GpuResourceRef{texture.get()})) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return resource.resource().isValid() &&
+           isDirtyHostBufferResource(resource.resource());
+  }
+
+  [[nodiscard]] LX_core::RenderWorkBuildContext
+  makeRealtimeRenderWorkContext() const {
+    if (!m_scene) {
+      throw std::runtime_error("realtime render work requires a scene");
+    }
+    return LX_core::RenderWorkBuildContext::realtime(
+        *m_scene, makeRealtimeRenderWorkOptionsForCompiledPass(std::nullopt));
+  }
+
+  void appendDescriptorResources(
+      LX_core::DescriptorResourceList &out,
+      const LX_core::DescriptorResourceList &resources) const {
+    out.insert(out.end(), resources.begin(), resources.end());
+  }
+
+  LX_core::RenderWorkBuildContext::PassPreparationFacts &
+  ensurePassPreparationFacts(
+      std::vector<LX_core::RenderWorkBuildContext::PassPreparationFacts> &facts,
+      LX_core::StringID pass) const {
+    const auto it = std::find_if(
+        facts.begin(), facts.end(),
+        [pass](const LX_core::RenderWorkBuildContext::PassPreparationFacts
+                   &candidate) { return candidate.pass == pass; });
+    if (it != facts.end()) {
+      return *it;
+    }
+    LX_core::RenderWorkBuildContext::PassPreparationFacts next;
+    next.pass = pass;
+    facts.push_back(std::move(next));
+    return facts.back();
+  }
+
+  [[nodiscard]] u32 shadowCascadeIndexForCompiledPass(
+      usize compiledPassIndex) const {
+    u32 cascadeIndex = 0;
+    const auto &passes = m_compiledFrameGraph.getPasses();
+    for (usize i = 0; i < compiledPassIndex && i < passes.size(); ++i) {
+      if (passes[i].name == LX_core::Pass_Shadow) {
+        ++cascadeIndex;
+      }
+    }
+    return cascadeIndex;
+  }
+
+  [[nodiscard]] LX_core::RenderWorkBuildContext::RealtimeOptions
+  makeRealtimeRenderWorkOptionsForCompiledPass(
+      std::optional<usize> compiledPassIndex) const {
+    LX_core::RenderWorkBuildContext::RealtimeOptions options;
+    options.passPreparationFacts.reserve(m_basePassPreparationFacts.size() + 1);
+    for (const auto &[_, facts] : m_basePassPreparationFacts) {
+      options.passPreparationFacts.push_back(facts);
+    }
+
+    if (!compiledPassIndex.has_value() ||
+        *compiledPassIndex >= m_compiledFrameGraph.getPasses().size()) {
+      return options;
+    }
+
+    const auto &compiledPass =
+        m_compiledFrameGraph.getPasses()[*compiledPassIndex];
+    auto &facts =
+        ensurePassPreparationFacts(options.passPreparationFacts,
+                                   compiledPass.name);
+    if (*compiledPassIndex < m_compiledPassDescriptorResources.size()) {
+      appendDescriptorResources(
+          facts.descriptorResources,
+          m_compiledPassDescriptorResources[*compiledPassIndex]);
+    }
+    if (compiledPass.name == LX_core::Pass_Shadow) {
+      const u32 cascadeIndex =
+          shadowCascadeIndexForCompiledPass(*compiledPassIndex);
+      if (cascadeIndex < m_shadowCascadeUboSnapshots.size() &&
+          m_shadowCascadeUboSnapshots[cascadeIndex]) {
+        facts.descriptorResources.emplace_back(
+            *m_shadowCascadeUboSnapshots[cascadeIndex]);
+      }
+    }
+    return options;
+  }
+
+  [[nodiscard]] LX_core::RenderWorkBuildContext
+  makeRealtimeRenderWorkContextForCompiledPass(usize compiledPassIndex) const {
+    if (!m_scene) {
+      throw std::runtime_error("realtime render work requires a scene");
+    }
+    return LX_core::RenderWorkBuildContext::realtime(
+        *m_scene,
+        makeRealtimeRenderWorkOptionsForCompiledPass(compiledPassIndex));
+  }
+
+  struct PreparedRenderPassInputs final {
+    std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
+    std::vector<LX_core::RenderInputDesc> descs;
+  };
+
+  [[nodiscard]] PreparedRenderPassInputs prepareRenderPassInputs(
+      const LX_core::FramePass &pass,
+      const LX_core::RenderWorkBuildContext &context) const {
+    LX_core::RenderWorkCompiler compiler;
+    PreparedRenderPassInputs prepared;
+    compiler.buildInputs(pass, context, prepared.inputs);
+    prepared.descs = compiler.prepare(pass, context, prepared.inputs);
+    return prepared;
+  }
+
+  void recordDiagnostic(const LX_core::RenderInputDesc &desc) const {
+    if (!expRendererDebugEnabled()) {
+      return;
+    }
+    for (const LX_core::RenderInputDiagnostic &diagnostic :
+         desc.diagnostics) {
+      std::cerr << "[RendererDebug] RenderInput rejected pass="
+                << LX_core::GlobalStringTable::get().toDebugString(
+                       diagnostic.pass)
+                << " debugId="
+                << LX_core::GlobalStringTable::get().toDebugString(
+                       diagnostic.debugId)
+                << " message=" << diagnostic.message << std::endl;
+    }
+  }
+
+  void syncCompiledFramePassUploadPlans() {
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
+      const LX_core::CompiledFrameGraphPass &compiledPass =
+          compiledPasses[passIndex];
+      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+        continue;
+      }
+      const LX_core::FramePass &pass =
+          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+      PreparedRenderPassInputs prepared =
+          prepareRenderPassInputs(pass, context);
+      syncRenderUploadPlan(prepared.inputs, prepared.descs);
+    }
+  }
+
+  [[nodiscard]] bool compiledFramePassUploadPlansRequireSharedHostBufferSync()
+      const {
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
+      const LX_core::CompiledFrameGraphPass &compiledPass =
+          compiledPasses[passIndex];
+      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+        continue;
+      }
+      const LX_core::FramePass &pass =
+          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+      PreparedRenderPassInputs prepared =
+          prepareRenderPassInputs(pass, context);
+      if (uploadPlanRequiresSharedHostBufferSync(prepared.inputs,
+                                                 prepared.descs)) {
         return true;
       }
     }
@@ -988,154 +1324,143 @@ public:
     auto &forwardRenderPass = resourceManager().getRenderPass(forwardHdrDesc);
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-    const auto sceneHdrColor = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("scene.hdrColor"));
-    const auto sceneDepth = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID("scene.depth"));
-    const auto gbufferAlbedoAlpha =
-        LX_core::FrameGraphResourceRef::colorAttachment(
-            LX_core::StringID("gbuffer.albedoAlpha"));
-    const auto gbufferNormalRoughness =
-        LX_core::FrameGraphResourceRef::colorAttachment(
-            LX_core::StringID("gbuffer.normalRoughness"));
-    const auto gbufferMaterial =
-        LX_core::FrameGraphResourceRef::colorAttachment(
-            LX_core::StringID("gbuffer.material"));
-    const auto bloomThreshold = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("bloom.threshold"));
-    const auto bloomBlurH = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("bloom.blurH"));
-    const auto bloomBlur = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("bloom.blur"));
-    const auto swapchainColor = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("swapchain.color"));
-
     m_frameGraph = LX_core::FrameGraph{}; // Fresh graph on every initScene.
+    m_basePassPreparationFacts.clear();
+    m_compiledPassDescriptorResources.clear();
     m_scene->resources().beginRenderResourceScope();
-    std::vector<LX_core::FrameGraphRead> shadowReads;
-    if (m_scene->renderSettings().shadows) {
-      shadowReads.reserve(LX_core::MaxShadowCascades);
-      for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
-           ++cascadeIndex) {
-        const auto shadowDepth =
-            LX_core::FrameGraphResourceRef::depthAttachment(LX_core::StringID(
-                "shadow.cascade" + std::to_string(cascadeIndex)));
-        m_frameGraph.addPass(
-            LX_core::FramePass{LX_core::Pass_Shadow,
-                               shadowTarget,
-                               {},
-                               {},
-                               {LX_core::FrameGraphWrite{shadowDepth}}});
-        shadowReads.push_back(LX_core::FrameGraphRead::sampled(
-            shadowDepth.name,
-            LX_core::StringID("ShadowMap" + std::to_string(cascadeIndex))));
-      }
-    }
-    const bool deferredMode =
-        m_scene->realtimeRenderSettings().mode ==
-        LX_core::SceneRealtimeRenderMode::Deferred;
+    const bool deferredMode = m_scene->realtimeRenderSettings().mode ==
+                              LX_core::SceneRealtimeRenderMode::Deferred;
     LX_core::RenderTargetDesc gbufferDesc =
         LX_core::RenderTargetDesc::offscreenColors(
             {LX_core::ImageFormat::RGBA16Float,
              LX_core::ImageFormat::RGBA16Float,
              LX_core::ImageFormat::RGBA16Float},
             swapchainTarget.depthFormat);
-    const auto deferredLightingDesc =
-        LX_core::RenderTargetDesc::offscreenColor(
-            LX_core::ImageFormat::RGBA16Float);
+    const auto deferredLightingDesc = LX_core::RenderTargetDesc::offscreenColor(
+        LX_core::ImageFormat::RGBA16Float);
+    const auto bloomDesc = LX_core::RenderTargetDesc::offscreenColor(
+        LX_core::ImageFormat::RGBA16Float);
+    const auto assignGraphTarget = [&](LX_core::FramePass &pass) {
+      if (pass.name == LX_core::Pass_Forward) {
+        pass.target = forwardHdrDesc;
+      } else if (pass.name == LX_core::Pass_Deferred) {
+        pass.target = gbufferDesc;
+      } else if (pass.name == LX_core::Pass_DeferredLighting) {
+        pass.target = deferredLightingDesc;
+      } else if (pass.name == LX_core::Pass_BloomThreshold ||
+                 pass.name == LX_core::Pass_BloomBlurH ||
+                 pass.name == LX_core::Pass_BloomBlurV) {
+        pass.target = bloomDesc;
+      } else if (pass.name == LX_core::Pass_PostProcess) {
+        pass.target = swapchainDesc;
+      } else if (pass.name == LX_core::Pass_Shadow) {
+        pass.target = shadowTarget;
+      } else if (pass.name == LX_core::Pass_DebugOverlay) {
+        pass.target = swapchainDesc;
+        pass.phase = LX_core::FrameGraphPhase::Debug;
+      }
+    };
+    const auto expandGraphDeclaredShadowCascadePass =
+        [&](const LX_core::FramePass &graphPass) {
+          if (!m_scene->renderSettings().shadows) {
+            return;
+          }
+          for (u32 cascadeIndex = 0; cascadeIndex < LX_core::MaxShadowCascades;
+               ++cascadeIndex) {
+            LX_core::FramePass cascadePass = graphPass;
+            const auto shadowDepth =
+                LX_core::FrameGraphResourceRef::depthAttachment(
+                    LX_core::StringID("shadow.cascade" +
+                                      std::to_string(cascadeIndex)));
+            cascadePass.writes = {LX_core::FrameGraphWrite{
+                shadowDepth, graphPass.writes.front().writeMode}};
+            m_frameGraph.addPass(std::move(cascadePass));
+          }
+        };
+    const auto addGraphDeclaredPass = [&](LX_core::FramePass pass) {
+      assignGraphTarget(pass);
+      if (pass.name == LX_core::Pass_Shadow) {
+        expandGraphDeclaredShadowCascadePass(pass);
+        return;
+      }
+      m_frameGraph.addPass(std::move(pass));
+    };
     if (deferredMode) {
-      m_frameGraph.addPass(
-          LX_core::FramePass{LX_core::Pass_Deferred,
-                             gbufferDesc,
-                             {},
-                             {},
-                             {LX_core::FrameGraphWrite{gbufferAlbedoAlpha},
-                              LX_core::FrameGraphWrite{gbufferNormalRoughness},
-                              LX_core::FrameGraphWrite{gbufferMaterial},
-                              LX_core::FrameGraphWrite{sceneDepth}}});
-      m_frameGraph.addPass(LX_core::FramePass{
-          LX_core::Pass_DeferredLighting,
-          deferredLightingDesc,
-          {},
-          {LX_core::FrameGraphRead::sampled(
-               gbufferAlbedoAlpha.name,
-               LX_core::StringID("GBufferAlbedoAlpha")),
-           LX_core::FrameGraphRead::sampled(
-               gbufferNormalRoughness.name,
-               LX_core::StringID("GBufferNormalRoughness")),
-           LX_core::FrameGraphRead::sampled(gbufferMaterial.name,
-                                            LX_core::StringID("GBufferMaterial")),
-           LX_core::FrameGraphRead::sampled(sceneDepth.name,
-                                            LX_core::StringID("GBufferDepth"))},
-          {LX_core::FrameGraphWrite{sceneHdrColor}}});
+      const char *deferredGraphAsset =
+          m_postProcessSettings.bloomEnabled
+              ? kDefaultDeferredBloomRenderPathGraphAsset
+              : kDefaultDeferredRenderPathGraphAsset;
+      const LX_core::RenderPathGraph deferredRenderPathGraph =
+          loadRenderPathGraphAsset(deferredGraphAsset,
+                                   LX_core::RenderPath::Deferred);
+      const std::vector<LX_core::StringID> deferredPasses =
+          m_postProcessSettings.bloomEnabled
+              ? std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow,
+                    LX_core::Pass_Deferred,
+                    LX_core::Pass_DeferredLighting,
+                    LX_core::Pass_BloomThreshold,
+                    LX_core::Pass_BloomBlurH,
+                    LX_core::Pass_BloomBlurV,
+                    LX_core::Pass_PostProcess,
+                    LX_core::Pass_DebugOverlay}
+              : std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow, LX_core::Pass_Deferred,
+                    LX_core::Pass_DeferredLighting, LX_core::Pass_PostProcess,
+                    LX_core::Pass_DebugOverlay};
+      LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
+                                              deferredPasses, deferredPasses);
+      resolveMaterialSourceVariantsOrThrow(
+          *m_scene, deferredRenderPathGraph,
+          LX_core::ResourceUri(deferredGraphAsset));
+      LX_core::FrameGraph deferredGraph =
+          LX_core::buildFrameGraphFromRenderPathGraph(
+              deferredRenderPathGraph,
+              LX_core::GraphResourceRegistry::makeDefault());
+      for (auto pass : deferredGraph.getPasses()) {
+        addGraphDeclaredPass(std::move(pass));
+      }
     } else {
-      m_frameGraph.addPass(
-          LX_core::FramePass{LX_core::Pass_Forward,
-                             forwardHdrDesc,
-                             {},
-                             shadowReads,
-                             {LX_core::FrameGraphWrite{sceneHdrColor},
-                              LX_core::FrameGraphWrite{sceneDepth}}});
+      const char *forwardGraphAsset =
+          m_postProcessSettings.bloomEnabled
+              ? kDefaultForwardBloomRenderPathGraphAsset
+              : kDefaultForwardRenderPathGraphAsset;
+      const LX_core::RenderPathGraph forwardRenderPathGraph =
+          loadRenderPathGraphAsset(forwardGraphAsset,
+                                   LX_core::RenderPath::Forward);
+      const std::vector<LX_core::StringID> forwardPasses =
+          m_postProcessSettings.bloomEnabled
+              ? std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow, LX_core::Pass_Forward,
+                    LX_core::Pass_BloomThreshold, LX_core::Pass_BloomBlurH,
+                    LX_core::Pass_BloomBlurV, LX_core::Pass_PostProcess,
+                    LX_core::Pass_DebugOverlay}
+              : std::vector<LX_core::StringID>{
+                    LX_core::Pass_Shadow, LX_core::Pass_Forward,
+                    LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
+      LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
+                                              forwardPasses, forwardPasses);
+      resolveMaterialSourceVariantsOrThrow(
+          *m_scene, forwardRenderPathGraph,
+          LX_core::ResourceUri(forwardGraphAsset));
+      LX_core::FrameGraph forwardGraph =
+          LX_core::buildFrameGraphFromRenderPathGraph(
+              forwardRenderPathGraph,
+              LX_core::GraphResourceRegistry::makeDefault());
+      for (auto pass : forwardGraph.getPasses()) {
+        addGraphDeclaredPass(std::move(pass));
+      }
     }
-    if (m_postProcessSettings.bloomEnabled) {
-      m_frameGraph.addPass(LX_core::FramePass{
-          LX_core::Pass_BloomThreshold,
-          LX_core::RenderTargetDesc::offscreenColor(
-              LX_core::ImageFormat::RGBA16Float),
-          {},
-          {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
-                                            LX_core::StringID("SceneColor"))},
-          {LX_core::FrameGraphWrite{bloomThreshold}}});
-      m_frameGraph.addPass(LX_core::FramePass{
-          LX_core::Pass_BloomBlurH,
-          LX_core::RenderTargetDesc::offscreenColor(
-              LX_core::ImageFormat::RGBA16Float),
-          {},
-          {LX_core::FrameGraphRead::sampled(bloomThreshold.name,
-                                            LX_core::StringID("BloomSource"))},
-          {LX_core::FrameGraphWrite{bloomBlurH}}});
-      m_frameGraph.addPass(LX_core::FramePass{
-          LX_core::Pass_BloomBlurV,
-          LX_core::RenderTargetDesc::offscreenColor(
-              LX_core::ImageFormat::RGBA16Float),
-          {},
-          {LX_core::FrameGraphRead::sampled(bloomBlurH.name,
-                                            LX_core::StringID("BloomSource"))},
-          {LX_core::FrameGraphWrite{bloomBlur}}});
-    }
-    const auto postBloomInput = m_postProcessSettings.bloomEnabled
-                                    ? bloomBlur.name
-                                    : sceneHdrColor.name;
-    m_frameGraph.addPass(LX_core::FramePass{
-        LX_core::Pass_PostProcess,
-        swapchainDesc,
-        {},
-        {LX_core::FrameGraphRead::sampled(sceneHdrColor.name,
-                                          LX_core::StringID("SceneColor")),
-         LX_core::FrameGraphRead::sampled(postBloomInput,
-                                          LX_core::StringID("BloomColor"))},
-        {LX_core::FrameGraphWrite{swapchainColor}}});
-    m_frameGraph.addPass(LX_core::FramePass{
-        LX_core::Pass_DebugOverlay, swapchainDesc, {}, {}, {}});
+    // RenderPathGraph coverage audit:
+    // - Forward, Deferred/DeferredLighting, Bloom, PostProcess, Shadow, and
+    //   DebugOverlay are graph asset managed.
+    // - Shadow keeps a temporary named dynamic expansion from the graph-declared
+    //   Shadow pass to per-cascade runtime instances until RenderPathGraph can
+    //   express cascade fan-out directly.
 
-    // RenderWorkQueue::build (invoked per pass below) internally:
-    //   - filters renderables by supportsPass(pass)
-    //   - merges scene.getSceneLevelResources(pass, target) (camera UBO
-    //   filtered by
-    //     target, light UBO filtered by pass mask)
-    //   - sorts by PipelineKey
-    // There is no more side-channel camera/light UBO injection here.
-    m_frameGraph.build(LX_core::RenderWorkBuildContext::realtime(*m_scene));
     if (deferredMode) {
-      rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Deferred,
-                                                 gbufferDesc);
       addDeferredLightingItem(deferredLightingDesc);
-    } else {
-      rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Forward,
-                                                 forwardHdrDesc);
-      addSkyboxBackgroundItem(forwardHdrDesc);
     }
-    rebuildDebugOverlayQueueWithDefaultCameraResources(swapchainDesc);
     if (m_postProcessSettings.bloomEnabled) {
       addBloomThresholdItem();
       addBloomBlurItem(LX_core::Pass_BloomBlurH, kBloomBlurHShaderName,
@@ -1145,7 +1470,6 @@ public:
     }
     addStandardPostProcessItem(swapchainDesc);
     rebuildShadowCascadeUboSnapshots();
-    bindShadowCascadeUboSnapshots();
 
     m_compiledFrameGraph = m_frameGraph.compile();
     if (!m_compiledFrameGraph.isValid()) {
@@ -1155,18 +1479,15 @@ public:
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
 
-    // Initial resource sync for every item across every pass in the FrameGraph.
-    // SceneNode::getValidatedPassData() has already synced each per-draw model
-    // matrix from the node world transform while building the queue.
-    for (auto &pass : m_frameGraph.getPasses()) {
-      syncRenderUploadPlan(pass.queue);
-    }
+    syncCompiledFramePassUploadPlans();
     resourceManager().collectGarbage();
 
-    // Pre-build every pipeline the scene needs. Runtime cache misses still
-    // work via getOrCreatePipeline(item) but emit a warning log.
-    auto infos = m_frameGraph.collectAllPipelineBuildDescs();
-    resourceManager().preloadPipelines(infos);
+    // Explicit pipeline preparation happens only after scene resources,
+    // material source variants, render inputs, upload resources, and final
+    // shader reflection are ready. Future pipeline cache package loading
+    // belongs inside this phase and must validate the same PipelineBuildDesc
+    // identities.
+    preparePipelinesForLoadedScene();
   }
 
   void uploadData() {
@@ -1174,15 +1495,8 @@ public:
 
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     resourceManager().beginFrame(currentFrameIndex);
-    bool requiresSharedBufferSync = false;
-    for (auto &pass : m_frameGraph.getPasses()) {
-      requiresSharedBufferSync =
-          requiresSharedBufferSync ||
-          uploadPlanRequiresSharedHostBufferSync(pass.queue);
-      if (requiresSharedBufferSync) {
-        break;
-      }
-    }
+    bool requiresSharedBufferSync =
+        compiledFramePassUploadPlansRequireSharedHostBufferSync();
 
     if (requiresSharedBufferSync) {
       // These buffers are single shared allocations, not per-frame slices.
@@ -1191,9 +1505,7 @@ public:
       m_swapchain->waitForAllFrames();
     }
 
-    for (auto &pass : m_frameGraph.getPasses()) {
-      syncRenderUploadPlan(pass.queue);
-    }
+    syncCompiledFramePassUploadPlans();
     resourceManager().collectGarbage();
   }
 
@@ -1244,8 +1556,6 @@ public:
     const bool skipGuiFrame = expEnvEnabled("LX_RENDER_SKIP_GUI_FRAME") ||
                               m_pendingScreenDump.has_value();
 
-    bool swapchainRenderPassActive = false;
-    bool guiFrameActive = false;
     const usize finalSwapchainPassIndex = findFinalSwapchainPassIndex();
     const usize finalSwapchainGroupStartIndex =
         findFinalSwapchainGroupStartIndex(finalSwapchainPassIndex);
@@ -1253,74 +1563,29 @@ public:
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
     for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
       const auto &compiledPass = compiledPasses[passIndex];
-      if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
-        const bool isFinalSwapchainGroup =
-            finalSwapchainPassIndex != compiledPasses.size() &&
-            passIndex >= finalSwapchainGroupStartIndex &&
-            passIndex <= finalSwapchainPassIndex;
-        if (!swapchainRenderPassActive) {
-          auto &renderPass = resourceManager().getRenderPass();
-          cmd->beginRenderPass(
-              renderPass.getHandle(),
-              m_swapchain->getFramebuffer(imageIndex).getHandle(), extent,
-              renderPass.getClearValues());
-          cmd->setViewport(extent.width, extent.height);
-          cmd->setScissor(extent.width, extent.height);
-          swapchainRenderPassActive = true;
-        }
-
-        if (isFinalSwapchainGroup &&
-            passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame) {
-          m_gui.beginFrame();
-          guiFrameActive = true;
-          if (m_drawUiCallback) {
-            m_drawUiCallback();
-          }
-        }
-
-        drawPassQueue(passIndex, *cmd);
-
-        if (!isFinalSwapchainGroup || passIndex == finalSwapchainPassIndex) {
-          if (guiFrameActive) {
-            m_gui.endFrame(cmd->getHandle());
-            guiFrameActive = false;
-          }
-          cmd->endRenderPass();
-          swapchainRenderPassActive = false;
-        }
-        continue;
-      }
-
-      if (swapchainRenderPassActive) {
-        if (guiFrameActive) {
-          m_gui.endFrame(cmd->getHandle());
-          guiFrameActive = false;
-        }
-        cmd->endRenderPass();
-        swapchainRenderPassActive = false;
-      }
-
       prepareShadowCascadePass(passIndex);
-      const VkExtent2D passExtent = prepareOffscreenPass(
-          passIndex, currentFrameIndex, compiledPass, extent, *cmd);
-      auto &renderPass = resourceManager().getRenderPass(compiledPass.target);
-      cmd->beginRenderPass(
-          renderPass.getHandle(),
-          m_offscreenFramebuffers[passIndex][currentFrameIndex]->getHandle(),
-          passExtent, renderPass.getClearValues());
-      cmd->setViewport(passExtent.width, passExtent.height);
-      cmd->setScissor(passExtent.width, passExtent.height);
-      drawPassQueue(passIndex, *cmd);
-      cmd->endRenderPass();
-      transitionPassWritesToShaderRead(compiledPass, *cmd);
+      const bool isFinalSwapchainGroup =
+          compiledPass.target.role == LX_core::RenderTargetRole::Swapchain &&
+          finalSwapchainPassIndex != compiledPasses.size() &&
+          passIndex >= finalSwapchainGroupStartIndex &&
+          passIndex <= finalSwapchainPassIndex;
+      const bool beginGuiFrame =
+          isFinalSwapchainGroup &&
+          passIndex == finalSwapchainGroupStartIndex && !skipGuiFrame;
+      const bool endGuiFrame =
+          isFinalSwapchainGroup && passIndex == finalSwapchainPassIndex &&
+          !skipGuiFrame;
+      const auto renderingMode = explicitRenderingModeFor(compiledPass);
+      if (renderingMode == LX_core::RenderPathNodeRenderingMode::Dynamic) {
+        recordDynamicPass(passIndex, imageIndex, extent, *cmd, beginGuiFrame,
+                          endGuiFrame);
+      } else {
+        recordTraditionalPass(passIndex, currentFrameIndex, imageIndex, extent,
+                              *cmd, beginGuiFrame, endGuiFrame);
+      }
     }
 
-    if (swapchainRenderPassActive) {
-      if (guiFrameActive) {
-        m_gui.endFrame(cmd->getHandle());
-      }
-      cmd->endRenderPass();
-    }
+    transitionSwapchainImage(imageIndex, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, *cmd);
     recordPendingScreenDump(imageIndex, extent, *cmd);
     cmd->end();
 
@@ -1383,8 +1648,15 @@ public:
 
   [[nodiscard]] usize frameGraphItemCount() const {
     usize total = 0;
-    for (const auto &pass : m_frameGraph.getPasses()) {
-      total += pass.queue.getItems().size();
+    if (m_scene) {
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContext();
+      LX_core::RenderWorkCompiler compiler;
+      for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
+        std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
+        compiler.buildInputs(pass, context, inputs);
+        total += inputs.size();
+      }
     }
     return total;
   }
@@ -1507,6 +1779,86 @@ public:
     };
   }
 
+  VulkanFrameGraphAttachmentDumpResult
+  statsFrameGraphAttachment(std::string_view attachmentName) {
+    if (!m_foundation) {
+      throw std::runtime_error("renderer is not initialized");
+    }
+
+    const StringID attachmentId{std::string(attachmentName)};
+    auto attachmentOpt =
+        resourceManager().getFrameGraphAttachment(attachmentId);
+    if (!attachmentOpt.has_value()) {
+      throw std::runtime_error("frame graph attachment not available: " +
+                               std::string(attachmentName));
+    }
+    auto &attachment = attachmentOpt->get();
+
+    const u32 width = attachment.extent.width;
+    const u32 height = attachment.extent.height;
+    const VkDeviceSize byteSize =
+        dumpByteSize(attachment.format, width, height);
+    if (width == 0 || height == 0 || byteSize == 0) {
+      throw std::runtime_error("frame graph attachment has empty extent: " +
+                               std::string(attachmentName));
+    }
+
+    auto readback = VulkanBuffer::create(
+        device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    device().waitIdle();
+    const VkImageLayout previousLayout = attachment.currentLayout;
+    const auto attachmentKind =
+        (attachment.aspect & VK_IMAGE_ASPECT_COLOR_BIT) != 0
+            ? LX_core::FrameGraphAttachmentKind::Color
+            : LX_core::FrameGraphAttachmentKind::Depth;
+    auto cmd = commandBufferManager().beginSingleTimeCommands();
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT, *cmd);
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = attachment.aspect;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {width, height, 1};
+    vkCmdCopyImageToBuffer(cmd->getHandle(), attachment.texture->getHandle(),
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           readback->getHandle(), 1, &region);
+
+    transitionFrameGraphAttachment(
+        LX_core::FrameGraphResourceRef{attachmentId, attachmentKind},
+        previousLayout, dumpRestoreStage(previousLayout, attachment.aspect),
+        dumpRestoreAccess(previousLayout, attachment.aspect), *cmd);
+    commandBufferManager().endSingleTimeCommands(std::move(cmd),
+                                                 device().getGraphicsQueue());
+
+    const void *mapped = readback->map();
+    const DumpScalarStats stats =
+        computeDumpScalarStats(attachment.format, width, height, mapped);
+    readback->unmap();
+
+    return VulkanFrameGraphAttachmentDumpResult{
+        .path = {},
+        .screenPath = {},
+        .width = width,
+        .height = height,
+        .format = vkFormatName(attachment.format),
+        .minValue = stats.minValue,
+        .maxValue = stats.maxValue,
+        .meanValue = stats.meanValue,
+        .nonZeroRatio = stats.nonZeroRatio,
+    };
+  }
+
   VulkanFrameGraphAttachmentDumpResult dumpDebugRenderTarget(
       std::string_view passName, const std::optional<std::string> &cameraPath,
       const std::optional<std::filesystem::path> &requestedPath) {
@@ -1533,28 +1885,38 @@ public:
     targetDesc.role = LX_core::RenderTargetRole::Offscreen;
     targetDesc.colorFormat = LX_core::ImageFormat::BGRA8;
     targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
-    const LX_core::RenderTarget target{targetDesc};
 
     auto &cameraComponent = camera->get();
     updateDirectionalLightCascadesForCamera(cameraComponent);
     LX_core::CameraResource cameraResource =
         LX_core::Scene::makeCameraResource(cameraComponent.getSnapshot());
 
-    LX_core::RenderWorkQueue queue;
-    queue.build(LX_core::RenderWorkBuildContext::realtime(
-                    *m_scene,
-                    LX_core::RenderWorkBuildContext::RealtimeOptions{
-                        .cameraResource = cameraResource,
-                        .visibleMask = cameraComponent.getCullingMask() &
-                                       ~LX_core::Layer_EditorOverlay,
-                    }),
-                pass, target);
-    if (queue.getItems().empty()) {
-      throw std::runtime_error("debug render target produced no draw items");
+    LX_core::FramePass debugPass;
+    debugPass.name = pass;
+    debugPass.target = targetDesc;
+    debugPass.stage = LX_core::RenderPassStage::Raster;
+    debugPass.dispatch = LX_core::RenderPassDispatch::Draw;
+    debugPass.input.kind = LX_core::RenderPassInputKind::SceneRenderables;
+    debugPass.renderPathNodeSignature =
+        LX_core::getFramePassRenderPathNodeSignature(debugPass);
+    const LX_core::RenderWorkBuildContext debugContext =
+        LX_core::RenderWorkBuildContext::realtime(
+            *m_scene, LX_core::RenderWorkBuildContext::RealtimeOptions{
+                          .cameraResource = cameraResource,
+                          .visibleMask = cameraComponent.getCullingMask() &
+                                         ~LX_core::Layer_EditorOverlay,
+                      });
+    PreparedRenderPassInputs prepared =
+        prepareRenderPassInputs(debugPass, debugContext);
+    const bool hasAcceptedInput =
+        std::any_of(prepared.descs.begin(), prepared.descs.end(),
+                    [](const LX_core::RenderInputDesc &desc) {
+                      return desc.accepted();
+                    });
+    if (!hasAcceptedInput) {
+      throw std::runtime_error("debug render target produced no draw inputs");
     }
-
-    syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
+    syncRenderUploadPlan(prepared.inputs, prepared.descs);
 
     const VkExtent2D extent = m_swapchain->getExtent();
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -1604,11 +1966,16 @@ public:
                          extent, renderPass.getClearValues());
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
-    for (auto &item : queue.getItems()) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
+    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      if (!desc.accepted()) {
+        recordDiagnostic(desc);
+        continue;
+      }
+      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
+      auto pipeline = resourceManager().getOrCreatePipeline(desc);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeWorkItem(item);
+      cmd->bindResources(resourceManager(), pipeline, input, desc);
+      cmd->executeRenderInput(input, desc);
     }
     cmd->endRenderPass();
 
@@ -1707,11 +2074,12 @@ public:
     LX_core::CameraResource outputCameraResource;
     outputCameraResource.pose = sourceCamera.pose;
     outputCameraResource.projection = outputProjection;
-    outputCameraResource.view = LX_core::makeCameraViewMatrix(sourceCamera.pose);
+    outputCameraResource.view =
+        LX_core::makeCameraViewMatrix(sourceCamera.pose);
     outputCameraResource.proj =
         LX_core::makeCameraProjectionMatrix(outputProjection);
     outputCameraResource.cullingMask = outputCullingMask;
-    outputCameraResource.active = sourceCamera.active;
+    outputCameraResource.active = true;
     const auto outputCameraView = outputCameraResource.view;
     const auto outputCameraProj = outputCameraResource.proj;
 
@@ -1719,10 +2087,9 @@ public:
     targetDesc.role = LX_core::RenderTargetRole::Offscreen;
     targetDesc.colorFormat = LX_core::ImageFormat::RGBA16Float;
     targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
-    const LX_core::RenderTarget target{targetDesc};
 
-    auto sceneResources = m_scene->getSceneLevelResources(
-        LX_core::Pass_Forward, outputCameraResource);
+    auto sceneResources = m_scene->getSceneLevelResources(LX_core::Pass_Forward,
+                                                          outputCameraResource);
     RealtimeProfileDebugInfo debugInfo;
     debugInfo.profileAspect = profileAspect;
     debugInfo.cameraAspect = outputProjection.aspect;
@@ -1736,37 +2103,56 @@ public:
         "realtime.profile." + basePath.generic_string() + "." +
         std::to_string(output.width) + "x" + std::to_string(output.height);
 
-    LX_core::RenderWorkQueue queue;
-    queue.build(LX_core::RenderWorkBuildContext::realtime(
-                    *m_scene,
-                    LX_core::RenderWorkBuildContext::RealtimeOptions{
-                        .cameraResource = outputCameraResource,
-                        .visibleMask =
-                            outputCullingMask & ~LX_core::Layer_EditorOverlay,
-                    }),
-                LX_core::Pass_Forward, target);
-    if (queue.getItems().empty()) {
+    const char *forwardGraphAsset = kDefaultForwardRenderPathGraphAsset;
+    const LX_core::RenderPathGraph forwardRenderPathGraph =
+        loadRenderPathGraphAsset(forwardGraphAsset, LX_core::RenderPath::Forward);
+    resolveMaterialSourceVariantsOrThrow(*m_scene, forwardRenderPathGraph,
+                                          LX_core::ResourceUri(forwardGraphAsset));
+    LX_core::FrameGraph forwardGraph =
+        LX_core::buildFrameGraphFromRenderPathGraph(
+            forwardRenderPathGraph, LX_core::GraphResourceRegistry::makeDefault());
+    const auto forwardPassIt = std::find_if(
+        forwardGraph.getPasses().begin(), forwardGraph.getPasses().end(),
+        [](const LX_core::FramePass &pass) {
+          return pass.name == LX_core::Pass_Forward;
+        });
+    if (forwardPassIt == forwardGraph.getPasses().end()) {
       throw std::runtime_error(
-          "realtime profile output produced no draw items");
+          "realtime profile output default graph has no Forward pass");
     }
-    debugInfo.drawItemCount = static_cast<u32>(queue.getItems().size());
-    const LX_core::Mat4f viewProj = outputCameraProj * outputCameraView;
-    for (const auto &renderable : m_scene->getRenderables()) {
-      if (!renderable) {
-        continue;
-      }
-      const LX_core::StringID debugId = renderable->getDebugId();
-      for (const auto &item : queue.getItems()) {
-        if (item.debugId != debugId) {
-          continue;
-        }
-        debugInfo.projectedBounds.push_back(makeProjectedBoundsDebug(
-            *renderable, item, viewProj, output.width, output.height));
-        break;
+    LX_core::FramePass forwardPass = *forwardPassIt;
+    forwardPass.target = targetDesc;
+
+    const LX_core::RenderWorkBuildContext profileContext =
+        LX_core::RenderWorkBuildContext::realtime(
+            *m_scene,
+            LX_core::RenderWorkBuildContext::RealtimeOptions{
+                .cameraResource = outputCameraResource,
+                .visibleMask = outputCullingMask & ~LX_core::Layer_EditorOverlay,
+            });
+    PreparedRenderPassInputs prepared =
+        prepareRenderPassInputs(forwardPass, profileContext);
+    if (prepared.inputs.empty()) {
+      throw std::runtime_error(
+          "realtime profile output produced no draw inputs");
+    }
+    debugInfo.drawItemCount = static_cast<u32>(prepared.inputs.size());
+    VulkanRealtimeRenderInputStats renderInputStats;
+    renderInputStats.compilerInputCount = prepared.inputs.size();
+    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      if (desc.accepted()) {
+        ++renderInputStats.acceptedInputCount;
+        debugInfo.pipelineIdentity.push_back(
+            makePipelineIdentityDebug(forwardPass, desc));
+      } else {
+        ++renderInputStats.rejectedInputCount;
       }
     }
-    syncRenderUploadPlan(queue);
-    resourceManager().preloadPipelines(queue.collectUniquePipelineBuildDescs());
+    if (renderInputStats.acceptedInputCount == 0) {
+      throw std::runtime_error(
+          "realtime profile output produced no accepted desc-backed inputs");
+    }
+    syncRenderUploadPlan(prepared.inputs, prepared.descs);
 
     const VkExtent2D extent{output.width, output.height};
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
@@ -1826,11 +2212,20 @@ public:
                          extent, clearValues);
     cmd->setViewport(extent.width, extent.height);
     cmd->setScissor(extent.width, extent.height);
-    for (auto &item : queue.getItems()) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
+    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      if (!desc.accepted()) {
+        recordDiagnostic(desc);
+        continue;
+      }
+      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
+      auto pipeline = resourceManager().getOrCreatePipeline(desc);
+      ++renderInputStats.descPipelineLookupCount;
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, item);
-      cmd->executeWorkItem(item);
+      cmd->bindResources(resourceManager(), pipeline, input, desc);
+      ++renderInputStats.descBoundInputCount;
+      cmd->executeRenderInput(input, desc);
+      ++renderInputStats.descExecutedInputCount;
+      recordExecutedRenderInputStats(renderInputStats, input);
     }
     cmd->endRenderPass();
 
@@ -1887,6 +2282,7 @@ public:
         .pipelineSrgbPngPath = {},
         .depthDebugPath = outputDir / (outputStem + "-depth.bmp"),
         .metadataPath = outputDir / (outputStem + ".json"),
+        .renderInputStats = renderInputStats,
         .width = output.width,
         .height = output.height,
     };
@@ -1942,24 +2338,37 @@ private:
       --start;
     }
 
-    // Legacy VkRenderPass cannot preserve forward color for debug/GUI overlay
-    // if we end and begin again with the current clear/load contract. Only the
-    // final contiguous swapchain run is intentionally grouped under one active
-    // VkRenderPass; offscreen passes and non-final swapchain passes remain
-    // one begin/end per compiled pass.
+    // The final contiguous swapchain run owns one ImGui frame. Dynamic
+    // rendering still records one begin/end per pass; this boundary only
+    // decides where ImGui::NewFrame and ImGui::Render happen.
     return start;
   }
 
   void drawPassQueue(usize passIndex, VulkanCommandBuffer &cmd) {
-    if (passIndex >= m_frameGraph.getPasses().size()) {
+    if (passIndex >= m_compiledFrameGraph.getPasses().size()) {
+      return;
+    }
+    const usize sourcePassIndex =
+        m_compiledFrameGraph.getPasses()[passIndex].sourcePassIndex;
+    if (sourcePassIndex >= m_frameGraph.getPasses().size()) {
       return;
     }
 
-    for (auto &item : m_frameGraph.getPasses()[passIndex].queue.getItems()) {
-      auto pipeline = resourceManager().getOrCreatePipeline(item);
+    const auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
+    const LX_core::RenderWorkBuildContext context =
+        makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+    PreparedRenderPassInputs prepared = prepareRenderPassInputs(pass, context);
+    syncRenderUploadPlan(prepared.inputs, prepared.descs);
+    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      if (!desc.accepted()) {
+        recordDiagnostic(desc);
+        continue;
+      }
+      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
+      auto pipeline = resourceManager().getOrCreatePipeline(desc);
       cmd.bindPipeline(pipeline);
-      cmd.bindResources(resourceManager(), pipeline, item);
-      cmd.executeWorkItem(item);
+      cmd.bindResources(resourceManager(), pipeline, input, desc);
+      cmd.executeRenderInput(input, desc);
     }
   }
 
@@ -1967,43 +2376,29 @@ private:
                                  const LX_core::RenderTargetDesc &target,
                                  LX_core::MaterialInstance::UniquePtr material,
                                  const char *objectSignature) {
+    (void)target;
+    (void)objectSignature;
     if (!m_scene || !material) {
       return;
     }
-    LX_core::RenderWorkItem item;
-    item.shaderInfo = material->getPassShader(pass);
-    item.renderState = material->getPassRenderState(pass);
-    const LX_core::StringID materialSignature =
-        material->getPipelineSignature(pass);
-    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
-        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}}});
-    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
+    LX_core::RenderWorkBuildContext::PassPreparationFacts facts;
+    facts.pass = pass;
+    facts.shaderInfo = material->getPassShader(pass);
+    facts.renderState = material->getPassRenderState(pass);
+    const auto shaderProgram = material->getPassShaderProgram(pass);
+    if (!shaderProgram.has_value()) {
+      throw std::logic_error(
+          "fullscreen material facts missing shader program for pass " +
+          LX_core::GlobalStringTable::get().toDebugString(pass));
+    }
+    facts.shaderProgram = shaderProgram->get();
+    facts.pipelineVariantKey =
+        material->getMaterialTypeVariantSignature(shaderProgram->get());
     const LX_core::MaterialHandle materialHandle =
         m_scene->resources().addRenderMaterial(std::move(material));
-    item.descriptorResources =
-        LX_core::buildSceneMaterialDescriptorResources(
-            m_scene->resources(), materialHandle, item.shaderInfo);
-    item.pass = pass;
-    item.target = target;
-    item.objectSignature = LX_core::StringID(objectSignature);
-    item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
-
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == item.pass) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
-        return;
-      }
-    }
+    facts.descriptorResources = LX_core::buildSceneMaterialDescriptorResources(
+        m_scene->resources(), materialHandle, facts.shaderInfo);
+    m_basePassPreparationFacts[pass] = std::move(facts);
   }
 
   void addBloomThresholdItem() {
@@ -2038,159 +2433,19 @@ private:
     if (!m_scene || !material) {
       return;
     }
-
-    LX_core::RenderWorkItem item;
-    item.shaderInfo = material->getPassShader(LX_core::Pass_DeferredLighting);
-    item.renderState =
-        material->getPassRenderState(LX_core::Pass_DeferredLighting);
-    const LX_core::StringID materialSignature =
-        material->getPipelineSignature(LX_core::Pass_DeferredLighting);
-    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
-        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}}});
-    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
-    const LX_core::MaterialHandle materialHandle =
-        m_scene->resources().addRenderMaterial(std::move(material));
-    item.descriptorResources =
-        LX_core::buildSceneMaterialDescriptorResources(
-            m_scene->resources(), materialHandle, item.shaderInfo);
-
+    addFullscreenMaterialItem(LX_core::Pass_DeferredLighting, target,
+                              std::move(material),
+                              "DeferredLightingFullscreenTriangle");
+    auto factsIt = m_basePassPreparationFacts.find(
+        LX_core::Pass_DeferredLighting);
+    if (factsIt == m_basePassPreparationFacts.end()) {
+      return;
+    }
     const LX_core::RenderTarget defaultCameraTarget{};
     auto sceneResources = m_scene->getSceneLevelResources(
         LX_core::Pass_DeferredLighting, defaultCameraTarget);
-    for (auto &resource : sceneResources) {
-      item.descriptorResources.emplace_back(std::move(resource));
-    }
-
-    item.pass = LX_core::Pass_DeferredLighting;
-    item.target = target;
-    item.objectSignature =
-        LX_core::StringID("DeferredLightingFullscreenTriangle");
-    item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
-
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_DeferredLighting) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
-        return;
-      }
-    }
-  }
-
-  void addSkyboxBackgroundItem(const LX_core::RenderTargetDesc &target) {
-    if (!m_scene) {
-      return;
-    }
-    const auto *iblResources =
-        m_scene->resources().getIblEnvironmentResourceSet();
-    if (iblResources == nullptr || !iblResources->skyboxEnabled ||
-        !iblResources->environmentUbo ||
-        iblResources->environmentUbo->getIblIntensity() <= 0.0f) {
-      return;
-    }
-    LX_core::GpuResourceRef skyboxResource;
-    if (iblResources->bakedSkyboxCubemap) {
-      skyboxResource =
-          LX_core::GpuResourceRef{*iblResources->bakedSkyboxCubemap};
-    } else if (iblResources->skyboxCubemap) {
-      skyboxResource = LX_core::GpuResourceRef{*iblResources->skyboxCubemap};
-    }
-    if (!skyboxResource.isValid()) {
-      return;
-    }
-
-    VulkanPostProcessBuilder builder(m_postProcessSettings);
-    auto material = builder.createSkyboxBackgroundMaterial();
-    LX_core::RenderWorkItem item;
-    item.shaderInfo = material->getPassShader(LX_core::Pass_Forward);
-    item.renderState = material->getPassRenderState(LX_core::Pass_Forward);
-    const LX_core::StringID materialSignature =
-        material->getPipelineSignature(LX_core::Pass_Forward);
-    auto vertexBuffer = LX_core::VertexBuffer<LX_core::VertexPos>::createUnique(
-        std::vector<LX_core::VertexPos>{{{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}},
-                                        {{0.0f, 0.0f, 0.0f}}});
-    auto indexBuffer = LX_core::IndexBuffer::createUnique({0u, 1u, 2u});
-    item.raster.vertexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(vertexBuffer));
-    item.raster.indexBuffer =
-        m_scene->resources().addRenderGpuResource(std::move(indexBuffer));
-    const LX_core::MaterialHandle materialHandle =
-        m_scene->resources().addRenderMaterial(std::move(material));
-    item.descriptorResources =
-        LX_core::buildSceneMaterialDescriptorResources(
-            m_scene->resources(), materialHandle, item.shaderInfo);
-    const LX_core::RenderTarget renderTarget{};
-    auto sceneResources =
-        m_scene->getSceneLevelResources(LX_core::Pass_Forward, renderTarget);
-    for (auto &resource : sceneResources) {
-      item.descriptorResources.emplace_back(std::move(resource));
-    }
-    item.descriptorResources.emplace_back(skyboxResource.get());
-    item.descriptorResources.emplace_back(*iblResources->environmentUbo);
-    item.pass = LX_core::Pass_Forward;
-    item.target = target;
-    item.objectSignature = LX_core::StringID("SkyboxFullscreenTriangle");
-    item.materialSignature = materialSignature;
-    item.pipelineKey = LX_core::PipelineKey::build(
-        item.objectSignature, item.materialSignature,
-        item.target.getPipelineSignature());
-
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_Forward) {
-        pass.queue.addItem(std::move(item));
-        pass.queue.sort();
-        return;
-      }
-    }
-  }
-
-  void rebuildPassQueueWithDefaultCameraResources(
-      LX_core::StringID passName, const LX_core::RenderTargetDesc &targetDesc) {
-    if (!m_scene) {
-      return;
-    }
-    const LX_core::RenderTarget defaultCameraTarget{};
-    const LX_core::RenderTarget renderTarget{targetDesc};
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == passName) {
-        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
-                             *m_scene,
-                             LX_core::RenderWorkBuildContext::RealtimeOptions{
-                                 .sceneResourceTarget = defaultCameraTarget,
-                             }),
-                         passName, renderTarget);
-        return;
-      }
-    }
-  }
-
-  void rebuildDebugOverlayQueueWithDefaultCameraResources(
-      const LX_core::RenderTargetDesc &debugTarget) {
-    if (!m_scene) {
-      return;
-    }
-    const LX_core::RenderTarget defaultCameraTarget{};
-    const LX_core::RenderTarget debugRenderTarget{debugTarget};
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_DebugOverlay) {
-        pass.queue.build(LX_core::RenderWorkBuildContext::realtime(
-                             *m_scene,
-                             LX_core::RenderWorkBuildContext::RealtimeOptions{
-                                 .sceneResourceTarget = defaultCameraTarget,
-                             }),
-                         LX_core::Pass_DebugOverlay, debugRenderTarget);
-        return;
-      }
-    }
+    appendDescriptorResources(factsIt->second.descriptorResources,
+                              sceneResources);
   }
 
   LX_core::DirectionalLight *mainDirectionalLight() const {
@@ -2198,13 +2453,14 @@ private:
       return nullptr;
     }
     for (const auto &light : m_scene->getLights()) {
-      auto *directional =
-          dynamic_cast<LX_core::DirectionalLight *>(&light.get());
-      if (directional) {
-        if (directional->supportsPass(LX_core::Pass_Shadow) &&
-            directional->getSceneNode()) {
-          return directional;
-        }
+      const auto lightNode = light.get().getSceneNode();
+      if (!lightNode) {
+        continue;
+      }
+      const auto directional = m_scene->getDirectionalLight(*lightNode);
+      if (directional.has_value() &&
+          directional->get().supportsPass(LX_core::Pass_Shadow)) {
+        return &directional->get();
       }
     }
     return nullptr;
@@ -2281,8 +2537,8 @@ private:
     }
     if (cascadeIndex < m_shadowCascadeUboSnapshots.size() &&
         m_shadowCascadeUboSnapshots[cascadeIndex]) {
-      resourceManager().syncResource(commandBufferManager(),
-                                     *m_shadowCascadeUboSnapshots[cascadeIndex]);
+      resourceManager().syncResource(
+          commandBufferManager(), *m_shadowCascadeUboSnapshots[cascadeIndex]);
     }
   }
 
@@ -2319,59 +2575,83 @@ private:
     }
   }
 
-  void bindShadowCascadeUboSnapshots() {
-    const auto light = mainDirectionalLight();
-    if (!light || m_shadowCascadeUboSnapshots.empty()) {
-      return;
-    }
-
-    const auto mainLight = light->getUBO();
-    if (!mainLight.isValid()) {
-      return;
-    }
-    const auto mainLightIdentity = mainLight.getBackendCacheIdentity();
-    u32 cascadeIndex = 0;
-    for (auto &pass : m_frameGraph.getPasses()) {
-      if (pass.name != LX_core::Pass_Shadow) {
-        continue;
-      }
-      if (cascadeIndex >= m_shadowCascadeUboSnapshots.size()) {
-        break;
-      }
-      const auto &snapshot = m_shadowCascadeUboSnapshots[cascadeIndex];
-      if (!snapshot) {
-        ++cascadeIndex;
-        continue;
-      }
-      for (auto &item : pass.queue.getItems()) {
-        for (auto &resource : item.descriptorResources) {
-          if (resource.isResource() && resource.resource().isValid() &&
-              resource.resource().getBackendCacheIdentity() ==
-                  mainLightIdentity) {
-            resource = LX_core::DescriptorResourceRef{*snapshot};
+  void preparePipelinesForLoadedScene() {
+    std::unordered_set<LX_core::PipelineKey, LX_core::PipelineKey::Hash>
+        seenPipelines;
+    std::vector<LX_core::PipelineBuildDesc> pipelineDescs;
+    const auto appendPipelineDesc =
+        [&](LX_core::PipelineBuildDesc desc) {
+          if (seenPipelines.insert(desc.key).second) {
+            pipelineDescs.push_back(std::move(desc));
           }
+        };
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    const auto &graphPasses = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
+      const LX_core::CompiledFrameGraphPass &compiledPass =
+          compiledPasses[passIndex];
+      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+        continue;
+      }
+      const LX_core::FramePass &pass =
+          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+      PreparedRenderPassInputs prepared =
+          prepareRenderPassInputs(pass, context);
+      for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+        if (desc.accepted()) {
+          appendPipelineDesc(desc.pipelineBuildDesc);
         }
       }
-      ++cascadeIndex;
     }
+    resourceManager().preloadPipelines(pipelineDescs);
   }
 
   void attachFrameGraphSampledResources() {
+    m_compiledPassDescriptorResources.clear();
+    m_compiledPassDescriptorResources.resize(
+        m_compiledFrameGraph.getPasses().size());
+
+    const auto appendReadToCompiledPass =
+        [this](usize compiledPassIndex, const LX_core::FrameGraphRead &read) {
+          if (read.bindingName == LX_core::StringID{}) {
+            return;
+          }
+          auto resource = std::make_unique<LX_core::FrameGraphSampledResource>(
+              read.resource, read.bindingName);
+          const auto resourceRef =
+              m_scene->resources().addRenderGpuResource(std::move(resource));
+          m_compiledPassDescriptorResources[compiledPassIndex].emplace_back(
+              resourceRef.get());
+        };
+
     const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    auto &graphPasses = m_frameGraph.getPasses();
-    const usize passCount = std::min(compiledPasses.size(), graphPasses.size());
-    for (usize passIndex = 0; passIndex < passCount; ++passIndex) {
-      for (const auto &read : compiledPasses[passIndex].reads) {
-        if (read.bindingName == LX_core::StringID{}) {
-          continue;
+    const auto &graphPasses = m_frameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size();
+         ++passIndex) {
+      const auto &compiledPass = compiledPasses[passIndex];
+      if (compiledPass.sourcePassIndex >= graphPasses.size()) {
+        continue;
+      }
+      bool hasBloomColor = false;
+      std::optional<LX_core::FrameGraphRead> sceneColorRead;
+      for (const auto &read : compiledPass.reads) {
+        if (read.bindingName == LX_core::StringID("BloomColor")) {
+          hasBloomColor = true;
         }
-        auto resource = std::make_unique<LX_core::FrameGraphSampledResource>(
-            read.resource, read.bindingName);
-        const auto resourceRef =
-            m_scene->resources().addRenderGpuResource(std::move(resource));
-        for (auto &item : graphPasses[passIndex].queue.getItems()) {
-          item.descriptorResources.emplace_back(resourceRef.get());
+        if (compiledPass.name == LX_core::Pass_PostProcess &&
+            read.bindingName == LX_core::StringID("SceneColor")) {
+          sceneColorRead = read;
         }
+        appendReadToCompiledPass(passIndex, read);
+      }
+      if (compiledPass.name == LX_core::Pass_PostProcess && !hasBloomColor &&
+          sceneColorRead.has_value()) {
+        LX_core::FrameGraphRead bloomFallback = *sceneColorRead;
+        bloomFallback.bindingName = LX_core::StringID("BloomColor");
+        appendReadToCompiledPass(passIndex, bloomFallback);
       }
     }
   }
@@ -2463,7 +2743,8 @@ private:
   VkExtent2D prepareOffscreenPass(usize passIndex, u32 currentFrameIndex,
                                   const LX_core::CompiledFrameGraphPass &pass,
                                   VkExtent2D fallbackExtent,
-                                  VulkanCommandBuffer &cmd) {
+                                  VulkanCommandBuffer &cmd,
+                                  bool createFramebuffer = true) {
     if (pass.target.role == LX_core::RenderTargetRole::Swapchain) {
       return fallbackExtent;
     }
@@ -2503,11 +2784,13 @@ private:
       appendAttachment(write->get(), *pass.target.depthFormat);
     }
 
-    auto &framebuffer = m_offscreenFramebuffers[passIndex][currentFrameIndex];
-    if (!framebuffer) {
-      auto &renderPass = resourceManager().getRenderPass(pass.target);
-      framebuffer = VulkanFrameBuffer::create(device(), renderPass.getHandle(),
-                                              attachments, fallbackExtent);
+    if (createFramebuffer) {
+      auto &framebuffer = m_offscreenFramebuffers[passIndex][currentFrameIndex];
+      if (!framebuffer) {
+        auto &renderPass = resourceManager().getRenderPass(pass.target);
+        framebuffer = VulkanFrameBuffer::create(
+            device(), renderPass.getHandle(), attachments, fallbackExtent);
+      }
     }
     return fallbackExtent;
   }
@@ -2524,6 +2807,251 @@ private:
                                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                      VK_ACCESS_SHADER_READ_BIT, cmd);
     }
+  }
+
+  const LX_core::FramePass &
+  sourceGraphPassFor(const LX_core::CompiledFrameGraphPass &compiledPass) const {
+    const auto &graphPasses = m_frameGraph.getPasses();
+    if (compiledPass.sourcePassIndex >= graphPasses.size()) {
+      throw std::runtime_error("CompiledFrameGraphPass has invalid source pass "
+                               "index");
+    }
+    return graphPasses[compiledPass.sourcePassIndex];
+  }
+
+  LX_core::RenderPathNodeRenderingMode
+  explicitRenderingModeFor(const LX_core::CompiledFrameGraphPass &compiledPass)
+      const {
+    const auto &graphPass = sourceGraphPassFor(compiledPass);
+    if (!graphPass.renderingMode.has_value()) {
+      throw std::runtime_error(
+          "FrameGraph pass missing explicit RenderPathNode rendering.mode: " +
+          LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+    }
+    return *graphPass.renderingMode;
+  }
+
+  u32 dynamicRenderingLayerCount(const LX_core::FramePass &graphPass) const {
+    if (graphPass.attachments.empty()) {
+      throw std::runtime_error(
+          "Dynamic rendering pass has no attachment contract: " +
+          LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+    }
+    const u32 layers = graphPass.attachments.front().layers;
+    for (const auto &attachment : graphPass.attachments) {
+      if (attachment.layers != layers) {
+        throw std::runtime_error(
+            "Dynamic rendering pass attachment layers mismatch: " +
+            LX_core::GlobalStringTable::get().toDebugString(graphPass.name));
+      }
+    }
+    return layers;
+  }
+
+  VkPipelineStageFlags swapchainStageForLayout(VkImageLayout layout) const {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_UNDEFINED:
+      return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+      return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+      return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    default:
+      return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+  }
+
+  VkAccessFlags swapchainAccessForLayout(VkImageLayout layout) const {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+      return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+      return VK_ACCESS_TRANSFER_READ_BIT;
+    default:
+      return 0;
+    }
+  }
+
+  void transitionSwapchainImage(u32 imageIndex, VkImageLayout newLayout,
+                                VulkanCommandBuffer &cmd) {
+    if (imageIndex >= m_swapchainImageLayouts.size()) {
+      throw std::runtime_error("Swapchain image layout state is missing");
+    }
+    VkImageLayout &currentLayout = m_swapchainImageLayouts[imageIndex];
+    if (currentLayout == newLayout) {
+      return;
+    }
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = currentLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = m_swapchain->getImage(imageIndex);
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = swapchainAccessForLayout(currentLayout);
+    barrier.dstAccessMask = swapchainAccessForLayout(newLayout);
+
+    cmd.pipelineBarrier(swapchainStageForLayout(currentLayout),
+                        swapchainStageForLayout(newLayout), barrier);
+    currentLayout = newLayout;
+  }
+
+  VkAttachmentLoadOp
+  dynamicLoadOpForWrite(const LX_core::FrameGraphWrite &write) const {
+    return write.writeMode.has_value() ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                       : VK_ATTACHMENT_LOAD_OP_CLEAR;
+  }
+
+  VkRenderingAttachmentInfo makeDynamicColorAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
+    VkRenderingAttachmentInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    info.imageView = imageView;
+    info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    info.loadOp = dynamicLoadOpForWrite(write);
+    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    info.clearValue.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    return info;
+  }
+
+  VkRenderingAttachmentInfo makeDynamicDepthAttachmentInfo(
+      VkImageView imageView, const LX_core::FrameGraphWrite &write) const {
+    VkRenderingAttachmentInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    info.imageView = imageView;
+    info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    info.loadOp = dynamicLoadOpForWrite(write);
+    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    info.clearValue.depthStencil = {1.0f, 0};
+    return info;
+  }
+
+  void recordDynamicPass(usize passIndex, u32 imageIndex, VkExtent2D extent,
+                         VulkanCommandBuffer &cmd, bool beginGuiFrame,
+                         bool endGuiFrame) {
+    const auto &compiledPass = m_compiledFrameGraph.getPasses()[passIndex];
+    const auto &graphPass = sourceGraphPassFor(compiledPass);
+    const VkExtent2D passExtent =
+        compiledPass.target.role == LX_core::RenderTargetRole::Swapchain
+            ? extent
+            : prepareOffscreenPass(passIndex, m_frameIndex % kMaxFramesInFlight,
+                                   compiledPass, extent, cmd,
+                                   /*createFramebuffer=*/false);
+
+    std::vector<VkRenderingAttachmentInfo> colorAttachments;
+    const auto colorWrites =
+        findWritesForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Color);
+    colorAttachments.reserve(colorWrites.size());
+    if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+      transitionSwapchainImage(imageIndex,
+                               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, cmd);
+      if (colorWrites.size() != 1) {
+        throw std::runtime_error(
+            "Dynamic swapchain pass must declare exactly one color write: " +
+            LX_core::GlobalStringTable::get().toDebugString(
+                compiledPass.name));
+      }
+      colorAttachments.push_back(makeDynamicColorAttachmentInfo(
+          m_swapchain->getImageView(imageIndex), colorWrites.front().get()));
+    } else {
+      for (const auto &write : colorWrites) {
+        auto attachment =
+            resourceManager().getFrameGraphAttachment(write.get().resource.name);
+        if (!attachment.has_value() || !attachment->get().texture) {
+          throw std::runtime_error(
+              "Dynamic offscreen pass missing color attachment: " +
+              LX_core::GlobalStringTable::get().toDebugString(
+                  write.get().resource.name));
+        }
+        colorAttachments.push_back(makeDynamicColorAttachmentInfo(
+            attachment->get().texture->getImageView(), write.get()));
+      }
+    }
+
+    std::optional<VkRenderingAttachmentInfo> depthAttachment;
+    const auto depthWrite =
+        findWriteForKind(compiledPass, LX_core::FrameGraphAttachmentKind::Depth);
+    if (depthWrite.has_value()) {
+      if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+        depthAttachment = makeDynamicDepthAttachmentInfo(
+            m_swapchain->getDepthImageView(imageIndex), depthWrite->get());
+      } else {
+        auto attachment = resourceManager().getFrameGraphAttachment(
+            depthWrite->get().resource.name);
+        if (!attachment.has_value() || !attachment->get().texture) {
+          throw std::runtime_error(
+              "Dynamic offscreen pass missing depth attachment: " +
+              LX_core::GlobalStringTable::get().toDebugString(
+                  depthWrite->get().resource.name));
+        }
+        depthAttachment = makeDynamicDepthAttachmentInfo(
+            attachment->get().texture->getImageView(), depthWrite->get());
+      }
+    }
+
+    if (beginGuiFrame) {
+      m_gui.beginFrame();
+      if (m_drawUiCallback) {
+        m_drawUiCallback();
+      }
+    }
+    cmd.beginRendering(passExtent, colorAttachments,
+                       depthAttachment.has_value() ? &*depthAttachment
+                                                   : nullptr,
+                       dynamicRenderingLayerCount(graphPass));
+    cmd.setViewport(passExtent.width, passExtent.height);
+    cmd.setScissor(passExtent.width, passExtent.height);
+    drawPassQueue(passIndex, cmd);
+    if (endGuiFrame) {
+      m_gui.endFrame(cmd.getHandle());
+    }
+    cmd.endRendering();
+    transitionPassWritesToShaderRead(compiledPass, cmd);
+  }
+
+  void recordTraditionalPass(usize passIndex, u32 currentFrameIndex,
+                             u32 imageIndex, VkExtent2D extent,
+                             VulkanCommandBuffer &cmd, bool beginGuiFrame,
+                             bool endGuiFrame) {
+    if (beginGuiFrame || endGuiFrame) {
+      throw std::runtime_error(
+          "GUI overlay requires dynamic rendering for swapchain passes");
+    }
+    const auto &compiledPass = m_compiledFrameGraph.getPasses()[passIndex];
+    if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+      auto &renderPass = resourceManager().getRenderPass();
+      cmd.beginRenderPass(renderPass.getHandle(),
+                          m_swapchain->getFramebuffer(imageIndex).getHandle(),
+                          extent, renderPass.getClearValues());
+      cmd.setViewport(extent.width, extent.height);
+      cmd.setScissor(extent.width, extent.height);
+      drawPassQueue(passIndex, cmd);
+      cmd.endRenderPass();
+      return;
+    }
+
+    const VkExtent2D passExtent =
+        prepareOffscreenPass(passIndex, currentFrameIndex, compiledPass, extent,
+                             cmd, /*createFramebuffer=*/true);
+    auto &renderPass = resourceManager().getRenderPass(compiledPass.target);
+    cmd.beginRenderPass(
+        renderPass.getHandle(),
+        m_offscreenFramebuffers[passIndex][currentFrameIndex]->getHandle(),
+        passExtent, renderPass.getClearValues());
+    cmd.setViewport(passExtent.width, passExtent.height);
+    cmd.setScissor(passExtent.width, passExtent.height);
+    drawPassQueue(passIndex, cmd);
+    cmd.endRenderPass();
+    transitionPassWritesToShaderRead(compiledPass, cmd);
   }
 
   void recordPendingScreenDump(u32 imageIndex, VkExtent2D extent,
@@ -2627,6 +3155,8 @@ private:
     if (!m_swapchain->rebuild(resourceManager().getRenderPass())) {
       return;
     }
+    m_swapchainImageLayouts.assign(m_swapchain->getImageCount(),
+                                   VK_IMAGE_LAYOUT_UNDEFINED);
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
     m_swapchainNeedsRebuild = false;
@@ -2657,6 +3187,12 @@ private:
   SceneSharedPtr m_scene = nullptr;
   LX_core::FrameGraph m_frameGraph{};
   LX_core::CompiledFrameGraph m_compiledFrameGraph{};
+  std::unordered_map<LX_core::StringID,
+                     LX_core::RenderWorkBuildContext::PassPreparationFacts,
+                     LX_core::StringID::Hash>
+      m_basePassPreparationFacts{};
+  std::vector<LX_core::DescriptorResourceList>
+      m_compiledPassDescriptorResources{};
   std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
       m_offscreenFramebuffers;
   u32 m_frameIndex = 0;
@@ -2666,6 +3202,7 @@ private:
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
   std::optional<PendingScreenDump> m_pendingScreenDump;
+  std::vector<VkImageLayout> m_swapchainImageLayouts;
   std::vector<LX_core::DirectionalLightDataUniquePtr>
       m_shadowCascadeUboSnapshots;
 };
@@ -2735,6 +3272,12 @@ VulkanRealtimeRenderer::dumpFrameGraphAttachment(
     const std::optional<std::filesystem::path> &path,
     const std::optional<std::filesystem::path> &screenPath) {
   return p_impl->dumpFrameGraphAttachment(attachmentName, path, screenPath);
+}
+
+VulkanFrameGraphAttachmentDumpResult
+VulkanRealtimeRenderer::statsFrameGraphAttachment(
+    std::string_view attachmentName) {
+  return p_impl->statsFrameGraphAttachment(attachmentName);
 }
 
 VulkanFrameGraphAttachmentDumpResult

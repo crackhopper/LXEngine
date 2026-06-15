@@ -9,9 +9,9 @@ Maintain human-readable Chinese project notes under `notes/`.
 
 - Notes describe the current implementation only.
 - Deleted or renamed concepts must be physically removed from notes; do not leave tombstones.
-- Notes are summaries and navigation, not copies of specs.
+- Notes are summaries and navigation, not copies of Superpowers design specs.
 - Preserve manual sections marked with `<!-- manual --> ... <!-- manual:end -->`, but still flag stale content inside them.
-- Ignore active `openspec/changes/<active>/`; only archived changes may inform notes.
+- Treat `src/`, current `notes/`, and approved Superpowers specs as context; do not describe unimplemented design as current behavior.
 
 ## Modes
 
@@ -32,7 +32,7 @@ Maintain human-readable Chinese project notes under `notes/`.
 4. In full mode, scan:
    - `AGENTS.md`
    - `CLAUDE.md`
-   - `openspec/specs/*/spec.md`
+   - `docs/superpowers/specs/*.md`
    - `notes/subsystems/*.md`
    - top-level project structure
    - key public APIs in headers

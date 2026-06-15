@@ -19,6 +19,9 @@
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 #include "infra/window/window.hpp"
 
 #include "api_token_state.hpp"
@@ -67,6 +70,46 @@ using LX_core::gpu::EngineLoop;
 namespace demo = LX_demo::lxe_editor;
 
 namespace {
+
+[[nodiscard]] LX_core::IShaderSharedPtr debugOverlayShader() {
+  static LX_core::IShaderSharedPtr shader = [] {
+    const auto compiled = LX_infra::ShaderCompiler::compileProgram(
+        resolveRuntimePath("assets/shaders/glsl/debug_overlay.vert"),
+        resolveRuntimePath("assets/shaders/glsl/debug_overlay.frag"), {});
+    if (!compiled.success) {
+      throw std::runtime_error("failed to compile DebugOverlay shader: " +
+                               compiled.errorMessage);
+    }
+    return std::make_shared<LX_infra::CompiledShader>(
+        compiled.stages, LX_infra::ShaderReflector::reflect(compiled.stages),
+        LX_infra::ShaderReflector::reflectVertexInputs(compiled.stages),
+        "debug_overlay");
+  }();
+  return shader;
+}
+
+[[nodiscard]] LX_core::MaterialInstanceSharedPtr createDebugOverlayMaterial() {
+  auto tmpl = LX_core::MaterialTemplate::create("debug_overlay");
+
+  LX_core::MaterialPassDefinition passDefinition;
+  passDefinition.shaderProgram.shaderName = "debug_overlay";
+  passDefinition.shaderProgram.shader = debugOverlayShader();
+  passDefinition.renderState.cullMode = LX_core::CullMode::None;
+  passDefinition.renderState.depthTestEnable = false;
+  passDefinition.renderState.depthWriteEnable = false;
+  passDefinition.renderState.depthOp = LX_core::CompareOp::Always;
+  passDefinition.renderState.blendEnable = true;
+  passDefinition.renderState.srcBlend = LX_core::BlendFactor::SrcAlpha;
+  passDefinition.renderState.dstBlend = LX_core::BlendFactor::OneMinusSrcAlpha;
+
+  tmpl->setPassDefinition(LX_core::Pass_DebugOverlay,
+                          std::move(passDefinition));
+  tmpl->rebuildMaterialInterface();
+
+  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  material->setPassEnabled(LX_core::Pass_DebugOverlay, true);
+  return material;
+}
 
 [[nodiscard]] demo::ApiEditorMode
 toApiEditorMode(const demo::UiOverlay::EditorMode mode) {
@@ -868,10 +911,6 @@ int main(int argc, char **argv) {
                   .profileName = realtimeRenderOptions->profileName,
                   .outputPath = realtimeRenderOptions->outputBasePath,
               });
-      if (!resolved.output.materialTag.empty()) {
-        runtime.scene()->setActiveMaterialTagForRenderables(
-            resolved.output.materialTag);
-      }
       const std::filesystem::path outputBasePath =
           realtimeRenderOptions->outputBasePath.value_or(
               demo::makeRealtimeProfileOutputBasePath(
@@ -1011,6 +1050,22 @@ int main(int argc, char **argv) {
                   .maxValue = dumped.maxValue,
                   .meanValue = dumped.meanValue,
                   .nonZeroRatio = dumped.nonZeroRatio,
+              };
+            },
+        .statsRenderTarget =
+            [vulkanRenderer](std::string_view targetName) {
+              const auto stats =
+                  vulkanRenderer->statsFrameGraphAttachment(targetName);
+              return demo::LxeEditorSession::RenderDebugDumpResult{
+                  .path = stats.path,
+                  .screenPath = stats.screenPath,
+                  .width = stats.width,
+                  .height = stats.height,
+                  .format = stats.format,
+                  .minValue = stats.minValue,
+                  .maxValue = stats.maxValue,
+                  .meanValue = stats.meanValue,
+                  .nonZeroRatio = stats.nonZeroRatio,
               };
             },
     };
@@ -1170,8 +1225,7 @@ int main(int argc, char **argv) {
     EngineLoop loop;
     loop.initialize(window, renderer);
     LX_core::DebugDraw::setMaterialProvider([] {
-      return LX_infra::loadGenericMaterial(
-          "assets/materials/debug_line.material");
+      return createDebugOverlayMaterial();
     });
     loop.startScene(session.scene());
 

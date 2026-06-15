@@ -2,7 +2,7 @@
 
 > Skeleton 是独立资源，不再挂在旧组件体系上。它现在只负责骨骼矩阵数据和运行期 descriptor 供给，不再直接参与 pipeline identity。
 >
-> 权威 spec: `openspec/specs/skeleton-resource/spec.md`
+> 当前事实以 `src/core/asset/skeleton.*` 和本页说明为准。
 
 ## 它解决什么问题
 

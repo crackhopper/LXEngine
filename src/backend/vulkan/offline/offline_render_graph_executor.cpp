@@ -5,7 +5,6 @@
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/frame_graph/frame_graph.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -14,20 +13,57 @@
 namespace LX_core::backend::offline {
 namespace {
 
-[[nodiscard]] GpuResourceRef
-findPipelineResource(const RenderWorkItem &item, StringID bindingName) {
-  const auto it = std::find_if(
-      item.descriptorResources.begin(), item.descriptorResources.end(),
-      [bindingName](const DescriptorResourceRef &resource) {
-        return resource.getBindingName() == bindingName;
-      });
-  if (it == item.descriptorResources.end() || !it->isResource()) {
-    return {};
+void syncDescriptorResources(VulkanResourceManager &resourceManager,
+                             VulkanCommandBufferManager &commandManager,
+                             const DescriptorResourceList &resources) {
+  for (const DescriptorResourceRef &resource : resources) {
+    if (resource.isTextureArray()) {
+      for (const TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid()) {
+          resourceManager.syncResource(commandManager,
+                                       GpuResourceRef{texture.get()});
+        }
+      }
+      continue;
+    }
+    if (resource.resource().isValid()) {
+      resourceManager.syncResource(commandManager, resource.resource());
+    }
   }
-  return it->resource();
 }
 
 } // namespace
+
+GpuResourceRef resolveComputeReadbackResource(const RenderComputeInput &input,
+                                              const RenderInputDesc &desc) {
+  if (!input.readbackResource.has_value()) {
+    throw std::runtime_error(
+        "offline compute input missing readback resource binding");
+  }
+  const StringID bindingName = *input.readbackResource;
+  const auto it = std::find_if(
+      desc.bindingPlan.descriptors.begin(), desc.bindingPlan.descriptors.end(),
+      [bindingName](const DescriptorResourceRef &resource) {
+        return resource.getBindingName() == bindingName;
+      });
+  if (it == desc.bindingPlan.descriptors.end()) {
+    throw std::runtime_error("offline compute readback resource binding '" +
+                             GlobalStringTable::get().toDebugString(bindingName) +
+                             "' missing");
+  }
+  if (!it->isResource()) {
+    throw std::runtime_error("offline compute readback resource binding '" +
+                             GlobalStringTable::get().toDebugString(bindingName) +
+                             "' is not a resource");
+  }
+  const GpuResourceRef resource = it->resource();
+  if (!resource.isValid()) {
+    throw std::runtime_error("offline compute readback resource binding '" +
+                             GlobalStringTable::get().toDebugString(bindingName) +
+                             "' is invalid");
+  }
+  return resource;
+}
 
 OfflineRenderGraphExecutor::OfflineRenderGraphExecutor(
     VulkanDevice &device, VulkanCommandBufferManager &commandManager,
@@ -37,7 +73,11 @@ OfflineRenderGraphExecutor::OfflineRenderGraphExecutor(
 
 OfflineGraphExecutionResult
 OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
-                                    const CompiledFrameGraph &compiledGraph) {
+                                    const CompiledFrameGraph &compiledGraph,
+                                    const std::vector<std::vector<std::unique_ptr<RenderInput>>>
+                                        &passInputs,
+                                    const std::vector<std::vector<RenderInputDesc>>
+                                        &passDescs) {
   const auto &graphPasses = graph.getPasses();
   const auto &compiledPasses = compiledGraph.getPasses();
   if (graphPasses.empty()) {
@@ -46,37 +86,57 @@ OfflineRenderGraphExecutor::execute(const FrameGraph &graph,
   if (graphPasses.size() != compiledPasses.size()) {
     throw std::runtime_error("offline render graph pass count mismatch");
   }
+  if (graphPasses.size() != passInputs.size() ||
+      graphPasses.size() != passDescs.size()) {
+    throw std::runtime_error("offline render graph input count mismatch");
+  }
 
   OfflineGraphExecutionResult result;
-  for (usize passIndex = 0; passIndex < graphPasses.size(); ++passIndex) {
-    const FramePass &pass = graphPasses[passIndex];
+  for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+    const usize sourcePassIndex = compiledPasses[passIndex].sourcePassIndex;
+    if (sourcePassIndex >= graphPasses.size() ||
+        sourcePassIndex >= passInputs.size() || sourcePassIndex >= passDescs.size()) {
+      throw std::runtime_error("offline render graph source pass mismatch");
+    }
+    const FramePass &pass = graphPasses[sourcePassIndex];
+    const auto &inputs = passInputs[sourcePassIndex];
+    const auto &descs = passDescs[sourcePassIndex];
     if (pass.name != compiledPasses[passIndex].name) {
       throw std::runtime_error("offline render graph pass order mismatch");
     }
-    const RenderUploadPlan uploadPlan = buildRenderUploadPlan(pass.queue);
-    for (const auto &resource : uploadPlan.resources) {
-      m_resourceManager.syncResource(m_commandManager, resource);
+    for (const RenderInputDesc &desc : descs) {
+      if (desc.accepted()) {
+        syncDescriptorResources(m_resourceManager, m_commandManager,
+                                desc.bindingPlan.descriptors);
+      }
     }
 
-    if (pass.queue.getItems().empty()) {
+    if (descs.empty()) {
       continue;
     }
 
     auto cmd = m_commandManager.beginSingleTimeCommands();
-    for (const RenderWorkItem &item : pass.queue.getItems()) {
-      if (item.domain != RenderDomain::Offline ||
-          item.kind != RenderWorkKind::ComputeDispatch) {
+    for (const RenderInputDesc &desc : descs) {
+      if (!desc.accepted()) {
+        continue;
+      }
+      if (desc.inputIndex >= inputs.size() || !inputs[desc.inputIndex]) {
+        throw std::runtime_error("offline render graph desc input missing");
+      }
+      const RenderInput &input = *inputs[desc.inputIndex];
+      if (input.kind() != RenderInputKind::Compute) {
         throw std::runtime_error(
-            "offline render graph only supports offline compute work");
+            "offline render graph only supports compute inputs");
       }
 
-      VulkanPipelineRef pipeline = m_resourceManager.getOrCreatePipeline(item);
+      VulkanPipelineRef pipeline = m_resourceManager.getOrCreatePipeline(desc);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(m_resourceManager, pipeline, item);
-      cmd->executeWorkItem(item);
+      cmd->bindResources(m_resourceManager, pipeline, input, desc);
+      cmd->executeRenderInput(input, desc);
 
+      const auto &computeInput = static_cast<const RenderComputeInput &>(input);
       GpuResourceRef outputPixels =
-          findPipelineResource(item, StringID("OutputPixels"));
+          resolveComputeReadbackResource(computeInput, desc);
       if (outputPixels.isValid()) {
         result.outputPixels = std::move(outputPixels);
       }

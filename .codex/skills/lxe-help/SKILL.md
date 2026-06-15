@@ -71,7 +71,8 @@ skills. All skills in this family use an `lxe-` directory/frontmatter prefix;
   `update-notes`, or `writing-notes`.
 - Requirement lifecycle work is not part of this family; use `draft-req` or
   `finish-req`.
-- OpenSpec workflow is not part of this family; use `openspec-*` skills.
+- Broader design work is not part of this family; use Superpowers
+  brainstorming and planning skills.
 
 ## Quick Recommendation
 

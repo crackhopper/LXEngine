@@ -24,33 +24,32 @@
 
 源码位置：[mesh.hpp](../../../../src/core/asset/mesh.hpp)
 
-### Mesh：把几何资源收束成渲染路径可复用的薄边界
+### GeometryStorage：收束底层 vertex/index 数据
 
-`Mesh` 故意不是“顶点数组 + 索引数组 + 一堆绘制状态”的大对象，而是一个很薄的
-聚合边界：只把 `IVertexBuffer`、`IndexBuffer` 和包围盒绑定在一起。
+`GeometryStorage` 是场景资源表未来管理几何底层存储的入口。首版仍然复用现有
+`IVertexBuffer` 和 `IndexBuffer`，但把“底层存储”和“某个 mesh 使用哪段范围”
+拆开，让 realtime renderer、offline renderer 和后续 bindless/packed geometry
+可以共享同一份 vertex/index 数据。
+
+它不是新的顶点/索引模型；它只包住现有 buffer 类型。
+
+### MeshBuffer：把 mesh 表达为 GeometryStorage 的切片
+
+`MeshBuffer` 故意不是“顶点数组 + 索引数组 +
+一堆绘制状态”的大对象，而是一个很薄的 聚合边界：它引用
+`GeometryStorage`，再记录当前 mesh 使用的 vertex/index 范围和 包围盒。
 
 这条边界回答的是“一个可绘制几何体最少需要什么结构事实”：
 
 - 顶点布局是什么
 - 图元怎样组装
-- CPU / backend 都要面对的原始 buffer 在哪里
+- CPU / backend 都要面对的原始 buffer 在哪个 `GeometryStorage`
 - 这个 mesh 是否是有内部体积的封闭体
 
-材质、shader variant、pass enable 这些都不属于 `Mesh`。这样 mesh 才能被多个材质、
-多个 scene node 复用，而不会把几何身份和材质身份混成一个缓存键。
-`closedVolume` 也保持在几何层，因为它描述的是 mesh 拓扑语义，不是某个材质参数。
-
-### 几何签名：mesh 只输出 pipeline 真正关心的结构信息
-
-`getPipelineSignature()` 只组合两类东西：
-
-- 顶点输入布局
-- 索引拓扑
-
-它们不看顶点个数、索引范围、包围盒，也不看具体字节内容。原因是 pipeline 身份只关心
-“这个 draw 需要怎样的 vertex input / primitive assembly 约束”，而不关心这次画了多少个点。
-
-因此 `MeshRender` 更像“几何接口形状”，不是几何数据内容的内容哈希。
+材质、shader variant、pass enable 这些都不属于 `Mesh`。这样 mesh
+才能被多个材质、 多个 scene node
+复用，而不会把几何身份和材质身份混成一个缓存键。 `closedVolume`
+也保持在几何层，因为它描述的是 mesh 拓扑语义，不是某个材质参数。
 
 ## vertex_buffer.hpp
 

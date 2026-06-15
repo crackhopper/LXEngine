@@ -6,12 +6,16 @@
 
 namespace LX_core {
 
+RenderWorkBuildContext RenderWorkBuildContext::realtimeEmpty() {
+  return RenderWorkBuildContext();
+}
+
 RenderWorkBuildContext RenderWorkBuildContext::realtime(const Scene &scene) {
   return RenderWorkBuildContext(std::cref(scene));
 }
 
-RenderWorkBuildContext RenderWorkBuildContext::realtime(
-    const Scene &scene, RealtimeOptions options) {
+RenderWorkBuildContext
+RenderWorkBuildContext::realtime(const Scene &scene, RealtimeOptions options) {
   return RenderWorkBuildContext(std::cref(scene), std::move(options));
 }
 
@@ -21,10 +25,13 @@ RenderWorkBuildContext::offline(offline::OfflineRenderJob &job) {
 }
 
 RenderDomain RenderWorkBuildContext::domain() const {
-  if (std::holds_alternative<RealtimeSource>(m_source)) {
-    return RenderDomain::Realtime;
-  }
-  return RenderDomain::Offline;
+  return std::holds_alternative<OfflineSource>(m_source)
+             ? RenderDomain::Offline
+             : RenderDomain::Realtime;
+}
+
+bool RenderWorkBuildContext::hasRealtimeScene() const {
+  return std::holds_alternative<RealtimeSource>(m_source);
 }
 
 const Scene &RenderWorkBuildContext::realtimeScene() const {
@@ -44,12 +51,31 @@ RenderWorkBuildContext::realtimeOptions() const {
   return m_realtimeOptions;
 }
 
-offline::OfflineRenderJob &RenderWorkBuildContext::offlineJob() const {
+std::optional<std::reference_wrapper<
+    const RenderWorkBuildContext::PassPreparationFacts>>
+RenderWorkBuildContext::findPassPreparationFacts(StringID pass) const {
+  if (domain() != RenderDomain::Realtime) {
+    return std::nullopt;
+  }
+  for (const PassPreparationFacts &facts :
+       m_realtimeOptions.passPreparationFacts) {
+    if (facts.pass == pass) {
+      return std::cref(facts);
+    }
+  }
+  return std::nullopt;
+}
+
+offline::OfflineRenderJob &
+RenderWorkBuildContext::offlineJob() const {
   if (const auto *job = std::get_if<OfflineSource>(&m_source)) {
     return job->get();
   }
   throw std::logic_error("RenderWorkBuildContext does not hold an offline job");
 }
+
+RenderWorkBuildContext::RenderWorkBuildContext()
+    : m_source(EmptyRealtimeSource{}) {}
 
 RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene)
     : m_source(scene) {}

@@ -6,16 +6,66 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "backend/vulkan/offline/offline_compute_shader.hpp"
 #include "backend/vulkan/offline/offline_render_graph_executor.hpp"
+#include "core/frame_graph/render_validation_contract.hpp"
+#include "core/frame_graph/render_work_build_context.hpp"
+#include "core/frame_graph/render_work_compiler.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "core/offline/offline_render_work_graph.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
 #include <cstring>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace LX_core::backend::offline {
+namespace {
+
+[[nodiscard]] std::string debugString(StringID value) {
+  return value.id == 0 ? std::string("<none>")
+                       : GlobalStringTable::get().toDebugString(value);
+}
+
+} // namespace
+
+void validatePreparedOfflineRenderDescs(
+    const std::vector<std::vector<RenderInputDesc>> &passDescs) {
+  std::ostringstream details;
+  bool failed = false;
+
+  for (const std::vector<RenderInputDesc> &descs : passDescs) {
+    const RenderInputValidationResult validation =
+        validatePreparedRenderInputs(descs);
+    if (validation.ok) {
+      continue;
+    }
+    failed = true;
+    for (const RenderInputDiagnostic &diagnostic :
+         validation.diagnostics) {
+      details << "\n- pass=" << debugString(diagnostic.pass)
+              << " debugId=" << debugString(diagnostic.debugId)
+              << " message=" << diagnostic.message;
+    }
+    for (const RenderInputDesc &desc : descs) {
+      if (desc.accepted() || !desc.diagnostics.empty()) {
+        continue;
+      }
+      details << "\n- rejected prepared offline render desc pass="
+              << debugString(desc.pass)
+              << " debugId=" << debugString(desc.debugId);
+    }
+  }
+
+  if (failed) {
+    throw std::runtime_error("offline prepared render input validation failed" +
+                             details.str());
+  }
+}
 
 struct SoftwareComputeOfflineIntegrator::Impl final {
   Impl() {
@@ -45,22 +95,46 @@ struct SoftwareComputeOfflineIntegrator::Impl final {
     const IShaderSharedPtr offlineShader = job.offlineShader;
     if (!offlineShader) {
       throw std::runtime_error(
-          "offline render requires a material tag with OfflineRayTrace pass");
+          "offline render requires an offline shader provider");
     }
     FrameGraph renderGraph =
         LX_core::offline::createOfflineRenderFrameGraph(job.output);
-    renderGraph.build(LX_core::RenderWorkBuildContext::offline(job));
     const CompiledFrameGraph compiledGraph = renderGraph.compile();
     if (!compiledGraph.isValid()) {
       throw std::runtime_error(compiledGraph.errorText());
     }
 
-    resourceManager->preloadPipelines(
-        renderGraph.collectAllPipelineBuildDescs());
+    std::vector<std::vector<std::unique_ptr<RenderInput>>> passInputs(
+        renderGraph.getPasses().size());
+    std::vector<std::vector<RenderInputDesc>> passDescs(
+        renderGraph.getPasses().size());
+    RenderWorkCompiler compiler;
+    for (usize passIndex = 0; passIndex < renderGraph.getPasses().size();
+         ++passIndex) {
+      const FramePass &pass = renderGraph.getPasses()[passIndex];
+      const RenderWorkBuildContext context =
+          LX_core::RenderWorkBuildContext::offline(job);
+      compiler.buildInputs(pass, context, passInputs[passIndex]);
+      passDescs[passIndex] =
+          compiler.prepare(pass, context, passInputs[passIndex]);
+    }
+    validatePreparedOfflineRenderDescs(passDescs);
+
+    std::unordered_set<PipelineKey, PipelineKey::Hash> seenPipelines;
+    std::vector<PipelineBuildDesc> pipelineDescs;
+    for (const auto &descs : passDescs) {
+      for (const RenderInputDesc &desc : descs) {
+        if (desc.accepted() &&
+            seenPipelines.insert(desc.pipelineBuildDesc.key).second) {
+          pipelineDescs.push_back(desc.pipelineBuildDesc);
+        }
+      }
+    }
+    resourceManager->preloadPipelines(pipelineDescs);
     OfflineRenderGraphExecutor executor(*device, *commandManager,
                                         *resourceManager);
     const OfflineGraphExecutionResult execution =
-        executor.execute(renderGraph, compiledGraph);
+        executor.execute(renderGraph, compiledGraph, passInputs, passDescs);
 
     LX_core::offline::OfflineReadbackImage image;
     image.width = job.output.width;

@@ -2,7 +2,7 @@
 
 > Scene 负责持有 renderables、camera、light，并为 `RenderWorkQueue` 提供 scene-level 资源。真正的 work item 组装消费 `SceneNode` 预验证结果。
 >
-> 相关 spec: `openspec/specs/scene-node-validation/spec.md` + `openspec/specs/frame-graph/spec.md` + `openspec/specs/pipeline-signature/spec.md`
+> 相关实现入口：`src/core/scene/`、`src/core/frame_graph/`、`src/core/pipeline/`
 
 ## 深入阅读
 
@@ -71,7 +71,7 @@
 
 ## 当前实现边界
 
-- `IRenderable::getDescriptorResources(...)` 已经是显式带 pass 的接口；`getShaderInfo()` 的无参版本仍主要作为 Forward 默认读取路径保留。
+- per-renderable descriptor 资源现在由 validated pass data 和 scene descriptor resolver 组装；不要再依赖 `IRenderable::getDescriptorResources(...)` 作为当前主接口。
 - `PerDrawData` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PerDrawLayoutBase` / `PerDrawLayout` 的 `model` 字段有效。
 - 第一版 hierarchy 只支持 renderable-to-renderable 关系；没有单独的 transform-only scene node，也不会改变 `Scene` 对 renderable 的平铺 ownership，所以 child 仍然需要显式加入 `Scene`。
 - `Scene` 构造时仍会补一个默认 directional light；camera 由调用方显式创建并挂到 scene root 下。节点一旦通过 `addRenderable()` / `addCamera()` 挂进 scene，也会拿到一个弱 back-reference，用来支持 shared material 重验证传播。

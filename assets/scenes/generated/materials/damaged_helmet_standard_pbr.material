@@ -1,0 +1,16 @@
+schema: lxe.material.v2
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    metallic: { kind: float, value: 1.0 }
+    roughness: { kind: float, value: 1.0 }
+    emissive: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    alphaMode: { kind: string, value: OPAQUE }
+    alphaCutoff: { kind: float, value: 0.5 }
+    baseColorTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_albedo.jpg }
+    metallicRoughnessTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_metalRoughness.jpg }
+    normalTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_normal.jpg }
+    occlusionTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_AO.jpg }
+    emissiveTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_emissive.jpg }

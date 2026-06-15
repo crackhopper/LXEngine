@@ -1,8 +1,10 @@
-#include "core/utils/env.hpp"
-#include "infra/shader_compiler/shader_compiler.hpp"
-#include "infra/shader_compiler/compiled_shader.hpp"
-#include "infra/shader_compiler/shader_reflector.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/scene_system_abi.hpp"
+#include "core/scene/scene_system_abi_validation.hpp"
+#include "core/utils/env.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -87,14 +89,13 @@ static void printBindings(const std::vector<ShaderResourceBinding> &bindings) {
     std::cout << "  [set=" << b.set << ", binding=" << b.binding << "] "
               << "name=\"" << b.name << "\"  "
               << "type=" << shaderPropertyTypeName(b.type) << "  "
-              << "count=" << b.descriptorCount << "  "
-              << "size=" << b.size << "  "
-              << "stages=" << stageFlagsToString(b.stageFlags) << "\n";
+              << "count=" << b.descriptorCount << "  " << "size=" << b.size
+              << "  " << "stages=" << stageFlagsToString(b.stageFlags) << "\n";
   }
 }
 
-static void
-printDescriptorSetLayoutMapping(const std::vector<ShaderResourceBinding> &bindings) {
+static void printDescriptorSetLayoutMapping(
+    const std::vector<ShaderResourceBinding> &bindings) {
   std::cout << "\n  === VkDescriptorSetLayoutBinding mapping ===\n";
 
   // Group by set
@@ -119,12 +120,10 @@ printDescriptorSetLayoutMapping(const std::vector<ShaderResourceBinding> &bindin
 // Test runner
 // ---------------------------------------------------------------------------
 
-static bool testVariantCombination(
-    const std::filesystem::path &vertPath,
-    const std::filesystem::path &fragPath,
-    const std::string &label,
-    const std::vector<ShaderVariant> &variants) {
-
+static bool testVariantCombination(const std::filesystem::path &vertPath,
+                                   const std::filesystem::path &fragPath,
+                                   const std::string &label,
+                                   const std::vector<ShaderVariant> &variants) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: " << label << "\n";
   std::cout << "========================================\n";
@@ -154,12 +153,13 @@ static bool testVariantCombination(
 
   // Reflect
   auto bindings = ShaderReflector::reflect(compileResult.stages);
-  auto vertexInputs = ShaderReflector::reflectVertexInputs(compileResult.stages);
+  auto vertexInputs =
+      ShaderReflector::reflectVertexInputs(compileResult.stages);
   std::cout << "  Reflection found " << bindings.size() << " bindings\n";
 
   // Create CompiledShader
-  auto shader = std::make_shared<CompiledShader>(std::move(compileResult.stages),
-                                                 bindings, vertexInputs);
+  auto shader = std::make_shared<CompiledShader>(
+      std::move(compileResult.stages), bindings, vertexInputs);
   std::cout << "  Program hash: 0x" << std::hex << shader->getProgramHash()
             << std::dec << "\n";
 
@@ -178,12 +178,13 @@ static bool testVariantCombination(
     std::cout << "  findBinding(0,0) -> not found\n";
   }
 
-  auto byName = shader->findBinding("MaterialUBO");
+  auto byName = shader->findBinding("SceneMaterials");
   if (byName) {
-    std::cout << "  findBinding(\"MaterialUBO\") -> set=" << byName->get().set
+    std::cout << "  findBinding(\"SceneMaterials\") -> set="
+              << byName->get().set
               << " binding=" << byName->get().binding << "\n";
   } else {
-    std::cout << "  findBinding(\"MaterialUBO\") -> not found\n";
+    std::cout << "  findBinding(\"SceneMaterials\") -> not found\n";
   }
 
   return true;
@@ -193,282 +194,13 @@ static bool testVariantCombination(
 // UBO member reflection tests (REQ-004)
 // ---------------------------------------------------------------------------
 
-static const StructMemberInfo *
-findMember(const ShaderResourceBinding &b, const std::string &name) {
+static const StructMemberInfo *findMember(const ShaderResourceBinding &b,
+                                          const std::string &name) {
   for (const auto &m : b.members) {
     if (m.name == name)
       return &m;
   }
   return nullptr;
-}
-
-static bool testBlinnPhongMaterialUboMembers(const std::filesystem::path &vertPath,
-                                             const std::filesystem::path &fragPath) {
-  std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong MaterialUBO members\n";
-  std::cout << "========================================\n";
-
-  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
-  if (!compileResult.success) {
-    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
-    return false;
-  }
-  auto bindings = ShaderReflector::reflect(compileResult.stages);
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-      materialBinding;
-  for (const auto &b : bindings) {
-    if (b.name == "MaterialUBO" ||
-        (b.set == 2 && b.binding == 0 &&
-         b.type == ShaderPropertyType::UniformBuffer)) {
-      materialBinding = std::cref(b);
-      break;
-    }
-  }
-  if (!materialBinding) {
-    std::cerr << "  FAIL: MaterialUBO binding not found\n";
-    return false;
-  }
-
-  // 4.2 basic shape
-  if (materialBinding->get().type != ShaderPropertyType::UniformBuffer) {
-    std::cerr << "  FAIL: MaterialUBO is not UniformBuffer type\n";
-    return false;
-  }
-  if (materialBinding->get().members.size() < 5) {
-    std::cerr << "  FAIL: expected >= 5 members, got "
-              << materialBinding->get().members.size() << "\n";
-    return false;
-  }
-  std::cout << "  MaterialUBO has " << materialBinding->get().members.size()
-            << " members\n";
-  for (const auto &m : materialBinding->get().members) {
-    std::cout << "    - " << m.name
-              << "  type=" << shaderPropertyTypeName(m.type)
-              << "  offset=" << m.offset << "  size=" << m.size << "\n";
-  }
-
-  // 4.3 baseColor: Vec3 at offset 0
-  const auto *baseColor = findMember(materialBinding->get(), "baseColor");
-  if (!baseColor) {
-    std::cerr << "  FAIL: baseColor member missing\n";
-    return false;
-  }
-  if (baseColor->type != ShaderPropertyType::Vec3 || baseColor->offset != 0) {
-    std::cerr << "  FAIL: baseColor expected Vec3@0, got "
-              << shaderPropertyTypeName(baseColor->type) << "@"
-              << baseColor->offset << "\n";
-    return false;
-  }
-
-  // 4.4 shininess: Float, std140 packs it right after vec3 at offset 12
-  const auto *shininess = findMember(materialBinding->get(), "shininess");
-  if (!shininess) {
-    std::cerr << "  FAIL: shininess member missing\n";
-    return false;
-  }
-  if (shininess->type != ShaderPropertyType::Float) {
-    std::cerr << "  FAIL: shininess expected Float, got "
-              << shaderPropertyTypeName(shininess->type) << "\n";
-    return false;
-  }
-  if (shininess->offset != 12 && shininess->offset != 16) {
-    std::cerr << "  FAIL: shininess expected offset 12 or 16, got "
-              << shininess->offset << "\n";
-    return false;
-  }
-
-  // 4.5 enableAlbedo: Int
-  const auto *enableAlbedo = findMember(materialBinding->get(), "enableAlbedo");
-  if (!enableAlbedo) {
-    std::cerr << "  FAIL: enableAlbedo member missing\n";
-    return false;
-  }
-  if (enableAlbedo->type != ShaderPropertyType::Int) {
-    std::cerr << "  FAIL: enableAlbedo expected Int, got "
-              << shaderPropertyTypeName(enableAlbedo->type) << "\n";
-    return false;
-  }
-
-  // 4.6 debugShadowMode: Int diagnostic switch for shadow sampling.
-  const auto *debugShadowMode =
-      findMember(materialBinding->get(), "debugShadowMode");
-  if (!debugShadowMode) {
-    std::cerr << "  FAIL: debugShadowMode member missing\n";
-    return false;
-  }
-  if (debugShadowMode->type != ShaderPropertyType::Int) {
-    std::cerr << "  FAIL: debugShadowMode expected Int, got "
-              << shaderPropertyTypeName(debugShadowMode->type) << "\n";
-    return false;
-  }
-
-  // 4.7 non-UBO bindings have empty members (check sampler2D bindings)
-  for (const auto &b : bindings) {
-    if (b.type == ShaderPropertyType::Texture2D && !b.members.empty()) {
-      std::cerr << "  FAIL: Texture2D binding '" << b.name
-                << "' unexpectedly has " << b.members.size() << " members\n";
-      return false;
-    }
-  }
-
-  std::cout << "  PASS: MaterialUBO members reflected correctly\n";
-  return true;
-}
-
-static bool testBlinnPhongVariantVertexInputs(
-    const std::filesystem::path &vertPath,
-    const std::filesystem::path &fragPath) {
-  std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong variant contracts\n";
-  std::cout << "========================================\n";
-
-  const auto compileVariant =
-      [&](std::initializer_list<ShaderVariant> variants) -> CompileResult {
-    return ShaderCompiler::compileProgram(vertPath, fragPath,
-                                          std::vector<ShaderVariant>(variants));
-  };
-  const auto hasInput =
-      [](const std::vector<VertexInputAttribute> &inputs,
-         const std::string &name, u32 location,
-         DataType type) {
-        for (const auto &input : inputs) {
-          if (input.name == name && input.location == location &&
-              input.type == type) {
-            return true;
-          }
-        }
-        return false;
-      };
-  const auto hasBinding =
-      [](const std::vector<ShaderResourceBinding> &bindings,
-         const std::string &name) {
-        for (const auto &binding : bindings) {
-          if (binding.name == name)
-            return true;
-        }
-        return false;
-      };
-
-  const auto unlitCompile = compileVariant({});
-  const auto vertexColorCompile =
-      compileVariant({{"USE_VERTEX_COLOR", true}, {"USE_LIGHTING", false}});
-  const auto uvCompile =
-      compileVariant({{"USE_UV", true}, {"USE_LIGHTING", false}});
-  const auto lightingCompile = compileVariant({{"USE_LIGHTING", true}});
-  const auto normalMapCompile =
-      compileVariant({{"USE_UV", true},
-                      {"USE_LIGHTING", true},
-                      {"USE_NORMAL_MAP", true}});
-  const auto skinnedCompile =
-      compileVariant({{"USE_LIGHTING", true}, {"USE_SKINNING", true}});
-
-  if (!unlitCompile.success || !vertexColorCompile.success || !uvCompile.success ||
-      !lightingCompile.success || !normalMapCompile.success ||
-      !skinnedCompile.success) {
-    std::cerr << "  FAIL: compile failed for variant contract test\n";
-    return false;
-  }
-
-  const auto unlitInputs = ShaderReflector::reflectVertexInputs(unlitCompile.stages);
-  const auto vertexColorInputs =
-      ShaderReflector::reflectVertexInputs(vertexColorCompile.stages);
-  const auto uvInputs = ShaderReflector::reflectVertexInputs(uvCompile.stages);
-  const auto lightingInputs =
-      ShaderReflector::reflectVertexInputs(lightingCompile.stages);
-  const auto normalMapInputs =
-      ShaderReflector::reflectVertexInputs(normalMapCompile.stages);
-  const auto skinnedInputs =
-      ShaderReflector::reflectVertexInputs(skinnedCompile.stages);
-
-  if (unlitInputs.size() != 1 ||
-      !hasInput(unlitInputs, "inPosition", 0, DataType::Float3)) {
-    std::cerr << "  FAIL: unlit variant should only require inPosition\n";
-    return false;
-  }
-  if (vertexColorInputs.size() != 2 ||
-      !hasInput(vertexColorInputs, "inColor", 6, DataType::Float4)) {
-    std::cerr << "  FAIL: vertex-color variant should require inColor@6\n";
-    return false;
-  }
-  if (uvInputs.size() != 2 ||
-      !hasInput(uvInputs, "inUV", 2, DataType::Float2)) {
-    std::cerr << "  FAIL: UV variant should require inUV@2\n";
-    return false;
-  }
-  if (lightingInputs.size() != 2 ||
-      !hasInput(lightingInputs, "inNormal", 1, DataType::Float3)) {
-    std::cerr << "  FAIL: lighting variant should require inNormal@1\n";
-    return false;
-  }
-  if (normalMapInputs.size() != 4 ||
-      !hasInput(normalMapInputs, "inTangent", 3, DataType::Float4) ||
-      !hasInput(normalMapInputs, "inUV", 2, DataType::Float2)) {
-    std::cerr << "  FAIL: normal-map variant should require tangent and uv\n";
-    return false;
-  }
-  if (skinnedInputs.size() != 4 ||
-      !hasInput(skinnedInputs, "inBoneIDs", 4, DataType::Int4) ||
-      !hasInput(skinnedInputs, "inBoneWeights", 5, DataType::Float4)) {
-    std::cerr << "  FAIL: skinned variant should require bone inputs\n";
-    return false;
-  }
-
-  const auto unlitBindings = ShaderReflector::reflect(unlitCompile.stages);
-  const auto skinnedBindings = ShaderReflector::reflect(skinnedCompile.stages);
-  if (hasBinding(unlitBindings, "Bones")) {
-    std::cerr << "  FAIL: unskinned variant must not reflect Bones UBO\n";
-    return false;
-  }
-  if (!hasBinding(skinnedBindings, "Bones")) {
-    std::cerr << "  FAIL: skinned variant must reflect Bones UBO\n";
-    return false;
-  }
-
-  std::cout << "  PASS: forward variants expose the expected contracts\n";
-  return true;
-}
-
-static bool
-testBlinnPhongFlatShadingVariant(const std::filesystem::path &shaderDir) {
-  std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong flat shading variant\n";
-  std::cout << "========================================\n";
-
-  const auto vertPath = shaderDir / "blinnphong_0.vert";
-  const auto fragPath = shaderDir / "blinnphong_0.frag";
-  const std::vector<ShaderVariant> variants = {
-      {"USE_LIGHTING", true},
-      {"USE_FLAT_SHADING", true},
-  };
-
-  auto compileResult =
-      ShaderCompiler::compileProgram(vertPath, fragPath, variants);
-  if (!compileResult.success) {
-    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
-    return false;
-  }
-
-  const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  if (bindings.empty()) {
-    std::cerr << "  FAIL: flat shading variant reflected no bindings\n";
-    return false;
-  }
-
-  bool hasMaterialUbo = false;
-  for (const auto &binding : bindings) {
-    if (binding.name == "MaterialUBO") {
-      hasMaterialUbo = true;
-      break;
-    }
-  }
-  if (!hasMaterialUbo) {
-    std::cerr << "  FAIL: MaterialUBO binding missing\n";
-    return false;
-  }
-
-  std::cout << "  PASS: flat shading variant compiles and reflects MaterialUBO\n";
-  return true;
 }
 
 static std::string readTextFile(const std::filesystem::path &path) {
@@ -478,171 +210,161 @@ static std::string readTextFile(const std::filesystem::path &path) {
   return buffer.str();
 }
 
-static bool testBlinnPhongPushConstantAbi(const std::filesystem::path &vertPath,
-                                          const std::filesystem::path &fragPath) {
+static std::string joinedToken(const char *head, const char *tail) {
+  return std::string(head) + tail;
+}
+
+static ShaderVariant materialContractSourceVariant() {
+  return ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .macroValue = "\"common/materials/standard_pbr.contract.glsl\"",
+  };
+}
+
+static std::vector<ShaderVariant>
+withMaterialContractSource(std::vector<ShaderVariant> variants = {}) {
+  variants.push_back(materialContractSourceVariant());
+  return variants;
+}
+
+static bool testPbrShadersUseMaterialAccessorAbi(
+    const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong push constant ABI\n";
+  std::cout << "  Test: PBR shaders use Material Accessor ABI\n";
   std::cout << "========================================\n";
 
-  if (sizeof(PerDrawLayoutBase) != sizeof(Mat4f) ||
-      sizeof(PerDrawLayout) != sizeof(Mat4f)) {
-    std::cerr << "  FAIL: PerDrawLayoutBase/PerDrawLayout size mismatch with Mat4f\n";
-    return false;
-  }
-
-  const auto vertSource = readTextFile(vertPath);
-  const auto fragSource = readTextFile(fragPath);
-  const auto hasModelOnlyBlock = [](const std::string &source) {
-    return source.find("layout(push_constant) uniform ObjectPC") !=
-               std::string::npos &&
-           source.find("mat4 model;") != std::string::npos &&
-           source.find("enableLighting") == std::string::npos &&
-           source.find("enableSkinning") == std::string::npos;
+  const struct {
+    const char *label;
+    std::filesystem::path path;
+  } shaders[] = {
+      {"Forward PBR",
+       shaderDir / "render_paths" / "Forward" / "pbr.frag"},
+      {"Deferred GBuffer",
+       shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag"},
+      {"OfflineRT direct ray",
+       shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp"},
   };
 
-  if (!hasModelOnlyBlock(vertSource) || !hasModelOnlyBlock(fragSource)) {
-    std::cerr << "  FAIL: push constant block is not model-only in shader\n";
-    return false;
+  for (const auto &shader : shaders) {
+    const auto source = readTextFile(shader.path);
+    if (source.empty()) {
+      std::cerr << "  FAIL: " << shader.label << " source is empty or "
+                << "unreadable: " << shader.path << "\n";
+      return false;
+    }
+    if (source.find("#include \"common/material_surface.glsl\"") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should include common/material_surface.glsl\n";
+      return false;
+    }
+    if (source.find("#include LX_MATERIAL_CONTRACT_SOURCE") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should expose the material contract source hook\n";
+      return false;
+    }
+    if (source.find("#include \"common/material_bsdf.glsl\"") ==
+        std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should include common/material_bsdf.glsl\n";
+      return false;
+    }
+    if (source.find("lxLoadMaterialSurface") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxLoadMaterialSurface\n";
+      return false;
+    }
+    if (source.find("lxEvaluateBsdf") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxEvaluateBsdf\n";
+      return false;
+    }
+    if (std::string(shader.label) == "OfflineRT direct ray" &&
+        source.find("lxSampleBsdf") == std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " should call lxSampleBsdf\n";
+      return false;
+    }
+    if (source.find("struct lxSceneMaterialRecord") != std::string::npos) {
+      std::cerr << "  FAIL: " << shader.label
+                << " still declares legacy lxSceneMaterialRecord\n";
+      return false;
+    }
   }
 
-  std::cout << "  PASS: per-draw ABI is model-only in C++ and GLSL\n";
+  std::cout << "  PASS: PBR shaders use Material Accessor ABI source hook\n";
   return true;
 }
 
-static bool testBlinnPhongRuntimeFallbacks(const std::filesystem::path &fragPath) {
-  std::cout << "\n========================================\n";
-  std::cout << "  Test: BlinnPhong runtime fallbacks\n";
-  std::cout << "========================================\n";
-
-  const auto fragSource = readTextFile(fragPath);
-
-  if (fragSource.find("if (material.enableAlbedo == 1)") ==
-      std::string::npos) {
-    std::cerr << "  FAIL: albedo sampling is no longer gated by enableAlbedo\n";
-    return false;
-  }
-  if (fragSource.find("if (material.enableNormal == 1)") ==
-      std::string::npos) {
-    std::cerr << "  FAIL: normal-map sampling is no longer gated by enableNormal\n";
-    return false;
-  }
-  if (fragSource.find("baseCol * material.ambientIntensity") ==
-      std::string::npos) {
-    std::cerr << "  FAIL: BlinnPhong ambient should be material controlled\n";
-    return false;
-  }
-  if (fragSource.find("baseCol * 0.1") != std::string::npos) {
-    std::cerr << "  FAIL: BlinnPhong ambient should not be hard-coded\n";
-    return false;
-  }
-
-  std::cout << "  PASS: runtime texture fallbacks and material ambient term preserved\n";
-  return true;
-}
-
-static bool testShadertoyQuantumCoreContract(
+static bool testVariantOnlyShaderNakedCompileFailsWithDiagnostic(
     const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
-  std::cout << "  Test: Shadertoy quantum core contract\n";
+  std::cout << "  Test: Variant-only shader naked compile diagnostic\n";
   std::cout << "========================================\n";
 
-  const auto vertPath = shaderDir / "rtr_shadertoy_quantum_core.vert";
-  const auto fragPath = shaderDir / "rtr_shadertoy_quantum_core.frag";
-  auto compileResult =
-      ShaderCompiler::compileProgram(vertPath, fragPath, {{"HAS_IBL", true}});
-  if (!compileResult.success) {
-    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+  const auto fragPath =
+      shaderDir / "render_paths" / "Forward" / "pbr.frag";
+  const auto compileResult = ShaderCompiler::compileFile(fragPath, {});
+  if (compileResult.success) {
+    std::cerr << "  FAIL: pbr.frag naked compile should fail without "
+                 "LX_MATERIAL_CONTRACT_SOURCE\n";
+    return false;
+  }
+  if (compileResult.errorMessage.find("LX_MATERIAL_CONTRACT_SOURCE") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: naked compile diagnostic should name "
+                 "LX_MATERIAL_CONTRACT_SOURCE: "
+              << compileResult.errorMessage << "\n";
     return false;
   }
 
-  const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto bindingIt =
-      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
-        return binding.name == "ShadertoyUBO";
-      });
-  if (bindingIt == bindings.end()) {
-    std::cerr << "  FAIL: ShadertoyUBO binding missing\n";
-    return false;
-  }
-  if (bindingIt->type != ShaderPropertyType::UniformBuffer) {
-    std::cerr << "  FAIL: ShadertoyUBO should be a uniform buffer\n";
-    return false;
-  }
-
-  const auto *time = findMember(*bindingIt, "time");
-  const auto *resolution = findMember(*bindingIt, "resolution");
-  const auto *audioBands = findMember(*bindingIt, "audioBands");
-  if (!time || time->type != ShaderPropertyType::Float) {
-    std::cerr << "  FAIL: ShadertoyUBO.time Float member missing\n";
-    return false;
-  }
-  if (!resolution || resolution->type != ShaderPropertyType::Vec4) {
-    std::cerr << "  FAIL: ShadertoyUBO.resolution Vec4 member missing\n";
-    return false;
-  }
-  if (!audioBands || audioBands->type != ShaderPropertyType::Vec4) {
-    std::cerr << "  FAIL: ShadertoyUBO.audioBands Vec4 member missing\n";
-    return false;
-  }
-  const auto channelIt =
-      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
-        return binding.name == "iChannel0";
-      });
-  if (channelIt == bindings.end() ||
-      channelIt->type != ShaderPropertyType::Texture2D) {
-    std::cerr << "  FAIL: iChannel0 Texture2D binding missing\n";
-    return false;
-  }
-
-  std::cout << "  PASS: Shadertoy quantum core shader reflects runtime params\n";
+  std::cout << "  PASS: naked variant-only shader compile fails clearly\n";
   return true;
 }
 
-static bool testMeshDebugShaderContract(
+static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
     const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
-  std::cout << "  Test: Mesh debug shader contract\n";
+  std::cout << "  Test: Material source variants compile variant-only shaders\n";
   std::cout << "========================================\n";
 
-  const auto vertPath = shaderDir / "mesh_debug.vert";
-  const auto fragPath = shaderDir / "mesh_debug.frag";
-  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
-  if (!compileResult.success) {
-    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+  const std::vector<ShaderVariant> variants = withMaterialContractSource();
+  const auto forward = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Forward" / "pbr.vert",
+      shaderDir / "render_paths" / "Forward" / "pbr.frag", variants);
+  if (!forward.success) {
+    std::cerr << "  FAIL: Forward material source variant compile failed: "
+              << forward.errorMessage << "\n";
     return false;
   }
 
-  const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto bindingIt =
-      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
-        return binding.name == "MeshOverlayUBO";
-      });
-  if (bindingIt == bindings.end()) {
-    std::cerr << "  FAIL: MeshOverlayUBO binding missing\n";
-    return false;
-  }
-  if (bindingIt->type != ShaderPropertyType::UniformBuffer) {
-    std::cerr << "  FAIL: MeshOverlayUBO should be a uniform buffer\n";
-    return false;
-  }
-  if (bindingIt->set != 1 || bindingIt->binding != 0) {
-    std::cerr << "  FAIL: MeshOverlayUBO expected set=1 binding=0, got set="
-              << bindingIt->set << " binding=" << bindingIt->binding << "\n";
+  const auto deferred = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.vert",
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag", variants);
+  if (!deferred.success) {
+    std::cerr << "  FAIL: Deferred material source variant compile failed: "
+              << deferred.errorMessage << "\n";
     return false;
   }
 
-  const auto *color = findMember(*bindingIt, "color");
-  if (!color || color->type != ShaderPropertyType::Vec4) {
-    std::cerr << "  FAIL: MeshOverlayUBO.color Vec4 member missing\n";
+  const auto offline = ShaderCompiler::compileFile(
+      shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp",
+      variants);
+  if (!offline.success) {
+    std::cerr << "  FAIL: OfflineRT material source variant compile failed: "
+              << offline.errorMessage << "\n";
     return false;
   }
 
-  std::cout << "  PASS: mesh debug shader reflects overlay color\n";
+  std::cout << "  PASS: Forward, Deferred, and OfflineRT material source "
+               "variants compile\n";
   return true;
 }
 
-static bool testPostProcessShaderContract(
-    const std::filesystem::path &shaderDir) {
+static bool
+testPostProcessShaderContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: Post-process shader contract\n";
   std::cout << "========================================\n";
@@ -667,8 +389,7 @@ static bool testPostProcessShaderContract(
   }
   if (sceneColor->set != 0 || sceneColor->binding != 0) {
     std::cerr << "  FAIL: SceneColor expected set=0 binding=0, got set="
-              << sceneColor->set << " binding=" << sceneColor->binding
-              << "\n";
+              << sceneColor->set << " binding=" << sceneColor->binding << "\n";
     return false;
   }
   const auto bloomColor =
@@ -682,8 +403,7 @@ static bool testPostProcessShaderContract(
   }
   if (bloomColor->set != 0 || bloomColor->binding != 2) {
     std::cerr << "  FAIL: BloomColor expected set=0 binding=2, got set="
-              << bloomColor->set << " binding=" << bloomColor->binding
-              << "\n";
+              << bloomColor->set << " binding=" << bloomColor->binding << "\n";
     return false;
   }
 
@@ -751,9 +471,8 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "========================================\n";
 
   const auto thresholdPath = shaderDir / "bloom_threshold.frag";
-  auto thresholdResult =
-      ShaderCompiler::compileProgram(shaderDir / "bloom_threshold.vert",
-                                     thresholdPath, {});
+  auto thresholdResult = ShaderCompiler::compileProgram(
+      shaderDir / "bloom_threshold.vert", thresholdPath, {});
   if (!thresholdResult.success) {
     std::cerr << "  COMPILE FAILED: " << thresholdResult.errorMessage << "\n";
     return false;
@@ -782,13 +501,11 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   }
 
   for (const auto *fragName : {"bloom_blur_h.frag", "bloom_blur_v.frag"}) {
-    const auto vertName =
-        std::string(fragName).find("_h.") != std::string::npos
-            ? "bloom_blur_h.vert"
-            : "bloom_blur_v.vert";
-    auto blurResult =
-        ShaderCompiler::compileProgram(shaderDir / vertName,
-                                       shaderDir / fragName, {});
+    const auto vertName = std::string(fragName).find("_h.") != std::string::npos
+                              ? "bloom_blur_h.vert"
+                              : "bloom_blur_v.vert";
+    auto blurResult = ShaderCompiler::compileProgram(shaderDir / vertName,
+                                                     shaderDir / fragName, {});
     if (!blurResult.success) {
       std::cerr << "  COMPILE FAILED: " << blurResult.errorMessage << "\n";
       return false;
@@ -801,8 +518,7 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
     if (bloomSource == bindings.end() ||
         bloomSource->type != ShaderPropertyType::Texture2D ||
         bloomSource->set != 0 || bloomSource->binding != 0) {
-      std::cerr << "  FAIL: " << fragName
-                << " BloomSource binding mismatch\n";
+      std::cerr << "  FAIL: " << fragName << " BloomSource binding mismatch\n";
       return false;
     }
   }
@@ -811,8 +527,7 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   return true;
 }
 
-static bool testIblBakeShaderContracts(
-    const std::filesystem::path &shaderDir) {
+static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: IBL bake shader contracts\n";
   std::cout << "========================================\n";
@@ -821,11 +536,9 @@ static bool testIblBakeShaderContracts(
       [](const std::vector<ShaderResourceBinding> &bindings,
          const std::string &name, ShaderPropertyType type, u32 set,
          u32 binding) {
-        const auto it =
-            std::find_if(bindings.begin(), bindings.end(),
-                         [&](const auto &candidate) {
-                           return candidate.name == name;
-                         });
+        const auto it = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto &candidate) { return candidate.name == name; });
         return it != bindings.end() && it->type == type && it->set == set &&
                it->binding == binding;
       };
@@ -862,9 +575,9 @@ static bool testIblBakeShaderContracts(
     return false;
   }
 
-  auto prefilter = ShaderCompiler::compileProgram(
-      shaderDir / "ibl_prefilter_env.vert",
-      shaderDir / "ibl_prefilter_env.frag", {});
+  auto prefilter =
+      ShaderCompiler::compileProgram(shaderDir / "ibl_prefilter_env.vert",
+                                     shaderDir / "ibl_prefilter_env.frag", {});
   if (!prefilter.success) {
     std::cerr << "  COMPILE FAILED: " << prefilter.errorMessage << "\n";
     return false;
@@ -880,9 +593,8 @@ static bool testIblBakeShaderContracts(
     return false;
   }
 
-  auto brdf = ShaderCompiler::compileProgram(shaderDir / "ibl_brdf_lut.vert",
-                                             shaderDir / "ibl_brdf_lut.frag",
-                                             {});
+  auto brdf = ShaderCompiler::compileProgram(
+      shaderDir / "ibl_brdf_lut.vert", shaderDir / "ibl_brdf_lut.frag", {});
   if (!brdf.success) {
     std::cerr << "  COMPILE FAILED: " << brdf.errorMessage << "\n";
     return false;
@@ -909,8 +621,8 @@ static bool testIblBakeShaderContracts(
   return true;
 }
 
-static bool testTextureCubeReflectionContract(
-    const std::filesystem::path &shaderDir) {
+static bool
+testTextureCubeReflectionContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: TextureCube reflection contract\n";
   std::cout << "========================================\n";
@@ -981,7 +693,9 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   }
 
   auto compileResult =
-      ShaderCompiler::compileProgram(vertPath, fragPath, {{"HAS_IBL", true}});
+      ShaderCompiler::compileProgram(
+          vertPath, fragPath,
+          withMaterialContractSource({{"HAS_IBL", true}}));
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
@@ -989,24 +703,15 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
   const auto findBinding = [&](const std::string &name) {
-    return std::find_if(bindings.begin(), bindings.end(),
-                        [&](const auto &binding) {
-                          return binding.name == name;
-                        });
+    return std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &binding) { return binding.name == name; });
   };
 
   const auto irradiance = findBinding("IrradianceMap");
   const auto prefiltered = findBinding("PrefilteredEnvMap");
   const auto brdf = findBinding("BrdfLut");
   const auto environment = findBinding("EnvironmentUBO");
-  const auto albedoMap = findBinding("albedoMap");
-
-  if (albedoMap == bindings.end() ||
-      albedoMap->type != ShaderPropertyType::Texture2D ||
-      albedoMap->set != 1 || albedoMap->binding != 1) {
-    std::cerr << "  FAIL: albedoMap Texture2D set=1 binding=1 missing\n";
-    return false;
-  }
   if (irradiance == bindings.end() ||
       irradiance->type != ShaderPropertyType::TextureCube ||
       irradiance->set != 3 || irradiance->binding != 0) {
@@ -1037,47 +742,123 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   return true;
 }
 
-static bool testPbrMaterialTextureSetContract(
-    const std::filesystem::path &vertPath, const std::filesystem::path &fragPath) {
-  std::cout << "  Test: PBR material-owned texture set contract\n";
-  auto compileResult = ShaderCompiler::compileProgram(
-      vertPath, fragPath,
-      {{"HAS_NORMAL_MAP", true},
-       {"HAS_METALLIC_ROUGHNESS", true},
-       {"HAS_AO_MAP", true},
-       {"HAS_EMISSIVE_MAP", true}});
+static bool testPbrMaterialGpuRecordContract(
+    const std::filesystem::path &vertPath,
+    const std::filesystem::path &fragPath,
+    const std::string &label = "PBR material GPU record contract") {
+  std::cout << "  Test: " << label << "\n";
+  auto compileResult =
+      ShaderCompiler::compileProgram(
+          vertPath, fragPath,
+          withMaterialContractSource({{"HAS_NORMAL_MAP", true},
+                                      {"HAS_METALLIC_ROUGHNESS", true},
+                                      {"HAS_AO_MAP", true},
+                                      {"HAS_EMISSIVE_MAP", true}}));
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
   }
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto expectTexture = [&](const std::string &name, u32 binding) {
-    const auto it = std::find_if(bindings.begin(), bindings.end(),
-                                 [&](const auto &candidate) {
-                                   return candidate.name == name;
-                                 });
-    if (it == bindings.end() || it->type != ShaderPropertyType::Texture2D ||
-        it->set != 1 || it->binding != binding) {
-      std::cerr << "  FAIL: " << name << " Texture2D set=1 binding="
-                << binding << " missing\n";
+  const auto findBinding = [&](const std::string &name) {
+    return std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &candidate) { return candidate.name == name; });
+  };
+  const auto rejectBinding = [&](const std::string &name) {
+    const auto it = findBinding(name);
+    if (it != bindings.end()) {
+      std::cerr << "  FAIL: PBR shader still reflects legacy binding " << name
+                << "\n";
       return false;
     }
     return true;
   };
 
-  if (!expectTexture("albedoMap", 1) || !expectTexture("normalMap", 2) ||
-      !expectTexture("metallicRoughnessMap", 3) ||
-      !expectTexture("aoMap", 4) || !expectTexture("emissiveMap", 5)) {
+  if (!rejectBinding(joinedToken("Material", "UBO")) ||
+      !rejectBinding("albedoMap") ||
+      !rejectBinding("normalMap") || !rejectBinding("metallicRoughnessMap") ||
+      !rejectBinding("aoMap") || !rejectBinding("emissiveMap")) {
     return false;
   }
 
-  std::cout << "  PASS: PBR reflects material-owned texture set\n";
+  const auto expectBinding = [&](const std::string &name,
+                                 ShaderPropertyType type, u32 set, u32 binding,
+                                 u32 descriptorCount) {
+    const auto it = std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const auto &candidate) { return candidate.name == name; });
+    if (it == bindings.end() || it->type != type || it->set != set ||
+        it->binding != binding || it->descriptorCount != descriptorCount) {
+      std::cerr << "  FAIL: " << name
+                << " expected type=" << shaderPropertyTypeName(type)
+                << " set=" << set << " binding=" << binding
+                << " count=" << descriptorCount << "\n";
+      return false;
+    }
+    return true;
+  };
+
+  if (!expectBinding("SceneMaterials", ShaderPropertyType::StorageBuffer, 0, 7,
+                     1) ||
+      !expectBinding("SceneObjects", ShaderPropertyType::StorageBuffer, 0, 8,
+                     1) ||
+      !expectBinding("SceneDraws", ShaderPropertyType::StorageBuffer, 0, 9,
+                     1) ||
+      !expectBinding("SceneTextures", ShaderPropertyType::Texture2D, 0, 11,
+                     256)) {
+    return false;
+  }
+
+  const auto source = readTextFile(fragPath);
+  const auto vertSource = readTextFile(vertPath);
+  const std::vector<std::string> legacyTokens{
+      joinedToken("Material", "UBO"),
+      joinedToken("baseColor", "Factor"),
+      joinedToken("metallic", "Factor"),
+      joinedToken("roughness", "Factor"),
+      "albedoMap",
+      "normalMap",
+      "metallicRoughnessMap",
+      "aoMap",
+      "emissiveMap",
+  };
+  for (const std::string &token : legacyTokens) {
+    if (source.find(token) != std::string::npos) {
+      std::cerr << "  FAIL: PBR fragment source still contains legacy token "
+                << token << "\n";
+      return false;
+    }
+  }
+  if (source.find("materials[0]") != std::string::npos) {
+    std::cerr << "  FAIL: PBR fragment source hard-codes materials[0]\n";
+    return false;
+  }
+  if (source.find("materials[vMaterialIndex]") == std::string::npos) {
+    std::cerr << "  FAIL: PBR fragment source should index SceneMaterials "
+                 "with the per-draw material index\n";
+    return false;
+  }
+  if (vertSource.find("mat4 model = mat4(1.0)") != std::string::npos) {
+    std::cerr << "  FAIL: PBR vertex source should not use identity model as "
+                 "the production transform\n";
+    return false;
+  }
+  if (vertSource.find("draws[gl_InstanceIndex]") == std::string::npos ||
+      vertSource.find("objects[draw.objectIndex].objectToWorld") ==
+          std::string::npos ||
+      vertSource.find("draw.materialIndex") == std::string::npos) {
+    std::cerr << "  FAIL: PBR vertex source should read typed draw/object "
+                 "records for transform and material index\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR reflects migrated material GPU record bindings\n";
   return true;
 }
 
-static bool testPbrFragmentUsesSharedCommon(
-    const std::filesystem::path &fragPath) {
+static bool
+testPbrFragmentUsesSharedCommon(const std::filesystem::path &fragPath) {
   std::cout << "  Test: PBR fragment uses shared common\n";
   const auto source = readTextFile(fragPath);
   if (source.find("#include \"common/pbr.glsl\"") == std::string::npos) {
@@ -1104,11 +885,14 @@ static bool testPbrFragmentAppliesDirectionalLightIntensity(
   return true;
 }
 
-static bool testPbrClearcoatShaderContract(
-    const std::filesystem::path &shaderDir) {
-  std::cout << "  Test: PBR clearcoat shader compiles and reflects layered parameters\n";
-  const auto vertPath = shaderDir / "pbr_clearcoat.vert";
-  const auto fragPath = shaderDir / "pbr_clearcoat.frag";
+static bool
+testPbrClearcoatShaderContract(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: PBR clearcoat shader compiles and reflects layered "
+               "parameters\n";
+  const auto vertPath =
+      shaderDir / "render_paths" / "Forward" / "pbr_clearcoat.vert";
+  const auto fragPath =
+      shaderDir / "render_paths" / "Forward" / "pbr_clearcoat.frag";
   if (!std::filesystem::exists(vertPath) ||
       !std::filesystem::exists(fragPath)) {
     std::cerr << "  FAIL: pbr_clearcoat shader files should exist\n";
@@ -1124,32 +908,45 @@ static bool testPbrClearcoatShaderContract(
   }
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto materialBinding = std::find_if(
-      bindings.begin(), bindings.end(),
-      [](const ShaderResourceBinding &binding) {
-        return binding.name == "MaterialUBO";
-      });
-  if (materialBinding == bindings.end()) {
-    std::cerr << "  FAIL: pbr_clearcoat MaterialUBO binding missing\n";
-    return false;
-  }
-
-  const auto hasFloatMember = [&](const std::string &name) {
-    return std::any_of(materialBinding->members.begin(),
-                       materialBinding->members.end(),
-                       [&](const StructMemberInfo &member) {
-                         return member.name == name &&
-                                member.type == ShaderPropertyType::Float;
-                       });
-  };
-  if (!hasFloatMember("clearcoatFactor") ||
-      !hasFloatMember("clearcoatRoughness")) {
-    std::cerr << "  FAIL: pbr_clearcoat should expose clearcoatFactor and "
-                 "clearcoatRoughness float members\n";
+  const auto materialBinding =
+      std::find_if(bindings.begin(), bindings.end(),
+                   [](const ShaderResourceBinding &binding) {
+                     return binding.name == "SceneMaterials";
+                   });
+  if (materialBinding == bindings.end() ||
+      materialBinding->type != ShaderPropertyType::StorageBuffer) {
+    std::cerr << "  FAIL: pbr_clearcoat SceneMaterials SSBO binding missing\n";
     return false;
   }
 
   const auto source = readTextFile(fragPath);
+  const std::vector<std::string> legacyTokens{
+      joinedToken("Material", "UBO"),
+      joinedToken("baseColor", "Factor"),
+      joinedToken("metallic", "Factor"),
+      joinedToken("roughness", "Factor"),
+      "albedoMap",
+      "normalMap",
+      "metallicRoughnessMap",
+      "aoMap",
+      "emissiveMap",
+  };
+  for (const std::string &token : legacyTokens) {
+    if (source.find(token) != std::string::npos) {
+      std::cerr << "  FAIL: pbr_clearcoat.frag still contains legacy token "
+                << token << "\n";
+      return false;
+    }
+  }
+  if (source.find("materials[0]") != std::string::npos) {
+    std::cerr << "  FAIL: pbr_clearcoat.frag hard-codes materials[0]\n";
+    return false;
+  }
+  if (source.find("materials[vMaterialIndex]") == std::string::npos) {
+    std::cerr << "  FAIL: pbr_clearcoat.frag should index SceneMaterials "
+                 "with the per-draw material index\n";
+    return false;
+  }
   if (source.find("lxPbrLayeredClearcoatDirectLight") == std::string::npos) {
     std::cerr << "  FAIL: pbr_clearcoat.frag should call shared layered "
                  "clearcoat BRDF helper\n";
@@ -1157,6 +954,88 @@ static bool testPbrClearcoatShaderContract(
   }
 
   std::cout << "  PASS: PBR clearcoat shader contract\n";
+  return true;
+}
+
+static bool
+testDeferredPbrShaderContracts(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: Deferred clearcoat shader GPU record contract\n";
+  const auto pbrVert =
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.vert";
+  const auto pbrFrag =
+      shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag";
+  const auto clearcoatVert =
+      shaderDir / "render_paths" / "Deferred" / "pbr_clearcoat_gbuffer.vert";
+  const auto clearcoatFrag =
+      shaderDir / "render_paths" / "Deferred" / "pbr_clearcoat_gbuffer.frag";
+  if (!std::filesystem::exists(pbrVert) || !std::filesystem::exists(pbrFrag) ||
+      !std::filesystem::exists(clearcoatVert) ||
+      !std::filesystem::exists(clearcoatFrag)) {
+    std::cerr << "  FAIL: deferred PBR shader files should exist\n";
+    return false;
+  }
+
+  if (!testPbrMaterialGpuRecordContract(
+          clearcoatVert, clearcoatFrag,
+          "Deferred clearcoat material GPU record contract")) {
+    return false;
+  }
+
+  std::cout << "  PASS: Deferred clearcoat shader uses migrated material "
+               "records\n";
+  return true;
+}
+
+static bool
+testShadowDepthOnlyUsesSceneDrawRecords(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: shadow depth vertex uses scene draw/object records\n";
+  const auto vertPath =
+      shaderDir / "render_paths" / "Forward" / "shadow_depth_only.vert";
+  if (!std::filesystem::exists(vertPath)) {
+    std::cerr << "  FAIL: shadow_depth_only.vert should exist\n";
+    return false;
+  }
+
+  auto compileResult = ShaderCompiler::compileFile(vertPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: shadow_depth_only.vert compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto hasSsbo = [&](const std::string &name, u32 binding) {
+    const auto it =
+        std::find_if(bindings.begin(), bindings.end(),
+                     [&](const ShaderResourceBinding &candidate) {
+                       return candidate.name == name;
+                     });
+    if (it == bindings.end() || it->type != ShaderPropertyType::StorageBuffer ||
+        it->set != 0 || it->binding != binding) {
+      std::cerr << "  FAIL: shadow_depth_only.vert should reflect " << name
+                << " as set 0 binding " << binding << " storage buffer\n";
+      return false;
+    }
+    return true;
+  };
+  if (!hasSsbo("SceneObjects", 8) || !hasSsbo("SceneDraws", 9)) {
+    return false;
+  }
+
+  const auto source = readTextFile(vertPath);
+  if (source.find("mat4 model = mat4(1.0)") != std::string::npos) {
+    std::cerr << "  FAIL: shadow vertex source should not use identity model "
+                 "as the production transform\n";
+    return false;
+  }
+  if (source.find("draws[gl_InstanceIndex]") == std::string::npos ||
+      source.find("objects[draw.objectIndex].objectToWorld") ==
+          std::string::npos) {
+    std::cerr << "  FAIL: shadow vertex source should read typed draw/object "
+                 "records\n";
+    return false;
+  }
+
+  std::cout << "  PASS: shadow depth vertex reads scene draw/object records\n";
   return true;
 }
 
@@ -1180,6 +1059,134 @@ static bool testSharedPbrKeepsLowRoughnessHighlights(
   return true;
 }
 
+static bool
+testSceneSystemAbiReflection(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: scene system ABI SSBO reflection\n";
+  const auto tempDir =
+      std::filesystem::temp_directory_path() / "lxe_shader_abi";
+  std::filesystem::create_directories(tempDir);
+  std::filesystem::create_directories(tempDir / "common");
+  std::filesystem::copy_file(shaderDir / "common" / "scene_system_abi.glsl",
+                             tempDir / "common" / "scene_system_abi.glsl",
+                             std::filesystem::copy_options::overwrite_existing);
+  const auto shaderPath = tempDir / "scene_system_abi_probe.comp";
+  {
+    std::ofstream out(shaderPath);
+    out << "#version 450\n"
+        << "#include \"common/scene_system_abi.glsl\"\n"
+        << "layout(local_size_x = 1) in;\n"
+        << "void main() {}\n";
+  }
+
+  auto compileResult = ShaderCompiler::compileFile(shaderPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: scene system ABI probe compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto findBinding = [&](const std::string &name) {
+    return std::find_if(bindings.begin(), bindings.end(),
+                        [&](const ShaderResourceBinding &binding) {
+                          return binding.name == name;
+                        });
+  };
+
+  const auto expectSsbo = [&](const std::string &name, u32 binding, u32 size,
+                              const std::string &member, u32 offset) {
+    const auto it = findBinding(name);
+    if (it == bindings.end()) {
+      std::cerr << "  FAIL: " << name << " binding missing\n";
+      return false;
+    }
+    if (it->type != ShaderPropertyType::StorageBuffer ||
+        it->set != kSceneSystemDescriptorSet || it->binding != binding ||
+        it->size != size) {
+      std::cerr << "  FAIL: " << name
+                << " expected SSBO set=" << kSceneSystemDescriptorSet
+                << " binding=" << binding << " size=" << size
+                << ", got set=" << it->set << " binding=" << it->binding
+                << " size=" << it->size << "\n";
+      return false;
+    }
+    const auto *reflectedMember = findMember(*it, member);
+    if (!reflectedMember || reflectedMember->offset != offset) {
+      std::cerr << "  FAIL: " << name << "." << member << " expected offset "
+                << offset << "\n";
+      return false;
+    }
+    return true;
+  };
+
+  if (!expectSsbo("SceneCameraData", kSceneSystemCameraBinding,
+                  sizeof(SceneSystemCameraData), "view", 0) ||
+      !expectSsbo("SceneLightData", kSceneSystemLightBinding,
+                  sizeof(SceneSystemLightData), "directionIntensity", 0) ||
+      !expectSsbo("SceneObjectData", kSceneSystemObjectBinding,
+                  sizeof(SceneSystemObjectData), "objectToWorld0", 0) ||
+      !expectSsbo("SceneMaterialInstanceData", kSceneSystemMaterialBinding,
+                  sizeof(SceneSystemMaterialInstanceData), "baseColor", 0)) {
+    return false;
+  }
+
+  std::cout << "  PASS: scene system ABI SSBOs reflect C++ mirror layout\n";
+  return true;
+}
+
+static bool testSceneSystemAbiRejectsLegacyUboDeclaration() {
+  std::cout << "  Test: scene system ABI rejects legacy UBO declaration\n";
+  const auto tempDir =
+      std::filesystem::temp_directory_path() / "lxe_shader_abi_legacy";
+  std::filesystem::create_directories(tempDir);
+  const auto shaderPath = tempDir / "scene_system_abi_legacy_ubo.comp";
+  {
+    std::ofstream out(shaderPath);
+    out << "#version 450\n"
+        << "layout(std140, set = 0, binding = 0) uniform SceneCameraData {\n"
+        << "  vec4 view;\n"
+        << "  vec4 projection;\n"
+        << "  vec4 eye;\n"
+        << "} cameraData;\n"
+        << "layout(local_size_x = 1) in;\n"
+        << "void main() {}\n";
+  }
+
+  auto compileResult = ShaderCompiler::compileFile(shaderPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  FAIL: legacy UBO probe compile failed: "
+              << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(compileResult.stages);
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [](const ShaderResourceBinding &binding) {
+                                 return binding.name == "SceneCameraData";
+                               });
+  if (it == bindings.end()) {
+    std::cerr << "  FAIL: SceneCameraData binding missing from legacy UBO "
+                 "probe reflection\n";
+    return false;
+  }
+
+  const auto diagnostic = validateSystemAbiBindingContract(*it);
+  if (!diagnostic.has_value()) {
+    std::cerr << "  FAIL: legacy UBO SceneCameraData was accepted\n";
+    return false;
+  }
+  if (diagnostic->find("SceneCameraData") == std::string::npos ||
+      diagnostic->find("StorageBuffer") == std::string::npos ||
+      diagnostic->find("UniformBuffer") == std::string::npos) {
+    std::cerr << "  FAIL: legacy UBO diagnostic lacks ABI detail: "
+              << *diagnostic << "\n";
+    return false;
+  }
+
+  std::cout << "  PASS: legacy SceneCameraData UBO is rejected by ABI "
+               "validation\n";
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   expSetEnvVK();
   // Determine shader directory
@@ -1191,13 +1198,17 @@ int main(int argc, char *argv[]) {
     shaderDir = std::filesystem::current_path() / "assets" / "shaders" / "glsl";
     if (!std::filesystem::exists(shaderDir)) {
       // Try source tree location
-      shaderDir = std::filesystem::path(__FILE__).parent_path().parent_path()
-                      .parent_path().parent_path() / "assets" / "shaders" / "glsl";
+      shaderDir = std::filesystem::path(__FILE__)
+                      .parent_path()
+                      .parent_path()
+                      .parent_path()
+                      .parent_path() /
+                  "assets" / "shaders" / "glsl";
     }
   }
 
-  auto vertPath = shaderDir / "pbr.vert";
-  auto fragPath = shaderDir / "pbr.frag";
+  auto vertPath = shaderDir / "render_paths" / "Forward" / "pbr.vert";
+  auto fragPath = shaderDir / "render_paths" / "Forward" / "pbr.frag";
 
   if (!std::filesystem::exists(vertPath) ||
       !std::filesystem::exists(fragPath)) {
@@ -1210,24 +1221,32 @@ int main(int argc, char *argv[]) {
 
   int failures = 0;
 
-  // Test 1: No variants (base PBR)
-  if (!testVariantCombination(vertPath, fragPath, "Base PBR (no variants)", {}))
+  if (!testPbrShadersUseMaterialAccessorAbi(shaderDir))
+    ++failures;
+  if (!testVariantOnlyShaderNakedCompileFailsWithDiagnostic(shaderDir))
+    ++failures;
+  if (!testMaterialSourceVariantCompilesVariantOnlyShaders(shaderDir))
+    ++failures;
+
+  // Test 1: Contract-source PBR
+  if (!testVariantCombination(vertPath, fragPath, "PBR + Material Contract",
+                              withMaterialContractSource()))
     ++failures;
 
   // Test 2: HAS_NORMAL_MAP only
-  if (!testVariantCombination(vertPath, fragPath, "PBR + Normal Map",
-                              {{"HAS_NORMAL_MAP", true},
-                               {"HAS_METALLIC_ROUGHNESS", false}}))
+  if (!testVariantCombination(
+          vertPath, fragPath, "PBR + Normal Map",
+          withMaterialContractSource(
+              {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", false}})))
     ++failures;
 
   // Test 3: All variants enabled
-  if (!testVariantCombination(vertPath, fragPath, "PBR + All Variants",
-                              {{"HAS_NORMAL_MAP", true},
-                               {"HAS_METALLIC_ROUGHNESS", true}}))
+  if (!testVariantCombination(
+          vertPath, fragPath, "PBR + All Variants",
+          withMaterialContractSource(
+              {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}})))
     ++failures;
   if (!testPbrIblContract(shaderDir, vertPath, fragPath))
-    ++failures;
-  if (!testPbrMaterialTextureSetContract(vertPath, fragPath))
     ++failures;
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
@@ -1235,32 +1254,18 @@ int main(int argc, char *argv[]) {
     ++failures;
   if (!testPbrClearcoatShaderContract(shaderDir))
     ++failures;
+  if (!testDeferredPbrShaderContracts(shaderDir))
+    ++failures;
+  if (!testShadowDepthOnlyUsesSceneDrawRecords(shaderDir))
+    ++failures;
   if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
     ++failures;
-
-  // Test 4: BlinnPhong MaterialUBO member reflection (REQ-004)
-  auto blinnVert = shaderDir / "blinnphong_0.vert";
-  auto blinnFrag = shaderDir / "blinnphong_0.frag";
-  if (std::filesystem::exists(blinnVert) && std::filesystem::exists(blinnFrag)) {
-    if (!testBlinnPhongMaterialUboMembers(blinnVert, blinnFrag))
-      ++failures;
-    if (!testBlinnPhongVariantVertexInputs(blinnVert, blinnFrag))
-      ++failures;
-    if (!testBlinnPhongFlatShadingVariant(shaderDir))
-      ++failures;
-    if (!testBlinnPhongPushConstantAbi(blinnVert, blinnFrag))
-      ++failures;
-    if (!testBlinnPhongRuntimeFallbacks(blinnFrag))
-      ++failures;
-  } else {
-    std::cerr << "  SKIP: blinnphong_0 shaders not found at " << shaderDir
-              << "\n";
-  }
-
-  if (!testShadertoyQuantumCoreContract(shaderDir))
+  if (!testSceneSystemAbiReflection(shaderDir))
     ++failures;
-  if (!testMeshDebugShaderContract(shaderDir))
+  if (!testSceneSystemAbiRejectsLegacyUboDeclaration())
     ++failures;
+
+  // Test 4: post-process and supporting shader contract reflection
   if (!testPostProcessShaderContract(shaderDir))
     ++failures;
   if (!testBloomShaderContracts(shaderDir))

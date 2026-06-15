@@ -1,46 +1,62 @@
 # GetStarted
 
-我们先把 LXEngine 当成一间正在搭建的教学工作室：底层已经有 Vulkan 渲染器、材质系统、场景对象和一个可交互的 `lxe_editor`；我们学习它时，不需要一开始就拆开所有机械结构，而是先学会开门、开灯、摆一个物体，再逐步理解背后的系统。
+我们先把 LXEngine 当成两间相连的工作室：`lxe_editor` 是实时搭景和调试工作台，`lxe_offline_render` 是无窗口的 offline ray tracer 实验台。第一次进入项目时，先把这两个入口跑通；材质、光源、shadow、PBR/IBL 和后续扩展都围绕它们展开。
 
 ## 最短路径
 
 | 目标 | 命令 |
 |---|---|
-| 配置工程 | `mkdir -p build && cd build && cmake .. -G Ninja` |
-| 验证 shader 编译 | `ninja test_shader_compiler && ./src/test/test_shader_compiler` |
-| 构建编辑器 | `ninja lxe_editor` |
-| 启动编辑器 | `./src/demos/lxe_editor/lxe_editor` |
-| 构建离线渲染器 | `ninja lxe_offline_render test_offline_scene_loader test_offline_gpu_scene` |
+| 配置工程 | `cmake -S . -B build -G Ninja` |
+| 验证 shader 编译 | `cmake --build build --target test_shader_compiler && ./build/src/test/test_shader_compiler` |
+| 构建 editor | `cmake --build build --target lxe_editor -j2` |
+| 启动 editor | `./build/src/demos/lxe_editor/lxe_editor` |
+| 构建 offline ray tracer | `cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2` |
 
-如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口和 GPU 交互，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
+如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
 
-## 我们现在主要使用哪个入口
+## 先选入口：Editor 还是 Offline Ray Tracer
 
-当前新人教程默认以 `lxe_editor` 为主入口。`test_render_triangle` 仍然适合做底层 smoke test；主教学路径会从 editor 进入场景、材质、光源和扩展能力。
+| 入口 | 当前用途 | 适合第一天做什么 |
+|---|---|---|
+| `lxe_editor` | 交互式实时 editor，负责打开 project、加载 scene、创建节点、调材质和保存场景 | 打开空 project，创建一个 primitive，保存 scene |
+| `lxe_offline_render` | headless offline ray tracer / compute renderer，读取同一份 scene，输出 EXR/PNG/JSON/raw readback | 对内置 metal sphere scene 跑 64x64 smoke |
+| `test_shader_compiler` | shader 编译与反射 smoke | 检查本机 shader 工具链 |
+| `test_render_triangle` | 最小窗口和 Vulkan draw loop smoke | 排查窗口 / Vulkan backend 基础问题 |
 
-| 入口 | 适合做什么 |
-|---|---|
-| `test_shader_compiler` | 验证 shader 编译和反射链路 |
-| `test_render_triangle` | 验证窗口、Vulkan backend、最小 draw loop |
-| `lxe_editor` | 学习场景、材质、光源、编辑器命令和保存/加载 |
-| `lxe_offline_render` | 读取 scene profile，运行 headless offline FrameGraph 离线渲染 MVP |
+新人教程默认从 `lxe_editor` 开始，因为 editor 能把场景、材质、光源、CommandBus、保存/加载和自动化状态放在同一个工作台里。Offline ray tracer 是第二个核心入口：它不依赖 swapchain，适合做可复现渲染输出、后续 path tracing、AOV 和质量参考实验。
 
-## 跑通 Offline Renderer MVP
-
-离线渲染器像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `SceneResourceTable`，再通过 offline `FrameGraph` 生成 compute work，最后输出线性 float 图。
-
-从仓库根目录执行：
+## 跑通 Editor 主工作台
 
 ```bash
 cmake -S . -B build -G Ninja
-cmake --build build --target CompileShaders lxe_offline_render test_offline_image_writer test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_offline_image_writer|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer|test_offline_render_cli'
+cmake --build build --target lxe_editor -j2
+./build/src/demos/lxe_editor/lxe_editor
+```
+
+启动后，我们优先验证三件事：
+
+| 检查 | 说明 |
+|---|---|
+| editor 窗口能打开 | Vulkan、窗口系统和 demo 可执行程序正常 |
+| project 能创建或打开 | 本地 `data/projects/` 和 project template 正常 |
+| scene 能保存和重新加载 | scene document、runtime scene 和 editor sidecar 状态闭合 |
+
+后续材质、光源、shadow、PBR/IBL、自定义节点和 editor 扩展教程都会从这条工作台链路继续展开。
+
+## 跑通 Offline Ray Tracer Smoke
+
+Offline ray tracer 像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `SceneResourceTable`，再通过 offline `FrameGraph` 生成 compute work，最后输出线性 float 图。
+
+```bash
+cmake --build build --target CompileShaders lxe_offline_render test_offline_render_cli test_offline_scene_loader test_offline_gpu_scene test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_offline_render_cli|test_offline_scene_loader|test_offline_gpu_scene|test_vulkan_offline_renderer'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
   --scene assets/scenes/ibl_metal_sphere.scene.yaml \
   --profile mvp \
   --samples 1 \
   --width 64 \
   --height 64 \
+  --max-bounce 1 \
   --out artifacts/offline/smoke
 ```
 
@@ -55,39 +71,7 @@ artifacts/offline/smoke.rgba32f
 
 `.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/buildInfo 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
 
-## 启动 Assets Downloader
-
-Assets Downloader 是本地资产管理工作台：我们用它下载外部 HDRI、模型、PBR 材质和 PLY 点云，把大文件整理进 `.asset_cache/`，场景文件只保存 `cache://` URI。
-
-从仓库根目录执行：
-
-```bash
-corepack pnpm --dir src/tools/assets-downloader install
-corepack pnpm --dir src/tools/assets-downloader dev
-```
-
-默认会启动：
-
-| 服务 | 地址 |
-|---|---|
-| React UI | `http://127.0.0.1:5173/` |
-| Fastify API | `http://127.0.0.1:4731/` |
-
-3DGS train PLY 不进入 git。我们在 UI 中选择 `Voxel51 Gaussian Splatting` 数据源，使用 `Train point cloud, iteration 7000` 推荐项导入后，会得到：
-
-```text
-.asset_cache/voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/
-  source.yaml
-  raw/source.bin
-  converted/point_cloud.ply
-  converted/point_cloud.asset.yaml
-```
-
-后续 scene 应引用：
-
-```text
-cache://voxel51-gaussian-splatting/train_iteration_7000/iteration-7000/converted/point_cloud.ply
-```
+当前 offline ray tracer 是 software-compute MVP：它已经打通 scene 文件、`SceneResourceTable`、offline `RenderWorkItem`、Vulkan compute dispatch、readback 和输出文件。多 bounce path tracing、高质量材质参考和更完整的 AOV 仍在后续 offline 教程中逐步展开。
 
 ## 环境准备
 
@@ -115,12 +99,23 @@ glslc --version
 | 系列 | 我们学什么 | 入口 |
 |---|---|---|
 | 启动项目 | 安装、构建、启动 editor、加载和保存场景 | [Tutorial / 启动项目](tutorial/start-project/index.md) |
-| 自定义材质 | `.material`、shader、参数、Gooch shader、editor 验证 | [Tutorial / 自定义材质](tutorial/custom-material/index.md) |
-| Assets Downloader | 外部资源 catalog、license gate、`.asset_cache/` 和 `cache://` URI | [Tutorial / Assets Downloader](tutorial/assets-downloader/index.md) |
-| Offline Renderer | scene profile、headless offline FrameGraph、path tracing 扩展点 | [Tutorial / Offline Renderer](tutorial/offline-renderer/index.md) |
+| Offline Renderer | scene profile、offline ray tracer、headless FrameGraph、EXR/PNG 输出 | [Tutorial / Offline Renderer](tutorial/offline-renderer/index.md) |
+| 自定义材质 | `.material`、contract shader、参数、Gooch 材质、editor 验证 | [Tutorial / 自定义材质](tutorial/custom-material/index.md) |
 | 自定义灯光 | 当前 light 底座、scene YAML、未来 light asset / custom light 扩展 | [Tutorial / 自定义灯光](tutorial/custom-light/index.md) |
+| Shadow 阶段 | Shadow pass、CSM、depth target 和多 pass 读写关系 | [Tutorial / Shadow 阶段](tutorial/shadow-era/index.md) |
+| PBR + IBL | HDR/PBR/IBL 金属球场景、资源与 shader 合同 | [Tutorial / PBR + IBL](tutorial/pbr-ibl/index.md) |
 | 扩展编辑器 | toolbar 按钮、command、undo/API/MCP 复用 | [Tutorial / 扩展编辑器](tutorial/extend-editor/index.md) |
 | 扩展场景节点 | 新 node kind、保存/加载、DebugDraw、兼容 editor 操作 | [Tutorial / 扩展场景节点](tutorial/extend-scene-node/index.md) |
+
+## 相关工具不属于新手主线
+
+| 工具 | 状态 | 说明 |
+|---|---|---|
+| [Assets Downloader](tools/assets-downloader.md) | 开发中（未完成） | 本地 Web 资产下载 / cache 工具，暂不作为教程主线或必需工作流 |
+| [lxe_manager MCP 服务](tools/lxe-manager-mcp.md) | 可用 | agent / 自动化使用的 editor 管理与调试入口 |
+| [Notes 工具链说明](tools/notes-tooling.md) | 可用 | notes 站点生成、预览和导航维护 |
+
+Assets Downloader 保留在“相关工具”中，方便继续开发和验证；它暂时不作为 GetStarted、Tutorial 或 offline ray tracer 的必经步骤。
 
 ## 当前能力和未来能力
 
@@ -131,7 +126,7 @@ glslc --version
 | 当前可用 | 已经能在当前代码中验证 |
 | 未来工作流 | 教程会讲设计方向，但必须链接到 `notes/requirements/` 下的 active REQ |
 
-目前 3-5 系列里涉及的未来工作流会链接到：
+目前教程里涉及的未来工作流会链接到：
 
 - `REQ-042-a`：光源资产与自定义光源注册入口
 - `REQ-042-b`：Editor toolbar 与 command 扩展注册入口
@@ -140,6 +135,6 @@ glslc --version
 ## 继续阅读
 
 - [Tutorial 总览](tutorial/index.md)
-- [v0.1.0 CHANGELOG](releases/v0.1.0/CHANGELOG.md)
+- [Offline Renderer](tutorial/offline-renderer/index.md)
 - [场景系统](scene-system/index.md)
 - [材质系统总览](concepts/material/index.md)

@@ -1,49 +1,148 @@
-# 04 Gooch Shader
+# 04 Gooch Contract：新增一种 BSDF 类型
 
-Gooch shader 是非真实感渲染的入门例子。它不像 PBR 那样追求物理正确，而是用冷色和暖色强调物体形体：背光处偏蓝，受光处偏黄。
+Gooch 风格材质像美术老师用两支彩笔做明暗：暗面偏冷，亮面偏暖。要把它接进当前 LXEngine，我们不能只写一个 fragment shader；我们要让材质系统知道“gooch 是一种 BSDF contract”，再让 RenderPathGraph 的 pass 接受它。
 
-## Gooch 的目标是把明暗变成冷暖
+## 当前新增类型要改三处
 
-普通 Lambert 像用一盏灯照模型，暗面会越来越黑。Gooch 像美术老师用两支彩笔做明暗：暗面不是纯黑，而是冷色；亮面不是纯白，而是暖色。
+| 文件 | 作用 |
+|---|---|
+| `assets/shaders/glsl/common/materials/gooch.contract.glsl` | 声明 `gooch` 参数、storage ABI、surface/BSDF 函数 |
+| `assets/materials/gooch_demo.material` | 使用 `bsdf.type: gooch` 并填写参数 envelope |
+| `assets/render_paths/*.render-path.yaml` | 在需要的 pass `filters.bsdf` 中加入 `gooch` |
 
-## 片元公式
+如果我们要让 Gooch 有完全独立的光照公式，也可以新增 pass shader；但第一步通常先复用 `techniques/Forward/pbr`，让它 include `gooch.contract.glsl`，然后通过 `lxLoadMaterialSurface` / `lxEvaluateBsdf` 产出统一 surface。
 
-核心只有三步：
+## Contract metadata 先写清楚
 
-1. 算 `N dot L`。
-2. 把 `[-1, 1]` 映射到 `[0, 1]`。
-3. 在 `coolColor` 和 `warmColor` 之间插值。
+```glsl
+// LX_MATERIAL_CONTRACT_BEGIN
+// type: gooch
+// status: supported
+// reflectionHash: gooch-source-contract-v1
+// storageAbiHash: gooch-storage-v1
+// accessorAbiHash: material-surface-v1
+// parameter: warmColor required rgb
+// parameter: coolColor required rgb
+// parameter: baseColor optional rgb
+// parameter: intensity optional float
+// storageField: warmColor vec4 parameter warmColor value default=1,0.85,0.25,1
+// storageField: coolColor vec4 parameter coolColor value default=0.15,0.25,1,1
+// storageField: baseColor vec4 parameter baseColor value default=1,1,1,1
+// storageField: intensity float parameter intensity value default=1
+// bsdfFunction: evaluate lxEvaluateBsdf
+// bsdfFunction: sample lxSampleBsdf
+// LX_MATERIAL_CONTRACT_END
+```
+
+这里的 metadata 会被 `MaterialContractReflector` 读取。`parameter` 决定 YAML 可以写哪些字段；`storageField` 决定这些参数怎样打包进 source-local material record；hash 参与 material source signature。
+
+## Shader ABI 与参数读取
+
+当前 pass shader 需要 contract 提供三个入口。Gooch 参数要真正影响画面，contract source 需要声明 source record，并用 `materialIndex` 找到本材质在 `SceneSourceMaterialRecords` 里的记录：
+
+```glsl
+#include "../material_surface.glsl"
+#include "../material_bsdf.glsl"
+
+struct LxSceneMaterialRefRecord {
+  uint sourceStorageIndex;
+  uint sourceLocalMaterialIndex;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct LxGoochSourceRecord {
+  vec4 warmColor;
+  vec4 coolColor;
+  vec4 baseColor;
+  float intensity;
+};
+
+layout(std430, set = 0, binding = 12) readonly buffer SceneMaterialRefs {
+  LxSceneMaterialRefRecord materialRefs[];
+};
+
+layout(std430, set = 0, binding = 13) readonly buffer SceneSourceMaterialRecords {
+  LxGoochSourceRecord sourceMaterials[];
+};
+
+LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv,
+                                        vec3 geometricNormal,
+                                        mat3 tangentFrame) {
+  LxSceneMaterialRefRecord materialRef = materialRefs[materialIndex];
+  LxGoochSourceRecord material =
+      sourceMaterials[materialRef.sourceLocalMaterialIndex];
+
+  vec3 n = dot(geometricNormal, geometricNormal) > 0.0
+               ? normalize(geometricNormal)
+               : vec3(0.0, 0.0, 1.0);
+  float t = n.z * 0.5 + 0.5;
+  vec3 goochColor =
+      mix(material.coolColor.rgb, material.warmColor.rgb, t) *
+      material.baseColor.rgb * material.intensity;
+
+  LxMaterialSurface surface;
+  surface.baseColor = goochColor;
+  surface.alpha = 1.0;
+  surface.metallic = 0.0;
+  surface.roughness = 0.6;
+  surface.normal = n;
+  surface.ao = 1.0;
+  surface.emissive = vec3(0.0);
+  return surface;
+}
+
+LxBsdfEvaluateOutput lxEvaluateBsdf(LxBsdfEvaluateInput bsdfInput) {
+  return lxEvaluateLambertLikeBsdf(bsdfInput);
+}
+
+LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput bsdfInput) {
+  return lxSampleCosineHemisphereBsdf(bsdfInput);
+}
+```
+
+## Gooch 公式放在哪里
+
+Gooch 公式本身很小：
 
 ```glsl
 float ndl = dot(normalize(N), normalize(L));
 float t = ndl * 0.5 + 0.5;
-vec3 color = mix(coolColor.rgb, warmColor.rgb, t);
+vec3 color = mix(coolColor.rgb, warmColor.rgb, t) * baseColor.rgb;
 ```
 
-再乘一点 base color：
+上面的示例把公式放在 `lxLoadMaterialSurface(...)`，这样 Forward 和 Deferred surface shader 都能继续消费统一的 `LxMaterialSurface`。如果你要让 Gooch 拥有完全独立的光照模型，也可以把同一份 storage record 数据组织成专门的 BSDF 输入，再在 `lxEvaluateBsdf(...)` 中实现插值。
 
-```glsl
-color *= baseColor.rgb;
+## 对应 material YAML
+
+```yaml
+schema: lxe.material.v2
+renderClass: surface.opaque
+bsdf:
+  type: gooch
+  source: assets://shaders/glsl/common/materials/gooch.contract.glsl
+  parameters:
+    warmColor: { kind: rgb, value: [1.0, 0.82, 0.25] }
+    coolColor: { kind: rgb, value: [0.15, 0.25, 1.0] }
+    baseColor: { kind: rgb, value: [0.8, 0.8, 0.75] }
+    intensity: { kind: float, value: 1.0 }
 ```
 
-## Shader 参数
+## Graph filter 必须跟上
 
-| 参数 | 含义 |
-|---|---|
-| `baseColor` | 物体本色 |
-| `warmColor` | 受光侧色调 |
-| `coolColor` | 背光侧色调 |
-| `intensity` | 效果强度 |
+如果 `Forward` pass 仍然只接受 `standard-pbr`、`matte`、`uber`、`metal`、`substrate`，`gooch` material 会加载成功但不会被这个 pass 消费：
 
-这些参数应该出现在 shader uniform block 中，也应该出现在 `.material` 的 `parameters` 中。
+```yaml
+filters:
+  renderClass: [surface.opaque]
+  bsdf: [matte, uber, metal, substrate, standard-pbr, gooch]
+```
 
-## 当前光源输入
-
-Gooch shader 可以先只读第一盏 directional light。更完整的多光源循环属于后续渲染路线；本教程的目标是验证材质接入，而不是实现完整光照模型。
+pass shader `techniques/Forward/pbr` 已经要求 `LX_MATERIAL_CONTRACT_SOURCE`，所以 `sources` 也必须保留 `material.bsdf`。
 
 ## 我们已经学会了什么
 
-Gooch shader 让我们看到：材质系统不仅能服务 PBR，也能服务实验渲染。只要 shader 和 `.material` 合同对齐，editor 就能调参数。
+新增 Gooch 不只是写 fragment 公式。当前材质系统要求我们新增 contract metadata、实现 shader ABI、写 `.material` envelope，并让 RenderPathGraph pass filter 接受新 BSDF type。视觉公式最后才接到 contract storage / accessor 之后。
 
 ## 下一步
 

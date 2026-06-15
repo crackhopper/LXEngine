@@ -209,7 +209,7 @@ void removeDefaultProjectDirectory() {
 LxeEditorSession::LxeEditorSession(CameraRig &rig, UiOverlay &ui,
                                    LX_core::EditorState &editorState)
     : m_rig(rig), m_ui(ui), m_editorState(editorState),
-      m_projectSession(resolveRuntimePath("assets/project_templates"),
+      m_projectSession(resolveRuntimePath("data/project_templates_disabled"),
                        resolveRuntimePath("data/projects")),
       m_editorDataState(resolveRuntimePath("data/lxe_editor")),
       m_recording(resolveRuntimePath("data/lxe_editor")) {}
@@ -423,7 +423,7 @@ LxeEditorSession::saveScene(const std::optional<std::string> &path) {
 
 LX_core::CommandResult
 LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
-  const auto currentSettings = m_runtime.document().realtimeRenderSettings();
+  const auto currentSettings = m_runtime.scene()->realtimeRenderSettings();
   if (modeName == "status") {
     const char *mode = realtimeRenderModeName(currentSettings.mode);
     return makeCommandOk("realtime render mode: " + std::string(mode),
@@ -471,6 +471,7 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
     settings.mode = nextMode;
     document.setRealtimeRenderSettings(settings);
     saveSceneDocument(*activePath, document);
+    m_runtime.scene()->setRealtimeRenderSettings(settings);
     saveEditorSceneStateForScenePath(*activePath, captureEditorSceneState());
     const auto saved = m_projectSession.saveProject();
     if (!saved.ok) {
@@ -529,6 +530,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
       m_consolePanel->appendSystemLine(std::string("scene open failed: ") +
                                        error.what());
     }
+    std::cerr << "[lxe_editor] scene open failed: " << error.what() << '\n';
     return;
   }
 
@@ -648,8 +650,7 @@ std::string LxeEditorSession::realtimeRenderProfilesJson() const {
     oss << "{\"name\":\"" << jsonEscape(name) << "\",\"camera\":\""
         << jsonEscape(profile.cameraPath) << "\",\"width\":" << profile.width
         << ",\"height\":" << profile.height << ",\"outputFormat\":\""
-        << jsonEscape(profile.outputFormat) << "\",\"materialTag\":\""
-        << jsonEscape(profile.materialTag) << "\",\"outDir\":\""
+        << jsonEscape(profile.outputFormat) << "\",\"outDir\":\""
         << jsonEscape(profile.outDir.generic_string()) << "\"}";
   }
   oss << "]}";
@@ -660,6 +661,23 @@ LX_core::CommandResult
 LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
   if (!m_realtimeRenderProfileHooks.generate) {
     return makeCommandError("realtime render output hook unavailable");
+  }
+  if (!m_projectSession.hasProject()) {
+    return makeCommandError("no project is open; use project open first");
+  }
+  const auto activePath = m_projectSession.activeScenePath();
+  if (!activePath.has_value()) {
+    return makeCommandError("project has no active scene");
+  }
+  if (hasPendingSceneOpen()) {
+    return makeCommandError(
+        "active scene open is pending; wait for the next update tick");
+  }
+  const auto runtimePath = m_runtime.documentPath();
+  if (!runtimePath.has_value() ||
+      normalizedAbsolutePath(*runtimePath) != normalizedAbsolutePath(*activePath)) {
+    return makeCommandError(
+        "active project scene is not loaded; wait for scene open to finish");
   }
 
   try {
@@ -674,10 +692,6 @@ LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
             LX_core::offline::RenderProfileCliOverrides{
                 .profileName = std::string(profileName),
             });
-    if (!resolved.output.materialTag.empty()) {
-      m_runtime.scene()->setActiveMaterialTagForRenderables(
-          resolved.output.materialTag);
-    }
     RealtimeProfileOutputRequest request{
         .scenePath = m_runtime.documentPath().value_or(std::filesystem::path{}),
         .sceneName = document.sceneName(),
@@ -706,11 +720,10 @@ LxeEditorSession::handleProjectCommand(const std::vector<std::string> &args) {
     if (args.size() > 2 || (args.size() == 2 && args[1] != "list")) {
       return makeCommandError("usage: project templates [list]");
     }
-    ProjectTemplateCatalog catalog(
-        resolveRuntimePath("assets/project_templates"));
-    catalog.refresh();
     std::ostringstream oss;
     oss << "{\"templates\":[";
+    const ProjectTemplateCatalog catalog(
+        resolveRuntimePath("data/project_templates_disabled"));
     const auto &entries = catalog.entries();
     for (usize i = 0; i < entries.size(); ++i) {
       if (i != 0) {
@@ -927,13 +940,28 @@ std::string LxeEditorSession::projectSummaryJson() const {
   if (!project.has_value() || !projectRoot.has_value()) {
     return "null";
   }
+  const auto activePath = m_projectSession.activeScenePath();
+  const auto runtimePath = m_runtime.documentPath();
+  const bool sceneOpenPending = hasPendingSceneOpen();
+  const bool activeSceneLoaded =
+      activePath.has_value() && runtimePath.has_value() &&
+      normalizedAbsolutePath(*runtimePath) ==
+          normalizedAbsolutePath(*activePath) &&
+      !sceneOpenPending;
   std::ostringstream oss;
   oss << "{\"id\":\"" << jsonEscape(project->id) << "\",\"displayName\":\""
       << jsonEscape(project->displayName) << "\",\"path\":\""
       << jsonEscape(projectRoot->string())
       << "\",\"dirty\":" << (m_projectSession.dirty() ? "true" : "false")
       << ",\"activeScene\":\""
-      << jsonEscape(project->activeScene.generic_string()) << "\"}";
+      << jsonEscape(project->activeScene.generic_string()) << "\""
+      << ",\"loadedScene\":\""
+      << jsonEscape(runtimePath.has_value() ? runtimePath->string()
+                                            : std::string{})
+      << "\",\"activeSceneLoaded\":"
+      << (activeSceneLoaded ? "true" : "false")
+      << ",\"sceneOpenPending\":"
+      << (sceneOpenPending ? "true" : "false") << "}";
   return oss.str();
 }
 
@@ -1048,23 +1076,10 @@ void LxeEditorSession::rebuildBindings(
                  const std::string &displayName,
                  LX_core::SceneNodeSharedPtr &outNode) {
                 if (kind.rfind("model:", 0) == 0) {
-                  BuiltinAssetCatalog catalog;
-                  catalog.refresh(resolveRuntimePath("assets/models/builtin"));
                   const std::string assetId =
                       kind.substr(std::string("model:").size());
-                  const auto asset = catalog.findByAssetId(assetId);
-                  if (!asset.has_value()) {
-                    return makeCommandError("unknown model asset: " + assetId);
-                  }
-                  try {
-                    outNode = buildModelAssetNode(
-                        asset->meshUri, asset->defaultMaterialUri,
-                        asset->albedoTextureUri, nodeName);
-                    outNode->setName(displayName);
-                    return makeCommandOk("created " + kind);
-                  } catch (const std::exception &e) {
-                    return makeCommandError(e.what());
-                  }
+                  return makeCommandError("builtin model assets removed: " +
+                                          assetId);
                 }
                 if (kind.rfind("patch:", 0) == 0) {
                   const std::string shape =
@@ -1186,7 +1201,7 @@ void LxeEditorSession::rebuildBindings(
               },
           .realtimeRenderMode =
               [this]() -> std::optional<LX_core::SceneRealtimeRenderMode> {
-            return m_runtime.document().realtimeRenderSettings().mode;
+            return m_runtime.scene()->realtimeRenderSettings().mode;
           },
           .setRealtimeRenderMode =
               [this](const LX_core::SceneRealtimeRenderMode mode) {
@@ -1293,23 +1308,38 @@ void LxeEditorSession::rebuildBindings(
               },
       });
   m_commandBus->registerHandler(
-      "material-tag", "material-tag set <tag>",
+      "render",
+      "render debug dump <target> [camera-path] [path] | render debug stats "
+      "<target>",
       [this](std::vector<std::string> args) {
-        if (args.size() != 2 || args[0] != "set") {
-          return makeCommandError("usage: material-tag set <tag>");
+        if (args.size() == 3 && args[0] == "debug" &&
+            args[1] == "stats") {
+          if (!m_renderDebugCommandHooks.statsRenderTarget) {
+            return makeCommandError("render debug stats unavailable");
+          }
+          try {
+            const RenderDebugDumpResult dump =
+                m_renderDebugCommandHooks.statsRenderTarget(args[2]);
+            std::ostringstream structured;
+            structured << "{\"width\":" << dump.width
+                       << ",\"height\":" << dump.height << ",\"format\":\""
+                       << jsonEscape(dump.format) << "\""
+                       << ",\"stats\":{\"min\":" << dump.minValue
+                       << ",\"max\":" << dump.maxValue
+                       << ",\"mean\":" << dump.meanValue
+                       << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
+            return makeCommandOk("render target stats: " + args[2],
+                                 structured.str());
+          } catch (const std::exception &e) {
+            return makeCommandError(e.what());
+          }
         }
-        m_runtime.scene()->setActiveMaterialTagForRenderables(args[1]);
-        return makeCommandOk("material tag set: " + args[1],
-                             "{\"materialTag\":\"" + jsonEscape(args[1]) +
-                                 "\"}");
-      });
-  m_commandBus->registerHandler(
-      "render", "render debug dump <target> [camera-path] [path]",
-      [this](std::vector<std::string> args) {
+
         if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
             args.size() > 5) {
           return makeCommandError(
-              "usage: render debug dump <target> [camera-path] [path]");
+              "usage: render debug dump <target> [camera-path] [path] | "
+              "render debug stats <target>");
         }
         if (!m_renderDebugCommandHooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");

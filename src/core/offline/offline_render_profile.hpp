@@ -27,7 +27,6 @@ struct OutputProfile final {
   u32 height = 512;
   std::string outputFormat = "exr-png";
   std::filesystem::path outDir = "artifacts";
-  std::string materialTag;
   Vec3f backgroundColor{0.0f, 0.0f, 0.0f};
   OutputCameraOverrides cameraOverrides;
   std::map<std::string, std::string> extensionYamlByField;
@@ -39,7 +38,6 @@ struct OfflineRenderSettings final {
   u32 maxBounce = 1;
   u32 seed = 1;
   std::string profileName;
-  std::string materialTag;
   bool shadows = true;
   std::string compareMode = "shaded";
   std::map<std::string, std::string> extensionYamlByField;

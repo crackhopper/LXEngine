@@ -195,4 +195,4 @@ Use this quick decision rule:
 
 ## Escalation Rules
 
-If the work drifts into broad subsystem design rather than source-attached explanation, switch mental mode and use `openspec-explore` instead of forcing that content into `notes/source_analysis/`.
+If the work drifts into broad subsystem design rather than source-attached explanation, switch mental mode and use Superpowers brainstorming instead of forcing that content into `notes/source_analysis/`.

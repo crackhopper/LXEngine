@@ -1,9 +1,8 @@
 #pragma once
 
-#include "core/frame_graph/render_queue.hpp"
-#include "core/rhi/descriptor_resource_ref.hpp"
-#include "core/scene/object.hpp"
+#include "core/frame_graph/render_input.hpp"
 
+#include <memory>
 #include <vector>
 
 namespace LX_core {
@@ -11,10 +10,10 @@ namespace LX_core {
 struct RenderUploadPlan final {
   RenderDomain domain = RenderDomain::Realtime;
   std::vector<GpuResourceRef> resources;
-  std::vector<PerDrawDataSharedPtr> pushConstants;
 };
 
 [[nodiscard]] RenderUploadPlan
-buildRenderUploadPlan(const RenderWorkQueue &queue);
+buildRenderUploadPlan(const std::vector<std::unique_ptr<RenderInput>> &inputs,
+                      const std::vector<RenderInputDesc> &descs);
 
 } // namespace LX_core

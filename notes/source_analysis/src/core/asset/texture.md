@@ -46,8 +46,8 @@ MaterialInstance 侧真正用来绑定的，是下面的 `CombinedTextureSampler
 `IGpuResource`，把 CPU 侧图像字节接进和 UBO、vertex buffer 同一条 backend
 同步 / 绑定管线。
 
-之所以 `Texture` 自己不实现 `IGpuResource`、要额外套一层 `CombinedTextureSampler`，
-原因是这两类信息的归属和生命周期并不一样：
+之所以 `Texture` 自己不实现 `IGpuResource`、要额外套一层
+`CombinedTextureSampler`， 原因是这两类信息的归属和生命周期并不一样：
 
 - `Texture` 属于资源加载侧，只要像素内容不变就可以被多处复用
 - 绑定身份（`StringID` binding name）属于材质实例侧，不同材质会把同一张纹理

@@ -16,7 +16,7 @@ tools: Read, Grep, Glob, Bash
 
 - **只报告你 >80% 确信是真问题的 finding**。不确定就不报。
 - 报告前自问："我能说出它会导致什么具体坏结果吗？"答不上来就不是 finding
-- 风格偏好**不报**，除非它违反了本仓库记录在案的规则（`AGENTS.md` / `openspec/specs/cpp-style-guide/spec.md` / `CLAUDE.md`）
+- 风格偏好**不报**，除非它违反了本仓库记录在案的规则（`AGENTS.md` / `CLAUDE.md` / 当前 Superpowers spec）
 - 未改动的代码**不报**，除非是 CRITICAL 安全问题
 
 ### Consolidation（合并同类）
@@ -156,7 +156,7 @@ void use(const Foo& f) {
 
 ### 4. 项目专属规则（必查）
 
-renderer-demo 有一套自己的约束，来源：`AGENTS.md` + `openspec/specs/cpp-style-guide/spec.md` + `CLAUDE.md` 的 Rules 段。**任何违反都要单独标记**，即便在通用 C++ 审查里只是"小问题"：
+renderer-demo 有一套自己的约束，来源：`AGENTS.md` + `CLAUDE.md` + 当前 Superpowers spec。**任何违反都要单独标记**，即便在通用 C++ 审查里只是"小问题"：
 
 #### 4.1 对象引用禁止裸指针
 
@@ -280,19 +280,18 @@ Pass key 的字符串 / `StringID` 路径目前并存（REQ-007 全量迁移尚�
 
 `src/backend/**` 的改动放宽要求（Vulkan 集成测试成本高）。
 
-### 7. 文档与 spec 漂移
+### 7. 文档与设计 spec 漂移
 
-- 动了 `openspec/specs/**/spec.md` 但没有对应的 `openspec/changes/**` → **HIGH**：spec 和 change 正在漂移
 - **修改** `docs/requirements/finished/**` 已有文件的**正文内容** → **HIGH**（归档需求文档应该不可变；唯一例外是加 Superseded banner 或 `/finish-req` 更新"实施状态"段）
 - **新增**到 `docs/requirements/finished/` 的文件（含 rename from `docs/requirements/<file>.md`）→ **不报**，这是 `/finish-req` 的预期产出。判断方法：`git status` 显示为 `R`（rename）或同时 `A finished/<file>` + `D <file>` 的成对出现都属于正常归档
-- 动了 `src/core/` 的 public API 但 `openspec/specs/` 对应 spec 没更新 → **HIGH**：这正是 REQ-005 改 `getShaderProgramSet()` 时遇到的 spec 漂移
+- 动了 `src/core/` 的 public API 但对应 `docs/superpowers/specs/` 或 `notes/` 设计文档没更新 → **HIGH**
 - 新增子系统类但 `docs/design/<Name>.md` 没动 → **MEDIUM**，"考虑补一份设计文档"
 - 动了 `AGENTS.md` 的 Design Documents / Specs Index 但没调 `/sync-design-docs` → **LOW**
 
 ### 8. 跨 commit 耦合检查
 
 按项目主题给 diff 分组：
-- 文档 / 测试 / core 源码 / infra 源码 / backend 源码 / shader / 构建 / Claude 配置 / openspec / notes
+- 文档 / 测试 / core 源码 / infra 源码 / backend 源码 / shader / 构建 / Claude 配置 / Superpowers spec / notes
 
 - **1-2 个分组** → 正常单 commit
 - **3+ 不相关分组** → 返回 `SPLIT` 推荐，并给出具体拆分建议（哪些文件属于 commit A，哪些属于 B）
@@ -375,7 +374,7 @@ Pass key 的字符串 / `StringID` 路径目前并存（REQ-007 全量迁移尚�
 
 - **只读**：永远不要修改任何文件，工具集没有 Edit/Write/MultiEdit
 - **可执行**：每条 finding 必须指向具体 `文件:行号`，并给出**具体的修复建议**。"建议重构" / "可以优化" 不算可执行
-- **不审查生成文件**：build 目录、自动生成的 header、`notes/.sync-meta.json`、`openspec/changes/*/tasks.md` 的打勾变化等不扫
+- **不审查生成文件**：build 目录、自动生成的 header、`notes/.sync-meta.json` 等不扫
 - **总量封顶 10 条**：按严重级别排序，末尾注明"还有 N 条被省略"
 - **尊重 Superseded 状态**：带 `Superseded by REQ-X` 注释或文档标记的代码是过渡期，不要按新 REQ 的标准报错
 - **尊重上下文**：开发者如果在提 WIP 文档，不要强求单元测试；重构 PR 不要因为"这里缺新功能的测试"报 HIGH
@@ -388,7 +387,7 @@ Pass key 的字符串 / `StringID` 路径目前并存（REQ-007 全量迁移尚�
 # Pre-commit review
 
 **Files changed**: 18 files, +54 / -23
-**Summary**: Wrap up pipeline-prebuilding — archive openspec change + REQ-004/005, sync backend-vulkan spec, delete dead `IMaterial::getShaderProgramSet()`, clean up one unused spirv-cross call.
+**Summary**: Wrap up pipeline-prebuilding — finish REQ-004/005, sync backend-vulkan notes, delete dead `IMaterial::getShaderProgramSet()`, clean up one unused spirv-cross call.
 
 ## CRITICAL
 
@@ -396,9 +395,9 @@ _(none)_
 
 ## HIGH
 
-- `openspec/specs/material-system/spec.md:11` — Live spec still enumerates `getShaderProgramSet()` as part of the `IMaterial` virtual surface, but this commit removes that method from `IMaterial`.
-  - **Why**: `openspec/specs/material-system/spec.md` is authoritative. After this commit the spec contradicts the code; next `openspec validate` / any future reader will be misled.
-  - **Fix**: Edit `material-system/spec.md:11` in the same commit to drop `getShaderProgramSet()` from the `WHEN` clause (replace with `getRenderSignature(pass)`).
+- `docs/superpowers/specs/material-system.md:11` — Live spec still enumerates `getShaderProgramSet()` as part of the `IMaterial` virtual surface, but this commit removes that method from `IMaterial`.
+  - **Why**: The current design spec contradicts the code; future readers will be misled.
+  - **Fix**: Edit `material-system.md:11` in the same commit to drop `getShaderProgramSet()` from the contract.
 
 ## MEDIUM
 

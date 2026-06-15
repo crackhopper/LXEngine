@@ -194,7 +194,7 @@ public:
 
   /// The scene descriptor resolver fills this with the binding name resolved
   /// from shader reflection before handing the texture off to the backend
-  /// descriptor path. Empty until a render work item routes it.
+  /// descriptor path. Empty until the descriptor resolver/compiler path assigns it.
   void setBindingName(StringID name) { m_bindingName = name; }
 
   ResourceType getType() const override {

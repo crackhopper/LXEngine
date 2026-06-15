@@ -218,9 +218,15 @@ buildOfflineSceneStorageResources(OfflineRenderJob &job) {
 
   OfflineSceneStorageResources resources;
   job.scene.beginRenderResourceScope();
-  resources.descriptorResources.reserve(10);
-  appendStorageDescriptor(resources, job.scene, StringID("SceneVertices"),
-                          copyBytes(uploadView.vertices));
+  resources.descriptorResources.reserve(12);
+  appendStorageDescriptor(resources, job.scene, StringID("ScenePositions"),
+                          copyBytes(uploadView.positions));
+  appendStorageDescriptor(resources, job.scene,
+                          StringID("SceneAttributeStreams"),
+                          copyBytes(uploadView.attributeStreams));
+  appendStorageDescriptor(resources, job.scene,
+                          StringID("SceneAttributeValues"),
+                          copyBytes(uploadView.attributeValues));
   appendStorageDescriptor(resources, job.scene, StringID("SceneIndices"),
                           copyBytes(uploadView.indices));
   appendStorageDescriptor(resources, job.scene, StringID("SceneMeshes"),

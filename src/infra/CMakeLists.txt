@@ -331,11 +331,24 @@ set(INFRA_LIB LX_Infra CACHE INTERNAL "Infra library name")
 set(INFRA_SOURCES
     build_info/build_info.cpp
     material_loader/generic_material_loader.cpp
+    material_loader/material_contract_reflector.cpp
+    material_loader/material_resource_parser.cpp
+    material_loader/pbrt_material_defaults.cpp
+    resource_parsers/mesh_resource_parser.cpp
+    resource_parsers/material_source_variant_resolver.cpp
+    resource_parsers/render_feature_resource_parser.cpp
+    resource_parsers/render_pass_node_parser.cpp
+    resource_parsers/render_path_graph_resource_parser.cpp
+    resource_parsers/render_path_shader_resolver.cpp
+    resource_parsers/render_resource_scene_parser_adapters.cpp
+    resource_parsers/scene_resource_parser_registry.cpp
+    resource_parsers/texture_resource_parser.cpp
     scene_asset/gltf_scene_asset_loader.cpp
     scene_asset/scene_material_loader.cpp
     scene_asset/scene_mesh_loader.cpp
     scene_io/editor_camera_state.cpp
     scene_io/scene_document.cpp
+    scene_io/scene_validation_profile.cpp
     gui/imgui_gui.cpp
     gui/debug_ui.cpp
     texture_loader/texture_loader.cpp

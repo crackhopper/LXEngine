@@ -78,7 +78,7 @@ void validatePrimitiveRecord(const SceneResourceTableUploadView &scene,
   }
   for (u32 i = 0; i < 3; ++i) {
     const u32 vertexIndex = scene.indices[primitive.indexOffset + i];
-    if (vertexIndex >= scene.vertices.size()) {
+    if (vertexIndex >= scene.positions.size()) {
       throw std::runtime_error("software BVH primitive " +
                                std::to_string(primitiveIndex) +
                                " references invalid vertex index " +
@@ -93,9 +93,8 @@ void validatePrimitiveRecord(const SceneResourceTableUploadView &scene,
   Bounds bounds;
   for (u32 i = 0; i < 3; ++i) {
     const u32 index = scene.indices[gpuRecord.indexOffset + i];
-    const SceneGpuVertexRecord &vertex = scene.vertices[index];
     bounds.include(transformPoint(object.objectToWorld,
-                                  vertex.position.toVec3()));
+                                  scene.positions[index].toVec3()));
   }
   return bounds;
 }

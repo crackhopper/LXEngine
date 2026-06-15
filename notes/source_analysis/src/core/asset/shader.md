@@ -100,7 +100,7 @@
 只是把名字列入 `kSystemOwnedBindings` 还不够；引擎必须进一步声明：
 这些保留名字对应的 descriptor 类型本身也不能随便换。
 
-如果某一份 shader 意外把 `CameraUBO` 声明成 `StorageBuffer` 或 `Texture2D`，
+如果某一份 shader 意外把 `SceneCameraData` 声明成 `UniformBuffer` 或 `Texture2D`，
 那就算名字对得上，它表达的语义也已经偏离引擎约定。`getExpectedTypeForSystemBinding()`
 用来在这种情况下给上层一个可比对的参照类型，让反射校验能尽早把偏离挡掉，
 而不是等到 descriptor set 写入阶段才炸。

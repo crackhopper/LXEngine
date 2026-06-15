@@ -127,7 +127,7 @@ void testSnapshotIncludesMaterialCallbacks() {
               [](const std::string& path) -> std::optional<std::string> {
             return path == "/world/cube"
                        ? std::optional<std::string>(
-                             "assets/materials/blinnphong_lit.material")
+                             "assets/materials/pbr.material")
                        : std::nullopt;
           },
           .nodeBaseColor =
@@ -147,8 +147,8 @@ void testSnapshotIncludesMaterialCallbacks() {
           .presets =
               []() {
                 return std::vector<std::string>{
-                    "assets/materials/blinnphong_lit.material",
-                    "assets/materials/blinnphong_default.material"};
+                    "assets/materials/pbr.material",
+                    "assets/materials/pbr.material"};
               },
           .materialParameters =
               [](const std::string& path) {
@@ -173,16 +173,12 @@ void testSnapshotIncludesMaterialCallbacks() {
   const auto snapshot = panel.makeSnapshot();
   EXPECT(snapshot.hasMaterialSection,
          "material URI callback should make the material section visible");
-  EXPECT(snapshot.materialUri == "assets/materials/blinnphong_lit.material",
+  EXPECT(snapshot.materialUri == "assets/materials/pbr.material",
          "snapshot should expose callback material URI");
-  EXPECT(snapshot.hasNodeBaseColorOverride,
-         "snapshot should expose callback node baseColor override");
-  EXPECT(nearlyEqual(snapshot.nodeBaseColorOverride.x, 0.25f) &&
-             nearlyEqual(snapshot.nodeBaseColorOverride.y, 0.5f) &&
-             nearlyEqual(snapshot.nodeBaseColorOverride.z, 0.75f),
-         "snapshot should expose callback node baseColor value");
-  EXPECT(snapshot.canEditBaseColor,
-         "snapshot should expose baseColor editability");
+  EXPECT(!snapshot.hasNodeBaseColorOverride,
+         "snapshot should ignore legacy node baseColor callback");
+  EXPECT(!snapshot.canEditBaseColor,
+         "snapshot should not expose legacy baseColor editability");
   EXPECT(snapshot.hasProceduralMaterialEnabled &&
              snapshot.proceduralMaterialEnabled,
          "snapshot should expose procedural runtime opt-in");
@@ -235,23 +231,20 @@ void testRegularNodeDoesNotExposeRealtimeRenderMode() {
 
 void testExperimentMaterialCandidateDiscovery() {
   const auto dir = std::filesystem::temp_directory_path() /
-                   "lxe_inspector_rtr_material_candidates";
+                   "lxe_inspector_material_material_candidates";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   {
-    std::ofstream(dir / "rtr_b.material") << "shader: b\n";
-    std::ofstream(dir / "rtr_a.material") << "shader: a\n";
-    std::ofstream(dir / "blinnphong_lit.material") << "shader: ignored\n";
-    std::ofstream(dir / "rtr_notes.txt") << "ignored\n";
+    std::ofstream(dir / "material_b.material") << "shader: b\n";
+    std::ofstream(dir / "material_a.material") << "shader: a\n";
+    std::ofstream(dir / "pbr.material") << "shader: ignored\n";
+    std::ofstream(dir / "material_notes.txt") << "ignored\n";
   }
 
   const auto candidates =
       LX_core::InspectorPanel::discoverExperimentMaterialCandidates(dir);
-  EXPECT(candidates.size() == 2,
-         "candidate discovery should include only rtr_*.material files");
-  EXPECT(candidates[0].find("rtr_a.material") != std::string::npos &&
-             candidates[1].find("rtr_b.material") != std::string::npos,
-         "candidate discovery should be sorted by filename/path");
+  EXPECT(candidates.empty(),
+         "legacy experiment material discovery should be disabled");
 
   std::filesystem::remove_all(dir);
 }
@@ -466,20 +459,14 @@ void testDrawFrameSurvivesMaterialSectionCpuOnlyImGui() {
           .materialUri =
               [](const std::string&) {
                 return std::optional<std::string>(
-                    "assets/materials/blinnphong_lit.material");
+                    "assets/materials/pbr.material");
               },
-          .nodeBaseColor =
-              [](const std::string&) {
-                return std::optional<LX_core::Vec3f>(
-                    LX_core::Vec3f{0.8f, 0.2f, 0.2f});
-              },
-          .canEditBaseColor = [](const std::string&) { return true; },
           .presets =
               []() {
                 return std::vector<std::string>{
-                    "assets/materials/blinnphong_lit.material",
-                    "assets/materials/blinnphong_default.material",
-                    "assets/materials/blinnphong_textured.material",
+                    "assets/materials/pbr.material",
+                    "assets/materials/pbr.material",
+                    "assets/materials/pbr.material",
                     "assets/materials/pbr_gold.material"};
               },
       });

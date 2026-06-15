@@ -16,9 +16,9 @@ tags: [docs, notes, sync, onboarding]
 
 写完文档后，如果后台 `scripts/notes/serve_site.sh` 已经在运行，通常不需要手动刷新；若 watcher 异常，再执行 `/refresh-notes` 重启本地预览服务。
 
-**IMPORTANT**: 这个命令的目标是产生**摘要与导航**，不是把 `openspec/specs/` 的内容复制一份。notes 的读者是第一次看这个项目的人，要帮他们快速建立心智模型并指向权威文档。
+**IMPORTANT**: 这个命令的目标是产生**摘要与导航**，不是把 Superpowers design specs 的内容复制一份。notes 的读者是第一次看这个项目的人，要帮他们快速建立心智模型并指向权威文档。
 
-**当前实现即真相**：notes 永远只描述**此刻代码库里真正存在的东西**。已删除的类、改名的接口、被废弃的设计、"曾经的 X" / "已废弃的 Y" / "历史 banner" —— 一律**物理删除**，不留 tombstone。历史留给 git log / `openspec/changes/archive/`，不留在 notes 里。
+**当前实现即真相**：notes 永远只描述**此刻代码库里真正存在的东西**。已删除的类、改名的接口、被废弃的设计、"曾经的 X" / "已废弃的 Y" / "历史 banner" —— 一律**物理删除**，不留 tombstone。历史留给 git log，不留在 notes 里。
 
 ---
 
@@ -39,7 +39,7 @@ tags: [docs, notes, sync, onboarding]
   ],
   "sources": {
     "notes/subsystems/material-system.md": [
-      "openspec/specs/material-system/spec.md",
+      "docs/superpowers/specs/material-contract-v2.md",
       "src/core/asset/material.hpp",
       "src/core/asset/material.cpp",
       "src/infra/material_loader/blinn_phong_material_loader.cpp"
@@ -82,11 +82,10 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 | `src/core/rhi/**` | `notes/architecture.md`（核心接口层） |
 | `src/infra/**`（非 shader_compiler） | 对应子系统 + `notes/architecture.md` Infra 章节 |
 | `src/backend/vulkan/**` | `notes/subsystems/vulkan-backend.md` |
-| `openspec/specs/**` | 对应子系统文档（名字直接对齐，如 `material-system/` → `material-system.md`） |
-| `openspec/changes/archive/**` | 归档变更涉及的 spec → 对应子系统文档 |
+| `docs/superpowers/specs/**` | 相关设计 spec → 对应子系统文档 |
 | `notes/subsystems/**` | 对应子系统文档的结构、索引与延伸阅读段 |
 | `AGENTS.md` / `CLAUDE.md` / `README.md` | `notes/README.md` |
-| `openspec/changes/<active>/**` | **不触发更新** — 在途变更还没落地，等 archive 后再同步 |
+| `docs/superpowers/specs/<active>.md` | 只作为设计上下文；未落地内容不能写成当前实现 |
 
 若一个变更文件映射不到任何 notes 文件，归入"未分类"列表；后续在总结里报告给用户，方便扩充规则表。
 
@@ -120,7 +119,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 仅在首次运行或 `--full` 时进入。**读取顺序**:
 
 1. `AGENTS.md` + `CLAUDE.md`（项目级规则 + 快速索引）
-2. `openspec/specs/*/spec.md`（所有能力的权威清单）
+2. `docs/superpowers/specs/*.md`（已批准的设计上下文）
 3. `notes/subsystems/*.md`（当前子系统设计文档，主要用于沿用术语和结构）
 4. `src/core/` / `src/infra/` / `src/backend/` 的**目录结构**（`Glob` 配合 `ls -R` 深度 3），记录每个子目录的用途
 5. 关键头文件的顶层声明（用 `Grep "class |struct " src/core/**/*.hpp`）——**只看 public API，不读实现**
@@ -145,7 +144,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 - `src/infra/` — 基础设施实现（shader 编译、窗口、资源加载器）
 - `src/backend/vulkan/` — Vulkan 后端
 - `shaders/glsl/` — GLSL shader 源
-- `openspec/` — 需求与变更管理
+- `docs/superpowers/specs/` — Superpowers 设计规格
 - `notes/subsystems/` — 子系统设计文档（当前）
 - `notes/` — 本目录（快速上手摘要）
 
@@ -163,7 +162,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 
 ## 找文档
 - 规则文件: `AGENTS.md`
-- 权威 spec: `openspec/specs/`
+- 设计 spec: `docs/superpowers/specs/`
 - 子系统文档: `notes/subsystems/`
 - 这里（notes/）: 摘要 + 导航
 ```
@@ -181,7 +180,7 @@ git log --name-only --pretty=format:"%H %s" ${lastSyncedCommit}..HEAD
 - **backend**: 渲染后端（当前只有 Vulkan）
 
 ## 依赖规则
-（引用 openspec/specs/cpp-style-guide/spec.md 的关键约束）
+（引用 `AGENTS.md` 的关键约束）
 
 ## 一帧的数据流
 Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::getOrCreateRenderPipeline → CommandBuffer::bindResources → draw
@@ -193,18 +192,18 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 
 ## 延伸阅读
 - notes/subsystems/shader-system.md
-- openspec/specs/renderer-backend-vulkan/spec.md
+- docs/superpowers/specs/*.md（若存在相关设计）
 ```
 
 #### `notes/subsystems/<name>.md`
 
-每个 openspec 能力 + 每个主要 `src/core/asset/` 主题各一篇。模板：
+每个主要子系统 + 每个主要 `src/core/asset/` 主题各一篇。模板：
 
 ```markdown
 # <Name>
 
 > 一句话描述。
-> 权威 spec: `openspec/specs/<name>/spec.md`
+> 设计 spec: `docs/superpowers/specs/<name>.md`（若存在）
 > 子系统文档: `notes/subsystems/<name>.md`（若存在）
 
 ## 核心抽象
@@ -224,7 +223,7 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 ## 延伸阅读
 - 相关 spec
 - 相关设计文档
-- 相关归档变更（openspec/changes/archive/...）
+- 相关 Superpowers 设计 spec
 ```
 
 #### `notes/glossary.md`
@@ -310,7 +309,7 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 
 - **中文写作**：与 `notes/subsystems/` 的项目约定一致。代码符号保留英文原形。
 - **notes 是摘要不是复制**：spec 已经写完的内容不要重复——notes 写"是什么 + 在哪里 + 为什么"，详细"怎么工作"留给 spec 和 design doc 链接。
-- **当前实现即真相（核心守则）**：notes 永远只写**现在真实存在的东西**。发现 notes 里提到已删除的类、改名的接口、被废弃的设计 → **直接删除相关段落**，不留历史横幅、不写"曾经的 X"、不加"已废弃"banner。历史信息归 git log / `openspec/changes/archive/`。
+- **当前实现即真相（核心守则）**：notes 永远只写**现在真实存在的东西**。发现 notes 里提到已删除的类、改名的接口、被废弃的设计 → **直接删除相关段落**，不留历史横幅、不写"曾经的 X"、不加"已废弃"banner。历史信息归 git log。
 - **子系统消失时删除 notes 文件**：若某个子系统被整个移除（所有 `src/` 入口都消失），对应 `notes/subsystems/<name>.md` **也应该** `rm` 掉，并从 `notes/README.md` / `notes/.sync-meta.json` / `mkdocs.yml` 里移除引用。summary 段报告为 "删除: ..."，不留 tombstone 文件。
 - **保护手写内容**：`<!-- manual -->` 到 `<!-- manual:end -->` 之间的文本禁止被自动改写。但若手写内容**本身描述的东西已经不存在**（例如一个已删除的类），停下告诉用户，让用户决定删除还是改写 — 不要默认保留。
 - **代码引用带行号**：`src/core/asset/material.hpp:101`（运行 Grep 获取准确行号，不要猜）。
@@ -318,12 +317,12 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 - **尊重同步状态**：如果 `notes/.sync-meta.json` 和 git 对不上（commit 找不到），**停下问用户**，不要自己回退到全量模式。
 - **处理冲突时询问**：若增量模式检测到一个 notes 文件既有自动生成区块又有手写区块，并且两者冲突（例如手写描述了一个已经删掉的类），报告冲突并让用户决定。
 - **跨分支安全**：`lastSyncedCommit` 在 force push 或 rebase 后可能失效，捕获 `git log` 的非零退出码并降级为"请求全量"。
-- **openspec 在途变更**不参与 notes：只有 `openspec/changes/archive/**` 才触发 notes 更新。未归档的 change 里的 delta 还没落地。
+- **未落地 Superpowers 设计**不写成当前实现：只能作为未来设计上下文。
 
 ## 使用场景
 
 - **首次上手**: `/update-notes --full` 生成完整 notes 树
-- **日常**: 每次 `archive` 一个 opsx change 后跟一次 `/update-notes`，让 notes 跟上
+- **日常**: 每次完成一个实现周期后跟一次 `/update-notes`，让 notes 跟上
 - **回顾**: 想单独刷新某一页 → `/update-notes material-system`
 - **审阅**: 想看会改什么但先不落地 → `/update-notes --dry-run`
 
@@ -346,4 +345,4 @@ Scene::buildRenderingItem(pass) → RenderingItem → VulkanResourceManager::get
 - `notes/subsystems/vulkan-backend.md`
 - `notes/.sync-meta.json`
 
-如果后续 openspec 新增能力（比如 `frame-graph`、`pipeline-build-desc`、`pipeline-cache`），首次没生成的对应 notes 文件在下一次增量运行时自动补齐——映射表识别到 `openspec/specs/<name>/spec.md` 新增，会触发创建。
+如果后续 Superpowers 设计新增能力（比如 `frame-graph`、`pipeline-build-desc`、`pipeline-cache`），首次没生成的对应 notes 文件在下一次增量运行时自动补齐。

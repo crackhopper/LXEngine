@@ -23,7 +23,7 @@ Files this skill is allowed to edit:
 - `notes/roadmaps/*.md`
 - `notes/roadmaps/README.md` (only to refresh the phase index, if present)
 
-Never edit `notes/requirements/`, `openspec/`, source code, or `notes/subsystems/`.
+Never edit `notes/requirements/`, `docs/superpowers/specs/`, source code, or `notes/subsystems/`.
 
 ## Required Workflow
 
@@ -39,7 +39,7 @@ If the directory only has `README.md` (empty roadmap), ask the user what the fir
 - `Glob notes/requirements/*.md` — active requirements
 - `Glob notes/requirements/finished/*.md` — archived ones
 
-For each file read the header + "实施状态" (implementation status) block. Build an index:
+For each file read the header + 实施状态 section. Build an index:
 
 ```
 REQ-NNN or REQ-NNN-a | title | status (未开始 / 进行中 / 已完成) | location (active or finished)
@@ -57,87 +57,68 @@ Produce a diff table:
 
 Also flag:
 
-- **Orphan REQs**: finished or in-progress requirements that no roadmap item points to. Ask the user whether they belong in an existing phase or a new one.
-- **Stale goals**: roadmap items whose rationale is contradicted by a shipped/finished REQ.
-- **Scope mismatch**: roadmap item too vague to be mapped to any REQ, or too narrow (really a single REQ masquerading as a phase).
+- orphan REQs: finished or in-progress requirements that no roadmap item points to
+- stale goals: roadmap items contradicted by a shipped/finished REQ
+- scope mismatch: items too vague or too narrow to be a real phase
 
-### 4. Propose changes
+### 4. Propose a change plan
 
-Write a change plan before touching files:
+Present the plan before editing files:
 
 ```
 ## Roadmap change plan
 
 notes/roadmaps/phase-01-foundation.md
-  - mark item "初版资源加载" 完成 (REQ-003, REQ-005 已 finished)
-  - 移除 item "XYZ" —— 上游方向已放弃
-  - 新增 item "frame graph 扩展" —— 来自 REQ-011 (进行中)
+  - mark "初版资源加载" 完成 (REQ-003, REQ-005 已 finished)
+  - remove "XYZ" — direction abandoned
+  - add "frame graph 扩展" — from REQ-011 (进行中)
 
-notes/roadmaps/phase-02-materials.md (新建)
-  - 目标: <1 段>
-  - 涵盖 REQ-008, REQ-009, REQ-012
+notes/roadmaps/phase-02-materials.md (new)
+  - goal: <1 sentence>
+  - covers REQ-008, REQ-009, REQ-012
 ```
 
-Ask the user via **AskUserQuestion**:
+Ask the user:
 
-> 按这份 plan 改？
-> - yes — 全部落地
-> - edit — 修改某一条
+> Apply this plan?
+> - yes
+> - edit <item>
 > - abort
 
-### 5. Discuss open questions
+### 5. Surface open questions
 
-If step 3 surfaced ambiguity, **stop** and ask the user before guessing:
+Stop and ask before guessing when:
 
-- "REQ-014 没映射到任何阶段，属于 phase-02 还是单开一篇？"
-- "phase-01 里这条 'tech debt 清理' 还作数吗？找不到对应的 REQ。"
-- "阶段顺序是否需要调整？"
+- a REQ has no obvious phase home
+- a roadmap item has no matching REQ
+- phase ordering needs a call the skill cannot make on its own
 
-Never silently invent new phases. Never silently drop items.
+Never invent phases silently. Never drop items silently.
 
 ### 6. Apply edits
 
-Use `Edit` for in-place modifications. Use `Write` only for brand new phase files.
+Use `apply_patch` for in-place edits; create new files only for genuinely new phase docs.
 
 File conventions:
 
-- filename: `phase-NN-<kebab-case-theme>.md` (e.g., `phase-01-foundation.md`, `phase-02-materials.md`)
-- top-level heading: `# Phase NN: <主题>`
+- filename: `phase-NN-<kebab-case-theme>.md`
+- top heading: `# Phase NN: <theme>`
 - sections: 目标 / 范围 / 里程碑 / 关联需求 / 完成判据
+- mark done items with `- [x]` and keep `REQ-NNN` / `REQ-NNN-a` back-references
 
-When marking items done, prefix with `- [x]` and keep the REQ references so readers can trace back.
+### 7. nav.yml is auto-managed
 
-### 7. Keep nav.yml in sync
-
-`notes/nav.yml` uses a `@roadmaps` placeholder that auto-expands `notes/roadmaps/*.md` (excluding `README.md`). **Do not edit nav.yml** for roadmap changes — the generator picks up new files automatically.
+`notes/nav.yml` has a `@roadmaps` placeholder that auto-expands `notes/roadmaps/*.md` (excluding `README.md`). Do not edit nav.yml for roadmap changes.
 
 ### 8. Report
 
-After writing, summarise:
-
-```
-## update-roadmap 完成
-
-改动:
-- notes/roadmaps/phase-01-foundation.md — <一句话>
-- notes/roadmaps/phase-02-materials.md — 新建
-
-未决项:
-- REQ-014 仍未映射（用户决定先搁置）
-```
+After writing, summarise the edits applied, plus any open items the user still needs to decide.
 
 ## Guardrails
 
-- **直接改文件**，但**改之前必须先出 plan 让用户点头**（step 4）
-- **不改需求文档**：发现 `notes/requirements/*.md` 里的事实和 roadmap 冲突，报告给用户，不要自作主张改 REQ
-- **不改代码**
-- **引用带编号**：roadmap 里提到某件事来自哪里时，写 `REQ-NNN` 或 `REQ-NNN-a`，不要写"上次那个改动"
-- **不要保留 tombstone**：被取消的 item 直接删掉（历史留给 git log），不要写"~~已取消~~"
-- **找不到匹配时停下问**：别假设没匹配到的 item 可以默默删掉，也别假设 orphan REQ 属于某个阶段
-- **中文为主**：和 `notes/roadmaps/README.md`、`notes/requirements/` 保持一致
-
-## Output Style
-
-- Always surface the drift table before the change plan — show the user what's out of sync, then what you'd do about it.
-- When an action depends on user judgment, list the options explicitly.
-- Do not describe the change plan as "a full roadmap sync" when only one phase file changed.
+- Always present a change plan before editing, and wait for the user's yes.
+- Never edit `notes/requirements/*.md`, source code, or files outside `notes/roadmaps/`.
+- Roadmap references to requirements must use `REQ-NNN` or `REQ-NNN-a`, not vague prose.
+- Do not keep tombstones for dropped items — delete them; history belongs in `git log`.
+- When a fact from `notes/requirements/` contradicts the current roadmap, report it to the user rather than amending the requirement.
+- Chinese-first prose, English identifiers — match `notes/roadmaps/README.md` style.

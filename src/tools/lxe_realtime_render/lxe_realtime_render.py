@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import struct
 import http.client
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+import zlib
 
 
 def repo_root_from_script() -> Path:
@@ -135,6 +138,31 @@ def wait_until_profile_visible(
     raise RuntimeError(f"output profile did not become visible: {profile}")
 
 
+def wait_until_scene_loaded(
+    host: str, port: int, token: str, timeout_sec: float
+) -> None:
+    deadline = time.monotonic() + timeout_sec
+    last_status = ""
+    while time.monotonic() < deadline:
+        try:
+            response = editor_command(
+                host, port, token, "scene status", timeout=5.0
+            )
+            structured = response.get("structuredJson", "")
+            if isinstance(structured, str):
+                last_status = structured
+                payload = json.loads(structured)
+                if (
+                    payload.get("activeSceneLoaded") is True
+                    and payload.get("sceneOpenPending") is False
+                ):
+                    return
+        except Exception as exc:
+            last_status = str(exc)
+        time.sleep(0.2)
+    raise RuntimeError(f"scene did not finish loading: {last_status}")
+
+
 def terminate_process(process: subprocess.Popen[object], timeout_sec: float) -> None:
     if process.poll() is not None:
         return
@@ -173,7 +201,170 @@ def resolved_result_path(root: Path, value: str) -> Path:
     return path if path.is_absolute() else root / path
 
 
-def require_output_files(root: Path, structured: str) -> None:
+def paeth_predictor(a: int, b: int, c: int) -> int:
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+
+def png_luminance_stats(path: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError(f"not a PNG file: {path}")
+
+    pos = 8
+    width = 0
+    height = 0
+    bit_depth = 0
+    color_type = 0
+    idat = bytearray()
+    while pos + 8 <= len(data):
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        chunk_type = data[pos + 4 : pos + 8]
+        chunk_data = data[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(
+                ">IIBBBBB", chunk_data
+            )
+        elif chunk_type == b"IDAT":
+            idat.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"PNG missing valid IHDR: {path}")
+    if bit_depth != 8 or color_type not in (2, 6):
+        raise RuntimeError(
+            f"PNG stats only support 8-bit RGB/RGBA, got bitDepth={bit_depth} "
+            f"colorType={color_type}: {path}"
+        )
+
+    bytes_per_pixel = 4 if color_type == 6 else 3
+    row_size = width * bytes_per_pixel
+    raw = zlib.decompress(bytes(idat))
+    expected = (row_size + 1) * height
+    if len(raw) != expected:
+        raise RuntimeError(
+            f"PNG decompressed size mismatch: expected={expected} got={len(raw)}"
+        )
+
+    previous = bytearray(row_size)
+    lit_pixels = 0
+    luminance_sum = 0.0
+    offset = 0
+    for _ in range(height):
+        filter_type = raw[offset]
+        scanline = bytearray(raw[offset + 1 : offset + 1 + row_size])
+        offset += row_size + 1
+        for i in range(row_size):
+            left = scanline[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
+            up = previous[i]
+            up_left = previous[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
+            if filter_type == 0:
+                recon = scanline[i]
+            elif filter_type == 1:
+                recon = (scanline[i] + left) & 0xFF
+            elif filter_type == 2:
+                recon = (scanline[i] + up) & 0xFF
+            elif filter_type == 3:
+                recon = (scanline[i] + ((left + up) // 2)) & 0xFF
+            elif filter_type == 4:
+                recon = (scanline[i] + paeth_predictor(left, up, up_left)) & 0xFF
+            else:
+                raise RuntimeError(f"unsupported PNG filter {filter_type}: {path}")
+            scanline[i] = recon
+
+        for x in range(0, row_size, bytes_per_pixel):
+            r = scanline[x]
+            g = scanline[x + 1]
+            b = scanline[x + 2]
+            luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            luminance_sum += luminance / 255.0
+            if luminance > 2.0:
+                lit_pixels += 1
+        previous = scanline
+
+    pixel_count = width * height
+    return {
+        "width": width,
+        "height": height,
+        "pixelCount": pixel_count,
+        "litPixelCount": lit_pixels,
+        "averageLuminance": luminance_sum / max(pixel_count, 1),
+    }
+
+
+def require_pipeline_metadata(metadata_path: Path) -> None:
+    metadata_text = metadata_path.read_text(encoding="utf-8")
+    for token in [
+        "standard-pbr",
+        "standard_pbr.contract.glsl",
+        "RenderPathNodeSignature",
+        "PipelineKey",
+        "final shader reflection",
+    ]:
+        if token not in metadata_text:
+            raise RuntimeError(f"realtime metadata missing required token: {token}")
+    for token in [
+        "assets/materials/pbr.material",
+        "source: gltf",
+        "legacy material fallback",
+        "debug material fallback",
+        "empty source",
+        "MaterialUBO as positive path",
+    ]:
+        if token in metadata_text:
+            raise RuntimeError(f"realtime metadata contains forbidden token: {token}")
+
+
+REQUIRED_RENDER_INPUT_STAT_KEYS = (
+    "compilerInputCount",
+    "acceptedInputCount",
+    "rejectedInputCount",
+    "submittedDrawCount",
+    "submittedDispatchCount",
+    "fallbackObservedCount",
+    "descPipelineLookupCount",
+    "descBoundInputCount",
+    "descExecutedInputCount",
+)
+
+
+def normalize_render_input_stats(metadata: dict[str, object]) -> dict[str, int]:
+    input_stats = metadata.get("renderInputStats")
+    if not isinstance(input_stats, dict):
+        raise RuntimeError("realtime metadata omitted renderInputStats")
+
+    normalized: dict[str, int] = {}
+    for key, value in input_stats.items():
+        if isinstance(value, bool) or type(value) is not int:
+            raise RuntimeError(
+                f"realtime metadata renderInputStats {key} is not an int"
+            )
+        normalized[key] = value
+
+    for key in REQUIRED_RENDER_INPUT_STAT_KEYS:
+        if key not in normalized:
+            raise RuntimeError(f"realtime metadata renderInputStats omitted {key}")
+
+    return normalized
+
+
+def require_output_files(
+    root: Path,
+    structured: str,
+    require_nonblack: bool,
+    min_lit_pixels: int,
+    min_average_luminance: float,
+    require_pipeline_metadata_check: bool,
+) -> dict[str, object]:
     payload = json.loads(structured)
     required_paths = [
         ("linearExrPath", "linear EXR"),
@@ -200,6 +391,152 @@ def require_output_files(root: Path, structured: str) -> None:
             raise RuntimeError(
                 f"metadata {dimension} does not match render result: {metadata_path}"
             )
+    payload["renderInputStats"] = normalize_render_input_stats(metadata)
+    if require_pipeline_metadata_check:
+        require_pipeline_metadata(metadata_path)
+
+    png_value = payload.get("cpuSrgbPngPath", "")
+    if require_nonblack:
+        png_path = resolved_result_path(root, png_value)
+        stats = png_luminance_stats(png_path)
+        if int(stats["litPixelCount"]) < min_lit_pixels:
+            raise RuntimeError(
+                "realtime render output is too dark: "
+                f"litPixelCount={stats['litPixelCount']} "
+                f"minLitPixels={min_lit_pixels} png={png_path}"
+            )
+        if float(stats["averageLuminance"]) < min_average_luminance:
+            raise RuntimeError(
+                "realtime render output average luminance is too low: "
+                f"averageLuminance={stats['averageLuminance']} "
+                f"minAverageLuminance={min_average_luminance} png={png_path}"
+            )
+        payload["imageStats"] = stats
+    return payload
+
+
+def prepare_smoke_project(
+    root: Path, project_name: str, scene_path: Path, scene_id: str
+) -> Path:
+    project_root = root / "data" / "projects" / project_name
+    if project_root.exists():
+        shutil.rmtree(project_root)
+    scenes_dir = project_root / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    scene_rel = Path("scenes") / f"{scene_id}.scene.yaml"
+    shutil.copy2(scene_path, project_root / scene_rel)
+
+    project_document = {
+        "schema": "lxe.project.v1",
+        "id": project_name,
+        "displayName": project_name,
+        "activeScene": scene_rel.as_posix(),
+        "scenes": [{"id": scene_id, "path": scene_rel.as_posix()}],
+        "assetRoots": ["."],
+    }
+    (project_root / "project.yaml").write_text(
+        json.dumps(project_document, indent=2), encoding="utf-8"
+    )
+    return project_root
+
+
+def prepare_bootstrap_project(root: Path, project_name: str) -> Path:
+    project_root = root / "data" / "projects" / f"{project_name}_bootstrap"
+    if project_root.exists():
+        shutil.rmtree(project_root)
+    scenes_dir = project_root / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    scene_rel = Path("scenes") / "bootstrap.scene.yaml"
+    (project_root / scene_rel).write_text(
+        """scene:
+  name: Realtime Render Bootstrap
+  gameplayCameraPath: /bootstrap_cam
+  environment:
+    enabled: false
+    intensity: 0.0
+    skyboxEnabled: false
+  rendering:
+    shadows: false
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: bootstrap_camera
+      name: bootstrap_cam
+      transform:
+        translation: [0.0, 0.0, 3.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 45.0
+        aspect: 1.0
+        nearPlane: 0.1
+        farPlane: 20.0
+        cullingMask: 4294967295
+""",
+        encoding="utf-8",
+    )
+    project_document = {
+        "schema": "lxe.project.v1",
+        "id": f"{project_name}_bootstrap",
+        "displayName": f"{project_name}_bootstrap",
+        "activeScene": scene_rel.as_posix(),
+        "scenes": [{"id": "bootstrap", "path": scene_rel.as_posix()}],
+        "assetRoots": ["."],
+    }
+    (project_root / "project.yaml").write_text(
+        json.dumps(project_document, indent=2), encoding="utf-8"
+    )
+    return project_root
+
+
+def snapshot_file(path: Path) -> bytes | None:
+    return path.read_bytes() if path.exists() else None
+
+
+def restore_file(path: Path, data: bytes | None) -> None:
+    if data is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+class PreservedEditorRuntimeState:
+    def __init__(self, root: Path, bootstrap_project: Path):
+        self.root = root
+        self.bootstrap_project = bootstrap_project
+        self.state_paths = [
+            root / "data" / "lxe_editor" / "editor_data.yaml",
+            root / "data" / "lxe_editor" / "runtime_state.yaml",
+            root / "data" / "lxe_editor" / "api_token.txt",
+        ]
+        self.snapshots: dict[Path, bytes | None] = {}
+
+    def __enter__(self) -> "PreservedEditorRuntimeState":
+        self.snapshots = {path: snapshot_file(path) for path in self.state_paths}
+        editor_data_path = self.state_paths[0]
+        editor_data_path.parent.mkdir(parents=True, exist_ok=True)
+        editor_data_path.write_text(
+            "version: 1\n"
+            f"lastProject: {self.bootstrap_project}\n"
+            "consoleHistory: []\n",
+            encoding="utf-8",
+        )
+        self.state_paths[1].unlink(missing_ok=True)
+        self.state_paths[2].unlink(missing_ok=True)
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        for path, data in self.snapshots.items():
+            restore_file(path, data)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -233,6 +570,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Launch editor through xvfb-run -a.",
     )
+    parser.add_argument(
+        "--require-nonblack",
+        action="store_true",
+        help="Fail if the CPU sRGB PNG has too few lit pixels.",
+    )
+    parser.add_argument("--min-lit-pixels", type=int, default=64)
+    parser.add_argument("--min-average-luminance", type=float, default=0.001)
+    parser.add_argument(
+        "--require-pipeline-metadata",
+        action="store_true",
+        help="Fail unless realtime metadata proves the clean source path.",
+    )
     return parser.parse_args(argv)
 
 
@@ -247,6 +596,10 @@ def main(argv: list[str]) -> int:
         raise RuntimeError(f"scene file not found: {scene_path}")
     if not editor_path.is_file():
         raise RuntimeError(f"lxe_editor executable not found: {editor_path}")
+    project_root = prepare_smoke_project(
+        root, args.project_name, scene_path, args.scene_id
+    )
+    bootstrap_project = prepare_bootstrap_project(root, args.project_name)
 
     api_port = int(args.api_port)
     if api_port <= 0:
@@ -266,52 +619,56 @@ def main(argv: list[str]) -> int:
     ]
     launch_args = ["xvfb-run", "-a", *editor_args] if args.xvfb else editor_args
 
-    process = subprocess.Popen(
-        launch_args,
-        cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    token: str | None = None
-    try:
-        wait_for_health(process, args.api_host, api_port, args.timeout_sec)
-        token = wait_for_token(token_path, args.timeout_sec)
+    with PreservedEditorRuntimeState(root, bootstrap_project):
+        process = subprocess.Popen(
+            launch_args,
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        token: str | None = None
+        try:
+            wait_for_health(process, args.api_host, api_port, args.timeout_sec)
+            token = wait_for_token(token_path, args.timeout_sec)
 
-        editor_command(
-            args.api_host,
-            api_port,
-            token,
-            f"project init empty {quote_command_token(args.project_name)}",
-            args.timeout_sec,
-        )
-        time.sleep(0.5)
-        editor_command(
-            args.api_host,
-            api_port,
-            token,
-            "scene import "
-            f"{quote_command_token(str(scene_path))} {quote_command_token(args.scene_id)}",
-            args.timeout_sec,
-        )
-        wait_until_profile_visible(
-            args.api_host, api_port, token, args.profile, args.timeout_sec
-        )
-        response = editor_command(
-            args.api_host,
-            api_port,
-            token,
-            f"realtime-render run {quote_command_token(args.profile)}",
-            args.timeout_sec,
-        )
-        structured = response.get("structuredJson", "")
-        if not isinstance(structured, str) or not structured:
-            raise RuntimeError("realtime-render run did not return structured output")
-        require_output_files(root, structured)
-        print(structured)
-        return 0
-    finally:
-        stop_editor(process, args.api_host, api_port, token, timeout_sec=5.0)
+            editor_command(
+                args.api_host,
+                api_port,
+                token,
+                f"project open {quote_command_token(str(project_root))}",
+                args.timeout_sec,
+            )
+            wait_until_scene_loaded(
+                args.api_host, api_port, token, args.timeout_sec
+            )
+            wait_until_profile_visible(
+                args.api_host, api_port, token, args.profile, args.timeout_sec
+            )
+            response = editor_command(
+                args.api_host,
+                api_port,
+                token,
+                f"realtime-render run {quote_command_token(args.profile)}",
+                args.timeout_sec,
+            )
+            structured = response.get("structuredJson", "")
+            if not isinstance(structured, str) or not structured:
+                raise RuntimeError(
+                    "realtime-render run did not return structured output"
+                )
+            payload = require_output_files(
+                root,
+                structured,
+                args.require_nonblack,
+                args.min_lit_pixels,
+                args.min_average_luminance,
+                args.require_pipeline_metadata,
+            )
+            print(json.dumps(payload, sort_keys=True))
+            return 0
+        finally:
+            stop_editor(process, args.api_host, api_port, token, timeout_sec=5.0)
 
 
 if __name__ == "__main__":

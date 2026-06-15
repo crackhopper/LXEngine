@@ -1,58 +1,58 @@
-# 01 材质积木：shader 为什么还需要菜谱
+# 01 材质积木：surface 与 render path 为什么要分开
 
-我们先不写代码，先解决一个最容易混淆的问题：shader 不是材质。shader 只说明“怎么计算”，材质还要说明“这套计算在什么 pass 里用、默认参数是什么、资源怎样绑定、运行时参数怎样保存”。
+我们先不写代码，先建立当前材质系统的边界：shader 不是材质，材质也不是 pass。LXEngine 把三件事分开：`.material` 描述表面，`RenderPathGraph` 描述渲染步骤，shader 是某个步骤里执行的程序。
 
 ## 新人最容易混淆的边界
 
-| 对象 | 类比 | 真实角色 |
+| 对象 | 类比 | 当前角色 |
 |---|---|---|
-| Shader | 烹饪方法 | 决定每个顶点和像素怎么算 |
-| `.material` | 菜谱 | 声明 shader、pass、参数默认值和资源 |
-| `MaterialTemplate` | 标准菜谱结构 | 按 pass 保存 shader 与 render state |
-| `MaterialInstance` | 加载后的可调菜谱 | 由 `.material` 创建出来，持有 canonical 参数 buffer、texture 和 pass 开关 |
-| node override | 单桌口味调整 | 场景节点针对这份材质参数的局部覆盖 |
+| `.material` | 表面参数单 | 声明 BSDF type、参数 envelope 和材质资源 URI |
+| `MaterialInstance` | 运行时账本 | 保存 BSDF type、source signature、参数 envelope、资源依赖 |
+| `RenderPathGraph` | 工艺流程单 | 声明 pass、shader、source/target、attachment、render state |
+| `RenderFeature` | 全局效果参数包 | tone mapping、shadow、post effect 等非物体参数 |
+| Shader | 工艺步骤里的程序 | 消费 material/feature/scene 数据，产出像素或 compute 结果 |
 | Mesh / vertex data | 原材料 | 提供顶点、法线、UV 等几何输入 |
-| 屏幕像素 | 真正端上桌的菜 | shader、材质参数、mesh、灯光和相机共同渲染出的结果 |
+| Scene node override | 局部改写 | 针对节点覆盖 surface 参数，不改 pass 或 shader |
 
-这里要特别小心：`MaterialInstance` 名字里带有 `Instance`，但它不是“已经画出来的一盘菜”。在当前实现里，`.material` 经过 `loadGenericMaterial()` 加载后，会先构造 `MaterialTemplate`，再创建 `MaterialInstance`，最后把 YAML 里的 `parameters` 和 `resources` 写进这个 instance。所以它更像一份已经填好默认调味、可以继续微调的菜谱副本。
+真正的一帧画面需要这些单据一起生效：scene 节点引用 mesh 和 material；active RenderPathGraph 选择 pass；pass filter 命中 material 的 render class / BSDF type；shader 读取 material、feature 和 scene 数据；backend 用 work item 生成 pipeline 和 draw/dispatch。
 
-真正的一盘菜不是 C++ 里的某个材质对象，而是一次 draw 最后落到屏幕上的像素。那道菜需要原材料，也就是 mesh / vertex buffer；需要烹饪方法，也就是 shader；需要菜谱参数，也就是 `MaterialInstance` 里的 buffer 和 texture；还需要场景里的相机、灯光、transform。少了任何一环，都不能得到最终画面。
+## 当前材质文件只回答一个问题
 
-node override 处在更靠近场景的一层。它不会重新定义 shader、pass 或 pipeline，也不会把 mesh 变成材质；它只是在某个节点引用同一份 `.material` 时，对参数做局部覆盖。例如同一个 `gooch_demo.material` 可以挂在多个 sphere 上，每个 sphere 通过 `nodeMaterialOverrides` 调整 `MaterialUBO.warmColor`，从而得到不同的像素颜色。
+`.material` 只回答“这块表面是什么”。一份最小 surface material 长这样：
 
-## Template 与 Instance 分别负责什么
+```yaml
+schema: lxe.material.v2
+renderClass: surface.opaque
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }
+    metallic: { kind: float, value: 0.0 }
+    roughness: { kind: float, value: 0.45 }
+```
 
-| 属于 template | 属于 instance |
-|---|---|
-| 哪个 pass 用哪个 shader | 当前参数值 |
-| render state | 当前 texture 资源 |
-| shader 反射出的 binding 结构 | dirty / GPU upload 状态 |
-| pipeline identity 相关结构 | pass 启用状态 |
-
-这个边界很重要：改 template 像改菜谱，会影响 pipeline；改 instance 参数像调味，通常只更新 uniform buffer。
-
-node override 不在 template / instance 的结构边界里。它保存在 scene document 上，加载节点材质时按顺序叠加到新创建的 `MaterialInstance`：先应用 `.material` 默认值，再应用材质覆盖，最后应用节点覆盖。覆盖完成后，renderer 看到的仍然是一个普通 `MaterialInstance`。
+`bsdf.type` 选择材质类型，`bsdf.source` 指向 shader contract，`bsdf.parameters` 保存 typed envelope。pass、shader、attachment、geometry contract 和 render state 都在 RenderPathGraph 中声明。
 
 ## 读一个材质时的顺序
 
-读材质时先按这个顺序：
-
-1. 打开 `.material`，确认 shader 名和 pass。
-2. 打开对应 `.vert` / `.frag`，确认 uniform block 和参数名。
-3. 对照 `generic_material_loader.cpp`，理解 loader 如何把 YAML 写进 `MaterialInstance`。
-4. 在 editor 中切换 `materialUri`，看 Inspector 是否能编辑节点级参数。
+1. 打开 `.material`，确认 `schema: lxe.material.v2`、`bsdf.type` 和参数 envelope。
+2. 打开 `bsdf.source` 指向的 `.contract.glsl`，看这个材质类型的参数和 accessor ABI。
+3. 打开 active `assets/render_paths/*.render-path.yaml`，确认哪些 pass 的 `filters.bsdf` 会消费这个材质。
+4. 打开 pass 的 shader，确认它如何读取 material surface 和 scene/feature 数据。
+5. 在 editor 中切换 material URI，验证 scene 保存和重新加载。
 
 | 路径 | 读它的原因 |
 |---|---|
-| `notes/concepts/material/index.md` | 从概念层理解 template / instance |
-| `notes/source_analysis/src/core/asset/material_template.md` / `material_instance.md` | 当前实现形状 |
-| `src/core/asset/material_template.hpp` | template 的 C++ 表达 |
-| `src/core/asset/material_instance.hpp` | instance 的 C++ 表达 |
-| `src/infra/material_loader/generic_material_loader.cpp` | YAML 到 runtime 的桥 |
+| `notes/concepts/material/index.md` | 从概念层理解 SurfaceMaterial / RenderPathGraph |
+| `notes/concepts/material/file-to-instance.md` | 当前 `.material v2` 到 `MaterialInstance` 的链路 |
+| `src/core/asset/material_instance.hpp` | instance 的 C++ 状态 |
+| `src/infra/material_loader/material_resource_parser.*` | v2 material parser |
+| `src/infra/resource_parsers/render_path_graph_resource_parser.*` | render path graph parser |
 
 ## 我们已经学会了什么
 
-材质系统不是“shader 文件等于材质”。材质是一份菜谱加一份运行时参数状态。
+材质系统不是“shader 文件等于材质”。当前材质是一份 surface envelope；pass 和 shader 由 RenderPathGraph 提供；两者在 scene validation、source variant resolver 和 RenderWorkQueue 里汇合。
 
 ## 下一步
 

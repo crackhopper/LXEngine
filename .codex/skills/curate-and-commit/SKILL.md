@@ -60,9 +60,9 @@ Before committing, verify what matters for the scoped change:
 Prefer project-native checks such as:
 
 ```bash
-openspec validate --specs
 cmake --build build
 ctest --test-dir build
+scripts/notes/serve_site.sh --build
 ```
 
 Only run checks relevant to the scoped change.
@@ -90,7 +90,7 @@ Examples:
 
 - `sync subsystem docs with current renderer code`
 - `add project skill for subsystem doc audits`
-- `normalize openspec spec headers for validation`
+- `document material contract v2 design`
 
 Avoid vague subjects like:
 

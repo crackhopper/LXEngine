@@ -9,7 +9,7 @@ LXEngine/
 ├── src/                 # C++ 源码
 ├── assets/              # 运行时资产和测试资产
 ├── notes/               # 人类可读文档站点
-├── openspec/            # 当前能力规范
+├── docs/superpowers/    # Superpowers 讨论和设计 spec 的落点
 ├── scripts/             # notes、source analysis、editor 辅助脚本
 ├── third_party/         # 直接引入的第三方源码
 ├── build/               # 本地构建产物
@@ -103,14 +103,14 @@ LXEngine/
 当文档和代码看起来不一致时，我们按这个顺序判断：
 
 1. `src/`
-2. `openspec/specs/`
+2. `docs/superpowers/specs/` 中当前仍有效的设计 spec
 3. `notes/requirements/` 中 active 文档
 4. `notes/concepts-design/`、`notes/concepts/`、`notes/scene-system/`、`notes/design/`
 5. `notes/source_analysis/`
 6. `notes/roadmaps/`
 7. `notes/requirements/finished/`、`notes/ai-scanned/`、`notes/temporary/`
 
-Roadmap 可以说明方向，但不能证明能力已经实现。是否实现要回到代码、spec 和 active/finished requirement。
+Roadmap 可以说明方向，但不能证明能力已经实现。是否实现要回到代码、当前设计 spec 和 active/finished requirement。
 
 ## 继续阅读
 

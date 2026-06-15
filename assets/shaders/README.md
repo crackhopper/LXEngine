@@ -1,25 +1,39 @@
 # Shader Path Conventions (Vulkan)
 
 ## Source GLSL files
-GLSL sources live under:
+Realtime RenderPath GLSL sources live under render-path-specific directories:
 
-- `assets/shaders/glsl/*.vert`
-- `assets/shaders/glsl/*.frag`
+- `assets/shaders/glsl/render_paths/Forward/*.vert`
+- `assets/shaders/glsl/render_paths/Forward/*.frag`
+- `assets/shaders/glsl/render_paths/Deferred/*.vert`
+- `assets/shaders/glsl/render_paths/Deferred/*.frag`
 
 Example:
-- `assets/shaders/glsl/blinnphong_0.vert`
-- `assets/shaders/glsl/blinnphong_0.frag`
+- `assets/shaders/glsl/render_paths/Forward/pbr.vert`
+- `assets/shaders/glsl/render_paths/Forward/pbr.frag`
+- `assets/shaders/glsl/render_paths/Deferred/pbr_gbuffer.vert`
+- `assets/shaders/glsl/render_paths/Deferred/pbr_gbuffer.frag`
+
+`assets/shaders/glsl/techniques/OfflineRT` remains under `techniques/` until
+the OfflineRT migration owned by `REQ-073-g/h`.
 
 ## Generated SPIR-V files
 The Vulkan backend loads shaders from the runtime asset tree:
 
-- `assets/shaders/glsl/<shaderName>.vert.spv`
-- `assets/shaders/glsl/<shaderName>.frag.spv`
+- `assets/shaders/glsl/render_paths/Forward/<shaderName>.vert.spv`
+- `assets/shaders/glsl/render_paths/Forward/<shaderName>.frag.spv`
+- `assets/shaders/glsl/render_paths/Deferred/<shaderName>.vert.spv`
+- `assets/shaders/glsl/render_paths/Deferred/<shaderName>.frag.spv`
 
-So for `shaderName = blinnphong_0`, the loader expects:
+So for `shaderName = pbr`, the loader expects:
 
-- `assets/shaders/glsl/blinnphong_0.vert.spv`
-- `assets/shaders/glsl/blinnphong_0.frag.spv`
+- `assets/shaders/glsl/render_paths/Forward/pbr.vert.spv`
+- `assets/shaders/glsl/render_paths/Forward/pbr.frag.spv`
+
+For deferred `shaderName = pbr_gbuffer`, the loader expects:
+
+- `assets/shaders/glsl/render_paths/Deferred/pbr_gbuffer.vert.spv`
+- `assets/shaders/glsl/render_paths/Deferred/pbr_gbuffer.frag.spv`
 
 ## Build target
 The `CompileShaders` CMake target uses `glslc` to compile the GLSL sources and

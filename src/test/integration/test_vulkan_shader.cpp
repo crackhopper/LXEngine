@@ -25,9 +25,10 @@ int main() {
     device->initialize(window, "TestVulkanShader");
 
     auto vertShader = LX_core::backend::VulkanShader::create(
-        *device, "blinnphong_0", VK_SHADER_STAGE_VERTEX_BIT);
+        *device, "render_paths/Forward/pbr", VK_SHADER_STAGE_VERTEX_BIT);
     auto fragShader = LX_core::backend::VulkanShader::create(
-        *device, "blinnphong_0", VK_SHADER_STAGE_FRAGMENT_BIT);
+        *device, "render_paths/Forward/pbr",
+        VK_SHADER_STAGE_FRAGMENT_BIT);
 
     if (vertShader->getHandle() == VK_NULL_HANDLE) {
       std::cerr << "Vertex shader module is null\n";

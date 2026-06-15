@@ -67,4 +67,4 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 - [材质 Shader 与绑定](../../concepts/material/shader.md)
 - [多 Pass 如何变成 Draw](../../concepts/material/pass-rendering-flow.md)
 - [FrameGraph](../../concepts-design/rendering-pipeline/framegraph.md)
-- [REQ-050-a](../../requirements/050-a-ibl-metal-sphere-test-scene.md)
+- [REQ-050-a](../../requirements/finished/050-a-ibl-metal-sphere-test-scene.md)

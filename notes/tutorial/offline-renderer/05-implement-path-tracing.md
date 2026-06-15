@@ -151,5 +151,5 @@ Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样
 
 - [运行离线渲染器](01-run-offline-renderer.md)
 - [Offline Renderer 总览](index.md)
-- [REQ-056-a](../../requirements/056-a-offline-pbr-texture-material-support.md)
-- [REQ-057-a](../../requirements/057-a-offline-path-tracing-pbr-reference.md)
+- [REQ-056-a](../../requirements/finished/056-a-offline-pbr-texture-material-support.md)
+- [REQ-076-a](../../requirements/076-a-offline-path-tracing-pbr-reference.md)

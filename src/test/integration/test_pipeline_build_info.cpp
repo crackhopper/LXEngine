@@ -1,25 +1,11 @@
-#include "core/rhi/image_format.hpp"
+#include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_target.hpp"
-#include "core/rhi/index_buffer.hpp"
-#include "core/asset/material_instance.hpp"
-#include "core/asset/mesh.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
-#include "core/asset/shader.hpp"
-#include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/object.hpp"
-#include "core/frame_graph/pass.hpp"
-#include "core/frame_graph/render_queue.hpp"
-#include "core/scene/scene.hpp"
+#include "core/rhi/image_format.hpp"
 #include "core/utils/env.hpp"
-#include "core/utils/string_table.hpp"
-
-#include "scene_test_helpers.hpp"
 
 #include <iostream>
-#include <memory>
 #include <vector>
 
 using namespace LX_core;
@@ -37,61 +23,26 @@ int failures = 0;
     }                                                                          \
   } while (0)
 
-// ---------------------------------------------------------------------------
-// Minimal fakes — same shape as test_pipeline_identity.cpp
-// ---------------------------------------------------------------------------
-
-class FakeShader : public IShader {
-public:
-  FakeShader(std::vector<ShaderResourceBinding> bindings,
-             std::vector<ShaderStageCode> stages,
-             std::vector<VertexInputAttribute> vertexInputs = {})
-      : m_bindings(std::move(bindings)), m_stages(std::move(stages)),
-        m_vertexInputs(std::move(vertexInputs)) {}
-
-  const std::vector<ShaderStageCode> &getAllStages() const override {
-    return m_stages;
-  }
-  const std::vector<ShaderResourceBinding> &
-  getReflectionBindings() const override {
-    return m_bindings;
-  }
-  const std::vector<VertexInputAttribute> &getVertexInputs() const override {
-    return m_vertexInputs;
-  }
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(u32, u32) const override {
-    return std::nullopt;
-  }
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &) const override {
-    return std::nullopt;
-  }
-  usize getProgramHash() const override { return 0; }
-  std::string getShaderName() const override { return "fake_shader"; }
-
-private:
-  std::vector<ShaderResourceBinding> m_bindings;
-  std::vector<ShaderStageCode> m_stages;
-  std::vector<VertexInputAttribute> m_vertexInputs;
-};
-
-SceneNodeSharedPtr makeCameraNodeWithTarget(const RenderTarget &target) {
-  static int cameraCounter = 0;
-  auto node = SceneNode::create("pipeline_build_info_camera_" +
-                                std::to_string(++cameraCounter));
-  auto camera = node->addComponent<CameraComponent>();
-  camera->get().setTarget(target);
-  camera->get().updateMatrices();
-  return node;
+PipelineKey testKey(const char *name) {
+  return PipelineKey{StringID(name)};
 }
 
-RenderWorkItem
-buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
-          std::vector<VertexInputAttribute> vertexInputs = {},
-          const RenderTarget &target = {}) {
-  std::vector<ShaderResourceBinding> bindings = {
-      ShaderResourceBinding{"CameraUBO",
+std::vector<ShaderStageCode> graphicsStages() {
+  return {
+      ShaderStageCode{ShaderStage::Vertex, std::vector<u32>{0x07230203, 1}},
+      ShaderStageCode{ShaderStage::Fragment, std::vector<u32>{0x07230203, 2}},
+  };
+}
+
+std::vector<ShaderStageCode> computeStages() {
+  return {
+      ShaderStageCode{ShaderStage::Compute, std::vector<u32>{0x07230203, 3}},
+  };
+}
+
+std::vector<ShaderResourceBinding> testBindings() {
+  return {
+      ShaderResourceBinding{"Camera",
                             0,
                             0,
                             ShaderPropertyType::UniformBuffer,
@@ -100,191 +51,167 @@ buildItem(PrimitiveTopology topo = PrimitiveTopology::TriangleList,
                             0,
                             ShaderStage::Vertex,
                             {}},
-      ShaderResourceBinding{"SurfaceParams",
+      ShaderResourceBinding{"SceneMaterials",
                             1,
-                            0,
-                            ShaderPropertyType::UniformBuffer,
+                            4,
+                            ShaderPropertyType::StorageBuffer,
                             1,
-                            32,
-                            0,
-                            ShaderStage::Fragment,
-                            {}},
-      ShaderResourceBinding{"albedoTex",
-                            1,
-                            1,
-                            ShaderPropertyType::Texture2D,
-                            1,
-                            0,
+                            96,
                             0,
                             ShaderStage::Fragment,
                             {}},
   };
-  std::vector<ShaderStageCode> stages = {
-      ShaderStageCode{ShaderStage::Vertex,
-                      std::vector<u32>{0x07230203, 0, 0}},
-      ShaderStageCode{ShaderStage::Fragment,
-                      std::vector<u32>{0x07230203, 1, 0}},
-  };
-
-  auto shader = std::make_shared<FakeShader>(std::move(bindings),
-                                             std::move(stages),
-                                             std::move(vertexInputs));
-  auto tmpl = MaterialTemplate::create("fake_shader");
-
-  ShaderProgramSet set;
-  set.shaderName = "fake_shader";
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  entry.renderState = RenderState{};
-  entry.renderState.cullMode = CullMode::Front;
-  entry.renderState.depthTestEnable = false;
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-  auto material = MaterialInstance::create(tmpl);
-  material->setTexture(
-      StringID("albedoTex"),
-      std::make_shared<CombinedTextureSampler>(createWhiteTexture()));
-
-  // Minimal vertex + index buffers.
-  auto vb = VertexBuffer<VertexPos>::create(
-      std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
-  auto ib = IndexBuffer::create({0, 1, 2}, topo);
-  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
-
-  auto node = SceneNode::create("pipeline_build_info_node");
-  node->addComponent<MeshComponent>(mesh);
-  node->addComponent<MaterialComponent>(material);
-  auto scene = Scene::create(node);
-  scene->addCamera(makeCameraNodeWithTarget(target));
-  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward, target);
-  static std::vector<SceneSharedPtr> keepAliveScenes;
-  keepAliveScenes.push_back(std::move(scene));
-  return item;
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+VertexLayout testVertexLayout() {
+  return VertexLayout(
+      {
+          VertexLayoutItem{"inPos", 0, DataType::Float3, 12, 0},
+          VertexLayoutItem{"inNormal", 1, DataType::Float3, 12, 12},
+      },
+      24);
+}
 
-void testFromRenderWorkItemPopulatesBindings() {
-  auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(info.bindings.size() == 3, "bindings.size()==3");
-  if (info.bindings.size() == 3) {
-    EXPECT(info.bindings[0].name == "CameraUBO", "binding 0 name");
-    EXPECT(info.bindings[1].name == "SurfaceParams", "binding 1 name");
-    EXPECT(info.bindings[2].name == "albedoTex", "binding 2 name");
+RenderState testRenderState() {
+  RenderState state;
+  state.cullMode = CullMode::Front;
+  state.depthTestEnable = false;
+  state.blendEnable = true;
+  state.srcBlend = BlendFactor::SrcAlpha;
+  state.dstBlend = BlendFactor::OneMinusSrcAlpha;
+  return state;
+}
+
+std::vector<RenderPathAttachmentContract> testAttachments() {
+  return {
+      RenderPathAttachmentContract{
+          .target = "scene.hdrColor",
+          .format = ImageFormat::RGBA16Float,
+          .samples = 1,
+          .layers = 1,
+          .depth = false,
+      },
+      RenderPathAttachmentContract{
+          .target = "scene.depth",
+          .format = ImageFormat::D32Float,
+          .samples = 1,
+          .layers = 1,
+          .depth = true,
+      },
+  };
+}
+
+void expectStagesEqual(const std::vector<ShaderStageCode> &actual,
+                       const std::vector<ShaderStageCode> &expected) {
+  EXPECT(actual.size() == expected.size(), "stage count should match");
+  if (actual.size() != expected.size()) {
+    return;
+  }
+  for (usize i = 0; i < actual.size(); ++i) {
+    EXPECT(actual[i].stage == expected[i].stage, "stage kind should match");
+    EXPECT(actual[i].bytecode == expected[i].bytecode,
+           "stage bytecode should match");
   }
 }
 
-void testFromRenderWorkItemKeyMatches() {
-  auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(info.key == item.pipelineKey, "key matches item.pipelineKey");
+void testGraphicsPreservesDirectConstructionFacts() {
+  const PipelineKey key = testKey("pipeline.graphics.direct");
+  const StringID variant("variant.graphics.direct");
+  const RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
+  auto stages = graphicsStages();
+  auto bindings = testBindings();
+  const VertexLayout vertexLayout = testVertexLayout();
+  const RenderState renderState = testRenderState();
+  const auto attachments = testAttachments();
+
+  const PipelineBuildDesc desc = PipelineBuildDesc::graphics(
+      key, variant, target, stages, bindings, vertexLayout, renderState,
+      PrimitiveTopology::LineList, RenderPathNodeRenderingMode::Dynamic,
+      attachments);
+
+  EXPECT(desc.type == PipelineBuildType::Graphics, "type should be graphics");
+  EXPECT(desc.key == key, "key should be preserved");
+  EXPECT(desc.shaderVariantKey == variant,
+         "shader variant should be preserved");
+  EXPECT(desc.target == target, "target should be preserved");
+  expectStagesEqual(desc.stages, stages);
+  EXPECT(desc.bindings == bindings, "bindings should be preserved");
+  EXPECT(desc.vertexLayout == vertexLayout,
+         "vertex layout should be preserved");
+  EXPECT(desc.renderState == renderState, "render state should be preserved");
+  EXPECT(desc.topology == PrimitiveTopology::LineList,
+         "topology should be preserved");
+  EXPECT(desc.renderingMode == RenderPathNodeRenderingMode::Dynamic,
+         "rendering mode should be preserved");
+  EXPECT(desc.attachments.size() == attachments.size(),
+         "attachments should be preserved");
+  EXPECT(desc.pushConstant.size == 128,
+         "graphics desc should keep default graphics push constant");
+  EXPECT(desc.pushConstant.stageFlagsMask ==
+             (static_cast<ShaderStageMask32>(ShaderStage::Vertex) |
+              static_cast<ShaderStageMask32>(ShaderStage::Fragment)),
+         "graphics push constant should use vertex|fragment stage mask");
 }
 
-void testFromRenderWorkItemStagesPreserved() {
-  auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(info.stages.size() == 2, "stages.size()==2");
+void testComputePreservesDirectConstructionFacts() {
+  const PipelineKey key = testKey("pipeline.compute.direct");
+  const StringID variant("variant.compute.direct");
+  auto stages = computeStages();
+  auto bindings = testBindings();
+
+  const PipelineBuildDesc desc =
+      PipelineBuildDesc::compute(key, variant, stages, bindings);
+
+  EXPECT(desc.type == PipelineBuildType::Compute, "type should be compute");
+  EXPECT(desc.key == key, "key should be preserved");
+  EXPECT(desc.shaderVariantKey == variant,
+         "shader variant should be preserved");
+  expectStagesEqual(desc.stages, stages);
+  EXPECT(desc.bindings == bindings, "bindings should be preserved");
+  EXPECT(desc.pushConstant.size == 0,
+         "compute desc should use zero-sized push constant");
+  EXPECT(desc.pushConstant.stageFlagsMask ==
+             static_cast<ShaderStageMask32>(ShaderStage::Compute),
+         "compute desc should use compute stage mask");
 }
 
-void testFromRenderWorkItemTopology() {
-  auto item1 = buildItem(PrimitiveTopology::TriangleList);
-  auto info1 = PipelineBuildDesc::fromRenderWorkItem(item1);
-  EXPECT(info1.topology == PrimitiveTopology::TriangleList, "topology tri");
+void testDirectConstructionIsDeterministic() {
+  const PipelineKey key = testKey("pipeline.graphics.deterministic");
+  const StringID variant("variant.graphics.deterministic");
+  const RenderTargetDesc target =
+      RenderTargetDesc::offscreenColor(ImageFormat::RGBA8);
+  const auto stages = graphicsStages();
+  const auto bindings = testBindings();
+  const VertexLayout vertexLayout = testVertexLayout();
+  const RenderState renderState = testRenderState();
+  const auto attachments = testAttachments();
 
-  auto item2 = buildItem(PrimitiveTopology::LineList);
-  auto info2 = PipelineBuildDesc::fromRenderWorkItem(item2);
-  EXPECT(info2.topology == PrimitiveTopology::LineList, "topology line");
-}
+  const PipelineBuildDesc a = PipelineBuildDesc::graphics(
+      key, variant, target, stages, bindings, vertexLayout, renderState,
+      PrimitiveTopology::TriangleList, RenderPathNodeRenderingMode::Traditional,
+      attachments);
+  const PipelineBuildDesc b = PipelineBuildDesc::graphics(
+      key, variant, target, stages, bindings, vertexLayout, renderState,
+      PrimitiveTopology::TriangleList, RenderPathNodeRenderingMode::Traditional,
+      attachments);
 
-void testFromRenderWorkItemRenderStateFromMaterial() {
-  auto item = buildItem();
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  // MaterialInstance resolves render state from the template's pass definition.
-  EXPECT(info.renderState.cullMode == CullMode::Front,
-         "renderState cull comes from material");
-  EXPECT(info.renderState.depthTestEnable == false,
-         "renderState depthTest comes from material");
-}
-
-void testFromRenderWorkItemIsDeterministic() {
-  auto item = buildItem();
-  auto a = PipelineBuildDesc::fromRenderWorkItem(item);
-  auto b = PipelineBuildDesc::fromRenderWorkItem(item);
-  EXPECT(a.key == b.key, "deterministic key");
-  EXPECT(a.bindings.size() == b.bindings.size(), "deterministic bindings size");
-  EXPECT(a.topology == b.topology, "deterministic topology");
-}
-
-void testFromRenderWorkItemPreservesTargetDesc() {
-  const auto targetDesc = RenderTargetDesc::offscreenDepth(ImageFormat::D32Float);
-  const RenderTarget target{targetDesc};
-  auto item = buildItem(PrimitiveTopology::TriangleList, {}, target);
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-
-  EXPECT(item.target == targetDesc, "rendering item should carry target desc");
-  EXPECT(info.target == targetDesc, "build desc should preserve target desc");
-}
-
-void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
-  using V = VertexPosNormalUvBone;
-  auto vb = VertexBuffer<V>::create({
-      V({0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f},
-        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
-      V({1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f},
-        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
-      V({0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f},
-        {1.0f, 0.0f, 0.0f, 1.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
-  });
-  auto ib = IndexBuffer::create({0u, 1u, 2u});
-  auto mesh = Mesh::create(vb, ib, BoundingBox{{0, 0, 0}, {1, 1, 0}});
-
-  std::vector<ShaderResourceBinding> bindings = {
-      ShaderResourceBinding{"CameraUBO", 0, 0,
-                            ShaderPropertyType::UniformBuffer, 1, 192, 0,
-                            ShaderStage::Vertex, {}},
-  };
-  std::vector<ShaderStageCode> stages = {
-      ShaderStageCode{ShaderStage::Vertex,
-                      std::vector<u32>{0x07230203, 0, 0}},
-  };
-  std::vector<VertexInputAttribute> shaderInputs = {
-      {"inPos", 0, DataType::Float3},
-      {"inNormal", 1, DataType::Float3},
-  };
-
-  auto shader = std::make_shared<FakeShader>(std::move(bindings),
-                                             std::move(stages),
-                                             std::move(shaderInputs));
-  auto tmpl = MaterialTemplate::create("filtered_layout_shader");
-  ShaderProgramSet set;
-  set.shaderName = "filtered_layout_shader";
-  set.shader = shader;
-  MaterialPassDefinition entry;
-  entry.shaderProgram = set;
-  tmpl->setPassDefinition(Pass_Forward, std::move(entry));
-  tmpl->rebuildMaterialInterface();
-
-  auto material = MaterialInstance::create(tmpl);
-  auto node = SceneNode::create("filtered_layout_node");
-  node->addComponent<MeshComponent>(mesh);
-  node->addComponent<MaterialComponent>(material);
-  auto scene = Scene::create(node);
-  scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-
-  auto item = LX_test::firstItemFromScene(*scene, Pass_Forward);
-  auto info = PipelineBuildDesc::fromRenderWorkItem(item);
-  const auto &items = info.vertexLayout.getItems();
-  EXPECT(items.size() == 2, "vertex layout should drop unused attributes");
-  if (items.size() == 2) {
-    EXPECT(items[0].location == 0, "filtered location 0 preserved");
-    EXPECT(items[1].location == 1, "filtered location 1 preserved");
-  }
-  EXPECT(info.vertexLayout.getStride() == sizeof(V),
-         "filtered layout keeps original stride");
+  EXPECT(a.type == b.type, "type should be deterministic");
+  EXPECT(a.key == b.key, "key should be deterministic");
+  EXPECT(a.shaderVariantKey == b.shaderVariantKey,
+         "shader variant should be deterministic");
+  EXPECT(a.target == b.target, "target should be deterministic");
+  expectStagesEqual(a.stages, b.stages);
+  EXPECT(a.bindings == b.bindings, "bindings should be deterministic");
+  EXPECT(a.vertexLayout == b.vertexLayout,
+         "vertex layout should be deterministic");
+  EXPECT(a.renderState == b.renderState,
+         "render state should be deterministic");
+  EXPECT(a.topology == b.topology, "topology should be deterministic");
+  EXPECT(a.renderingMode == b.renderingMode,
+         "rendering mode should be deterministic");
+  EXPECT(a.attachments.size() == b.attachments.size(),
+         "attachments should be deterministic");
 }
 
 } // namespace
@@ -292,14 +219,9 @@ void testFromRenderWorkItemFiltersVertexLayoutToShaderInputs() {
 int main() {
   expSetEnvVK();
 
-  testFromRenderWorkItemPopulatesBindings();
-  testFromRenderWorkItemKeyMatches();
-  testFromRenderWorkItemStagesPreserved();
-  testFromRenderWorkItemTopology();
-  testFromRenderWorkItemRenderStateFromMaterial();
-  testFromRenderWorkItemIsDeterministic();
-  testFromRenderWorkItemPreservesTargetDesc();
-  testFromRenderWorkItemFiltersVertexLayoutToShaderInputs();
+  testGraphicsPreservesDirectConstructionFacts();
+  testComputePreservesDirectConstructionFacts();
+  testDirectConstructionIsDeterministic();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

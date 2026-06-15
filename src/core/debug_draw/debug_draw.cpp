@@ -1,8 +1,5 @@
 #include "core/debug_draw/debug_draw.hpp"
 
-#include "core/asset/material_pass_definition.hpp"
-#include "core/asset/material_template.hpp"
-#include "core/frame_graph/pass.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -11,7 +8,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -30,7 +26,6 @@ constexpr usize kMaxLinesPerFrame = 100000;
 constexpr usize kMinBucketCapacity = 256;
 constexpr usize kMaxVerticesPerFrame = kMaxLinesPerFrame * 2;
 constexpr usize kMaxIndicesPerFrame = kMaxLinesPerFrame * 2;
-constexpr const char *kDebugLineShaderName = "debug_line";
 constexpr float kPi = 3.14159265358979323846f;
 
 struct DebugLineVertex {
@@ -48,75 +43,10 @@ struct DebugLineVertex {
   }
 };
 
-class DebugLineShader final : public IShader {
-public:
-  explicit DebugLineShader(std::vector<ShaderStageCode> stages)
-      : m_stages(std::move(stages)) {
-    m_bindings.push_back(ShaderResourceBinding{
-        "CameraUBO", 0, 0, ShaderPropertyType::UniformBuffer, 1,
-        CameraData::ResourceSize, 0, ShaderStage::Vertex, {}});
-    m_vertexInputs.push_back(
-        VertexInputAttribute{"inPos", 0, DataType::Float3});
-    m_vertexInputs.push_back(
-        VertexInputAttribute{"inColor", 1, DataType::Float4});
-  }
-
-  const std::vector<ShaderStageCode> &getAllStages() const override {
-    return m_stages;
-  }
-
-  const std::vector<ShaderResourceBinding> &
-  getReflectionBindings() const override {
-    return m_bindings;
-  }
-
-  const std::vector<VertexInputAttribute> &getVertexInputs() const override {
-    return m_vertexInputs;
-  }
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(u32 set, u32 binding) const override {
-    for (const auto &entry : m_bindings) {
-      if (entry.set == set && entry.binding == binding) {
-        return std::cref(entry);
-      }
-    }
-    return std::nullopt;
-  }
-
-  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &name) const override {
-    for (const auto &entry : m_bindings) {
-      if (entry.name == name) {
-        return std::cref(entry);
-      }
-    }
-    return std::nullopt;
-  }
-
-  std::optional<std::reference_wrapper<const VertexInputAttribute>>
-  findVertexInput(u32 location) const override {
-    for (const auto &entry : m_vertexInputs) {
-      if (entry.location == location) {
-        return std::cref(entry);
-      }
-    }
-    return std::nullopt;
-  }
-
-  usize getProgramHash() const override { return m_hash; }
-  std::string getShaderName() const override { return kDebugLineShaderName; }
-
-private:
-  std::vector<ShaderStageCode> m_stages;
-  std::vector<ShaderResourceBinding> m_bindings;
-  std::vector<VertexInputAttribute> m_vertexInputs;
-  usize m_hash = 0xD06D06u;
-};
-
 struct BucketState {
   VisibilityLayerMask mask = Layer_EditorOverlay;
   SceneNodeSharedPtr node;
+  MeshSharedPtr mesh;
   usize flushedVertexCount = 0;
   usize reservedVertexCount = 0;
   usize reservedIndexCount = 0;
@@ -129,7 +59,6 @@ struct State {
       queuedVertices;
   std::unordered_map<VisibilityLayerMask, BucketState> buckets;
   MaterialInstanceSharedPtr material;
-  IShaderSharedPtr shader;
   usize acceptedLines = 0;
   bool warnedThisFrame = false;
   bool sceneStructureDirty = false;
@@ -226,67 +155,16 @@ BoundingBox computeBounds(const std::vector<DebugLineVertex> &vertices) {
   return bounds;
 }
 
-std::vector<ShaderStageCode> loadDebugLineStages() {
-  const auto shaderDir = getRuntimeShaderBinaryDir();
-  const auto loadStage = [&](const char *suffix,
-                             ShaderStage stage) -> ShaderStageCode {
-    const auto bytes =
-        readFile((shaderDir / (std::string(kDebugLineShaderName) + "." + suffix))
-                     .string());
-    if ((bytes.size() % sizeof(u32)) != 0) {
-      throw std::runtime_error("DebugDraw shader bytecode size is not 4-byte aligned");
-    }
-
-    ShaderStageCode code;
-    code.stage = stage;
-    code.bytecode.resize(bytes.size() / sizeof(u32));
-    std::memcpy(code.bytecode.data(), bytes.data(), bytes.size());
-    return code;
-  };
-
-  return {loadStage("vert.spv", ShaderStage::Vertex),
-          loadStage("frag.spv", ShaderStage::Fragment)};
-}
-
-MaterialInstanceSharedPtr createMaterial() {
-  auto &s = state();
-  if (!s.shader) {
-    s.shader = std::make_shared<DebugLineShader>(loadDebugLineStages());
-  }
-
-  auto tmpl = MaterialTemplate::create(kDebugLineShaderName);
-  ShaderProgramSet shaderProgram;
-  shaderProgram.shaderName = kDebugLineShaderName;
-  shaderProgram.shader = s.shader;
-
-  MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram = shaderProgram;
-  passDefinition.renderState.cullMode = CullMode::None;
-  passDefinition.renderState.depthTestEnable = true;
-  passDefinition.renderState.depthWriteEnable = false;
-  passDefinition.renderState.blendEnable = true;
-  passDefinition.renderState.srcBlend = BlendFactor::SrcAlpha;
-  passDefinition.renderState.dstBlend = BlendFactor::OneMinusSrcAlpha;
-
-  tmpl->setPassDefinition(Pass_DebugOverlay, std::move(passDefinition));
-  tmpl->rebuildMaterialInterface();
-  return MaterialInstance::create(std::move(tmpl));
-}
-
 MaterialInstanceSharedPtr ensureMaterial() {
   auto &s = state();
   if (!s.material) {
-    if (auto &provider = materialProvider()) {
-      s.material = provider();
-      if (!s.material) {
-        throw std::runtime_error("DebugDraw material provider returned null");
-      }
-      if (!s.material->isPassEnabled(Pass_DebugOverlay)) {
-        throw std::runtime_error(
-            "DebugDraw material provider must return a DebugOverlay material");
-      }
-    } else {
-      s.material = createMaterial();
+    auto &provider = materialProvider();
+    if (!provider) {
+      throw std::runtime_error("DebugDraw requires an injected material provider");
+    }
+    s.material = provider();
+    if (!s.material) {
+      throw std::runtime_error("DebugDraw material provider returned null");
     }
   }
   return s.material;
@@ -303,12 +181,12 @@ BucketState &ensureBucket(VisibilityLayerMask mask) {
   bucket.mask = mask;
   auto vertexBuffer = VertexBuffer<DebugLineVertex>::create({});
   auto indexBuffer = IndexBuffer::create({}, PrimitiveTopology::LineList);
-  auto mesh = Mesh::create(vertexBuffer, indexBuffer);
+  bucket.mesh = Mesh::create(vertexBuffer, indexBuffer);
   bucket.node = SceneNode::create(
       "debug_draw_" + std::to_string(static_cast<u32>(mask)));
   bucket.node->setDebugOnlyRenderable(true);
   bucket.node->setVisibilityLayerMask(mask);
-  bucket.node->addComponent<MeshComponent>(std::move(mesh));
+  bucket.node->addComponent<MeshComponent>(bucket.mesh);
   bucket.node->addComponent<MaterialComponent>(ensureMaterial());
 
   if (!s.scene) {
@@ -344,6 +222,7 @@ void updateBucket(BucketState &bucket,
     throw std::runtime_error("DebugDraw frame exceeded maximum buffered geometry");
   }
 
+  bool capacityChanged = false;
   if (requiredVertexCount > bucket.reservedVertexCount ||
       requiredIndexCount > bucket.reservedIndexCount) {
     const usize reservedVertexCount =
@@ -353,24 +232,42 @@ void updateBucket(BucketState &bucket,
         nextDebugCapacity(bucket.reservedIndexCount, requiredIndexCount,
                           kMaxIndicesPerFrame);
     rebuildBucketCapacity(bucket, reservedVertexCount, reservedIndexCount);
+    capacityChanged = true;
   }
-
-  auto vertexBuffer = VertexBuffer<DebugLineVertex>::create(
-      padVerticesToCapacity(vertices, bucket.reservedVertexCount));
-  auto indexBuffer = IndexBuffer::create(
-      makeDegenerateLineIndices(requiredIndexCount, bucket.reservedVertexCount,
-                                bucket.reservedIndexCount),
-      PrimitiveTopology::LineList);
-  auto mesh = Mesh::create(vertexBuffer, indexBuffer);
-  mesh->setBounds(computeBounds(vertices));
 
   const auto meshComponent = bucket.node->getComponent<MeshComponent>();
   if (!meshComponent.has_value()) {
     throw std::runtime_error("DebugDraw bucket missing MeshComponent");
   }
-  meshComponent->get().setMesh(std::move(mesh));
+  if (capacityChanged) {
+    auto vertexBuffer = VertexBuffer<DebugLineVertex>::create(
+        padVerticesToCapacity(vertices, bucket.reservedVertexCount));
+    auto indexBuffer = IndexBuffer::create(
+        makeDegenerateLineIndices(requiredIndexCount,
+                                  bucket.reservedVertexCount,
+                                  bucket.reservedIndexCount),
+        PrimitiveTopology::LineList);
+    bucket.mesh = Mesh::create(vertexBuffer, indexBuffer);
+    bucket.mesh->setBounds(computeBounds(vertices));
+    meshComponent->get().setMesh(bucket.mesh);
+    bucket.flushedVertexCount = requiredVertexCount;
+    return;
+  }
+  if (!bucket.mesh) {
+    throw std::runtime_error("DebugDraw bucket missing mesh");
+  }
+  auto *vertexBuffer =
+      dynamic_cast<VertexBuffer<DebugLineVertex> *>(
+          &bucket.mesh->getMutableVertexBuffer());
+  if (!vertexBuffer) {
+    throw std::runtime_error("DebugDraw bucket has incompatible vertex buffer");
+  }
+  vertexBuffer->update(padVerticesToCapacity(vertices, bucket.reservedVertexCount));
+  bucket.mesh->getMutableIndexBuffer().update(
+      makeDegenerateLineIndices(requiredIndexCount, bucket.reservedVertexCount,
+                                bucket.reservedIndexCount));
+  bucket.mesh->setBounds(computeBounds(vertices));
   bucket.flushedVertexCount = requiredVertexCount;
-  state().sceneStructureDirty = true;
 }
 
 void pushLine(Vec3f a, Vec3f b, Vec4f color) {
@@ -769,42 +666,65 @@ usize testing::reservedIndexCapacity(VisibilityLayerMask mask) {
   return it == state().buckets.end() ? 0 : it->second.reservedIndexCount;
 }
 
+namespace {
+
+[[nodiscard]] const GeometryStorage *
+resolveBucketGeometryStorage(const BucketState &bucket) {
+  if (bucket.node) {
+    const auto meshComponent = bucket.node->getComponent<MeshComponent>();
+    const auto scene = bucket.node->getAttachedScene();
+    if (meshComponent.has_value() && scene) {
+      const GeometryStorageHandle handle =
+          meshComponent->get().getGeometryStorageHandle();
+      if (const auto storage = scene->resources().resolve(handle)) {
+        return &storage->get();
+      }
+    }
+  }
+  if (bucket.mesh && bucket.mesh->getGeometryStorage()) {
+    return bucket.mesh->getGeometryStorage().get();
+  }
+  return nullptr;
+}
+
+} // namespace
+
 usize testing::bufferedVertexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.node) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  const auto resource = it->second.node->getVertexBuffer();
-  return resource.isValid()
-             ? resource.get().getByteSize() / sizeof(DebugLineVertex)
-             : 0;
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getVertexBuffer().getByteSize() /
+                       sizeof(DebugLineVertex)
+                 : 0;
 }
 
 usize testing::bufferedIndexCapacity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.node) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  const auto resource = it->second.node->getIndexBuffer();
-  return resource.isValid() ? resource.get().getByteSize() / sizeof(u32) : 0;
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getIndexBuffer().getByteSize() / sizeof(u32) : 0;
 }
 
 ResourceCacheIdentity testing::vertexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.node) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  const auto resource = it->second.node->getVertexBuffer();
-  return resource.isValid() ? resource.getBackendCacheIdentity() : 0;
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getVertexBuffer().getBackendCacheIdentity() : 0;
 }
 
 ResourceCacheIdentity testing::indexBufferIdentity(VisibilityLayerMask mask) {
   auto it = state().buckets.find(mask);
-  if (it == state().buckets.end() || !it->second.node) {
+  if (it == state().buckets.end()) {
     return 0;
   }
-  const auto resource = it->second.node->getIndexBuffer();
-  return resource.isValid() ? resource.getBackendCacheIdentity() : 0;
+  const GeometryStorage *storage = resolveBucketGeometryStorage(it->second);
+  return storage ? storage->getIndexBuffer().getBackendCacheIdentity() : 0;
 }
 
 bool testing::hasRenderable(VisibilityLayerMask mask) {

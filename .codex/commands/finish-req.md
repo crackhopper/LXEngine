@@ -104,7 +104,7 @@ For each `⚠ Drift` / `✗ Missing` case from step 4 AND each accepted simplifi
 - Prefer correcting code over rewriting the doc — unless the doc describes something that's genuinely wrong or outdated (then update the doc and note the delta in the status section)
 
 If the scope of fixes balloons beyond "simplification + minor drift" (e.g. discovering R4 was never implemented and needs 500 lines of new code), **stop and ask the user** whether to:
-- (a) treat this as a true implementation task and invoke `/opsx:propose` to scope it properly
+- (a) treat this as a true implementation task and use Superpowers brainstorming/planning to scope it properly
 - (b) finish what's verifiable and leave a `TODO` in the requirement's 实施状态 section
 - (c) skip the requirement entirely (do not archive)
 
@@ -152,7 +152,7 @@ If numbering is inconsistent:
    - target: REQ-011 -> REQ-010-b, notes/requirements/011-foo.md -> notes/requirements/010-b-foo.md
    - later split: R3-R5 move to REQ-010-c, notes/requirements/010-c-later-foo.md
    - unchanged later active requirements: REQ-012+
-   - references to update: notes/requirements/*.md, notes/roadmaps/*.md, openspec/changes/**/*.md
+   - references to update: notes/requirements/*.md, notes/roadmaps/*.md, docs/superpowers/specs/*.md
    ```
 
 2. Ask the user to confirm the numbering plan.
@@ -161,7 +161,7 @@ If numbering is inconsistent:
    - Add a short blockquote trace note to both split docs: source REQ, split date, retained scope, moved scope
    - Rename active requirement files
    - Update `# REQ-NNN:` / `# REQ-NNN-a:` titles
-   - Update `REQ-NNN` / `REQ-NNN-a` references in active requirements, roadmaps, and open OpenSpec changes
+   - Update `REQ-NNN` / `REQ-NNN-a` references in active requirements, roadmaps, and Superpowers specs
    - Do not edit `notes/requirements/finished/*.md` unless the user explicitly requested a history migration
 4. If the user rejects the plan, stop before archive. Do not archive an out-of-order requirement.
 

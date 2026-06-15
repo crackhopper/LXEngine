@@ -3,6 +3,7 @@
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
+#include "core/scene/scene_system_abi_validation.hpp"
 #include "scene.hpp"
 
 #include <algorithm>
@@ -43,6 +44,11 @@ std::string variantsDebugString(const ShaderProgramSet &programSet) {
       oss << ",";
     first = false;
     oss << variant.macroName;
+    if (variant.materialContractSource.has_value()) {
+      oss << "=" << variant.materialContractSource->string();
+    } else if (variant.macroValue.has_value()) {
+      oss << "=" << *variant.macroValue;
+    }
   }
   return first ? "(none)" : oss.str();
 }
@@ -142,6 +148,15 @@ StringID makeObjectPipelineSignature(const IVertexBuffer &vertexBuffer,
   return GlobalStringTable::get().compose(TypeTag::ObjectRender, objectFields);
 }
 
+[[nodiscard]] StringID makeMaterialTypeSignature(
+    const MaterialInstance &material, const RenderState &renderState) {
+  const std::string &bsdfType = material.getBsdfType();
+  const std::string normalizedType =
+      (bsdfType.empty() ? std::string("<unspecified>") : bsdfType) + "-" +
+      (renderState.blendEnable ? "transparent" : "opaque");
+  return StringID(normalizedType);
+}
+
 std::vector<u32> copyIndexBufferData(const IndexBuffer &indexBuffer) {
   std::vector<u32> indices(indexBuffer.indexCount());
   if (!indices.empty()) {
@@ -169,13 +184,10 @@ getSkeletonComponent(const SceneNode &node) {
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
-    : m_nodeName("scene_root"), m_perDrawData(std::make_shared<PerDrawData>()),
-      m_isPathRoot(true) {}
+    : m_nodeName("scene_root"), m_isPathRoot(true) {}
 
 SceneNode::SceneNode(std::string nodeName)
-    : m_nodeName(std::move(nodeName)),
-      m_perDrawData(std::make_shared<PerDrawData>()) {
-  syncPerDrawModelMatrix();
+    : m_nodeName(std::move(nodeName)) {
   rebuildValidatedCache();
 }
 
@@ -365,11 +377,6 @@ IShaderSharedPtr SceneNode::getShaderInfo() const {
   return material ? material->getPassShader(Pass_Forward) : nullptr;
 }
 
-PerDrawDataSharedPtr SceneNode::getPerDrawData() const {
-  updateWorldTransformIfNeeded();
-  return m_perDrawData;
-}
-
 StringID SceneNode::getPipelineSignature(StringID pass) const {
   const auto meshComponent = getMeshComponent(*this);
   if (!meshComponent)
@@ -441,14 +448,7 @@ void SceneNode::updateWorldTransformIfNeeded() const {
 
   m_worldTransform = world;
   m_worldTransformHasParent = static_cast<bool>(parent);
-  syncPerDrawModelMatrix();
   m_worldTransformDirty = false;
-}
-
-void SceneNode::syncPerDrawModelMatrix() const {
-  if (m_perDrawData) {
-    m_perDrawData->updateModelMatrix(m_worldTransform);
-  }
 }
 
 void SceneNode::removeFromParentChildrenList() {
@@ -537,39 +537,43 @@ void SceneNode::rebuildValidatedCache() {
     }
 
     const auto &entry = entryOpt->get();
-    auto shader = entry.shaderProgram.getShader();
+    ShaderProgramSet shaderProgram = entry.shaderProgram;
+    auto shader = shaderProgram.getShader();
     if (!shader) {
-      shader = material->getPassShader(pass);
-    }
-    if (!shader) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "missing shader for enabled pass", std::cref(layout));
+    }
+    if (material->getMaterialSourceSignature().id != 0 &&
+        !shaderProgram.hasEnabledVariant("LX_MATERIAL_CONTRACT_SOURCE")) {
+      fatalValidation(*this, pass, *material, shaderProgram,
+                      "missing resolver-produced material source variant",
+                      std::cref(layout));
     }
 
     const bool usesSkinning =
-        entry.shaderProgram.hasEnabledVariant("USE_SKINNING");
+        shaderProgram.hasEnabledVariant("USE_SKINNING");
     const bool hasBonesBinding = shader->findBinding("Bones").has_value();
 
     if (usesSkinning != hasBonesBinding) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "shader variant / Bones binding mismatch",
                       std::cref(layout));
     }
     if (usesSkinning && !skeleton) {
-      fatalValidation(*this, pass, *material, entry.shaderProgram,
+      fatalValidation(*this, pass, *material, shaderProgram,
                       "skinning pass requires skeleton", std::cref(layout));
     }
 
     for (const auto &input : shader->getVertexInputs()) {
       auto layoutItem = findLayoutItem(layout, input.location);
       if (!layoutItem) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "missing vertex input '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
       }
       if (layoutItem->get().type != input.type) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "vertex input type mismatch for '" + input.name +
                             "' at location " + std::to_string(input.location),
                         std::cref(layout));
@@ -578,28 +582,23 @@ void SceneNode::rebuildValidatedCache() {
 
     GpuResourceRef bonesResource;
 
-    // Validate reserved-name type contract and renderable-owned resources.
+    // Validate reserved system ABI contract and renderable-owned resources.
     for (const auto &binding : shader->getReflectionBindings()) {
-      // REQ-031 R3: reserved-name type misuse is a fatal authoring error.
-      auto expectedType = getExpectedTypeForSystemBinding(binding.name);
-      if (expectedType && binding.type != *expectedType) {
-        fatalValidation(
-            *this, pass, *material, entry.shaderProgram,
-            "reserved binding '" + binding.name +
-                "' has wrong descriptor type (shader authoring error)",
-            std::cref(layout));
+      if (auto abiDiagnostic = validateSystemAbiBindingContract(binding)) {
+        fatalValidation(*this, pass, *material, shaderProgram,
+                        *abiDiagnostic, std::cref(layout));
       }
 
       if (binding.name == "Bones") {
         if (!skeleton) {
-          fatalValidation(*this, pass, *material, entry.shaderProgram,
+          fatalValidation(*this, pass, *material, shaderProgram,
                           "missing Bones resource", std::cref(layout));
         }
         bonesResource = GpuResourceRef{skeleton->getUBO()};
         continue;
       }
 
-      if (isSystemOwnedBinding(binding.name)) {
+      if (!isMaterialOwnedBinding(binding.name)) {
         continue;
       }
 
@@ -612,9 +611,9 @@ void SceneNode::rebuildValidatedCache() {
       }
 
       const StringID bindingId(binding.name);
-      const auto resource = material->getParameterResource(bindingId);
+      const auto resource = material->getShaderBindingResource(bindingId);
       if (!resource.isValid()) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "missing material-owned resource '" + binding.name +
                             "'",
                         std::cref(layout));
@@ -623,29 +622,33 @@ void SceneNode::rebuildValidatedCache() {
 
     ValidatedRenderablePassData data;
     data.pass = pass;
+    data.objectHandle = meshComponent->get().getObjectHandle();
     data.materialHandle = materialComponent->get().getMaterialHandle();
+    data.shaderProgram = shaderProgram;
     data.shaderInfo = shader;
-    data.drawData = m_perDrawData;
     data.vertexBuffer = getVertexBuffer();
     data.indexBuffer = getIndexBuffer();
     data.bonesResource = std::move(bonesResource);
     data.renderState = material->getPassRenderState(pass);
     const BoundingBox worldBounds = getWorldBounds();
-    data.sortCenter = worldBounds.isValid()
-                          ? worldBounds.getCenter()
-                          : Transform::fromMat4(getWorldTransform()).translation;
-    data.objectSignature = getPipelineSignature(pass);
-    data.materialSignature = material->getPipelineSignature(pass);
+    data.sortCenter =
+        worldBounds.isValid()
+            ? worldBounds.getCenter()
+            : Transform::fromMat4(getWorldTransform()).translation;
+    data.materialTypeVariant =
+        material->getMaterialTypeVariantSignature(shaderProgram);
+    data.materialTypeSignature =
+        makeMaterialTypeSignature(*material, data.renderState);
 
     if (entry.meshOverlay.enabled) {
       if (geometryStorage.getIndexBuffer().getTopology() !=
           PrimitiveTopology::TriangleList) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "meshOverlay requires triangle-list source geometry",
                         std::cref(layout));
       }
       if (geometryStorage.getIndexBuffer().indexCount() % 3 != 0) {
-        fatalValidation(*this, pass, *material, entry.shaderProgram,
+        fatalValidation(*this, pass, *material, shaderProgram,
                         "meshOverlay source index count is not triangular",
                         std::cref(layout));
       }
@@ -685,6 +688,14 @@ void SceneNode::setDebugOnlyRenderable(const bool value) {
     return;
   }
   m_debugOnlyRenderable = value;
+  emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+}
+
+void SceneNode::setRenderType(StringID renderType) {
+  if (m_renderType.has_value() && *m_renderType == renderType) {
+    return;
+  }
+  m_renderType = renderType;
   emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
 }
 
@@ -773,8 +784,8 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
     const_cast<SceneNode &>(*this).rebuildValidatedCache();
   } else if (aspect == SceneNodeAspect::Transform ||
-      aspect == SceneNodeAspect::Visibility ||
-      aspect == SceneNodeAspect::CameraProperties) {
+             aspect == SceneNodeAspect::Visibility ||
+             aspect == SceneNodeAspect::CameraProperties) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
   }
 

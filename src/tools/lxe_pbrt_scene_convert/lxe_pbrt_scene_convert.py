@@ -43,6 +43,26 @@ DIRECTIVES = {
     "ConcatTransform",
 }
 
+REQUIRED_BSDF_PARAMETERS: dict[str, list[str]] = {
+    "matte": ["Kd", "sigma"],
+    "glass": ["Kr", "Kt", "eta", "uroughness", "vroughness"],
+    "uber": ["Kd", "Ks"],
+    "metal": ["eta", "k"],
+    "substrate": ["Kd", "Ks", "uroughness", "vroughness"],
+    "fourier": ["bsdffile"],
+    "mix": ["namedmaterial1", "namedmaterial2", "amount"],
+}
+
+MATERIAL_CONTRACT_SOURCE_BY_TYPE: dict[str, str] = {
+    "matte": "assets://shaders/glsl/common/materials/matte.contract.glsl",
+    "glass": "assets://shaders/glsl/common/materials/glass.contract.glsl",
+    "uber": "assets://shaders/glsl/common/materials/uber.contract.glsl",
+    "metal": "assets://shaders/glsl/common/materials/metal.contract.glsl",
+    "substrate": "assets://shaders/glsl/common/materials/substrate.contract.glsl",
+    "fourier": "assets://shaders/glsl/common/materials/fourier.contract.glsl",
+    "mix": "assets://shaders/glsl/common/materials/mix.contract.glsl",
+}
+
 
 @dataclass
 class Token:
@@ -485,113 +505,137 @@ def first_float(value: Any, fallback: float) -> float:
     return fallback
 
 
+def load_pbrt_defaults(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    defaults_path = path or Path(__file__).with_name("pbrt-defaults.yaml")
+    return json.loads(defaults_path.read_text(encoding="utf-8"))
+
+
+def rgb_envelope(value: Any) -> dict[str, Any]:
+    rgb = as_float_list(value, [0.8, 0.8, 0.8])
+    padded = list(rgb[:3])
+    while len(padded) < 3:
+        padded.append(1.0)
+    return {"kind": "rgb", "value": [round(v, 9) for v in padded]}
+
+
+def float_envelope(value: Any, fallback: float = 0.0) -> dict[str, Any]:
+    return {"kind": "float", "value": round(first_float(value, fallback), 9)}
+
+
+def material_ref_envelope(
+    value: Any, material_uri_by_name: dict[str, str]
+) -> dict[str, Any]:
+    name = str(value[0] if isinstance(value, list) and value else value)
+    uri = material_uri_by_name.get(name)
+    if uri is None:
+        raise ValueError(f"PBRT mix references unknown material: {name}")
+    return {"kind": "materialRef", "uri": uri}
+
+
+def envelope_from_pbrt_param(
+    material: PbrtMaterial, name: str, material_uri_by_name: dict[str, str]
+) -> dict[str, Any] | None:
+    param = material.parameter(name)
+    if param is None:
+        return None
+    if name in {"Kd", "Ks", "Kr", "Kt", "opacity"}:
+        return rgb_envelope(param.value)
+    if name in {"eta", "k"} and param.kind == "spectrum":
+        return {"kind": "spectrum", "uri": str(param.value)}
+    if name in {"sigma", "eta", "roughness", "uroughness", "vroughness"}:
+        return float_envelope(param.value)
+    if name in {"namedmaterial1", "namedmaterial2"}:
+        return material_ref_envelope(param.value, material_uri_by_name)
+    if name == "amount":
+        return float_envelope(param.value, 0.5)
+    if name == "bsdffile":
+        return {"kind": "bsdfTable", "uri": str(param.value)}
+    return None
+
+
+def material_v2_bsdf_doc(
+    material: PbrtMaterial,
+    defaults: dict[str, dict[str, Any]],
+    material_uri_by_name: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    pbrt_type = material.pbrt_type()
+    source = MATERIAL_CONTRACT_SOURCE_BY_TYPE.get(pbrt_type)
+    if source is None:
+        raise ValueError(
+            f"PBRT material {material.name} type {pbrt_type} has no "
+            "Material v2 contract source"
+        )
+    parameters: dict[str, Any] = {}
+    sources: dict[str, str] = {}
+    for name in REQUIRED_BSDF_PARAMETERS.get(pbrt_type, []):
+        explicit = envelope_from_pbrt_param(material, name, material_uri_by_name)
+        if explicit is not None:
+            parameters[name] = explicit
+            sources[name] = "explicit"
+            continue
+        default = defaults.get(pbrt_type, {}).get(name)
+        if default is None:
+            raise ValueError(
+                f"PBRT material {material.name} type {pbrt_type} missing "
+                f"parameter {name} and no default is configured"
+            )
+        parameters[name] = default
+        sources[name] = "pbrt-default"
+    return {"type": pbrt_type, "source": source, "parameters": parameters}, sources
+
+
 def sanitize_filename(name: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", name.strip())
     return safe or "unnamed"
 
 
-def vec4_color(rgb: list[float], alpha: float = 1.0) -> list[float]:
-    padded = list(rgb[:3])
-    while len(padded) < 3:
-        padded.append(1.0)
-    return [round(v, 9) for v in padded] + [round(alpha, 9)]
-
-
-def approximate_material(material: PbrtMaterial) -> tuple[dict[str, Any], list[str], str]:
+def approximate_material(
+    material: PbrtMaterial,
+    defaults: dict[str, dict[str, Any]],
+    material_uri_by_name: dict[str, str],
+) -> tuple[dict[str, Any], list[str], str, dict[str, str]]:
     pbrt_type = material.pbrt_type()
-    kd = as_float_list(material.value("Kd"), [0.8, 0.8, 0.8])
-    ks = as_float_list(material.value("Ks"), [0.0, 0.0, 0.0])
-    roughness = first_float(material.value("roughness"), 0.7)
-    alpha = 1.0
-    shader = "pbr"
-    clearcoat_factor = 0.0
-    clearcoat_roughness = 0.04
-    if pbrt_type == "substrate":
-        roughness = (
-            first_float(material.value("uroughness"), roughness)
-            + first_float(material.value("vroughness"), roughness)
-        ) * 0.5
-        clearcoat_factor = max(ks) if ks else 0.0
-        clearcoat_roughness = roughness
-        shader = "pbr_clearcoat"
-    metallic = 0.0
-    strategy = f"{pbrt_type}-to-pbr-approx"
+    strategy = f"{pbrt_type}-surface-material-v2"
     losses: list[str] = []
     if pbrt_type == "metal":
-        metallic = 1.0
-        kd = [0.8, 0.78, 0.72]
-        roughness = 0.18
-        losses.append("spectral eta/k approximated as RGB metallic material")
+        losses.append(
+            "spectral eta/k retained as Material v2 spectrum resources; "
+            "realtime spectral conductor support may still be approximate"
+        )
     elif pbrt_type == "glass":
-        kd = [0.85, 0.95, 1.0]
-        roughness = 0.02
-        alpha = 0.25
-        losses.append("PBRT glass transmission/refraction approximated as alpha-blended tinted glass")
+        losses.append(
+            "PBRT glass transmission/refraction retained in Material v2; "
+            "realtime transparent dielectric support may still be approximate"
+        )
     elif pbrt_type == "fourier":
-        kd = [0.75, 0.72, 0.68]
-        roughness = 0.55
-        losses.append("Fourier BSDF approximated as leather-colored dielectric")
+        losses.append(
+            "Fourier BSDF table retained in Material v2; "
+            "realtime Fourier BSDF evaluation may still be unsupported"
+        )
     elif pbrt_type == "mix":
-        amount = as_float_list(material.value("amount"), [0.5, 0.5, 0.5])
-        kd = [max(0.0, min(1.0, v)) for v in amount[:3]]
-        roughness = 0.65
-        losses.append("PBRT mix material stores references in source YAML; runtime uses blended fallback")
+        losses.append(
+            "PBRT mix material references retained in Material v2; "
+            "realtime nested material mixing may still be unsupported"
+        )
     elif pbrt_type == "uber":
-        specular = max(ks) if ks else 0.0
-        roughness = max(roughness, 0.02)
         if material.value("Kt") not in (None, [0, 0, 0], [0.0, 0.0, 0.0]):
-            losses.append("PBRT uber transmission Kt not represented by current PBR shader")
-        if specular > 0.45:
-            roughness = min(roughness, 0.35)
+            losses.append(
+                "PBRT uber transmission Kt retained in Material v2; "
+                "realtime transmission support may still be approximate"
+            )
     elif pbrt_type == "substrate":
-        losses.append("PBRT substrate layered diffuse/specular model approximated as realtime clearcoat BRDF")
-    roughness = max(0.0005, min(1.0, roughness))
-    render_state: dict[str, Any] = {
-        "cullMode": "None",
-        "depthTest": True,
-        "depthWrite": pbrt_type != "glass",
-        "blendEnable": pbrt_type == "glass",
-    }
-    if pbrt_type == "glass":
-        render_state["srcBlend"] = "SrcAlpha"
-        render_state["dstBlend"] = "OneMinusSrcAlpha"
-
+        losses.append(
+            "PBRT substrate layered diffuse/specular model retained in Material v2; "
+            "realtime layered BRDF support may still be approximate"
+        )
+    bsdf_doc, parameter_sources = material_v2_bsdf_doc(
+        material, defaults, material_uri_by_name
+    )
     doc = {
-        "shader": shader,
-        "variants": {
-            "HAS_METALLIC_ROUGHNESS": False,
-            "HAS_NORMAL_MAP": False,
-            "HAS_AO_MAP": False,
-            "HAS_EMISSIVE_MAP": False,
-            "HAS_IBL": False,
-        },
-        "passes": {
-            "Forward": {
-                "renderState": render_state
-            },
-            "OfflineRayTrace": {
-                "shader": "offline_pbr_direct_ray",
-                "stage": "compute",
-            },
-        },
-        "parameters": {
-            "MaterialUBO.baseColorFactor": vec4_color(kd, alpha),
-            "MaterialUBO.metallicFactor": metallic,
-            "MaterialUBO.roughnessFactor": roughness,
-            "MaterialUBO.ao": 1.0,
-        },
-        "resources": {
-            "albedoMap": "white",
-        },
+        "schema": "lxe.material.v2",
+        "bsdf": bsdf_doc,
     }
-    if pbrt_type == "substrate":
-        doc["parameters"]["MaterialUBO.clearcoatFactor"] = max(
-            0.0, min(1.0, clearcoat_factor)
-        )
-        doc["parameters"]["MaterialUBO.clearcoatRoughness"] = max(
-            0.04, min(1.0, clearcoat_roughness)
-        )
-    return doc, losses, strategy
+    return doc, losses, strategy, parameter_sources
 
 
 def source_material_doc(
@@ -828,25 +872,14 @@ def scene_yaml(
             },
             "visibilityMask": 4294967295,
             "mesh": {"uri": mesh_uri},
-            "materials": [
-                {
-                    "tag": "realtime-pbr",
-                    "uri": mat["runtime"],
-                    "offline": {
-                        "pbrtSourceMaterialUri": mat["source"],
-                        "pbrtMaterialName": shape.material,
-                    },
+            "material": {
+                "uri": mat["runtime"],
+                "offline": {
+                    "pbrtSourceMaterialUri": mat["source"],
+                    "pbrtMaterialName": shape.material,
+                    "runtimeApproximationUntilSupported": True,
                 },
-                {
-                    "tag": "offline-pbrt-reference",
-                    "uri": mat["runtime"],
-                    "offline": {
-                        "pbrtSourceMaterialUri": mat["source"],
-                        "pbrtMaterialName": shape.material,
-                        "runtimeApproximationUntilSupported": True,
-                    },
-                },
-            ],
+            },
         }
         if is_environment_floor_shape(shape):
             environment_children.append(node)
@@ -887,7 +920,6 @@ def scene_yaml(
                     "camera": "/pbrt_camera",
                     "width": film_width,
                     "height": film_height,
-                    "materialTag": "realtime-pbr",
                     "outputFormat": "exr-png",
                     "outDir": "artifacts/pbrt/bmw-m6/realtime",
                     "backgroundColor": [0.0, 0.0, 0.0],
@@ -896,7 +928,6 @@ def scene_yaml(
                     "camera": "/pbrt_camera",
                     "width": film_width,
                     "height": film_height,
-                    "materialTag": "offline-pbrt-reference",
                     "outputFormat": "exr-png",
                     "outDir": "artifacts/pbrt/bmw-m6/offline",
                     "backgroundColor": [0.0, 0.0, 0.0],
@@ -908,7 +939,6 @@ def scene_yaml(
                 "maxBounce": max_bounce,
                 "seed": 1,
                 "profile": "offline-pbrt-reference",
-                "materialTag": "offline-pbrt-reference",
                 "compareMode": "shaded",
             },
         },
@@ -948,7 +978,7 @@ def write_conversion_doc(path: Path, manifest: dict[str, Any]) -> None:
         "",
         "## Current Renderer Input",
         "",
-        "Use the generated scene file for current realtime/offline rendering. It references OBJ meshes, runtime PBR approximation materials, and the copied HDR environment.",
+        "Use the generated scene file for current realtime/offline rendering. It references OBJ meshes, Material v2 PBRT surface materials, and the copied HDR environment.",
         "",
         "## Source-Preserving Input",
         "",
@@ -973,7 +1003,7 @@ def write_conversion_doc(path: Path, manifest: dict[str, Any]) -> None:
             "4. Implement Fourier BSDF loading for `bsdfs/leather.bsdf` instead of using the PBR fallback.",
             "5. Implement substrate/clearcoat car paint, preserving separate diffuse/specular lobes and anisotropic roughness.",
             "6. Add environment importance sampling for `textures/sky.exr` so offline path tracing converges on the PBRT lighting setup.",
-            "7. Switch the `offline-pbrt-reference` material tag from runtime approximation to source material consumption once those renderer modules exist.",
+            "7. Switch `offline-pbrt-reference` from runtime approximation to source material consumption once those renderer modules exist.",
             "",
         ]
     )
@@ -987,13 +1017,21 @@ def convert_scene(input_path: Path, out_root: Path, scene_path: Path, repo_root:
         raise ValueError("BMW M6 converter expects an infinite light source")
     out_root.mkdir(parents=True, exist_ok=True)
     scene_dir = input_path.parent
+    defaults = load_pbrt_defaults()
     material_map: dict[str, dict[str, str]] = {}
+    material_uri_by_name = {
+        material.name: f"{sanitize_filename(material.name)}.material"
+        for material in scene.materials
+    }
+    material_parameter_sources: dict[str, dict[str, str]] = {}
     unsupported: list[dict[str, Any]] = []
     for material in scene.materials:
         safe = sanitize_filename(material.name)
         runtime_path = out_root / "materials" / "runtime-pbr-approx" / f"{safe}.material"
         source_path = out_root / "materials" / "pbrt-source" / f"{safe}.pbrt-material.yaml"
-        runtime_doc, losses, strategy = approximate_material(material)
+        runtime_doc, losses, strategy, parameter_sources = approximate_material(
+            material, defaults, material_uri_by_name
+        )
         yaml_write(runtime_path, runtime_doc)
         runtime_uri = rel_to_repo(runtime_path, repo_root)
         source_uri = rel_to_repo(source_path, repo_root)
@@ -1007,6 +1045,7 @@ def convert_scene(input_path: Path, out_root: Path, scene_path: Path, repo_root:
         )
         yaml_write(source_path, source_doc)
         material_map[material.name] = {"runtime": runtime_uri, "source": source_uri}
+        material_parameter_sources[material.name] = parameter_sources
         for loss in losses:
             unsupported.append(
                 {
@@ -1095,6 +1134,7 @@ def convert_scene(input_path: Path, out_root: Path, scene_path: Path, repo_root:
                 "approximation": "Generated pbrt_runtime_key_light directional light for current renderer visibility",
             }
         ],
+        "materialParameterSources": material_parameter_sources,
     }
     manifest_path = out_root / "pbrt_bmw_m6.converted.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=False), encoding="utf-8")

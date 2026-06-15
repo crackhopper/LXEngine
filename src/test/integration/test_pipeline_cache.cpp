@@ -2,18 +2,11 @@
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/device.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/rhi/index_buffer.hpp"
-#include "core/pipeline/pipeline_build_desc.hpp"
-#include "core/rhi/vertex_buffer.hpp"
-#include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/pass.hpp"
-#include "core/scene/scene.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/env.hpp"
-#include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
 
@@ -52,22 +45,26 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
-    auto node = LX_core::SceneNode::create("pipeline_cache_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    // RenderWorkQueue::build internally merges scene.getSceneLevelResources(pass, target),
-    // so the item already carries camera + light UBOs — no side-channel injection.
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
+    auto shader = LX_test::makeMinimalShaderForVulkanTests();
+    LX_core::ShaderProgramSet shaderProgram;
+    shaderProgram.shaderName = "minimal";
+    shaderProgram.shader = shader;
 
-    auto info = LX_core::PipelineBuildDesc::fromRenderWorkItem(item);
+    LX_core::RenderState renderState;
+    renderState.cullMode = LX_core::CullMode::None;
+    renderState.depthTestEnable = false;
+    renderState.depthWriteEnable = false;
+
+    const LX_core::RenderTarget target;
+    const LX_core::PipelineKey key = LX_core::PipelineKey::build(
+        shaderProgram.getPipelineSignature(),
+        LX_test::testRenderPathNodeSignature(LX_core::Pass_PostProcess,
+                                             target));
+    auto info = LX_core::PipelineBuildDesc::graphics(
+        key, shaderProgram.getPipelineSignature(), target.toDesc(),
+        shader->getAllStages(), shader->getReflectionBindings(),
+        vertexBufferPtr->getLayout(), renderState,
+        indexBufferPtr->getTopology(), std::nullopt, {});
 
     auto &cache = resourceManager->getPipelineCache();
     auto found0 = cache.find(info.key);
@@ -102,17 +99,6 @@ int main() {
     if (cache.size() != 1) {
       std::cerr << "FAIL: preload rebuilt existing key, cache size = "
                 << cache.size() << "\n";
-      return 1;
-    }
-
-    // FrameGraph-driven collection should also produce exactly this one info.
-    LX_core::FrameGraph fg;
-    fg.addPass(LX_core::FramePass{LX_core::Pass_Forward, {}, {}});
-    fg.build(LX_core::RenderWorkBuildContext::realtime(*scene));
-    auto infos = fg.collectAllPipelineBuildDescs();
-    if (infos.size() != 1) {
-      std::cerr << "FAIL: frame graph produced " << infos.size()
-                << " infos, expected 1\n";
       return 1;
     }
 

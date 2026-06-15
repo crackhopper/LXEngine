@@ -1,6 +1,6 @@
-# Tutorial：从跑起来到离线实验室
+# Tutorial：从 Editor 到 Offline Ray Tracer
 
-这组教程解决一个连续问题：我们先把 LXEngine 跑起来，再学会改变场景里的材质和光源，然后进入 shadow、PBR + IBL、assets downloader 与 offline renderer 这些更完整的资源和渲染链路，最后再学习怎样扩展场景节点和 editor 行为。阅读顺序按依赖和难度排列：先能构建和保存场景，再理解材质/光照，再看多 pass、HDR 和本地资产 cache，最后读 headless offline FrameGraph 与扩展点。
+这组教程解决一个连续问题：我们先把 LXEngine 跑起来，在 `lxe_editor` 里搭场景、改材质和光源，再进入 shadow、PBR + IBL 与 offline ray tracer。阅读顺序按依赖和难度排列：先能构建和保存场景，再理解材质/光照和多 pass，最后读 headless offline FrameGraph 与扩展点。
 
 ## 学习线之间的依赖
 
@@ -11,12 +11,11 @@
 | 3 | [自定义灯光](custom-light/index.md) | 理解当前 light 底座和未来 custom light 工作流 |
 | 4 | [Shadow 阶段](shadow-era/index.md) | 打开 shadow / CSM 场景，理解多 pass 写读关系 |
 | 5 | [PBR + IBL](pbr-ibl/index.md) | 打开 HDR/PBR/IBL 金属球场景，理解 scene-level IBL resources |
-| 6 | [Assets Downloader](assets-downloader/index.md) | 用本地 Web 工具下载外部资源，写入 `.asset_cache/`，并生成可被 scene 引用的 `cache://` URI |
-| 7 | [Offline Renderer](offline-renderer/index.md) | 用同一份 scene 跑 headless offline FrameGraph，写出 EXR/PNG，并理解 path tracing 扩展点 |
-| 8 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
-| 9 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
+| 6 | [Offline Renderer](offline-renderer/index.md) | 用同一份 scene 跑 headless offline ray tracer，写出 EXR/PNG，并理解 path tracing 扩展点 |
+| 7 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
+| 8 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
 
-前七条学习线偏当前实践：构建、启动、保存场景、写材质、调灯光、观察 shadow/CSM、验证 PBR/IBL、整理外部资产、运行离线输出。最后两条学习线会同时讲“当前手工路径”和“未来应该沉淀成扩展点的路径”。
+前六条学习线偏当前实践：构建、启动、保存场景、写材质、调灯光、观察 shadow/CSM、验证 PBR/IBL、运行离线输出。最后两条学习线会同时讲“当前手工路径”和“未来应该沉淀成扩展点的路径”。
 
 ## 当前可实践的路径与未来扩展路径
 
@@ -37,9 +36,10 @@
 | 想理解 light 和 shader 的连接 | 自定义材质 01/02 + 自定义灯光 01/02/05 |
 | 想理解 v0.1.1 的 shadow 主线 | 启动项目全部 + Shadow 阶段全部 |
 | 想理解 PBR + IBL 的当前闭环 | 启动项目全部 + PBR + IBL 全部 |
-| 想把外部资产放进本地 cache | 启动项目 01 + Assets Downloader |
-| 想跑离线渲染或准备写 path tracing | 启动项目 01 + PBR + IBL 01 + Assets Downloader + Offline Renderer 全部 |
+| 想跑离线渲染或准备写 path tracing | 启动项目 01 + PBR + IBL 01 + Offline Renderer 全部 |
 | 想新增一种场景对象 | 启动项目 03/04 + 扩展场景节点 |
 | 想改 editor 操作入口 | 启动项目 04 + 扩展编辑器 |
 
-我们不要求一开始理解所有底层 Vulkan 细节。先把一条链路跑通，再回头读 [场景系统](../scene-system/index.md) 和 [源码分析](../source_analysis/index.md)，会更稳。
+Assets Downloader 暂时不放在教程主线。它是开发中的相关工具，见 [相关工具 / Assets Downloader](../tools/assets-downloader.md)。
+
+我们不要求一开始理解所有底层 Vulkan 细节。先把 editor 或 offline ray tracer 的一条链路跑通，再回头读 [场景系统](../scene-system/index.md) 和 [源码分析](../source_analysis/index.md)，会更稳。

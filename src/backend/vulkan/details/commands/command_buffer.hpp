@@ -1,10 +1,11 @@
 #pragma once
-#include "core/scene/scene.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "../device.hpp"
 #include "../pipelines/graphics_pipeline.hpp"
 #include "../pipelines/pipeline_ref.hpp"
 #include <vulkan/vulkan.h>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace LX_core::backend {
@@ -13,12 +14,15 @@ namespace LX_core::backend {
 
 class VulkanResourceManager;
 class VulkanComputePipeline;
+class VulkanBuffer;
 
 class VulkanCommandBuffer {
 public:
-  VulkanCommandBuffer(VkCommandBuffer handle, VulkanDevice &device)
-      : m_handle(handle), m_device(device) {}
-  ~VulkanCommandBuffer() = default;
+  VulkanCommandBuffer(
+      VkCommandBuffer handle, VulkanDevice &device,
+      std::vector<std::unique_ptr<VulkanBuffer>> *retainedIndirectBuffers =
+          nullptr);
+  ~VulkanCommandBuffer();
 
   VkCommandBuffer getHandle() const { return m_handle; }
 
@@ -29,6 +33,12 @@ public:
                        VkExtent2D extent,
                        const std::vector<VkClearValue> &clearValues);
   void endRenderPass() { vkCmdEndRenderPass(m_handle); }
+  void beginRendering(VkExtent2D extent,
+                      const std::vector<VkRenderingAttachmentInfo>
+                          &colorAttachments,
+                      const VkRenderingAttachmentInfo *depthAttachment,
+                      u32 layerCount = 1);
+  void endRendering() { vkCmdEndRendering(m_handle); }
 
   void setViewport(u32 width, u32 height);
   void setScissor(u32 width, u32 height);
@@ -39,14 +49,16 @@ public:
 
   void bindResources(VulkanResourceManager &resourceManager,
                      VulkanGraphicsPipeline &pipeline,
-                     const RenderWorkItem &item);
+                     const RenderInput &input, const RenderInputDesc &desc);
   void bindResources(VulkanResourceManager &resourceManager,
                      VulkanComputePipeline &pipeline,
-                     const RenderWorkItem &item);
+                     const RenderInput &input, const RenderInputDesc &desc);
   void bindResources(VulkanResourceManager &resourceManager,
-                     VulkanPipelineRef pipeline, const RenderWorkItem &item);
+                     VulkanPipelineRef pipeline, const RenderInput &input,
+                     const RenderInputDesc &desc);
 
-  void executeWorkItem(const RenderWorkItem &item);
+  void executeRenderInput(const RenderInput &input,
+                          const RenderInputDesc &desc);
 
   void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size,
                   VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0) {
@@ -81,30 +93,27 @@ public:
   }
 
 private:
+  void bindDescriptorResourcesWithLayout(
+      VulkanResourceManager &resourceManager,
+      const std::vector<ShaderResourceBinding> &bindings,
+      VkPipelineLayout pipelineLayout, VkPipelineBindPoint bindPoint,
+      const DescriptorResourceList &descriptorResources, StringID pass,
+      PipelineKey pipelineKey, std::string_view operation);
   void
   bindResourcesWithLayout(VulkanResourceManager &resourceManager,
                           const std::vector<ShaderResourceBinding> &bindings,
                           VkPipelineLayout pipelineLayout,
                           VkPipelineBindPoint bindPoint,
-                          const RenderWorkItem &item);
-  void executeRasterDrawItem(const RenderWorkItem &item);
-  void executeComputeDispatchItem(const RenderWorkItem &item);
-
-  // Push constant info captured from the last bound pipeline. Matches the
-  // engine-wide convention set in `PushConstantRange` (128 bytes,
-  // vertex+fragment stages by default); populated in `bindPipeline`.
-  struct PushConstantSnapshot {
-    VkShaderStageFlags stageFlags = 0;
-    u32 offset = 0;
-    u32 size = 0;
-  };
+                          const RenderInput &input,
+                          const RenderInputDesc &desc);
+  void bindRenderInputGeometry(VulkanResourceManager &resourceManager,
+                               const RenderInput &input);
 
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;
-
-  // Captured from the last bound pipeline; used by executeWorkItem().
-  VkPipelineLayout m_pipelineLayout = VK_NULL_HANDLE;
-  PushConstantSnapshot m_pushConstants{};
+  std::vector<std::unique_ptr<VulkanBuffer>> *m_retainedIndirectBuffers =
+      nullptr;
+  std::vector<std::unique_ptr<VulkanBuffer>> m_ownedIndirectBuffers;
 };
 
 using VulkanCommandBufferUniquePtr = std::unique_ptr<VulkanCommandBuffer>;

@@ -87,74 +87,101 @@ MaterialInstance::findParameterBuffer(StringID bindingName) const {
 }
 
 /*****************************************************************
- * setParameter (primary API)
+ * writeShaderBindingParameter (primary API)
  *****************************************************************/
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    float value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   float value) {
+  if (m_usesEnvelopeStorage) {
+    return;
+  }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
-  if (parameterBuffer)
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
+  if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(float),
                                               ShaderPropertyType::Float);
+    markMaterialStateDirty();
+  }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    i32 value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   i32 value) {
+  if (m_usesEnvelopeStorage) {
+    return;
+  }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
-  if (parameterBuffer)
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
+  if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(i32),
                                               ShaderPropertyType::Int);
+    markMaterialStateDirty();
+  }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    const Vec3f &value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   const Vec3f &value) {
+  if (m_usesEnvelopeStorage) {
+    return;
+  }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
-  if (parameterBuffer)
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
+  if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(
         memberName, &value, sizeof(float) * 3, ShaderPropertyType::Vec3);
+    markMaterialStateDirty();
+  }
 }
 
-void MaterialInstance::setParameter(StringID bindingName, StringID memberName,
-                                    const Vec4f &value) {
+void MaterialInstance::writeShaderBindingParameter(StringID bindingName,
+                                                   StringID memberName,
+                                                   const Vec4f &value) {
+  if (m_usesEnvelopeStorage) {
+    return;
+  }
   auto parameterBuffer = findParameterBuffer(bindingName);
-  assert(parameterBuffer &&
-         "setParameter: binding name not found in canonical buffer bindings");
-  if (parameterBuffer)
+  assert(parameterBuffer && "writeShaderBindingParameter: binding name not "
+                            "found in canonical buffer bindings");
+  if (parameterBuffer) {
     parameterBuffer->get().writeBindingMember(memberName, &value, sizeof(Vec4f),
                                               ShaderPropertyType::Vec4);
+    markMaterialStateDirty();
+  }
 }
 
-void MaterialInstance::setParameterValue(StringID bindingName,
-                                         StringID memberName,
-                                         const MaterialParameterValue &value) {
+void MaterialInstance::writeShaderBindingParameterValue(
+    StringID bindingName, StringID memberName,
+    const MaterialParameterValue &value) {
   switch (value.type) {
   case MaterialParameterValueType::Float:
-    setParameter(bindingName, memberName, value.floatValue);
+    writeShaderBindingParameter(bindingName, memberName, value.floatValue);
     return;
   case MaterialParameterValueType::Int:
-    setParameter(bindingName, memberName, value.intValue);
+    writeShaderBindingParameter(bindingName, memberName, value.intValue);
     return;
   case MaterialParameterValueType::Vec3:
-    setParameter(
+    writeShaderBindingParameter(
         bindingName, memberName,
         Vec3f{value.vectorValue.x, value.vectorValue.y, value.vectorValue.z});
     return;
   case MaterialParameterValueType::Vec4:
-    setParameter(bindingName, memberName, value.vectorValue);
+    writeShaderBindingParameter(bindingName, memberName, value.vectorValue);
     return;
   }
 }
 
 std::optional<std::reference_wrapper<const StructMemberInfo>>
-MaterialInstance::findParameterMember(StringID bindingName,
-                                      StringID memberName) const {
-  const auto binding = getParameterBufferLayout(bindingName);
+MaterialInstance::findShaderBindingParameterMember(StringID bindingName,
+                                                   StringID memberName) const {
+  if (m_usesEnvelopeStorage) {
+    return std::nullopt;
+  }
+  const auto binding = getShaderBindingBufferLayout(bindingName);
   if (!binding.has_value()) {
     return std::nullopt;
   }
@@ -167,13 +194,16 @@ MaterialInstance::findParameterMember(StringID bindingName,
 }
 
 std::optional<MaterialParameterValue>
-MaterialInstance::readParameterValue(StringID bindingName,
-                                     StringID memberName) const {
-  const auto member = findParameterMember(bindingName, memberName);
+MaterialInstance::readShaderBindingParameterValue(StringID bindingName,
+                                                  StringID memberName) const {
+  if (m_usesEnvelopeStorage) {
+    return std::nullopt;
+  }
+  const auto member = findShaderBindingParameterMember(bindingName, memberName);
   if (!member.has_value()) {
     return std::nullopt;
   }
-  const auto &bytes = getParameterBufferBytes(bindingName);
+  const auto &bytes = getShaderBindingBufferBytes(bindingName);
   if (static_cast<usize>(member->get().offset) + member->get().size >
       bytes.size()) {
     return std::nullopt;
@@ -209,29 +239,42 @@ MaterialInstance::readParameterValue(StringID bindingName,
 void MaterialInstance::setTexture(StringID bindingName,
                                   CombinedTextureSamplerSharedPtr tex) {
   auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
-  assert(bindingOpt &&
-         "texture binding not found in canonical material interface");
-  const auto type = bindingOpt->get().type;
-  assert((type == ShaderPropertyType::Texture2D ||
-          type == ShaderPropertyType::TextureCube) &&
-         "setTexture target is not a sampled image binding");
-  (void)type;
+  if (bindingOpt) {
+    const auto type = bindingOpt->get().type;
+    assert((type == ShaderPropertyType::Texture2D ||
+            type == ShaderPropertyType::TextureCube) &&
+           "setTexture target is not a sampled image binding");
+    (void)type;
+  } else {
+    const auto envelope = getMaterialEnvelope(bindingName);
+    assert(envelope.has_value() &&
+           envelope->get().kind == MaterialEnvelopeKind::Texture &&
+           "texture target is neither a shader binding nor texture envelope");
+  }
   m_pendingTextureBindingsByName[bindingName] = std::move(tex);
   m_textureHandlesByName.erase(bindingName);
+  markMaterialStateDirty();
 }
 
 void MaterialInstance::setTextureHandle(StringID bindingName,
                                         TextureHandle handle) {
   auto bindingOpt = m_template->findCanonicalMaterialBinding(bindingName);
-  assert(bindingOpt &&
-         "texture binding not found in canonical material interface");
-  const auto type = bindingOpt->get().type;
-  assert((type == ShaderPropertyType::Texture2D ||
-          type == ShaderPropertyType::TextureCube) &&
-         "setTextureHandle target is not a sampled image binding");
-  (void)type;
+  if (bindingOpt) {
+    const auto type = bindingOpt->get().type;
+    assert((type == ShaderPropertyType::Texture2D ||
+            type == ShaderPropertyType::TextureCube) &&
+           "setTextureHandle target is not a sampled image binding");
+    (void)type;
+  } else {
+    const auto envelope = getMaterialEnvelope(bindingName);
+    assert(envelope.has_value() &&
+           envelope->get().kind == MaterialEnvelopeKind::Texture &&
+           "texture handle target is neither a shader binding nor texture "
+           "envelope");
+  }
   m_textureHandlesByName[bindingName] = handle;
   m_pendingTextureBindingsByName.erase(bindingName);
+  markMaterialStateDirty();
 }
 
 TextureHandle MaterialInstance::getTextureHandle(StringID bindingName) const {
@@ -284,6 +327,24 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
       uniqueClone->m_pendingTextureBindingsByName;
   clone->m_textureHandlesByName = uniqueClone->m_textureHandlesByName;
   clone->m_enabledPasses = uniqueClone->m_enabledPasses;
+  clone->m_bsdfType = uniqueClone->m_bsdfType;
+  clone->m_materialSourceUri = uniqueClone->m_materialSourceUri;
+  clone->m_materialSourceSignature = uniqueClone->m_materialSourceSignature;
+  clone->m_materialSourceReflectionHash =
+      uniqueClone->m_materialSourceReflectionHash;
+  clone->m_materialContractReflection =
+      uniqueClone->m_materialContractReflection;
+  clone->m_renderClass = uniqueClone->m_renderClass;
+  clone->m_tags = uniqueClone->m_tags;
+  clone->m_authoringMetadata = uniqueClone->m_authoringMetadata;
+  clone->m_materialEnvelopesByName = uniqueClone->m_materialEnvelopesByName;
+  clone->m_materialDependencies = uniqueClone->m_materialDependencies;
+  clone->m_materialStateVersion = uniqueClone->m_materialStateVersion;
+  clone->m_materialStateDirty = uniqueClone->m_materialStateDirty;
+  clone->m_usesEnvelopeStorage = uniqueClone->m_usesEnvelopeStorage;
+  if (clone->m_usesEnvelopeStorage) {
+    clone->m_parameterBuffersByName.clear();
+  }
   for (const auto &[bindingId, parameterBuffer] :
        uniqueClone->m_parameterBuffersByName) {
     if (!parameterBuffer) {
@@ -291,14 +352,17 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
     }
     const auto &binding = parameterBuffer->getBinding();
     for (const auto &member : binding.members) {
-      const auto value =
-          uniqueClone->readParameterValue(bindingId, StringID(member.name));
+      const auto value = uniqueClone->readShaderBindingParameterValue(
+          bindingId, StringID(member.name));
       if (value.has_value()) {
-        clone->setParameterValue(bindingId, StringID(member.name), *value);
+        clone->writeShaderBindingParameterValue(bindingId,
+                                                StringID(member.name), *value);
       }
     }
   }
   clone->syncGpuData();
+  clone->m_materialStateVersion = uniqueClone->m_materialStateVersion;
+  clone->m_materialStateDirty = uniqueClone->m_materialStateDirty;
   return clone;
 }
 
@@ -307,19 +371,39 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
   clone->m_pendingTextureBindingsByName = m_pendingTextureBindingsByName;
   clone->m_textureHandlesByName = m_textureHandlesByName;
   clone->m_enabledPasses = m_enabledPasses;
+  clone->m_bsdfType = m_bsdfType;
+  clone->m_materialSourceUri = m_materialSourceUri;
+  clone->m_materialSourceSignature = m_materialSourceSignature;
+  clone->m_materialSourceReflectionHash = m_materialSourceReflectionHash;
+  clone->m_materialContractReflection = m_materialContractReflection;
+  clone->m_renderClass = m_renderClass;
+  clone->m_tags = m_tags;
+  clone->m_authoringMetadata = m_authoringMetadata;
+  clone->m_materialEnvelopesByName = m_materialEnvelopesByName;
+  clone->m_materialDependencies = m_materialDependencies;
+  clone->m_materialStateVersion = m_materialStateVersion;
+  clone->m_materialStateDirty = m_materialStateDirty;
+  clone->m_usesEnvelopeStorage = m_usesEnvelopeStorage;
+  if (clone->m_usesEnvelopeStorage) {
+    clone->m_parameterBuffersByName.clear();
+  }
   for (const auto &[bindingId, parameterBuffer] : m_parameterBuffersByName) {
     if (!parameterBuffer) {
       continue;
     }
     const auto &binding = parameterBuffer->getBinding();
     for (const auto &member : binding.members) {
-      const auto value = readParameterValue(bindingId, StringID(member.name));
+      const auto value =
+          readShaderBindingParameterValue(bindingId, StringID(member.name));
       if (value.has_value()) {
-        clone->setParameterValue(bindingId, StringID(member.name), *value);
+        clone->writeShaderBindingParameterValue(bindingId,
+                                                StringID(member.name), *value);
       }
     }
   }
   clone->syncGpuData();
+  clone->m_materialStateVersion = m_materialStateVersion;
+  clone->m_materialStateDirty = m_materialStateDirty;
   return clone;
 }
 
@@ -327,7 +411,11 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
  * Accessors
  *****************************************************************/
 
-GpuResourceRef MaterialInstance::getParameterResource(StringID bindingName) const {
+GpuResourceRef
+MaterialInstance::getShaderBindingResource(StringID bindingName) const {
+  if (m_usesEnvelopeStorage) {
+    return {};
+  }
   auto it = m_parameterBuffersByName.find(bindingName);
   if (it == m_parameterBuffersByName.end() || !it->second ||
       it->second->getBuffer().empty()) {
@@ -337,23 +425,33 @@ GpuResourceRef MaterialInstance::getParameterResource(StringID bindingName) cons
 }
 
 const std::vector<u8> &
-MaterialInstance::getParameterBufferBytes(StringID bindingName) const {
+MaterialInstance::getShaderBindingBufferBytes(StringID bindingName) const {
+  if (m_usesEnvelopeStorage) {
+    return kEmptyBuffer;
+  }
   if (auto parameterBuffer = findParameterBuffer(bindingName))
     return parameterBuffer->get().getBuffer();
   return kEmptyBuffer;
 }
 
 std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-MaterialInstance::getParameterBufferLayout(StringID bindingName) const {
+MaterialInstance::getShaderBindingBufferLayout(StringID bindingName) const {
+  if (m_usesEnvelopeStorage) {
+    return std::nullopt;
+  }
   if (auto parameterBuffer = findParameterBuffer(bindingName))
     return std::cref(parameterBuffer->get().getBinding());
   return std::nullopt;
 }
 
-const std::vector<u8> &MaterialInstance::getParameterBufferBytes() const {
+const std::vector<u8> &MaterialInstance::getShaderBindingBufferBytes() const {
+  if (m_usesEnvelopeStorage) {
+    static const std::vector<u8> kEmpty;
+    return kEmpty;
+  }
   assert(m_parameterBuffersByName.size() <= 1 &&
-         "getParameterBufferBytes(): multiple parameter buffers; use "
-         "getParameterBufferBytes(bindingName) instead");
+         "getShaderBindingBufferBytes(): multiple parameter buffers; use "
+         "getShaderBindingBufferBytes(bindingName) instead");
   if (m_parameterBuffersByName.empty()) {
     static const std::vector<u8> kEmpty;
     return kEmpty;
@@ -362,10 +460,13 @@ const std::vector<u8> &MaterialInstance::getParameterBufferBytes() const {
 }
 
 std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-MaterialInstance::getParameterBufferLayout() const {
+MaterialInstance::getShaderBindingBufferLayout() const {
+  if (m_usesEnvelopeStorage) {
+    return std::nullopt;
+  }
   assert(m_parameterBuffersByName.size() <= 1 &&
-         "getParameterBufferLayout(): multiple parameter buffers; use "
-         "getParameterBufferLayout(bindingName) instead");
+         "getShaderBindingBufferLayout(): multiple parameter buffers; use "
+         "getShaderBindingBufferLayout(bindingName) instead");
   if (m_parameterBuffersByName.empty())
     return std::nullopt;
   return std::cref(m_parameterBuffersByName.begin()->second->getBinding());
@@ -380,6 +481,18 @@ IShaderSharedPtr MaterialInstance::getPassShader(StringID pass) const {
   return passDefinition->get().shaderProgram.getShader();
 }
 
+std::optional<std::reference_wrapper<const ShaderProgramSet>>
+MaterialInstance::getPassShaderProgram(StringID pass) const {
+  if (!m_template) {
+    return std::nullopt;
+  }
+  auto passDefinition = m_template->getPassDefinition(pass);
+  if (!passDefinition) {
+    return std::nullopt;
+  }
+  return std::cref(passDefinition->get().shaderProgram);
+}
+
 RenderState MaterialInstance::getPassRenderState(StringID pass) const {
   if (!m_template)
     return RenderState{};
@@ -390,9 +503,33 @@ RenderState MaterialInstance::getPassRenderState(StringID pass) const {
 StringID MaterialInstance::getPipelineSignature(StringID pass) const {
   if (!m_template)
     return StringID{};
-  StringID passSig = m_template->getPipelineSignature(pass);
+  const StringID passSig = m_template->getPipelineSignature(pass);
+  if (m_materialSourceSignature.id != 0) {
+    StringID fields[] = {m_materialSourceSignature, passSig};
+    return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
+  }
   StringID fields[] = {passSig};
   return GlobalStringTable::get().compose(TypeTag::MaterialRender, fields);
+}
+
+StringID MaterialInstance::getMaterialTypeVariantSignature(
+    const ShaderProgramSet &resolvedShader) const {
+  auto &tbl = GlobalStringTable::get();
+  std::vector<StringID> fields;
+  fields.reserve(5);
+  fields.push_back(tbl.Intern(m_bsdfType.empty() ? "<unspecified>"
+                                                 : m_bsdfType));
+  fields.push_back(tbl.Intern(m_materialSourceUri.empty()
+                                  ? "<no-source-uri>"
+                                  : m_materialSourceUri.string()));
+  fields.push_back(tbl.Intern(m_materialSourceReflectionHash.empty()
+                                  ? "<no-reflection-hash>"
+                                  : m_materialSourceReflectionHash));
+  fields.push_back(m_materialSourceSignature.id == 0
+                       ? tbl.Intern("<no-source-signature>")
+                       : m_materialSourceSignature);
+  fields.push_back(resolvedShader.getPipelineSignature());
+  return tbl.compose(TypeTag::MaterialTypeVariant, fields);
 }
 
 bool MaterialInstance::isPassEnabled(StringID pass) const {
@@ -440,8 +577,154 @@ void MaterialInstance::removePassStateListener(u64 listenerId) {
   m_passStateListeners.erase(listenerId);
 }
 
+void MaterialInstance::setBsdfType(std::string bsdfType) {
+  if (m_bsdfType == bsdfType) {
+    return;
+  }
+  activateEnvelopeStorage();
+  m_bsdfType = std::move(bsdfType);
+  markMaterialStateDirty();
+}
+
+const std::string &MaterialInstance::getBsdfType() const { return m_bsdfType; }
+
+void MaterialInstance::setMaterialSourceUri(ResourceUri sourceUri) {
+  if (m_materialSourceUri == sourceUri) {
+    return;
+  }
+  m_materialSourceUri = std::move(sourceUri);
+  markMaterialStateDirty();
+}
+
+const ResourceUri &MaterialInstance::getMaterialSourceUri() const {
+  return m_materialSourceUri;
+}
+
+void MaterialInstance::setMaterialSourceSignature(StringID signature) {
+  if (m_materialSourceSignature == signature) {
+    return;
+  }
+  m_materialSourceSignature = signature;
+  markMaterialStateDirty();
+}
+
+StringID MaterialInstance::getMaterialSourceSignature() const {
+  return m_materialSourceSignature;
+}
+
+void MaterialInstance::setMaterialSourceReflectionHash(std::string hash) {
+  if (m_materialSourceReflectionHash == hash) {
+    return;
+  }
+  m_materialSourceReflectionHash = std::move(hash);
+  markMaterialStateDirty();
+}
+
+const std::string &MaterialInstance::getMaterialSourceReflectionHash() const {
+  return m_materialSourceReflectionHash;
+}
+
+void MaterialInstance::setMaterialContractReflection(
+    MaterialContractReflection reflection) {
+  m_materialContractReflection = std::move(reflection);
+  markMaterialStateDirty();
+}
+
+std::optional<std::reference_wrapper<const MaterialContractReflection>>
+MaterialInstance::getMaterialContractReflection() const {
+  if (!m_materialContractReflection.has_value()) {
+    return std::nullopt;
+  }
+  return std::cref(*m_materialContractReflection);
+}
+
+void MaterialInstance::setRenderClass(std::string renderClass) {
+  if (m_renderClass == renderClass) {
+    return;
+  }
+  activateEnvelopeStorage();
+  m_renderClass = std::move(renderClass);
+  markMaterialStateDirty();
+}
+
+const std::string &MaterialInstance::getRenderClass() const {
+  return m_renderClass;
+}
+
+void MaterialInstance::setMaterialTags(std::vector<std::string> tags) {
+  if (m_tags == tags) {
+    return;
+  }
+  activateEnvelopeStorage();
+  m_tags = std::move(tags);
+  markMaterialStateDirty();
+}
+
+const std::vector<std::string> &MaterialInstance::getMaterialTags() const {
+  return m_tags;
+}
+
+void MaterialInstance::setAuthoringMetadata(
+    std::unordered_map<std::string, std::string> metadata) {
+  if (m_authoringMetadata == metadata) {
+    return;
+  }
+  activateEnvelopeStorage();
+  m_authoringMetadata = std::move(metadata);
+  markMaterialStateDirty();
+}
+
+const std::unordered_map<std::string, std::string> &
+MaterialInstance::getAuthoringMetadata() const {
+  return m_authoringMetadata;
+}
+
+void MaterialInstance::setMaterialEnvelope(StringID parameterName,
+                                           MaterialParameterEnvelope envelope) {
+  activateEnvelopeStorage();
+  m_materialEnvelopesByName[parameterName] = std::move(envelope);
+  markMaterialStateDirty();
+}
+
+std::optional<std::reference_wrapper<const MaterialParameterEnvelope>>
+MaterialInstance::getMaterialEnvelope(StringID parameterName) const {
+  auto it = m_materialEnvelopesByName.find(parameterName);
+  if (it == m_materialEnvelopesByName.end()) {
+    return std::nullopt;
+  }
+  return std::cref(it->second);
+}
+
+usize MaterialInstance::getMaterialEnvelopeCount() const {
+  return m_materialEnvelopesByName.size();
+}
+
+void MaterialInstance::addMaterialDependency(
+    MaterialResourceDependency dependency) {
+  m_materialDependencies.push_back(std::move(dependency));
+  markMaterialStateDirty();
+}
+
+const std::vector<MaterialResourceDependency> &
+MaterialInstance::getMaterialDependencies() const {
+  return m_materialDependencies;
+}
+
 bool MaterialInstance::hasDefinedPass(StringID pass) const {
   return m_template && m_template->getPassDefinition(pass).has_value();
+}
+
+void MaterialInstance::markMaterialStateDirty() {
+  ++m_materialStateVersion;
+  m_materialStateDirty = true;
+}
+
+void MaterialInstance::activateEnvelopeStorage() {
+  if (m_usesEnvelopeStorage) {
+    return;
+  }
+  m_usesEnvelopeStorage = true;
+  m_parameterBuffersByName.clear();
 }
 
 } // namespace LX_core

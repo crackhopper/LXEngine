@@ -29,35 +29,40 @@ builder 会把 loader 读出的数据转换成 `VertexPosNormalUvBone`。如果�
 
 | 来源 | 例子 | 使用位置 |
 |---|---|---|
-| material 里的 `resources` | `albedoMap: ../textures/foo.png` | `loadGenericMaterial()` |
+| material envelope 里的 texture URI | `baseColorTexture: { kind: texture, valueType: rgb, uri: ../textures/foo.png }` | `MaterialResourceParser` 注册材质依赖 |
 | 内置模型 manifest 的 `albedoTextureUri` | `assets/models/builtin/.../Textures/texture-a.png` | `buildModelAssetNode()` |
 
 当前 `TextureLoader` 使用 `stb_image` 读图，并强制转成 RGBA8。读入后会创建 `Texture`，再包成 `CombinedTextureSampler`，因为材质描述符层需要的是能作为 GPU resource 绑定的 sampler 组合对象。
 
 ## 材质文件在资产系统里只是引用边界
 
-`.material` 文件像一张配方卡。它说明要使用哪个 shader、哪些 pass、哪些默认参数和纹理。场景节点只保存它的路径：
+`.material` 文件像一张表面参数卡。它说明 `schema: lxe.material.v2`、`bsdf.type`、`bsdf.source`、参数 envelope 和资源 URI；pass、shader 和 render state 来自 RenderPathGraph。场景节点只保存它的路径：
 
 ```yaml
 material:
-  uri: assets/materials/rtr_experiment_template.material # -> loadGenericMaterial(...)
+  uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material # -> MaterialResourceParser
 ```
 
 资产系统关心的是这条引用如何落地：
 
 1. `SceneRuntime` 从 `SceneNodeDocument::materialUri` 取得路径。
-2. `loadGenericMaterial(uri)` 解析 `.material`。
-3. loader 编译并反射 shader，创建 `MaterialTemplate` 和 `MaterialInstance`。
-4. `SceneNode` 上的 `MaterialComponent` 持有这个 `MaterialInstance`。
+2. `MaterialResourceParser` 解析 `.material`，再加载 `bsdf.source` 指向的 `.contract.glsl`。
+3. parser 按 `MaterialContractReflection` 校验参数名、kind 和 required 参数，并把 texture/spectrum 等 URI 注册为 `SceneResourceTable` 依赖。
+4. parser 创建 `MaterialInstance`，写入 BSDF type、source signature、envelope 和 resource dependency。
+5. `SceneNode` 上的 `MaterialComponent` 持有这个 `MaterialInstance`；active RenderPathGraph 再决定哪些 pass 消费它。
 
-材质文件里也可以写默认资源：
+材质文件里的资源写在参数 envelope 中：
 
 ```yaml
-resources:
-  albedoMap: ../textures/brick.png # -> 只校验并绑定材质拥有的 texture binding
+bsdf:
+  parameters:
+    baseColorTexture:
+      kind: texture
+      valueType: rgb
+      uri: ../textures/brick.png
 ```
 
-这里要注意一个边界：`resources` 当前用于材质拥有的 texture binding。像 `SceneLightsUBO` 这种系统注入的 UBO 不应该放在这里由资产系统绑定；它属于材质/渲染系统根据 shader 反射和系统绑定规则处理的内容。系统内置绑定、pass 和 pipeline identity 的细节见 [材质系统](../material/index.md)。
+这里要注意一个边界：材质 resource dependency 只表达 material-owned surface 资源。像 `SceneLightsUBO`、camera、shadow map、post feature 这种系统或 graph 资源，不应该放进 `.material`；它们由 RenderPathGraph 的 `sources` 和 renderer/resource table 注入。系统内置绑定、pass 和 pipeline identity 的细节见 [材质系统](../material/index.md)。
 
 ## 文件读取到这里为止，运行时装配交给场景系统
 

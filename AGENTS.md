@@ -6,7 +6,7 @@ If you are a coding agent, load this file first. Other agent entry files such as
 
 ## Mission
 
-Work from current repository facts only. Prefer actual code, `openspec/specs/`, and current `notes/` over stale summaries.
+Work from current repository facts only. Prefer actual code, current `notes/`, and active Superpowers specs over stale summaries.
 
 ## Project Snapshot
 
@@ -29,15 +29,14 @@ Important executable areas:
 Before modifying code:
 
 1. Read this file.
-2. Read `openspec/specs/cpp-style-guide/spec.md`.
-3. Read the relevant subsystem spec in `openspec/specs/<capability>/spec.md`.
-4. Read the matching design note in `notes/` when architecture context matters.
+2. Read the matching design note in `notes/` when architecture context matters.
+3. Read any active Superpowers spec under `docs/superpowers/specs/` that covers the work.
 
 Before modifying docs:
 
 1. Read this file.
-2. Read `openspec/specs/notes-writing-style/spec.md`.
-3. Read the current target note in `notes/`.
+2. Read the current target note in `notes/`.
+3. Follow the notes style in `.codex/skills/writing-notes/SKILL.md` when editing human-facing notes.
 
 ## Shell And Platform
 
@@ -88,7 +87,7 @@ Linux Vulkan notes:
 - Windowed Vulkan tests need `libSDL3.so.0`.
 - Headless Linux often reports `No available video device` without X11.
 - Prefer `xvfb-run -a ./src/test/<test-binary>` for Vulkan and SDL smoke tests.
-- Read `openspec/specs/renderer-backend-vulkan/spec.md` before changing Vulkan integration tests.
+- Read the relevant subsystem notes before changing Vulkan integration tests.
 
 ## Hard Rules
 
@@ -106,33 +105,13 @@ Repository rules:
 - Do not preserve dead commands, dead directories, or compatibility notes for removed workflows.
 - If documentation and code disagree, trust code and current specs first, then repair docs.
 
-## Specs Index
+## Superpowers Specs
 
-Core specs commonly needed by agents:
+Design and implementation planning now use the Superpowers workflow. Active design specs live under:
 
-- `openspec/specs/cpp-style-guide/spec.md`
-- `openspec/specs/renderer-backend-vulkan/spec.md`
-- `openspec/specs/shader-compilation/spec.md`
-- `openspec/specs/shader-reflection/spec.md`
-- `openspec/specs/material-system/spec.md`
-- `openspec/specs/material-asset-loader/spec.md`
-- `openspec/specs/frame-graph/spec.md`
-- `openspec/specs/pipeline-key/spec.md`
-- `openspec/specs/pipeline-build-desc/spec.md`
-- `openspec/specs/pipeline-cache/spec.md`
-- `openspec/specs/pipeline-signature/spec.md`
-- `openspec/specs/string-interning/spec.md`
-- `openspec/specs/skeleton-resource/spec.md`
-- `openspec/specs/window-system/spec.md`
-- `openspec/specs/gui-system/spec.md`
-- `openspec/specs/mesh-loading/spec.md`
-- `openspec/specs/texture-loading/spec.md`
-- `openspec/specs/asset-directory-convention/spec.md`
-- `openspec/specs/asset-path-helper/spec.md`
-- `openspec/specs/test-build-execution/spec.md`
-- `openspec/specs/notes-writing-style/spec.md`
+- `docs/superpowers/specs/`
 
-OpenSpec change archives are pruned from this repository. Current behavior lives in `openspec/specs/`, `notes/`, and `src/`; do not depend on historical `openspec/changes/` content.
+Use Superpowers skills for brainstorming, planning, TDD, execution, and verification.
 
 ## Design And Notes Entry Points
 
@@ -165,15 +144,10 @@ Use these when you need architecture context:
 Current command definitions live in:
 
 - `.codex/commands/`
-- `.codex/commands/opsx/`
 
 Current common commands:
 
 - `/draft-req`
-- `/opsx:explore`
-- `/opsx:propose`
-- `/opsx:apply`
-- `/opsx:archive`
 - `/finish-req`
 - `/update-notes`
 - `/refresh-notes`
@@ -184,9 +158,9 @@ Typical path:
 ```text
 idea / problem
   -> /draft-req      optional
-  -> /opsx:propose
-  -> /opsx:apply
-  -> /opsx:archive
+  -> Superpowers brainstorming/design
+  -> Superpowers implementation plan
+  -> implementation + verification
   -> /finish-req
   -> /update-notes
   -> /refresh-notes
@@ -197,7 +171,7 @@ Requirements live under `notes/requirements/` and the filename prefix is the imp
 
 Not every task needs the whole chain:
 
-- discussion only: `/opsx:explore`
+- discussion only: use Superpowers brainstorming
 - notes only: `/update-notes`
 - design index only: `/sync-design-docs`
 

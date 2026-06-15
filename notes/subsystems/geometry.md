@@ -2,7 +2,7 @@
 
 > Geometry 这一层决定“顶点长什么样”和“索引怎么画”。它对 pipeline 身份的影响很直接，因为 vertex layout 和 topology 都会进入 signature。
 >
-> 相关 spec: `openspec/specs/pipeline-signature/spec.md` + `openspec/specs/mesh-loading/spec.md`
+> 相关实现入口：`src/core/asset/mesh.hpp`、`src/infra/mesh_loader/`、`src/core/pipeline/`
 
 ## 它解决什么问题
 
@@ -51,4 +51,3 @@
 
 - `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
 - `notes/subsystems/scene.md`
-- `openspec/specs/mesh-loading/spec.md`

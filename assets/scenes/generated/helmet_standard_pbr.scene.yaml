@@ -1,0 +1,67 @@
+scene:
+  name: Helmet Standard PBR
+  gameplayCameraPath: /game_cam
+  environment:
+    enabled: false
+    intensity: 0.0
+    skyboxEnabled: false
+  rendering:
+    shadows: false
+  defaultOutputProfile: preview
+  outputProfiles:
+    preview:
+      camera: /game_cam
+      width: 192
+      height: 192
+      outputFormat: exr-png
+      outDir: artifacts/073c/helmet_standard_pbr
+      backgroundColor: [0.0, 0.0, 0.0]
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  children:
+    - nodeName: game_camera
+      name: game_cam
+      transform:
+        translation: [0.0, -0.15, 3.6]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      camera:
+        type: perspective
+        fovY: 40.0
+        aspect: 1.0
+        nearPlane: 0.1
+        farPlane: 20.0
+        cullingMask: 4294967295
+    - nodeName: damaged_helmet
+      name: damaged_helmet
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/models/damaged_helmet/DamagedHelmet.gltf
+      material:
+        uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material
+    - nodeName: compare_key_light
+      name: compare_key_light
+      transform:
+        translation: [0.0, 4.0, 4.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      light:
+        kind: Directional
+        direction: [-0.35, -0.85, -0.4]
+        color: [1.0, 1.0, 1.0]
+        intensity: 3.0
+        shadowStrength: 0.0
+        shadowDistance: 80.0
+        shadowCascadeCount: 1

@@ -38,35 +38,36 @@
 
 10. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/`、`pending/` 或 `planned/` 的文件。
 
-## 当前 active REQ（实施顺序快照，2026-06-01）
+## 当前 active REQ（实施顺序快照，2026-06-14）
 
-当前 active 队列在 HDR/Post + PBR/IBL 主线之后，先进入 Offline Rendering Lab 主线，再进入 3D Gaussian Splatting PLY 支持主线。v0.1.1 的目标队列已归档到 `finished/`：FrameGraph v1、Directional Shadow、CSM、Shadow 阶段教程支撑和架构概念文档展开均已完成。
+2026-06-14 复核先处理 `REQ-072` 之前的 active 文件；随后把旧 `REQ-054-a`、`REQ-057-a`、`REQ-058-a`、`REQ-059-a`、`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 按当前代码事实归档、合并或重排。大文件拆分类需求合并后置到 `REQ-076-d`，3DGS 链路按当前代码事实重排到队尾 `REQ-077-a` 到 `REQ-077-e`。
 
 | REQ | 主题 | 实施窗口 |
 |---|---|---|
-| `REQ-046-a` | 标准后处理栈 | HDR/Post 前置 |
-| `REQ-047-a` | HDR Texture 与 Cubemap Resource | IBL 资源前置 |
-| `REQ-048-a` | IBL GPU Bake Pipeline | 静态环境 IBL bake |
-| `REQ-049-a` | PBR IBL Material Contract | PBR 材质消费 IBL |
-| `REQ-050-a` | IBL Metal Sphere Test Scene | 可视化验收场景 |
-| `REQ-051-a` | PBR IBL Tutorial | 教程收口 |
-| `REQ-052-a` | Offline Rendering Lab 总览 | 离线渲染实验场架构锚点 |
-| `REQ-053-a` | Offline Scene YAML 与 Render Profile | 复用并扩展 `.scene.yaml` |
 | `REQ-053-b` | Assets Downloader 外部资源下载与导入工具 | 外部/内置资产下载、导入、转换、路径管理 |
-| `REQ-054-a` | Vulkan Renderer Realtime / Offline 拆分 | renderer foundation 与大类拆分 |
-| `REQ-054-b` | Vulkan Compute Offline Renderer MVP | Ground truth CLI 最小闭环 |
-| `REQ-055-a` | Offline Output EXR 与 PNG | 离线输出链路 |
-| `REQ-056-a` | Offline PBR 纹理材质支持 | MVP 后紧随的质量补齐 |
-| `REQ-057-a` | Offline Path Tracing PBR Reference | 可对比 PBR reference |
-| `REQ-058-a` | Editor Offline Render Integration | editor 触发和查看离线 job |
-| `REQ-059-a` | Rendering Research Integrator Sandbox | 论文复现与实时化实验场 |
-| `REQ-060-a` | 3DGS 资产预算与 PLY 样例 | 3DGS 资源前置 |
-| `REQ-061-a` | 3DGS PLY Loader 与 CPU Resource | 3DGS 数据解析 |
-| `REQ-062-a` | 3DGS Runtime Resource 与 Scene Node | Scene/runtime 接入 |
-| `REQ-063-a` | Compute Pipeline Foundation | 通用 compute shader / pipeline 前置 |
-| `REQ-063-b` | 3DGS Vulkan Splat Pass | 首个可视化渲染闭环 |
-| `REQ-064-a` | 3DGS Editor Scene Validation | Editor 验收 |
-| `REQ-065-a` | 3DGS System Design And Tutorial | 文档收口 |
+| `REQ-072` | REQ-071 Closure Audit And Validation Fixes | 071 收口审计；本轮未处理 |
+| `REQ-073-e` | Indirect Material Batching And Diagnostics | indirect batching；本轮未处理 |
+| `REQ-073-f` | Realtime Material Path Hard Cut And Smoke | realtime clean gate；本轮未处理 |
+| `REQ-073-g` | OfflineRT RenderPathGraph Compute Path | OfflineRT graph path；本轮未处理 |
+| `REQ-073-h` | OfflineRT Config Hard Cut And Smoke | OfflineRT config hard cut；本轮未处理 |
+| `REQ-073-i` | Specialized PBRT BSDF Contracts | PBRT 高阶材质 source；本轮未处理 |
+| `REQ-074-a` | Texture Compression Pipeline With BC7 | BC7 压缩；本轮未处理 |
+| `REQ-074-b` | Package Canonical State Readiness Gate | package 前 clean gate；本轮未处理 |
+| `REQ-074-c` | LxScenePackage File Format | package 文件格式；本轮未处理 |
+| `REQ-074-d` | SceneResourceTable Package Serialization And Restore | CPU package restore；本轮未处理 |
+| `REQ-074-e` | GPU Pipeline Cache Package Metadata And Vulkan Restore | GPU pipeline cache restore；本轮未处理 |
+| `REQ-074-f` | BMW M6 Package Load Performance Comparison | package 性能验收；本轮未处理 |
+| `REQ-074-g` | Post-package Hard Cut And Cleanup | package 后 hard cut；本轮未处理 |
+| `REQ-075-a` | Offline Realtime Equivalence On New Architecture | 新架构等价验证；本轮未处理 |
+| `REQ-076-a` | Advanced Offline Path Tracing Reference | Material v3 / OfflineRT 稳定后的完整 path tracing reference |
+| `REQ-076-b` | Editor Offline Render Integration | editor 触发、取消、查看离线 job |
+| `REQ-076-c` | RenderPathGraph / Material / Effect Non-Mesh Rendering Extension | 3DGS 等非 mesh 渲染架构前置 |
+| `REQ-076-d` | Large File Decomposition Backlog | 合并 Vulkan realtime / core commands / SceneRuntime 大文件拆分 |
+| `REQ-077-a` | 3DGS PLY Loader 与 CPU Resource | 3DGS 数据解析；队尾后置 |
+| `REQ-077-b` | 3DGS Runtime Resource 与 Scene Node | Scene/runtime 接入；队尾后置 |
+| `REQ-077-c` | 3DGS Vulkan Splat Pass | 首个可视化渲染闭环；队尾后置 |
+| `REQ-077-d` | 3DGS Editor Scene Validation | Editor 验收；队尾后置 |
+| `REQ-077-e` | 3DGS System Design And Tutorial | 文档收口；队尾后置 |
 
 ## 当前 planned REQ（已讨论，当前不实现，2026-06-01）
 
@@ -105,6 +106,10 @@
 
 ## 历史
 
+- 2026-06-14：继续整理 active 顺序。`REQ-054-a` 归档，offline graph/default path 并入 `REQ-073-g`，old config bridge 删除并入 `REQ-073-h`，renderer 大文件拆分并入 `REQ-076-d`。旧 `REQ-057-a`、`REQ-058-a`、`REQ-059-a` 重排为 `REQ-076-a`、`REQ-076-b`、`REQ-076-c`，其中 `REQ-076-c` 改写为支持 3DGS 等非 mesh 渲染结构的 RenderPathGraph/material/effect 架构扩展。`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 归档，剩余事项由 `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-b/c` 承接。
+- 2026-06-14：继续整理 active 顺序。旧 `REQ-069-a/b/c` 合并为 `REQ-076-d` 并移到 `REQ-076-c` 之后；3DGS active 链从旧 `REQ-061-a` 到 `REQ-065-a` 重排为 `REQ-077-a` 到 `REQ-077-e`，并按当前代码事实修正为“只有 assets-downloader cache 表面，尚无 loader/runtime/render/editor 闭环”。
+- 2026-06-14：按当前代码复核 `REQ-072` 之前的 active 需求。已完成或已由当前架构取代的 `REQ-045-a/b/c`、`REQ-046-a` 到 `REQ-052-a`、`REQ-053-a`、`REQ-054-b`、`REQ-055-a`、`REQ-056-a`、`REQ-060-a`、`REQ-063-a`、`REQ-066-a`、`REQ-067-b`、`REQ-070-a`、`REQ-071-a/d/e/f/g` 归档到 `finished/`；仍未完成的 `REQ-053-b`、`REQ-054-a`、`REQ-057-a` 到 `REQ-059-a`、`REQ-061-a`、`REQ-062-a`、`REQ-063-b` 到 `REQ-065-a`、`REQ-067-a` 到 `REQ-069-c`、`REQ-071-b/c` 当时保留在 active，并同步实施状态到当前代码事实。后续同日整理又把其中一部分继续归档或重排。
+- 2026-06-10：新增 `REQ-071-a` 到 `REQ-071-f`，把 SurfaceMaterial pure envelope、RenderPathGraph/RenderFeature、SceneResourceTable parser/resource ownership、GPUResourceTable/pipeline cache/upload task、scene package 和 helmet/BMW offline-realtime 渲染等价验证收敛为一个连续需求族。该族承接 `REQ-067-a/b` 的 SceneResourceTable 资源模型和 `REQ-070-a` 的 BMW M6 转换输入，目标是先把材质/渲染合同说清楚，再实现加载性能和对齐验收。
 - 2026-06-01：新增 `REQ-052-a` 到 `REQ-059-a`，建立 Offline Rendering Lab 主线。路线优先级为 Ground Truth Image Renderer、Bake Asset Generator / PBR Reference、Editor Integrated Preview、Research Sandbox；第一版选择 Vulkan compute 离线 renderer，不以 CPU path tracer 或 Vulkan hardware RT pipeline 起步。随后将 `REQ-054` 拆成 `054-a` renderer foundation/realtime/offline 拆分与 `054-b` compute offline renderer MVP，避免继续扩大当前 2200+ 行 `VulkanRendererImpl`。补充 `REQ-053-b` `assets-downloader`，管理大型网络资产下载、导入、转换和 scene 路径引用，避免 git 仓库膨胀。Bake asset generator 暂不进入 active 实施队列，拆入 `planned/`，记录 reflection probe、irradiance/SH 和 lightmap 的原理与计划；未来执行时再重新取 active REQ 编号。
 - 2026-06-01：主干合并 Offline Rendering Lab 与 3DGS PLY 两条 active 主线时，保留 Offline Rendering Lab 的 `REQ-052-a` 到 `REQ-059-a` 编号，将 3DGS PLY 支持主线顺延为 `REQ-060-a` 到 `REQ-065-a`，避免 active 目录出现重复编号。
 - 2026-05-28：新增 `REQ-060-a` 到 `REQ-065-a`，建立 3DGS PLY 支持主线：先引入 Apache-2.0 的 train scene PLY 样例并调整资产预算，再拆分 loader、runtime、通用 compute pipeline 前置、Vulkan splat pass、editor 验收和系统设计 / 教程文档。

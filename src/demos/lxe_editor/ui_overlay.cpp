@@ -357,18 +357,6 @@ void UiOverlay::dispatchCreatePaletteItem(std::string_view kind,
 }
 
 void UiOverlay::dispatchCreatePaletteDrop(std::string_view kind) {
-  if (kind.rfind("model:", 0) == 0) {
-    if (!m_builtinAssetsLoaded) {
-      m_builtinAssets.refresh(resolveRuntimePath("assets/models/builtin"));
-      m_builtinAssetsLoaded = true;
-    }
-    const std::string assetId =
-        std::string(kind.substr(std::string_view("model:").size()));
-    if (const auto asset = m_builtinAssets.findByAssetId(assetId)) {
-      dispatchCreatePaletteItem(kind, asset->displayName);
-      return;
-    }
-  }
   dispatchCreatePaletteItem(kind, defaultCreateNameForKind(kind));
 }
 
@@ -398,7 +386,6 @@ void UiOverlay::drawBuiltinAssetsPanel() {
     return;
   }
   if (!m_builtinAssetsLoaded) {
-    m_builtinAssets.refresh(resolveRuntimePath("assets/models/builtin"));
     m_builtinAssetsLoaded = true;
   }
 

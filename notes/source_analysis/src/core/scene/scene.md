@@ -27,23 +27,24 @@ scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给
 
 源码位置：[scene.hpp](../../../../src/core/scene/scene.hpp)
 
-### RenderingItem：一帧 draw 的最小稳定记录
+### RenderWorkItem：一次 pipeline work 的最小稳定记录
 
 这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
-真正消费的契约， 而不是 queue 的内部状态。任何把"一个 renderable 在某个 pass
-下要画一次"翻译成 "backend 提交单元"的代码路径，都收口到这个结构体上。
+真正消费的契约，而不是 queue 的内部状态。任何把"一个 pass 内需要执行的一份
+GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结构体上。
 
 字段拆分体现两个边界：
 
-- `shaderInfo / pipelineKey / pass / target`：决定走哪条 pipeline，是 pipeline
-cache 的 key 来源
-- `vertexBuffer / indexBuffer / drawData / descriptorResources`：决定这次 draw
-的数据来源
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderingItem` 反查
-render state 和 owned binding 表，而不是 backend 直接读它
-
-descriptorResources 的列表已经合并了"renderable 自带"和"scene-level 追加"两段，
-顺序固定 — backend 按 binding name 命中，不依赖位置。
+- `domain / kind / shaderInfo / pipelineKey / pass / target`：决定走哪条
+  pipeline，以及这份 work 是 raster draw、compute dispatch 还是后续 RT work
+- `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
+  binding name 命中，不依赖位置
+- `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
+  vertex/index/material index 当成所有 render work 的公共字段
+- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
+  不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
+  work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable
+  解析。
 
 ### Scene：扁平容器
 
@@ -70,17 +71,6 @@ scene。
 但显式 reset 的目的不是断引用，而是让 SceneNode 后续的判断 "我现在还挂在某个
 scene 上吗" 用 `m_scene.lock() != nullptr` 就能给出确定答案，不会出现 "持有的
 是 expired weak，曾经挂过但 scene 已经销毁" 这种二义状态。
-
-### revalidateNodesUsing：shared material 的结构性传播
-
-多个 SceneNode 可以共享同一个 `MaterialInstance`。当材质本身的 pass 启用集合
-（`setPassEnabled`）改变时，每个引用它的节点都需要重建 validated cache，因为
-`supportsPass` 的结果会变。这条信号节点自己感知不到 — 节点不订阅材质事件，
-所以由 Scene 在材质回调里集中遍历，按指针相等而不是 by-name 比较来匹配，
-避免误伤同名不同实例的材质。
-
-普通参数写入（`setFloat` / `setTexture`）走 GPU 资源 dirty 路径，结构没变，
-不会触发这条传播。换句话说：这里只处理"pass 拓扑改变"这一件结构性事件。
 
 ### getSceneLevelResources：camera×target 与 light×pass
 
@@ -130,8 +120,8 @@ target 相关 camera 接受就保留），不是交集。
 5. 最后用 **`getCombinedCameraCullingMask`** 收尾，理解资源筛选和可见性裁剪
    为什么要解耦。
 
-`RenderingItem` 那一节单独看 — 它解释的是 scene.hpp 为什么承担"frame-consumed
-draw record"的定义责任，与 Scene 类自身的运行时行为无直接耦合。
+`RenderWorkItem` 那一节单独看 — 它解释的是 scene.hpp 为什么承担"frame-consumed
+work record"的定义责任，与 Scene 类自身的运行时行为无直接耦合。
 
 ## Scene 与 SceneNode 的责任划分
 
@@ -172,7 +162,7 @@ synthetic root node。它不参与 renderable ownership，也不出现在 `m_ren
 
 ## 与 RenderQueue 的边界
 
-`RenderQueue::buildFromScene(scene, pass, target)` 调 Scene 的入口只有两条：
+`RenderWorkQueue::build(...)` 调 Scene 的入口主要是：
 `getSceneLevelResources(pass, target)` 和 `getCombinedCameraCullingMask(target)`。
 其它一切（`shaderInfo`、`pipelineKey`、`descriptorResources` 中 per-renderable 的部分）
 都直接走 `IRenderable::getValidatedPassData(pass)`。
@@ -181,29 +171,8 @@ synthetic root node。它不参与 renderable ownership，也不出现在 `m_ren
 queue 不需要知道 SceneNode 内部 cache 形态，scene 也不需要知道 queue 排序策略。
 任何想替换 queue 实现的工作只要遵守这两条 scene-side 接口加上 `IRenderable` 即可。
 
-## REQ-042 落地后会变什么
+## 当前 target 轴状态
 
-[`REQ-042`](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) 把
-`RenderTarget` 拆为 `RenderTargetDesc`（形状） + `RenderTarget`（持 desc + 句柄
-+ extent）后，本页的 target 轴叙事会同步变化：
+`FramePass` 使用 `RenderTargetDesc` 表达输出形状，`RenderWorkQueue::build` 仍通过兼容 `RenderTarget{pass.target}` 调用 scene 资源筛选。Scene 只关心 camera 是否匹配 target 形状，不持有 backend attachment 句柄。
 
-- **接口签名同步**：`getSceneLevelResources(pass, target)` 与
-  `getCombinedCameraCullingMask(target)` 的 `target` 参数从
-  `const RenderTarget &` 改为 `const RenderTargetDesc &`。Scene 只关心 *形状*
-  来做兼容性筛选，不需要持有 attachment 句柄。
-- **`CameraComponent::matchesTarget` 改语义**：component 内保存的 target 从
-  `optional<RenderTarget>` 改为 `optional<RenderTargetDesc>`，nullopt 表示通配。
-  由于默认 seed camera 已删除，调用方需要显式给 camera component 绑定 target；
-  scene 只负责按 desc 做匹配，不再偷偷补一台默认 camera。
-- **target 轴变得有真实负载**：当前 target 轴几乎不做事 — 所有 pass 与 seed
-  camera 都用默认 RenderTarget 的假设已经失效。REQ-042 R2 让
-  RenderTargetDesc 长出 MRT、stencil、layer 后，多 swapchain / 多 attachment
-  format 的工程会让 target 轴产生真实的过滤行为；scene-level 资源筛选和
-  可见性掩码合并才会在不同 desc 下走出不同分支。
-- **依然不引入身份绑定**：REQ-042 R6 选的是 *形状兼容*（Q5 选项 A），不是
-  身份绑定。多窗口 / 多 swapchain 想让 camera 专画某个 framebuffer，需要走
-  visibility layer mask + pass support 这条侧路，不通过 target 轴表达。
-
-本页 `getSceneLevelResources：camera×target 与 light×pass 两轴筛选` 一节的
-*结构* 在 REQ-042 落地前后都成立；需要替换的只是"target 类型 = `RenderTarget`"
-这条隐含假设。
+这意味着 target 轴已经有真实 offscreen/depth-only/HDR 形状语义，但 framebuffer、image view、layout transition 仍属于 backend 执行层。

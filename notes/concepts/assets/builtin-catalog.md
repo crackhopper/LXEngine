@@ -23,7 +23,7 @@ assetId: "characters_blocky_a"                                           # -> �
 displayName: "Blocky Character A"                                        # -> editor 显示名
 category: "characters"                                                   # -> UI 分类和排序
 meshUri: "assets/models/builtin/characters/characters_blocky_a/model.obj" # -> mesh asset
-defaultMaterialUri: "assets/materials/blinnphong_textured.material"       # -> 默认材质
+defaultMaterialUri: "assets/materials/pbr.material"                       # -> 默认材质
 albedoTextureUri: "assets/models/builtin/characters/characters_blocky_a/Textures/texture-a.png"
 materialFiles:
   - "character-a.mtl"                                                     # -> 原始包内文件记录

@@ -5,20 +5,13 @@
 #include "backend/vulkan/details/render_objects/framebuffer.hpp"
 #include "backend/vulkan/details/render_objects/render_pass.hpp"
 #include "backend/vulkan/details/resource_manager.hpp"
-#include "core/asset/mesh.hpp"
-#include "core/asset/skeleton.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/camera_component.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
-#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -144,61 +137,27 @@ void testOffscreenSubmitProbe() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
+    auto renderInput = LX_test::makeMinimalRenderDrawInputForVulkanTests(
+        *vertexBufferPtr, *indexBufferPtr);
 
-    auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/blinnphong_default.material");
-    material->setParameter(LX_core::StringID("MaterialUBO"),
-                           LX_core::StringID("enableNormal"), 0);
-    material->syncGpuData();
-
-    auto node = LX_core::SceneNode::create("offscreen_probe_triangle");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create(std::vector<LX_core::Bone>{}));
-    auto scene = LX_core::Scene::create(node);
-    auto cameraNode = LX_test::makeDefaultCameraNodeWithTarget();
-    scene->addCamera(cameraNode);
-    auto lightNode = LX_core::SceneNode::create("offscreen_probe_light");
-    scene->addRenderable(lightNode);
-    scene->attachLight(lightNode,
-                       std::make_shared<LX_core::DirectionalLight>());
-
-    const auto camera = cameraNode->getComponent<LX_core::CameraComponent>();
-    auto *dirLight = dynamic_cast<LX_core::DirectionalLight *>(
-        &scene->getLights().front().get());
-    if (dirLight) {
-      auto &lightUbo = dirLight->getDirectionalUBO();
-      lightUbo.param.dir = LX_core::Vec4f{0.0f, -1.0f, 0.0f, 0.0f};
-      lightUbo.param.color = LX_core::Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
-      lightUbo.setDirty();
-    }
-
-    camera->get().lookAt({0.0f, 0.0f, 3.0f}, {0.0f, 0.0f, 0.0f},
-                         LX_core::Vec3f{0.0f, 1.0f, 0.0f});
-    camera->get().updateMatrices();
-
-    auto renderItem =
-        LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-    if (renderItem.raster.drawData) {
-      LX_core::PerDrawLayout pc{};
-      pc.model = LX_core::Mat4f::identity();
-      renderItem.raster.drawData->update(pc);
-    }
-
-    LX_core::RenderWorkQueue uploadQueue;
-    uploadQueue.addItem(renderItem);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto renderDesc =
+        LX_test::makeAcceptedRenderInputDescForVulkanTests(pipelineDesc,
+                                                           renderInput);
+    std::vector<std::unique_ptr<LX_core::RenderInput>> uploadInputs;
+    uploadInputs.push_back(std::make_unique<LX_core::RenderDrawInput>(
+        renderInput));
+    std::vector<LX_core::RenderInputDesc> uploadDescs{renderDesc};
     const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(uploadQueue);
+        LX_core::buildRenderUploadPlan(uploadInputs, uploadDescs);
     for (const auto &resource : uploadPlan.resources) {
       resourceManager->syncResource(*cmdBufferMgr, resource);
     }
     resourceManager->collectGarbage();
 
-    auto pipeline = resourceManager->getOrCreatePipeline(renderItem);
+    auto pipeline = resourceManager->getOrCreatePipeline(renderDesc);
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);
     if (pipelineHandle == VK_NULL_HANDLE) {
@@ -228,8 +187,8 @@ void testOffscreenSubmitProbe() {
       cmd->setViewport(extent.width, extent.height);
       cmd->setScissor(extent.width, extent.height);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(*resourceManager, pipeline, renderItem);
-      cmd->executeWorkItem(renderItem);
+      cmd->bindResources(*resourceManager, pipeline, renderInput, renderDesc);
+      cmd->executeRenderInput(renderInput, renderDesc);
       cmd->endRenderPass();
       cmd->end();
 

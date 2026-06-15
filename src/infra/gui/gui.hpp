@@ -20,6 +20,8 @@ public:
     // SDL path: must be an SDL_Window*. GLFW path: GLFWwindow*.
     void* nativeWindowHandle;
     VkRenderPass renderPass;
+    bool useDynamicRendering = false;
+    VkFormat colorAttachmentFormat = VK_FORMAT_UNDEFINED;
     usize swapchainImageCount;
   };
 

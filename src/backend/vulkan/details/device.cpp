@@ -535,17 +535,25 @@ bool VulkanDevice::checkDeviceExtensionSupport(
 }
 
 bool VulkanDevice::checkRequiredDeviceFeatureSupport(VkPhysicalDevice device) {
+  VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
+  dynamicRenderingFeatures.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+
   VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{};
   descriptorIndexingFeatures.sType =
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+  descriptorIndexingFeatures.pNext = &dynamicRenderingFeatures;
 
   VkPhysicalDeviceFeatures2 features{};
   features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
   features.pNext = &descriptorIndexingFeatures;
   vkGetPhysicalDeviceFeatures2(device, &features);
 
-  return descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing ==
-         VK_TRUE;
+  return features.features.multiDrawIndirect == VK_TRUE &&
+         features.features.drawIndirectFirstInstance == VK_TRUE &&
+         descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing ==
+             VK_TRUE &&
+         dynamicRenderingFeatures.dynamicRendering == VK_TRUE;
 }
 
 bool VulkanDevice::isDeviceSuitable(
@@ -669,9 +677,17 @@ void VulkanDevice::createLogicalDevice() {
   descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing =
       VK_TRUE;
 
+  VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures{};
+  dynamicRenderingFeatures.sType =
+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+  dynamicRenderingFeatures.dynamicRendering = VK_TRUE;
+  descriptorIndexingFeatures.pNext = &dynamicRenderingFeatures;
+
   VkPhysicalDeviceFeatures2 deviceFeatures{};
   deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
   deviceFeatures.pNext = &descriptorIndexingFeatures;
+  deviceFeatures.features.multiDrawIndirect = VK_TRUE;
+  deviceFeatures.features.drawIndirectFirstInstance = VK_TRUE;
 
   // Create logical device
   VkDeviceCreateInfo deviceCreateInfo{};
@@ -698,6 +714,7 @@ void VulkanDevice::createLogicalDevice() {
       VK_SUCCESS) {
     throw std::runtime_error("Failed to create logical device!");
   }
+  m_dynamicRenderingSupported = true;
 
   // Get queue handles
   vkGetDeviceQueue(m_device, getGraphicsQueueFamilyIndex(), 0,
@@ -711,6 +728,15 @@ void VulkanDevice::createLogicalDevice() {
 
   // Create descriptor manager with device reference
   m_descriptorManager = VulkanDescriptorManager::create(*this);
+}
+
+u32 VulkanDevice::getMaxDrawIndirectCount() const {
+  if (m_physicalDevice == VK_NULL_HANDLE) {
+    return 0;
+  }
+  VkPhysicalDeviceProperties properties{};
+  vkGetPhysicalDeviceProperties(m_physicalDevice, &properties);
+  return properties.limits.maxDrawIndirectCount;
 }
 
 u32 VulkanDevice::findMemoryTypeIndex(u32 typeFilter,

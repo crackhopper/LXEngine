@@ -8,7 +8,7 @@ import struct
 import sys
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 def write_binary_ply(path: Path) -> None:
@@ -183,6 +183,10 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"realtimeRender"', scene_text)
             self.assertIn('"ibl": true', scene_text)
             self.assertIn('"alphaTransparency": true', scene_text)
+            self.assertNotIn('"materialTag"', scene_text)
+            self.assertNotIn('"materials":', scene_text)
+            self.assertIn('"material":', scene_text)
+            legacy_shader_binding_prefix = "Material" + "UBO."
 
             obj_text = (out_root / "meshes" / "mesh_00001.obj").read_text(
                 encoding="utf-8"
@@ -202,13 +206,34 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "LogoSilver.material"
             ).read_text(encoding="utf-8")
-            self.assertIn('"shader": "pbr"', runtime_material_text)
-            self.assertIn('"HAS_IBL": false', runtime_material_text)
-            self.assertIn('"albedoMap": "white"', runtime_material_text)
-            self.assertIn('"cullMode": "None"', runtime_material_text)
+            for material_path in sorted(
+                (out_root / "materials" / "runtime-pbr-approx").glob("*.material")
+            ):
+                material_text = material_path.read_text(encoding="utf-8")
+                self.assertIn(
+                    '"source": "assets://shaders/glsl/common/materials/',
+                    material_text,
+                    f"{material_path.name} should declare explicit bsdf.source",
+                )
+            self.assertIn('"schema": "lxe.material.v2"', runtime_material_text)
+            self.assertIn('"bsdf":', runtime_material_text)
+            self.assertIn('"type": "metal"', runtime_material_text)
             self.assertIn(
-                '"MaterialUBO.metallicFactor": 1.0', runtime_material_text
+                '"source": "assets://shaders/glsl/common/materials/metal.contract.glsl"',
+                runtime_material_text,
             )
+            self.assertIn('"eta":', runtime_material_text)
+            self.assertIn('"kind": "spectrum"', runtime_material_text)
+            self.assertIn('"uri": "spds/Al.eta.spd"', runtime_material_text)
+            self.assertNotIn(
+                '"pbrtMaterialParameterSources":', runtime_material_text
+            )
+            self.assertNotIn('"shader":', runtime_material_text)
+            self.assertNotIn('"variants":', runtime_material_text)
+            self.assertNotIn('"removedDefaultFlow":', runtime_material_text)
+            self.assertNotIn('"techniques":', runtime_material_text)
+            self.assertNotIn('"resources":', runtime_material_text)
+            self.assertNotIn(legacy_shader_binding_prefix, runtime_material_text)
 
             car_paint_text = (
                 out_root
@@ -216,15 +241,17 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "CarPaint.material"
             ).read_text(encoding="utf-8")
-            self.assertIn('"shader": "pbr_clearcoat"', car_paint_text)
+            self.assertIn('"type": "substrate"', car_paint_text)
             self.assertIn(
-                '"MaterialUBO.clearcoatFactor": 0.3',
+                '"source": "assets://shaders/glsl/common/materials/substrate.contract.glsl"',
                 car_paint_text,
             )
-            self.assertIn(
-                '"MaterialUBO.clearcoatRoughness": 0.04',
-                car_paint_text,
-            )
+            self.assertIn('"Kd":', car_paint_text)
+            self.assertIn('"Ks":', car_paint_text)
+            self.assertIn('"uroughness":', car_paint_text)
+            self.assertIn('"vroughness":', car_paint_text)
+            self.assertNotIn(legacy_shader_binding_prefix, car_paint_text)
+            self.assertNotIn('"shader":', car_paint_text)
 
             glass_material_text = (
                 out_root
@@ -232,14 +259,42 @@ class PbrtSceneConvertTest(unittest.TestCase):
                 / "runtime-pbr-approx"
                 / "WindscreenGlass.material"
             ).read_text(encoding="utf-8")
-            self.assertIn('"depthWrite": false', glass_material_text)
-            self.assertIn('"blendEnable": true', glass_material_text)
-            self.assertIn('"srcBlend": "SrcAlpha"', glass_material_text)
-            self.assertIn('"dstBlend": "OneMinusSrcAlpha"', glass_material_text)
+            self.assertIn('"Kr":', glass_material_text)
             self.assertIn(
-                '"MaterialUBO.baseColorFactor": [0.85, 0.95, 1.0, 0.25]',
+                '"source": "assets://shaders/glsl/common/materials/glass.contract.glsl"',
                 glass_material_text,
             )
+            self.assertIn('"kind": "rgb"', glass_material_text)
+            self.assertIn('"eta":', glass_material_text)
+            self.assertNotIn('"Kr": "pbrt-default"', glass_material_text)
+            self.assertNotIn('"eta": "pbrt-default"', glass_material_text)
+            self.assertNotIn('"renderState":', glass_material_text)
+            self.assertNotIn(legacy_shader_binding_prefix, glass_material_text)
+
+            runtime_mix_material_text = (
+                out_root
+                / "materials"
+                / "runtime-pbr-approx"
+                / "LEATHER.material"
+            ).read_text(encoding="utf-8")
+            self.assertIn('"type": "mix"', runtime_mix_material_text)
+            self.assertIn(
+                '"source": "assets://shaders/glsl/common/materials/mix.contract.glsl"',
+                runtime_mix_material_text,
+            )
+            self.assertIn('"namedmaterial1":', runtime_mix_material_text)
+            self.assertIn('"kind": "materialRef"', runtime_mix_material_text)
+            self.assertIn('"uri": "LEATHER-white.material"', runtime_mix_material_text)
+            self.assertIn('"uri": "LogoSilver.material"', runtime_mix_material_text)
+            owner_material_uri = PurePosixPath(
+                "materials/runtime-pbr-approx/LEATHER.material"
+            )
+            logo_ref_uri = PurePosixPath("LogoSilver.material")
+            self.assertEqual(
+                (owner_material_uri.parent / logo_ref_uri).as_posix(),
+                "materials/runtime-pbr-approx/LogoSilver.material",
+            )
+            self.assertNotIn('"uri": "named:', runtime_mix_material_text)
 
             source_material_text = (
                 out_root
@@ -273,12 +328,19 @@ class PbrtSceneConvertTest(unittest.TestCase):
             self.assertIn('"nodeName": "bmw_m6_car"', scene_text)
             self.assertIn('"name": "BMW_M6_Car"', scene_text)
             self.assertIn('"name": "Plane_Plane.001"', scene_text)
-            self.assertIn('"tag": "realtime-pbr"', scene_text)
             self.assertIn('"pbrtSourceMaterialUri":', scene_text)
 
             manifest_path = out_root / "pbrt_bmw_m6.converted.json"
             manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest_doc["sourceSceneBounds"], [[-1.0, -2.0, -3.0], [4.0, 5.0, 6.0]])
+            self.assertEqual(
+                manifest_doc["materialParameterSources"]["WindscreenGlass"]["eta"],
+                "pbrt-default",
+            )
+            self.assertEqual(
+                manifest_doc["materialParameterSources"]["LogoSilver"]["eta"],
+                "explicit",
+            )
             self.assertTrue((out_root / "pbrt_bmw_m6.conversion.md").exists())
 
 

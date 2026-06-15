@@ -45,6 +45,6 @@ Offline renderer 像一间独立的渲染实验室：editor 和 realtime rendere
 ## 继续阅读
 
 - [PBR + IBL 教程](../pbr-ibl/index.md)
-- [Assets Downloader 教程](../assets-downloader/index.md)
+- [GetStarted](../../get-started.md)
 - [场景系统](../../scene-system/index.md)
 - [Vulkan Backend](../../subsystems/vulkan-backend.md)

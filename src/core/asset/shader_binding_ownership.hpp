@@ -28,9 +28,10 @@ namespace LX_core {
 */
 
 inline constexpr std::string_view kSystemOwnedBindings[] = {
-    "CameraUBO",
-    "LightUBO",
-    "SceneLightsUBO",
+    "SceneCameraData",
+    "SceneLightData",
+    "SceneObjectData",
+    "SceneMaterialInstanceData",
     "ShadowMap",
     "ShadowMap0",
     "ShadowMap1",
@@ -43,14 +44,17 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "IrradianceMap",
     "PrefilteredEnvMap",
     "BrdfLut",
-    "EnvironmentUBO",
-    "Bones",
-    "SceneVertices",
+    "ScenePositions",
+    "SceneAttributeStreams",
+    "SceneAttributeValues",
     "SceneIndices",
     "SceneMeshes",
     "ScenePrimitives",
     "SceneObjects",
+    "SceneDraws",
     "SceneMaterials",
+    "SceneMaterialRefs",
+    "SceneSourceMaterialRecords",
     "SceneBvhNodes",
     "SceneFrameParams",
     "OutputPixels",
@@ -64,12 +68,25 @@ inline bool isSystemOwnedBinding(std::string_view name) {
   return false;
 }
 
+inline bool isRetiredEngineProvidedBinding(std::string_view name) {
+  // Retired pre-bindless engine inputs. They are not part of the 071-b fixed
+  // system ABI, but legacy/debug shaders must not leak them into material-owned
+  // parameter reflection while those shaders still exist.
+  return name == "CameraUBO" || name == "LightUBO" ||
+         name == "SceneLightsUBO" || name == "EnvironmentUBO" ||
+         name == "Bones";
+}
+
+inline bool isMaterialOwnedBinding(std::string_view name) {
+  return !isSystemOwnedBinding(name) && !isRetiredEngineProvidedBinding(name);
+}
+
 /*
 @source_analysis.section getExpectedTypeForSystemBinding：把保留名字钉在固定的 descriptor 类型上
 只是把名字列入 `kSystemOwnedBindings` 还不够；引擎必须进一步声明：
 这些保留名字对应的 descriptor 类型本身也不能随便换。
 
-如果某一份 shader 意外把 `CameraUBO` 声明成 `StorageBuffer` 或 `Texture2D`，
+如果某一份 shader 意外把 `SceneCameraData` 声明成 `UniformBuffer` 或 `Texture2D`，
 那就算名字对得上，它表达的语义也已经偏离引擎约定。`getExpectedTypeForSystemBinding()`
 用来在这种情况下给上层一个可比对的参照类型，让反射校验能尽早把偏离挡掉，
 而不是等到 descriptor set 写入阶段才炸。
@@ -80,12 +97,9 @@ material-owned 路径而不是误用这个函数做通用类型查询。
 
 inline std::optional<ShaderPropertyType>
 getExpectedTypeForSystemBinding(std::string_view name) {
-  if (name == "CameraUBO")
-    return ShaderPropertyType::UniformBuffer;
-  if (name == "LightUBO")
-    return ShaderPropertyType::UniformBuffer;
-  if (name == "SceneLightsUBO")
-    return ShaderPropertyType::UniformBuffer;
+  if (name == "SceneCameraData" || name == "SceneLightData" ||
+      name == "SceneObjectData" || name == "SceneMaterialInstanceData")
+    return ShaderPropertyType::StorageBuffer;
   if (name == "ShadowMap" || name == "ShadowMap0" || name == "ShadowMap1" ||
       name == "ShadowMap2" || name == "ShadowMap3")
     return ShaderPropertyType::Texture2D;
@@ -98,15 +112,14 @@ getExpectedTypeForSystemBinding(std::string_view name) {
     return ShaderPropertyType::TextureCube;
   if (name == "BrdfLut")
     return ShaderPropertyType::Texture2D;
-  if (name == "EnvironmentUBO")
-    return ShaderPropertyType::UniformBuffer;
-  if (name == "Bones")
-    return ShaderPropertyType::UniformBuffer;
   if (name == "SceneTextures")
     return ShaderPropertyType::Texture2D;
-  if (name == "SceneVertices" || name == "SceneIndices" ||
+  if (name == "ScenePositions" || name == "SceneAttributeStreams" ||
+      name == "SceneAttributeValues" || name == "SceneIndices" ||
       name == "SceneMeshes" || name == "ScenePrimitives" ||
-      name == "SceneObjects" || name == "SceneMaterials" ||
+      name == "SceneObjects" || name == "SceneDraws" ||
+      name == "SceneMaterials" || name == "SceneMaterialRefs" ||
+      name == "SceneSourceMaterialRecords" ||
       name == "SceneBvhNodes" || name == "SceneFrameParams" ||
       name == "OutputPixels")
     return ShaderPropertyType::StorageBuffer;

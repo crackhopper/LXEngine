@@ -48,6 +48,7 @@ void VulkanCommandBufferManager::beginFrame(u32 currentFrameIndex) {
   m_currentFrameIndex = currentFrameIndex;
 
   CommandFrameContext &frame = m_frameContexts[currentFrameIndex];
+  frame.retainedIndirectBuffers.clear();
   vkResetCommandPool(m_device.getLogicalDevice(), frame.pool, 0);
   frame.nextAvailableBuffer = 0;
 }
@@ -57,7 +58,8 @@ VulkanCommandBufferUniquePtr VulkanCommandBufferManager::allocateBuffer(VkComman
 
   if (frame.nextAvailableBuffer < frame.activeBuffers.size()) {
     VkCommandBuffer buffer = frame.activeBuffers[frame.nextAvailableBuffer++];
-    return std::make_unique<VulkanCommandBuffer>(buffer, m_device);
+    return std::make_unique<VulkanCommandBuffer>(
+        buffer, m_device, &frame.retainedIndirectBuffers);
   }
 
   VkCommandBufferAllocateInfo allocInfo{};
@@ -73,7 +75,8 @@ VulkanCommandBufferUniquePtr VulkanCommandBufferManager::allocateBuffer(VkComman
 
   frame.activeBuffers.push_back(buffer);
   frame.nextAvailableBuffer++;
-  return std::make_unique<VulkanCommandBuffer>(buffer, m_device);
+  return std::make_unique<VulkanCommandBuffer>(
+      buffer, m_device, &frame.retainedIndirectBuffers);
 }
 
 VulkanCommandBufferUniquePtr VulkanCommandBufferManager::beginSingleTimeCommands() {

@@ -1,17 +1,17 @@
 #pragma once
 
 #include "core/asset/material_instance.hpp"
+#include "core/asset/render_effect.hpp"
 #include "core/asset/shader.hpp"
 #include "core/frame_graph/render_target.hpp"
 #include "core/pipeline/pipeline_key.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace LX_core {
-
-struct RenderWorkItem; // forward decl
 
 enum class PipelineBuildType {
   Graphics,
@@ -21,12 +21,10 @@ enum class PipelineBuildType {
 
 /*
 @source_analysis.section PushConstantRange：当前固定 ABI 的占位描述
-当前 forward draw path 的 push constant ABI 已收敛到 model-only 数据，但
-backend-neutral 层仍用 `PushConstantRange` 描述“pipeline 创建时需要声明的范围”。
+当前 pipeline layout 仍能描述 shader 反射得到的 push constant 范围；默认
+render work 不再用它承载每 draw 数据。
 
-这里保存的是 pipeline layout 需要的结构信息，不是每个 draw 的实际 push constant
-值。真实的 per-draw 数据在 `RenderWorkItem::raster.drawData` /
-`PerDrawData` 路径上传。
+这里保存的是 pipeline layout 需要的结构信息，不是每个 draw 的实际数据值。
 */
 struct PushConstantRange {
   u32 offset = 0;
@@ -39,18 +37,21 @@ struct PushConstantRange {
 };
 
 /*
-@source_analysis.section PipelineBuildDesc：从 RenderWorkItem 派生出的构建输入包
+@source_analysis.section PipelineBuildDesc：backend 构建 pipeline 的事实包
 `PipelineKey` 只回答“是不是同一条 pipeline”；`PipelineBuildDesc` 回答
 “如果这条 pipeline 还没建，backend 需要哪些输入”。
 
-它从一个已经校验好的 `RenderWorkItem` 派生，不重新判断材质是否合法，也不重新推导
-identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备好，backend
-只负责把 这些事实翻译成 Vulkan pipeline 创建参数。
+它不再从旧 work item / batch 反向推导。调用方必须在 RenderWorkCompiler prepare
+阶段或显式 backend 过渡调用点先准备好 shader、layout、render state、target 和
+attachment 等结构事实，然后用 `graphics` / `compute` 直接构造。
 */
 struct PipelineBuildDesc {
   PipelineBuildType type = PipelineBuildType::Graphics;
   PipelineKey key;
+  StringID shaderVariantKey;
   RenderTargetDesc target;
+  std::optional<RenderPathNodeRenderingMode> renderingMode;
+  std::vector<RenderPathAttachmentContract> attachments;
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
   VertexLayout vertexLayout;
@@ -58,10 +59,19 @@ struct PipelineBuildDesc {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
   PushConstantRange pushConstant;
 
-  /// Derive a complete PipelineBuildDesc from a fully-built RenderWorkItem.
-  /// Graphics items require shader, material, vertex, and index resources.
-  /// Compute items require shader stages and descriptor bindings only.
-  static PipelineBuildDesc fromRenderWorkItem(const RenderWorkItem &item);
+  static PipelineBuildDesc
+  graphics(PipelineKey key, StringID shaderVariantKey, RenderTargetDesc target,
+           std::vector<ShaderStageCode> stages,
+           std::vector<ShaderResourceBinding> bindings,
+           VertexLayout vertexLayout, RenderState renderState,
+           PrimitiveTopology topology,
+           std::optional<RenderPathNodeRenderingMode> renderingMode,
+           std::vector<RenderPathAttachmentContract> attachments);
+
+  static PipelineBuildDesc
+  compute(PipelineKey key, StringID shaderVariantKey,
+          std::vector<ShaderStageCode> stages,
+          std::vector<ShaderResourceBinding> bindings);
 };
 
 } // namespace LX_core

@@ -12,8 +12,10 @@
 #include "../resource_manager.hpp"
 #include <array>
 #include <functional>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -30,6 +32,14 @@ VkViewport makeVulkanViewport(u32 width, u32 height) {
   viewport.maxDepth = 1.0f;
   return viewport;
 }
+
+VulkanCommandBuffer::VulkanCommandBuffer(
+    VkCommandBuffer handle, VulkanDevice &device,
+    std::vector<std::unique_ptr<VulkanBuffer>> *retainedIndirectBuffers)
+    : m_handle(handle), m_device(device),
+      m_retainedIndirectBuffers(retainedIndirectBuffers) {}
+
+VulkanCommandBuffer::~VulkanCommandBuffer() = default;
 
 void VulkanCommandBuffer::begin() {
   VkCommandBufferBeginInfo beginInfo{};
@@ -58,6 +68,23 @@ void VulkanCommandBuffer::beginRenderPass(
   vkCmdBeginRenderPass(m_handle, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
+void VulkanCommandBuffer::beginRendering(
+    VkExtent2D extent,
+    const std::vector<VkRenderingAttachmentInfo> &colorAttachments,
+    const VkRenderingAttachmentInfo *depthAttachment, u32 layerCount) {
+  VkRenderingInfo renderingInfo{};
+  renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+  renderingInfo.renderArea.offset = {0, 0};
+  renderingInfo.renderArea.extent = extent;
+  renderingInfo.layerCount = layerCount;
+  renderingInfo.colorAttachmentCount =
+      static_cast<u32>(colorAttachments.size());
+  renderingInfo.pColorAttachments =
+      colorAttachments.empty() ? nullptr : colorAttachments.data();
+  renderingInfo.pDepthAttachment = depthAttachment;
+  vkCmdBeginRendering(m_handle, &renderingInfo);
+}
+
 void VulkanCommandBuffer::setViewport(u32 width, u32 height) {
   const VkViewport viewport = makeVulkanViewport(width, height);
   vkCmdSetViewport(m_handle, 0, 1, &viewport);
@@ -73,19 +100,6 @@ void VulkanCommandBuffer::setScissor(u32 width, u32 height) {
 namespace {
 constexpr int kDebugBurstFrames = 3;
 
-VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
-  VkShaderStageFlags out = 0;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Vertex))
-    out |= VK_SHADER_STAGE_VERTEX_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Fragment))
-    out |= VK_SHADER_STAGE_FRAGMENT_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Compute))
-    out |= VK_SHADER_STAGE_COMPUTE_BIT;
-  if (mask & static_cast<ShaderStageMask32>(LX_core::ShaderStage::Geometry))
-    out |= VK_SHADER_STAGE_GEOMETRY_BIT;
-  return out;
-}
-
 template <typename T>
 bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
   if (!(next == state)) {
@@ -100,7 +114,8 @@ bool shouldLogBurst(const T &next, T &state, int &remainingFrames) {
   return false;
 }
 
-void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
+void logMissingDescriptorBindingOnce(StringID pass, PipelineKey pipelineKey,
+                                     std::string_view operation,
                                      const ShaderResourceBinding &binding) {
   if (!expRendererDebugEnabled()) {
     return;
@@ -108,22 +123,37 @@ void logMissingDescriptorBindingOnce(const RenderWorkItem &item,
 
   static std::unordered_set<std::string> loggedKeys;
   std::ostringstream oss;
-  oss << item.pipelineKey.id.id << "|" << item.pass.id << "|" << binding.set
-      << "|" << binding.binding << "|" << binding.name;
+  oss << operation << "|" << pipelineKey.id.id << "|" << pass.id << "|"
+      << binding.set << "|" << binding.binding << "|" << binding.name;
   const std::string key = oss.str();
   if (!loggedKeys.insert(key).second) {
     return;
   }
 
-  std::cerr << "[RendererDebug] bindResources: missing binding name="
+  std::cerr << "[RendererDebug] " << operation
+            << ": missing binding name="
             << binding.name << " set=" << binding.set
             << " binding=" << binding.binding << " pass="
-            << LX_core::GlobalStringTable::get().getName(item.pass.id)
-            << " pipelineKey=" << item.pipelineKey.id.id << std::endl;
+            << LX_core::GlobalStringTable::get().getName(pass.id)
+            << " pipelineKey=" << pipelineKey.id.id << std::endl;
+}
+
+[[noreturn]] void throwDescriptorBindingError(
+    StringID pass, PipelineKey pipelineKey, std::string_view operation,
+    const ShaderResourceBinding &binding, const char *reason) {
+  logMissingDescriptorBindingOnce(pass, pipelineKey, operation, binding);
+  std::ostringstream oss;
+  oss << operation << " failed for reflected descriptor binding name="
+      << binding.name << " set=" << binding.set
+      << " binding=" << binding.binding << " pass="
+      << LX_core::GlobalStringTable::get().getName(pass.id)
+      << " pipelineKey=" << pipelineKey.id.id << ": " << reason;
+  throw std::runtime_error(oss.str());
 }
 
 void logDescriptorBufferBindingIfChanged(
-    const RenderWorkItem &item, const ShaderResourceBinding &binding,
+    StringID pass, PipelineKey pipelineKey, std::string_view operation,
+    const ShaderResourceBinding &binding,
     const IGpuResource &cpuRes, const VkDescriptorBufferInfo &bufferInfo) {
   if (!expRendererDebugEnabled()) {
     return;
@@ -143,7 +173,7 @@ void logDescriptorBufferBindingIfChanged(
   static std::unordered_map<std::string, BindingLogEntry> logged;
 
   std::ostringstream keyBuilder;
-  keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
+  keyBuilder << operation << "|" << pipelineKey.id.id << "|" << pass.id << "|"
              << binding.set << "|" << binding.binding << "|" << binding.name;
   const std::string key = keyBuilder.str();
 
@@ -157,18 +187,20 @@ void logDescriptorBufferBindingIfChanged(
     return;
   }
 
-  std::cerr << "[RendererDebug] bindResources: buffer name=" << binding.name
+  std::cerr << "[RendererDebug] " << operation
+            << ": buffer name=" << binding.name
             << " set=" << binding.set << " binding=" << binding.binding
             << " pass="
-            << LX_core::GlobalStringTable::get().getName(item.pass.id)
-            << " pipelineKey=" << item.pipelineKey.id.id
+            << LX_core::GlobalStringTable::get().getName(pass.id)
+            << " pipelineKey=" << pipelineKey.id.id
             << " identity=" << next.identity
             << " bufferToken=" << next.bufferToken << " range=" << next.range
             << std::endl;
 }
 
 void logDescriptorImageBindingIfChanged(
-    const RenderWorkItem &item, const ShaderResourceBinding &binding,
+    StringID pass, PipelineKey pipelineKey, std::string_view operation,
+    const ShaderResourceBinding &binding,
     const IGpuResource &cpuRes, const VkDescriptorImageInfo &imageInfo) {
   if (!expRendererDebugEnabled()) {
     return;
@@ -189,7 +221,7 @@ void logDescriptorImageBindingIfChanged(
   static std::unordered_map<std::string, BindingLogEntry> logged;
 
   std::ostringstream keyBuilder;
-  keyBuilder << item.pipelineKey.id.id << "|" << item.pass.id << "|"
+  keyBuilder << operation << "|" << pipelineKey.id.id << "|" << pass.id << "|"
              << binding.set << "|" << binding.binding << "|" << binding.name;
   const std::string key = keyBuilder.str();
 
@@ -204,11 +236,12 @@ void logDescriptorImageBindingIfChanged(
     return;
   }
 
-  std::cerr << "[RendererDebug] bindResources: image name=" << binding.name
+  std::cerr << "[RendererDebug] " << operation
+            << ": image name=" << binding.name
             << " set=" << binding.set << " binding=" << binding.binding
             << " pass="
-            << LX_core::GlobalStringTable::get().getName(item.pass.id)
-            << " pipelineKey=" << item.pipelineKey.id.id
+            << LX_core::GlobalStringTable::get().getName(pass.id)
+            << " pipelineKey=" << pipelineKey.id.id
             << " identity=" << next.identity
             << " imageViewToken=" << next.imageViewToken
             << " samplerToken=" << next.samplerToken
@@ -219,40 +252,31 @@ void logDescriptorImageBindingIfChanged(
 void VulkanCommandBuffer::bindPipeline(VulkanGraphicsPipeline &pipeline) {
   vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.getHandle());
-  m_pipelineLayout = pipeline.getLayout();
-  const auto &pcr = pipeline.getPushConstantRange();
-  m_pushConstants.stageFlags = pushConstantStageMaskToVk(pcr.stageFlagsMask);
-  m_pushConstants.offset = pcr.offset;
-  m_pushConstants.size = pcr.size;
 }
 
 void VulkanCommandBuffer::bindPipeline(VulkanComputePipeline &pipeline) {
   vkCmdBindPipeline(m_handle, VK_PIPELINE_BIND_POINT_COMPUTE,
                     pipeline.getHandle());
-  m_pipelineLayout = pipeline.getLayout();
-  const auto &pcr = pipeline.getPushConstantRange();
-  m_pushConstants.stageFlags = pushConstantStageMaskToVk(pcr.stageFlagsMask);
-  m_pushConstants.offset = pcr.offset;
-  m_pushConstants.size = pcr.size;
 }
 
 void VulkanCommandBuffer::bindPipeline(VulkanPipelineRef pipeline) {
   std::visit([this](auto ref) { bindPipeline(ref.get()); }, pipeline);
 }
 
-void VulkanCommandBuffer::bindResourcesWithLayout(
+void VulkanCommandBuffer::bindDescriptorResourcesWithLayout(
     VulkanResourceManager &resourceManager,
     const std::vector<ShaderResourceBinding> &bindings,
     const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
-    const RenderWorkItem &item) {
+    const DescriptorResourceList &descriptorResources, StringID pass,
+    PipelineKey pipelineKey, std::string_view operation) {
   auto &descriptorMgr = m_device.getDescriptorManager();
 
-  // Build a name→resource map from the item's descriptorResources so backend
+  // Build a name→resource map from descriptor resources so backend
   // routing can match reflected binding names without any slot enum.
   std::unordered_map<LX_core::StringID, LX_core::DescriptorResourceRef,
                      LX_core::StringID::Hash>
       resourceByName;
-  for (const auto &cpuRes : item.descriptorResources) {
+  for (const auto &cpuRes : descriptorResources) {
     const auto name = cpuRes.getBindingName();
     if (name.id == 0) {
       continue;
@@ -279,9 +303,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
     for (const auto &b : bindings) {
       auto it = resourceByName.find(LX_core::StringID(b.name));
       if (it == resourceByName.end()) {
-        logMissingDescriptorBindingOnce(item, b);
-        continue; // Leave descriptor uninitialized (shader should not access
-                  // it).
+        throwDescriptorBindingError(
+            pass, pipelineKey, operation, b,
+            "no descriptor resource with this binding name was provided");
       }
 
       const auto &cpuRes = it->second;
@@ -289,14 +313,18 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
       if (b.type == LX_core::ShaderPropertyType::UniformBuffer ||
           b.type == LX_core::ShaderPropertyType::StorageBuffer) {
         if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
-          logMissingDescriptorBindingOnce(item, b);
-          continue;
+          throwDescriptorBindingError(
+              pass, pipelineKey, operation, b,
+              "descriptor resource is not a valid GPU buffer resource");
         }
         const LX_core::IGpuResource &resource = cpuRes.resource().get();
         auto bufferOpt =
             resourceManager.getBuffer(resource.getBackendCacheIdentity());
-        if (!bufferOpt)
-          continue;
+        if (!bufferOpt) {
+          throwDescriptorBindingError(
+              pass, pipelineKey, operation, b,
+              "GPU buffer was not uploaded before descriptor binding");
+        }
         auto &buffer = bufferOpt->get();
 
         VkDescriptorBufferInfo bufferInfo{};
@@ -304,7 +332,8 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
         bufferInfo.offset = 0;
         bufferInfo.range = buffer.getSize();
 
-        logDescriptorBufferBindingIfChanged(item, b, resource, bufferInfo);
+        logDescriptorBufferBindingIfChanged(pass, pipelineKey, operation, b,
+                                            resource, bufferInfo);
         setPtr->updateBuffer(b.binding, bufferInfo,
                              b.type ==
                                      LX_core::ShaderPropertyType::UniformBuffer
@@ -336,8 +365,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
             imageInfos.push_back(textureOpt->get().getDescriptorInfo());
           }
           if (!complete) {
-            logMissingDescriptorBindingOnce(item, b);
-            continue;
+            throwDescriptorBindingError(
+                pass, pipelineKey, operation, b,
+                "texture array contains an invalid or non-uploaded texture");
           }
 
           setPtr->updateImageArray(b.binding, imageInfos,
@@ -346,8 +376,9 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
         }
 
         if (!cpuRes.isResource() || !cpuRes.resource().isValid()) {
-          logMissingDescriptorBindingOnce(item, b);
-          continue;
+          throwDescriptorBindingError(
+              pass, pipelineKey, operation, b,
+              "descriptor resource is not a valid texture resource");
         }
         const LX_core::IGpuResource &resource = cpuRes.resource().get();
         if (const auto *frameGraphResource =
@@ -356,13 +387,15 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
           auto attachmentOpt = resourceManager.getFrameGraphAttachment(
               frameGraphResource->getResourceName());
           if (!attachmentOpt) {
-            logMissingDescriptorBindingOnce(item, b);
-            continue;
+            throwDescriptorBindingError(
+                pass, pipelineKey, operation, b,
+                "frame graph sampled attachment is not available");
           }
           auto &attachment = attachmentOpt->get();
           VkDescriptorImageInfo imageInfo =
               attachment.texture->getDescriptorInfo();
-          logDescriptorImageBindingIfChanged(item, b, resource, imageInfo);
+          logDescriptorImageBindingIfChanged(pass, pipelineKey, operation, b,
+                                             resource, imageInfo);
           setPtr->updateImage(b.binding, imageInfo,
                               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
           continue;
@@ -370,12 +403,16 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
 
         auto textureOpt =
             resourceManager.getTexture(resource.getBackendCacheIdentity());
-        if (!textureOpt)
-          continue;
+        if (!textureOpt) {
+          throwDescriptorBindingError(
+              pass, pipelineKey, operation, b,
+              "GPU texture was not uploaded before descriptor binding");
+        }
         auto &texture = textureOpt->get();
 
         VkDescriptorImageInfo imageInfo = texture.getDescriptorInfo();
-        logDescriptorImageBindingIfChanged(item, b, resource, imageInfo);
+        logDescriptorImageBindingIfChanged(pass, pipelineKey, operation, b,
+                                           resource, imageInfo);
         setPtr->updateImage(b.binding, imageInfo,
                             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
       }
@@ -386,103 +423,119 @@ void VulkanCommandBuffer::bindResourcesWithLayout(
                             &setHandle, 0, nullptr);
     allocatedSets.push_back(std::move(setPtr));
   }
+}
 
-  const auto &raster = item.raster;
+void VulkanCommandBuffer::bindResourcesWithLayout(
+    VulkanResourceManager &resourceManager,
+    const std::vector<ShaderResourceBinding> &bindings,
+    const VkPipelineLayout pipelineLayout, const VkPipelineBindPoint bindPoint,
+    const RenderInput &input, const RenderInputDesc &desc) {
+  bindDescriptorResourcesWithLayout(resourceManager, bindings, pipelineLayout,
+                                    bindPoint, desc.bindingPlan.descriptors,
+                                    desc.pass, desc.pipelineKey,
+                                    "bindResources(RenderInputDesc)");
 
-  if (raster.vertexBuffer.isValid()) {
-    auto vbOpt = resourceManager.getBuffer(
-        raster.vertexBuffer.getBackendCacheIdentity());
-    if (vbOpt) {
-      VkBuffer vbHandle = vbOpt->get().getHandle();
-      VkDeviceSize offsets[] = {0};
-      vkCmdBindVertexBuffers(m_handle, 0, 1, &vbHandle, offsets);
-    }
+  if (bindPoint != VK_PIPELINE_BIND_POINT_GRAPHICS) {
+    return;
   }
 
-  if (raster.indexBuffer.isValid()) {
-    auto ibOpt = resourceManager.getBuffer(
-        raster.indexBuffer.getBackendCacheIdentity());
-    if (ibOpt) {
-      vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
-                           VK_INDEX_TYPE_UINT32);
-    }
+  bindRenderInputGeometry(resourceManager, input);
+}
+
+void VulkanCommandBuffer::bindRenderInputGeometry(
+    VulkanResourceManager &resourceManager, const RenderInput &input) {
+  const auto *draw = dynamic_cast<const RenderDrawInput *>(&input);
+  if (draw == nullptr ||
+      draw->source == RenderDrawInputSource::FullscreenTriangle) {
+    return;
   }
 
-  if (raster.drawData && m_pushConstants.size > 0) {
-    vkCmdPushConstants(m_handle, m_pipelineLayout, m_pushConstants.stageFlags,
-                       m_pushConstants.offset, m_pushConstants.size,
-                       raster.drawData->rawData());
+  if (!draw->vertexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) scene draw missing vertex buffer");
   }
+  auto vbOpt =
+      resourceManager.getBuffer(draw->vertexBuffer.getBackendCacheIdentity());
+  if (!vbOpt) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) vertex buffer was not uploaded");
+  }
+  VkBuffer vbHandle = vbOpt->get().getHandle();
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(m_handle, 0, 1, &vbHandle, offsets);
+
+  if (!draw->indexBuffer.isValid()) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) scene draw missing index buffer");
+  }
+  auto ibOpt =
+      resourceManager.getBuffer(draw->indexBuffer.getBackendCacheIdentity());
+  if (!ibOpt) {
+    throw std::runtime_error(
+        "bindResources(RenderInputDesc) index buffer was not uploaded");
+  }
+  vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
+                       VK_INDEX_TYPE_UINT32);
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanGraphicsPipeline &pipeline,
-                                        const RenderWorkItem &item) {
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
   bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
                           pipeline.getLayout(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          item);
+                          input, desc);
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanComputePipeline &pipeline,
-                                        const RenderWorkItem &item) {
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
   bindResourcesWithLayout(resourceManager, pipeline.getBindings(),
                           pipeline.getLayout(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                          item);
+                          input, desc);
 }
 
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanPipelineRef pipeline,
-                                        const RenderWorkItem &item) {
-  std::visit([this, &resourceManager, &item](
-                 auto ref) { bindResources(resourceManager, ref.get(), item); },
+                                        const RenderInput &input,
+                                        const RenderInputDesc &desc) {
+  std::visit([this, &resourceManager, &input, &desc](auto ref) {
+    bindResources(resourceManager, ref.get(), input, desc);
+  },
              pipeline);
 }
 
-void VulkanCommandBuffer::executeRasterDrawItem(const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::RasterDraw &&
-      item.kind != RenderWorkKind::RasterBatch) {
+void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
+                                             const RenderInputDesc &desc) {
+  if (!desc.accepted()) {
     return;
   }
 
-  const auto &raster = item.raster;
-  if (!raster.vertexBuffer.isValid() || !raster.indexBuffer.isValid()) {
+  if (const auto *draw = dynamic_cast<const RenderDrawInput *>(&input)) {
+    if (draw->source == RenderDrawInputSource::FullscreenTriangle) {
+      vkCmdDraw(m_handle, 3, 1, 0, 0);
+      return;
+    }
+
+    for (const RenderDrawCommand &command : draw->drawCommands) {
+      if (command.indexCount == 0 || command.instanceCount == 0) {
+        continue;
+      }
+      vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
+                       command.firstIndex, command.vertexOffset,
+                       command.firstInstance);
+    }
     return;
   }
 
-  const usize indexCount =
-      raster.indexCount != 0 ? raster.indexCount
-                             : raster.indexBuffer.get().getByteSize() /
-                                   sizeof(u32);
-  if (indexCount == 0) {
+  if (const auto *compute = dynamic_cast<const RenderComputeInput *>(&input)) {
+    vkCmdDispatch(m_handle, compute->groupCountX, compute->groupCountY,
+                  compute->groupCountZ);
     return;
   }
-  vkCmdDrawIndexed(m_handle, static_cast<u32>(indexCount), raster.instanceCount,
-                   raster.firstIndex, raster.vertexOffset, 0);
-}
 
-void VulkanCommandBuffer::executeComputeDispatchItem(
-    const RenderWorkItem &item) {
-  if (item.kind != RenderWorkKind::ComputeDispatch) {
-    return;
-  }
-  vkCmdDispatch(m_handle, item.compute.groupCountX, item.compute.groupCountY,
-                item.compute.groupCountZ);
-}
-
-void VulkanCommandBuffer::executeWorkItem(const RenderWorkItem &item) {
-  switch (item.kind) {
-  case RenderWorkKind::RasterDraw:
-  case RenderWorkKind::RasterBatch:
-    executeRasterDrawItem(item);
-    return;
-  case RenderWorkKind::ComputeDispatch:
-    executeComputeDispatchItem(item);
-    return;
-  case RenderWorkKind::RayTracingDispatch:
-    throw std::runtime_error("RayTracingDispatch work is not implemented");
-  }
-  throw std::runtime_error("unknown RenderWorkKind");
+  throw std::runtime_error("executeRenderInput received unknown input type");
 }
 
 } // namespace LX_core::backend

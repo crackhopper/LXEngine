@@ -16,8 +16,8 @@ nav:
           - 总览: tutorial/custom-material/index.md
           - 材质积木: tutorial/custom-material/01-material-building-blocks.md
           - YAML 与 Shader 合同: tutorial/custom-material/02-material-yaml-and-shader-contract.md
-          - 从 RTR 模板开始: tutorial/custom-material/03-start-from-rtr-template.md
-          - Gooch Shader: tutorial/custom-material/04-write-gooch-shader.md
+          - 从现有 Contract 开始: tutorial/custom-material/03-start-from-existing-contract.md
+          - Gooch Contract: tutorial/custom-material/04-write-gooch-shader.md
           - Editor 验证: tutorial/custom-material/05-verify-in-editor.md
           - 材质排错: tutorial/custom-material/06-debug-material-problems.md
       - 自定义灯光:
@@ -39,8 +39,6 @@ nav:
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
           - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
-      - Assets Downloader:
-          - 总览: tutorial/assets-downloader/index.md
       - Offline Renderer:
           - 总览: tutorial/offline-renderer/index.md
           - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
@@ -84,29 +82,31 @@ nav:
           - 内置资产目录: concepts/assets/builtin-catalog.md
       - 材质系统:
           - concepts/material/index.md
+          - Material Contract v2: concepts/material/material-contract-v2.md
           - 文件到实例: concepts/material/file-to-instance.md
-          - 模板与 Pass: concepts/material/template-blueprint.md
+          - RenderPath Pass Contract: concepts/material/render-path-pass-contract.md
           - Shader 与绑定: concepts/material/shader.md
           - 内置 Shader 清单: concepts/material/shader-catalog.md
           - 实例状态: concepts/material/material-instance.md
           - 多 Pass 如何变成 Draw: concepts/material/pass-rendering-flow.md
           - 什么是 Pipeline: concepts/material/what-is-pipeline.md
-          - 材质模板为什么会影响 Pipeline: concepts/material/template-and-pipeline.md
+          - Contract 如何影响 Pipeline: concepts/material/contract-and-pipeline.md
           - 创建与排错: concepts/material/custom-template.md
-          - 未来路线: concepts/material/future-roadmap.md
+          - Hardcut 当前边界: concepts/material/hardcut-boundary.md
       - 相机细节:
           - 一次点击怎样穿过像素、NDC 和 Vulkan: concepts/camera/pixel-ndc-vulkan.md
       - 引擎循环:
           - concepts/engine-loop.md
       - 渲染管线:
           - 总览: concepts-design/rendering-pipeline/index.md
+          - RenderPathGraph: concepts-design/rendering-pipeline/render-path-graph.md
           - FrameGraph: concepts-design/rendering-pipeline/framegraph.md
+          - RenderWorkCompiler: concepts-design/rendering-pipeline/render-work-compiler.md
           - Realtime / Offline: concepts-design/rendering-pipeline/realtime-offline-shared-flow.md
           - Render Target: concepts-design/rendering-pipeline/render-target.md
           - Shadow Pass: concepts-design/rendering-pipeline/shadow-pass.md
           - Plane 与薄盒阴影: concepts-design/rendering-pipeline/plane-vs-thin-box-shadow.md
           - CSM: concepts-design/rendering-pipeline/cascaded-shadow-maps.md
-          - RenderWorkQueue: concepts-design/rendering-pipeline/render-queue.md
           - 3DGS PLY: concepts-design/rendering-pipeline/3dgs-ply-rendering.md
       - 编辑器系统:
           - 总览: design/editor-system/index.md
@@ -130,6 +130,14 @@ nav:
   - 需求（进行中）:
       - requirements/index.md
       - "@requirements"
+  - Superpowers:
+      - 总览: superpowers/index.md
+      - 设计 Specs:
+          - superpowers/specs/index.md
+          - "@superpowers_specs"
+      - 执行 Plans:
+          - superpowers/plans/index.md
+          - "@superpowers_plans"
   - Use Cases:
       - use_cases/index.md
       - lxe_editor 复杂场景录制: use_cases/lxe_editor/record-complex-scene-edit.md
@@ -139,6 +147,7 @@ nav:
       - "@temporary"
   - 相关工具:
       - tools/index.md
+      - Assets Downloader（开发中，未完成）: tools/assets-downloader.md
       - lxe_manager MCP 服务: tools/lxe-manager-mcp.md
       - Notes 工具链说明: tools/notes-tooling.md
   - Debug 复盘:

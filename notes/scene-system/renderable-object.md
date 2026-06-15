@@ -7,7 +7,7 @@
 | 部分 | 负责什么 | 不负责什么 |
 |---|---|---|
 | `MeshComponent` | vertex buffer、index buffer、mesh pipeline signature | shader、UBO、纹理 |
-| `MaterialComponent` | `MaterialInstance`、pass、shader、descriptor resources | 节点 transform、几何数据 |
+| `MaterialComponent` | `MaterialInstance`、surface envelope、资源依赖 | 节点 transform、几何数据、pass/shader 选择 |
 | `SceneNode` | transform、visibility、validated pass cache、per-draw data | 文件加载和材质内部 pipeline 解释 |
 
 材质内部的 pass、pipeline identity、系统资源绑定比较复杂，放在 [材质系统](../concepts/material/index.md) 里讲。这里我们只关心它如何和 mesh 一起让节点成为 renderable。
@@ -18,12 +18,13 @@
 
 | 缓存字段 | 来源 |
 |---|---|
-| `pass` | `MaterialInstance` 当前 enabled passes |
-| `shaderInfo` | material pass shader |
+| `pass` | active RenderPathGraph 中匹配 render class / BSDF type 的 pass |
+| `shaderInfo` | RenderPathGraph pass shader |
 | `vertexBuffer` / `indexBuffer` | mesh |
-| `descriptorResources` | material resources + skeleton 等 renderable resources |
-| `objectSignature` | mesh/material/skeleton 等对象签名 |
-| `pipelineKey` | pass 下的 pipeline identity 输入 |
+| `descriptorResources` | material/feature/scene/skeleton 等资源 |
+| `materialTypeVariant` | material contract / source variant |
+| `renderPathNodeSignature` | graph pass 的 shader/renderState/attachment/geometry contract |
+| `pipelineKey` | `MaterialTypeVariant + RenderPathNodeSignature` |
 
 这样 render queue 拿到节点时，不需要重新判断“这个对象能不能画”。它只需要针对当前 pass 和 camera/visibility 过滤，取出已经验证过的 pass 数据。
 
@@ -37,9 +38,10 @@
   mesh:
     uri: assets/models/builtin/props/crate/model.obj       # -> MeshComponent
   material:
-    uri: assets/materials/blinnphong_textured.material     # -> MaterialComponent
+    uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material # -> MaterialComponent
   materialOverrides:
-    MaterialUBO.baseColor: [0.8, 0.7, 0.4]                 # -> MaterialInstance parameter write
+    baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }       # -> material envelope override
+    roughness: { kind: float, value: 0.35 }
 ```
 
 YAML 字段本身属于资产系统；节点怎样用这些字段形成 draw 输入，属于场景系统。
@@ -48,4 +50,4 @@ YAML 字段本身属于资产系统；节点怎样用这些字段形成 draw 输
 
 - [Component 组件](component.md)
 - [材质系统](../concepts/material/index.md)
-- [源码分析：RenderingItem](../source_analysis/src/core/scene/scene.md)
+- [源码分析：RenderWorkItem](../source_analysis/src/core/scene/scene.md)

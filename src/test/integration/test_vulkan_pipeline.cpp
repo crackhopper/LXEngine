@@ -2,13 +2,8 @@
 #include "backend/vulkan/details/resource_manager.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/scene/components/material_component.hpp"
-#include "core/scene/components/mesh_component.hpp"
-#include "core/scene/components/skeleton_component.hpp"
-#include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/window/window.hpp"
 
 #include "scene_test_helpers.hpp"
@@ -46,21 +41,10 @@ int main() {
           {1.0f, 0.0f, 0.0f, 0.0f}, {0, 0, 0, 0}, {1.0f, 0.0f, 0.0f, 0.0f}),
     });
     auto indexBufferPtr = LX_core::IndexBuffer::create({0u, 1u, 2u});
-    auto meshPtr = LX_core::Mesh::create(
-        vertexBufferPtr, indexBufferPtr,
-        LX_core::BoundingBox{{-5.0f, -5.0f, 0.0f}, {5.0f, 5.0f, 0.0f}});
-    auto material = LX_infra::loadGenericMaterial(
-        "assets/materials/blinnphong_default.material");
-    auto node = LX_core::SceneNode::create("vulkan_pipeline_node");
-    node->addComponent<LX_core::MeshComponent>(meshPtr);
-    node->addComponent<LX_core::MaterialComponent>(material);
-    node->addComponent<LX_core::SkeletonComponent>(
-        LX_core::Skeleton::create({}));
-    auto scene = LX_core::Scene::create(node);
-    scene->addCamera(LX_test::makeDefaultCameraNodeWithTarget());
-    auto item = LX_test::firstItemFromScene(*scene, LX_core::Pass_Forward);
-
-    auto pipeline = resourceManager->getOrCreatePipeline(item);
+    auto pipelineDesc =
+        LX_test::makeMinimalDirectRasterHelperPipelineBuildDescForVulkanTests(
+            *vertexBufferPtr, *indexBufferPtr);
+    auto pipeline = resourceManager->getOrCreatePipeline(pipelineDesc);
 
     const VkPipeline pipelineHandle =
         std::visit([](auto ref) { return ref.get().getHandle(); }, pipeline);

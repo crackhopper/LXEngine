@@ -1,0 +1,373 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+const uint SCENE_ATTRIBUTE_NORMAL0 = 1u;
+
+struct lxSceneMeshRecord {
+  uint vertexOffset;
+  uint indexOffset;
+  uint indexCount;
+  uint geometryIndex;
+  uint attributeStreamOffset;
+  uint attributeStreamCount;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct lxSceneAttributeStreamRecord {
+  uint semantic;
+  uint valueOffset;
+  uint valueCount;
+  uint components;
+};
+
+struct lxScenePrimitiveRecord {
+  uint indexOffset;
+  uint meshIndex;
+  uint materialIndex;
+  uint objectIndex;
+};
+
+struct lxSceneObjectRecord {
+  mat4 objectToWorld;
+  mat4 worldToObject;
+  vec4 boundsMin;
+  vec4 boundsMax;
+  uvec4 flags;
+};
+
+struct lxSceneMaterialRecord {
+  vec4 baseColor;
+  vec4 pbrParams;
+  vec4 emissive;
+  uint baseColorTexture;
+  uint normalTexture;
+  uint metallicRoughnessTexture;
+  uint aoTexture;
+  uint emissiveTexture;
+  uint flags;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct lxSceneBvhNode {
+  vec4 boundsMinLeftFirst;
+  vec4 boundsMaxTriCount;
+};
+
+layout(std430, binding = 0) readonly buffer ScenePositions {
+  vec4 positions[];
+};
+
+layout(std430, binding = 1) readonly buffer SceneAttributeStreams {
+  lxSceneAttributeStreamRecord attributeStreams[];
+};
+
+layout(std430, binding = 2) readonly buffer SceneAttributeValues {
+  vec4 attributeValues[];
+};
+
+layout(std430, binding = 3) readonly buffer SceneIndices {
+  uint indices[];
+};
+
+layout(std430, binding = 4) readonly buffer SceneMeshes {
+  lxSceneMeshRecord meshes[];
+};
+
+layout(std430, binding = 5) readonly buffer ScenePrimitives {
+  lxScenePrimitiveRecord primitives[];
+};
+
+layout(std430, binding = 6) readonly buffer SceneObjects {
+  lxSceneObjectRecord objects[];
+};
+
+layout(std430, binding = 7) readonly buffer SceneMaterials {
+  lxSceneMaterialRecord materials[];
+};
+
+layout(std430, binding = 8) readonly buffer SceneBvhNodes {
+  lxSceneBvhNode bvhNodes[];
+};
+
+layout(std430, binding = 9) readonly buffer SceneFrameParams {
+  vec4 eye;
+  vec4 cameraRight;
+  vec4 cameraUp;
+  vec4 cameraForward;
+  vec4 lightDirectionIntensity;
+  vec4 lightColorEnvironment;
+  vec4 backgroundColor;
+  vec4 reserved;
+  uint width;
+  uint height;
+  uint samples;
+  uint seed;
+  uint primitiveCount;
+  uint bvhNodeCount;
+  uint materialCount;
+  uint maxBounce;
+  uint shadowsEnabled;
+  uint compareMode;
+  uint integrator;
+  uint frameIndex;
+} params;
+
+layout(std430, binding = 10) writeonly buffer OutputPixels {
+  vec4 pixels[];
+};
+
+const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
+const uint MATERIAL_CULL_MODE_MASK = 0x3u;
+const uint MATERIAL_CULL_MODE_NONE = 0u;
+const uint MATERIAL_CULL_MODE_FRONT = 1u;
+const uint MATERIAL_CULL_MODE_BACK = 2u;
+
+uint wangHash(uint value) {
+  value = (value ^ 61u) ^ (value >> 16u);
+  value *= 9u;
+  value = value ^ (value >> 4u);
+  value *= 0x27d4eb2du;
+  value = value ^ (value >> 15u);
+  return value;
+}
+
+float random01(uint seed) {
+  return float(wangHash(seed) & 0x00ffffffu) / float(0x01000000u);
+}
+
+vec3 environmentColor(vec3 dir) {
+  return params.backgroundColor.rgb;
+}
+
+struct HitAttributes {
+  vec3 normal;
+  vec2 uv;
+  uint materialIndex;
+};
+
+vec3 transformPoint(mat4 m, vec3 p) {
+  vec4 value = m * vec4(p, 1.0);
+  return value.xyz / max(value.w, 1.0e-8);
+}
+
+vec4 readMeshAttribute(lxSceneMeshRecord mesh, uint semantic, uint vertexIndex,
+                       vec4 fallback) {
+  for (uint i = 0u; i < mesh.attributeStreamCount; ++i) {
+    lxSceneAttributeStreamRecord stream =
+        attributeStreams[mesh.attributeStreamOffset + i];
+    if (stream.semantic != semantic || vertexIndex < mesh.vertexOffset ||
+        vertexIndex >= mesh.vertexOffset + stream.valueCount) {
+      continue;
+    }
+    return attributeValues[stream.valueOffset + vertexIndex - mesh.vertexOffset];
+  }
+  return fallback;
+}
+
+bool shouldCullRayHit(uint materialIndex, bool frontFacing) {
+  if (params.materialCount == 0u) {
+    return false;
+  }
+  lxSceneMaterialRecord material =
+      materials[min(materialIndex, params.materialCount - 1u)];
+  uint cullMode = material.flags & MATERIAL_CULL_MODE_MASK;
+  if (cullMode == MATERIAL_CULL_MODE_BACK) {
+    return !frontFacing;
+  }
+  if (cullMode == MATERIAL_CULL_MODE_FRONT) {
+    return frontFacing;
+  }
+  return false;
+}
+
+bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
+                        out float t, out HitAttributes attributes) {
+  lxSceneObjectRecord object = objects[primitive.objectIndex];
+  lxSceneMeshRecord mesh = meshes[primitive.meshIndex];
+  uint i0 = indices[primitive.indexOffset + 0u];
+  uint i1 = indices[primitive.indexOffset + 1u];
+  uint i2 = indices[primitive.indexOffset + 2u];
+  vec4 p0 = positions[i0];
+  vec4 p1 = positions[i1];
+  vec4 p2 = positions[i2];
+  vec3 v0 = transformPoint(object.objectToWorld, p0.xyz);
+  vec3 v1 = transformPoint(object.objectToWorld, p1.xyz);
+  vec3 v2 = transformPoint(object.objectToWorld, p2.xyz);
+  vec3 e1 = v1 - v0;
+  vec3 e2 = v2 - v0;
+  vec3 p = cross(dir, e2);
+  float det = dot(e1, p);
+  if (abs(det) < 1e-7) {
+    return false;
+  }
+  if (shouldCullRayHit(primitive.materialIndex, det > 0.0)) {
+    return false;
+  }
+  float invDet = 1.0 / det;
+  vec3 tv = origin - v0;
+  float u = dot(tv, p) * invDet;
+  if (u < 0.0 || u > 1.0) {
+    return false;
+  }
+  vec3 q = cross(tv, e1);
+  float v = dot(dir, q) * invDet;
+  if (v < 0.0 || u + v > 1.0) {
+    return false;
+  }
+  t = dot(e2, q) * invDet;
+  if (t <= 0.0005) {
+    return false;
+  }
+  vec4 n0 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i0,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec4 n1 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i1,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec4 n2 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i2,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec3 localNormal =
+      normalize(n0.xyz * (1.0 - u - v) + n1.xyz * u + n2.xyz * v);
+  vec3 normal = normalize(transpose(mat3(object.worldToObject)) * localNormal);
+  attributes.normal = normal;
+  attributes.uv = vec2(0.0);
+  attributes.materialIndex = primitive.materialIndex;
+  return true;
+}
+
+bool intersectAabb(vec3 origin, vec3 invDir, vec3 bmin, vec3 bmax,
+                   float maxT) {
+  vec3 t0 = (bmin - origin) * invDir;
+  vec3 t1 = (bmax - origin) * invDir;
+  vec3 tmin = min(t0, t1);
+  vec3 tmax = max(t0, t1);
+  float lo = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
+  float hi = min(min(tmax.x, tmax.y), min(tmax.z, maxT));
+  return hi >= lo;
+}
+
+bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
+                out vec3 hitNormal, out uint materialIndex) {
+  hitT = maxT;
+  hitNormal = vec3(0.0, 1.0, 0.0);
+  materialIndex = 0u;
+  bool hit = false;
+  vec3 invDir = 1.0 / dir;
+  uint stack[64];
+  uint stackSize = 0u;
+  stack[stackSize++] = 0u;
+  while (stackSize > 0u) {
+    uint nodeIndex = stack[--stackSize];
+    if (nodeIndex >= params.bvhNodeCount) {
+      continue;
+    }
+    lxSceneBvhNode node = bvhNodes[nodeIndex];
+    if (!intersectAabb(origin, invDir, node.boundsMinLeftFirst.xyz,
+                       node.boundsMaxTriCount.xyz, hitT)) {
+      continue;
+    }
+    uint packedNodeData = floatBitsToUint(node.boundsMaxTriCount.w);
+    uint leftFirst = floatBitsToUint(node.boundsMinLeftFirst.w);
+    bool isLeaf = (packedNodeData & BVH_LEAF_NODE_FLAG) != 0u;
+    if (isLeaf) {
+      uint triCount = packedNodeData & ~BVH_LEAF_NODE_FLAG;
+      for (uint i = 0u; i < triCount; ++i) {
+        uint primitiveIndex = leftFirst + i;
+        if (primitiveIndex >= params.primitiveCount) {
+          continue;
+        }
+        float t;
+        HitAttributes attributes;
+        if (intersectPrimitive(origin, dir, primitives[primitiveIndex], t,
+                               attributes) &&
+            t < hitT) {
+          hit = true;
+          hitT = t;
+          hitNormal = attributes.normal;
+          materialIndex = attributes.materialIndex;
+        }
+      }
+    } else {
+      if (stackSize + 2u < 64u) {
+        stack[stackSize++] = packedNodeData;
+        stack[stackSize++] = leftFirst;
+      }
+    }
+  }
+  return hit;
+}
+
+vec3 shade(vec3 origin, vec3 dir) {
+  float hitT;
+  vec3 normal;
+  uint matIndex;
+  if (!traceScene(origin, dir, 1.0e30, hitT, normal, matIndex)) {
+    if (params.compareMode == 1u) {
+      return vec3(0.0);
+    }
+    return environmentColor(dir);
+  }
+
+  lxSceneMaterialRecord material =
+      materials[min(matIndex, params.materialCount - 1u)];
+  vec3 baseColor = material.baseColor.rgb;
+  if (params.compareMode == 1u) {
+    return baseColor;
+  }
+  float metallic = clamp(material.pbrParams.x, 0.0, 1.0);
+  float specularIntensity = max(material.pbrParams.z, 0.0);
+  float ambientIntensity = max(material.pbrParams.w, 0.0);
+  float shininess = max(material.emissive.w, 1.0);
+  vec3 hitPos = origin + dir * hitT;
+  vec3 toLight = normalize(-params.lightDirectionIntensity.xyz);
+  float ndotl = max(dot(normal, toLight), 0.0);
+
+  float shadowT;
+  vec3 shadowN;
+  uint shadowMat;
+  bool occluded = params.shadowsEnabled != 0u &&
+                  traceScene(hitPos + normal * 0.002, toLight, 1.0e30,
+                             shadowT, shadowN, shadowMat);
+  float visibility = occluded ? 0.0 : 1.0;
+
+  vec3 lightColor = params.lightColorEnvironment.rgb *
+                    params.lightDirectionIntensity.w;
+  vec3 diffuse = baseColor * ndotl * visibility * lightColor;
+
+  vec3 viewDir = normalize(-dir);
+  vec3 halfDir = normalize(toLight + viewDir);
+  float ndoth = max(dot(normal, halfDir), 0.0);
+  vec3 specular =
+      pow(ndoth, shininess) * specularIntensity * visibility * lightColor;
+
+  vec3 reflection = environmentColor(reflect(dir, normal));
+  vec3 ambient = mix(baseColor * ambientIntensity, reflection, metallic);
+  return ambient + diffuse * (1.0 - metallic * 0.65) + specular +
+         material.emissive.rgb;
+}
+
+void main() {
+  uvec2 gid = gl_GlobalInvocationID.xy;
+  if (gid.x >= params.width || gid.y >= params.height) {
+    return;
+  }
+  uint pixelIndex = gid.y * params.width + gid.x;
+  vec3 color = vec3(0.0);
+  uint sampleCount = max(params.samples, 1u);
+  for (uint s = 0u; s < sampleCount; ++s) {
+    uint sampleSeed = params.seed ^ (pixelIndex * 9781u) ^ (s * 6271u);
+    vec2 jitter = vec2(random01(sampleSeed), random01(sampleSeed ^ 0x9e3779b9u));
+    if (sampleCount == 1u) {
+      jitter = vec2(0.5);
+    }
+    vec2 uv = (vec2(gid) + jitter) / vec2(params.width, params.height);
+    vec2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    vec3 rayDir = normalize(params.cameraForward.xyz +
+                            params.cameraRight.xyz * ndc.x +
+                            params.cameraUp.xyz * ndc.y);
+    color += shade(params.eye.xyz, rayDir);
+  }
+  pixels[pixelIndex] = vec4(color / float(sampleCount), 1.0);
+}

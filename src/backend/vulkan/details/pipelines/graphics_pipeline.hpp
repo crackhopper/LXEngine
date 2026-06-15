@@ -15,6 +15,7 @@
 #include <vulkan/vulkan.h>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -79,6 +80,8 @@ protected:
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
   VertexLayout m_vertexLayout;
   RenderTargetDesc m_target;
+  std::optional<RenderPathNodeRenderingMode> m_renderingMode;
+  std::vector<RenderPathAttachmentContract> m_attachments;
   RenderState m_renderState;
   PrimitiveTopology m_topology = PrimitiveTopology::TriangleList;
   PushConstantRange m_pushConstant;

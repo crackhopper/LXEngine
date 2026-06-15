@@ -12,7 +12,6 @@
 #include "core/scene/visibility_mask.hpp"
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -25,49 +24,19 @@ namespace LX_core {
 
 class Scene;
 
-struct PerDrawData {
-  using SharedPtr = std::shared_ptr<PerDrawData>;
-
-  alignas(16) u8 data[128] = {0};
-  u32 activeSize = sizeof(PerDrawLayoutBase);
-
-  PerDrawData() {
-    PerDrawLayoutBase base;
-    std::memcpy(data, &base, sizeof(base));
-  }
-
-  template <typename T>
-  void update(const T &params) {
-    static_assert(sizeof(T) <= 128, "PushConstant block too large!");
-    std::memcpy(data, &params, sizeof(T));
-    activeSize = sizeof(T);
-  }
-
-  void updateModelMatrix(const Mat4f &model) {
-    std::memcpy(data, &model, sizeof(model));
-    if (activeSize < sizeof(PerDrawLayoutBase)) {
-      activeSize = sizeof(PerDrawLayoutBase);
-    }
-  }
-
-  const void *rawData() const { return data; }
-  u32 byteSize() const { return activeSize; }
-};
-
-using PerDrawDataSharedPtr = PerDrawData::SharedPtr;
-
 struct ValidatedRenderablePassData {
   StringID pass;
+  ObjectHandle objectHandle;
   MaterialHandle materialHandle;
+  ShaderProgramSet shaderProgram;
   IShaderSharedPtr shaderInfo;
-  PerDrawDataSharedPtr drawData;
   GpuResourceRef vertexBuffer;
   GpuResourceRef indexBuffer;
   GpuResourceRef bonesResource;
   RenderState renderState;
   Vec3f sortCenter{0.0f, 0.0f, 0.0f};
-  StringID objectSignature;
-  StringID materialSignature;
+  StringID materialTypeVariant;
+  StringID materialTypeSignature;
 };
 
 class IRenderable {
@@ -77,13 +46,13 @@ public:
   virtual GpuResourceRef getVertexBuffer() const = 0;
   virtual GpuResourceRef getIndexBuffer() const = 0;
   virtual IShaderSharedPtr getShaderInfo() const = 0;
-  virtual PerDrawDataSharedPtr getPerDrawData() const { return nullptr; }
   virtual StringID getPipelineSignature(StringID pass) const = 0;
   virtual bool supportsPass(StringID pass) const = 0;
   virtual VisibilityLayerMask getVisibilityLayerMask() const = 0;
   virtual std::string getNodeName() const = 0;
   virtual StringID getDebugId() const { return StringID{}; }
   virtual bool isDebugOnlyRenderable() const { return false; }
+  virtual std::optional<StringID> getRenderType() const { return std::nullopt; }
 
   virtual std::optional<
       std::reference_wrapper<const ValidatedRenderablePassData>>
@@ -204,7 +173,6 @@ public:
   GpuResourceRef getVertexBuffer() const override;
   GpuResourceRef getIndexBuffer() const override;
   IShaderSharedPtr getShaderInfo() const override;
-  PerDrawDataSharedPtr getPerDrawData() const override;
   StringID getPipelineSignature(StringID pass) const override;
   bool supportsPass(StringID pass) const override;
   std::string getNodeName() const override { return m_nodeName; }
@@ -219,6 +187,10 @@ public:
   void setVisibilityLayerMask(VisibilityLayerMask mask);
   bool isDebugOnlyRenderable() const override { return m_debugOnlyRenderable; }
   void setDebugOnlyRenderable(bool value);
+  void setRenderType(StringID renderType);
+  std::optional<StringID> getRenderType() const override {
+    return m_renderType;
+  }
 
   std::optional<std::reference_wrapper<const ValidatedRenderablePassData>>
   getValidatedPassData(StringID pass) const override;
@@ -231,7 +203,6 @@ private:
   [[nodiscard]] static SharedPtr createPathRoot();
   void markWorldTransformDirty();
   void updateWorldTransformIfNeeded() const;
-  void syncPerDrawModelMatrix() const;
   void removeFromParentChildrenList();
   void pruneExpiredChildren();
   void rebuildValidatedCache();
@@ -249,7 +220,6 @@ private:
   std::string m_nodeName;
   std::string m_name;
   std::vector<std::unique_ptr<IComponent>> m_components;
-  PerDrawDataSharedPtr m_perDrawData;
   StringID m_debugId;
   std::unordered_map<StringID, ValidatedRenderablePassData, StringID::Hash>
       m_validatedPasses;
@@ -264,6 +234,7 @@ private:
   mutable bool m_worldTransformHasParent = false;
   VisibilityLayerMask m_visibilityLayerMask = VisibilityMask_All;
   bool m_debugOnlyRenderable = false;
+  std::optional<StringID> m_renderType;
   bool m_isPathRoot = false;
 };
 

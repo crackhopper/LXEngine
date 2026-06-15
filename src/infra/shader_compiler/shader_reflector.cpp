@@ -188,8 +188,9 @@ ShaderReflector::reflectSingleStage(const LX_core::ShaderStageCode &stage) {
           // Buffer size
           b.size = computeBufferSize(compiler, res);
 
-          // UBO member layout (flat blocks only; others remain empty)
-          if (b.type == LX_core::ShaderPropertyType::UniformBuffer) {
+          // Buffer member layout (flat blocks only; others remain empty).
+          if (b.type == LX_core::ShaderPropertyType::UniformBuffer ||
+              b.type == LX_core::ShaderPropertyType::StorageBuffer) {
             const auto &blockType = compiler.get_type(res.base_type_id);
             if (blockType.basetype == spirv_cross::SPIRType::Struct) {
               extractStructMembers(compiler, blockType, b.members);

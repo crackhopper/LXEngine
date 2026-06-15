@@ -6,10 +6,13 @@
 #include "infra/scene_io/scene_document.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace LX_infra::offline {
+
+using OfflineShaderProvider = std::function<LX_core::IShaderSharedPtr()>;
 
 struct OfflineLoadedScene final {
   LX_core::SceneResourceTable table;
@@ -19,7 +22,8 @@ struct OfflineLoadedScene final {
 
 class OfflineSceneLoader final {
 public:
-  explicit OfflineSceneLoader(OfflineAssetResolver resolver);
+  explicit OfflineSceneLoader(OfflineAssetResolver resolver,
+                              OfflineShaderProvider offlineShaderProvider = {});
 
   [[nodiscard]] OfflineLoadedScene
   load(const LX_infra::scene_io::SceneDocument &document,
@@ -31,6 +35,7 @@ public:
 
 private:
   OfflineAssetResolver m_resolver;
+  OfflineShaderProvider m_offlineShaderProvider;
 };
 
 } // namespace LX_infra::offline

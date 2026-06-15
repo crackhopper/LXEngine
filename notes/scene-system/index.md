@@ -14,7 +14,7 @@
 | `CameraComponent` | 把某个节点变成观察场景的相机 | 摄影机 |
 | `LightBase` / concrete lights | 把光照参数绑定到场景节点 | 灯具 |
 | `MeshComponent` + `MaterialComponent` | 让节点成为可渲染对象 | 几何外形 + 表面配方 |
-| `RenderingItem` | 一帧里某个 pass 的 draw 记录 | 排练单上的一次出场 |
+| `RenderWorkItem` | 一帧里某个 pass 的 draw/dispatch 记录 | 排练单上的一次出场 |
 
 ## 阅读顺序
 

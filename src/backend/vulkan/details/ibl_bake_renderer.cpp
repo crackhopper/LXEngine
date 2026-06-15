@@ -2,8 +2,9 @@
 
 #include "core/asset/material_instance.hpp"
 #include "core/asset/material_template.hpp"
-#include "core/frame_graph/render_upload_plan.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/math/mat.hpp"
+#include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/scene.hpp"
@@ -41,6 +42,23 @@ usize cubemapLayoutKey(StringID resourceName, u32 mipLevel, u32 faceLayer) {
   hash ^=
       static_cast<usize>(faceLayer) + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
   return hash;
+}
+
+StringID makeBakeRenderPathNodeSignature(const std::string &shaderName,
+                                         const RenderState &renderState,
+                                         const RenderTargetDesc &target,
+                                         u32 indexCount) {
+  auto &tbl = GlobalStringTable::get();
+  StringID fields[] = {
+      StringID("pass=PostProcess"),
+      StringID("shader=" + shaderName),
+      StringID("stage=raster"),
+      StringID(indexCount == 36u ? "dispatch=cube-bake"
+                                 : "dispatch=fullscreen-bake"),
+      renderState.getPipelineSignature(),
+      target.getPipelineSignature(),
+  };
+  return tbl.compose(TypeTag::RenderPathNode, fields);
 }
 
 void transitionSubresource(VkCommandBuffer cmd, VkImage image,
@@ -303,7 +321,9 @@ std::array<Mat4f, 6> captureViewProjections() {
 }
 
 struct BakeWorkItem final {
-  RenderWorkItem item;
+  RenderDrawInput input;
+  RenderInputDesc desc;
+  PipelineBuildDesc pipelineBuildDesc;
   VertexBufferUniquePtr vertexBuffer;
   IndexBufferUniquePtr indexBuffer;
 };
@@ -337,25 +357,60 @@ BakeWorkItem makeBakeItem(const std::string &shaderName,
   std::iota(indices.begin(), indices.end(), 0u);
   work.indexBuffer = IndexBuffer::createUnique(std::move(indices));
 
-  RenderWorkItem &item = work.item;
-  item.shaderInfo = shader;
-  item.renderState = material->getPassRenderState(Pass_PostProcess);
-  item.raster.vertexBuffer = GpuResourceRef{*work.vertexBuffer};
-  item.raster.indexBuffer = GpuResourceRef{*work.indexBuffer};
-  item.descriptorResources.reserve(resources.size());
+  RenderDrawInput &input = work.input;
+  input.source = RenderDrawInputSource::SceneRenderable;
+  input.pass = Pass_PostProcess;
+  input.debugId =
+      StringID(indexCount == 36u ? "IblBakeCube" : "IblBakeFullscreen");
+  input.inputIndex = 0;
+  input.vertexBuffer = GpuResourceRef{*work.vertexBuffer};
+  input.indexBuffer = GpuResourceRef{*work.indexBuffer};
+  input.drawCommands.push_back(RenderDrawCommand{
+      .indexCount = indexCount,
+      .instanceCount = 1,
+  });
+  std::vector<DescriptorResourceRef> descriptors;
+  descriptors.reserve(resources.size());
   for (auto &resource : resources) {
     if (resource.isValid()) {
-      item.descriptorResources.emplace_back(resource.get());
+      descriptors.emplace_back(resource.get());
     }
   }
-  item.pass = Pass_PostProcess;
-  item.target = target;
-  item.objectSignature =
-      StringID(indexCount == 36u ? "IblBakeCube" : "IblBakeFullscreen");
-  item.materialSignature = material->getPipelineSignature(item.pass);
-  item.pipelineKey =
-      PipelineKey::build(item.objectSignature, item.materialSignature,
-                         item.target.getPipelineSignature());
+  const auto resolvedShaderProgram =
+      material->getPassShaderProgram(Pass_PostProcess);
+  if (!resolvedShaderProgram.has_value()) {
+    throw std::logic_error("IBL bake material missing shader program");
+  }
+  const ShaderProgramSet resolvedProgram = resolvedShaderProgram->get();
+  const RenderState renderState = material->getPassRenderState(Pass_PostProcess);
+  const StringID materialTypeVariant =
+      material->getMaterialTypeVariantSignature(resolvedProgram);
+  const StringID renderPathNodeSignature =
+      makeBakeRenderPathNodeSignature(shaderName, renderState, target,
+                                      indexCount);
+  const PipelineKey pipelineKey =
+      PipelineKey::build(materialTypeVariant, renderPathNodeSignature);
+  work.pipelineBuildDesc = PipelineBuildDesc::graphics(
+      pipelineKey, resolvedProgram.getPipelineSignature(), target,
+      shader->getAllStages(), shader->getReflectionBindings(),
+      work.vertexBuffer->getLayout(), renderState,
+      work.indexBuffer->getTopology(), std::nullopt, {});
+  work.desc.status = RenderInputStatus::Accepted;
+  work.desc.inputIndex = input.inputIndex;
+  work.desc.pass = input.pass;
+  work.desc.debugId = input.debugId;
+  work.desc.pipelineKey = pipelineKey;
+  work.desc.pipelineBuildDesc = work.pipelineBuildDesc;
+  work.desc.shaderVariantKey = work.pipelineBuildDesc.shaderVariantKey;
+  work.desc.bindingPlan.descriptors = std::move(descriptors);
+  work.desc.resourceDependencies.push_back(input.vertexBuffer);
+  work.desc.resourceDependencies.push_back(input.indexBuffer);
+  for (const DescriptorResourceRef &descriptor :
+       work.desc.bindingPlan.descriptors) {
+    if (descriptor.isResource()) {
+      work.desc.resourceDependencies.push_back(descriptor.resource());
+    }
+  }
   return work;
 }
 
@@ -366,12 +421,23 @@ BakeWorkItem makeFullscreenBakeItem(const std::string &shaderName,
 
 void syncBakeItemResources(VulkanResourceManager &resourceManager,
                            VulkanCommandBufferManager &cmdBufferManager,
-                           const RenderWorkItem &item) {
-  RenderWorkQueue queue;
-  queue.addItem(item);
-  const RenderUploadPlan uploadPlan = buildRenderUploadPlan(queue);
-  for (const auto &resource : uploadPlan.resources) {
-    resourceManager.syncResource(cmdBufferManager, resource);
+                           const BakeWorkItem &work) {
+  resourceManager.syncResource(cmdBufferManager, work.input.vertexBuffer);
+  resourceManager.syncResource(cmdBufferManager, work.input.indexBuffer);
+  for (const DescriptorResourceRef &resource :
+       work.desc.bindingPlan.descriptors) {
+    if (resource.isTextureArray()) {
+      for (const TextureSamplerRef &texture : resource.textures()) {
+        if (texture.isValid()) {
+          resourceManager.syncResource(cmdBufferManager,
+                                       GpuResourceRef{texture.get()});
+        }
+      }
+      continue;
+    }
+    if (resource.resource().isValid()) {
+      resourceManager.syncResource(cmdBufferManager, resource.resource());
+    }
   }
 }
 
@@ -550,8 +616,8 @@ void IblBakeRenderer::renderEquirectToCubemap(
                    {GpuResourceRef{*source}, GpuResourceRef{*captureView}},
                    36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -578,8 +644,8 @@ void IblBakeRenderer::renderEquirectToCubemap(
     cmd->setViewport(skyboxSize, skyboxSize);
     cmd->setScissor(skyboxSize, skyboxSize);
     cmd->bindPipeline(pipeline);
-    cmd->bindResources(m_resourceManager, pipeline, work.item);
-    cmd->executeWorkItem(work.item);
+    cmd->bindResources(m_resourceManager, pipeline, work.input, work.desc);
+    cmd->executeRenderInput(work.input, work.desc);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -611,8 +677,8 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
                    {GpuResourceRef{*skybox}, GpuResourceRef{*captureView}},
                    36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 face = 0; face < 6u; ++face) {
@@ -640,8 +706,8 @@ void IblBakeRenderer::renderIrradianceCubemap(u32 irradianceSize) {
     cmd->setViewport(irradianceSize, irradianceSize);
     cmd->setScissor(irradianceSize, irradianceSize);
     cmd->bindPipeline(pipeline);
-    cmd->bindResources(m_resourceManager, pipeline, work.item);
-    cmd->executeWorkItem(work.item);
+    cmd->bindResources(m_resourceManager, pipeline, work.input, work.desc);
+    cmd->executeRenderInput(work.input, work.desc);
     cmd->endRenderPass();
     m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                              m_device.getGraphicsQueue());
@@ -676,8 +742,8 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
                             GpuResourceRef{*prefilter}},
                            36u);
 
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   const auto viewProjections = captureViewProjections();
   for (u32 mip = 0; mip < mipLevels; ++mip) {
@@ -715,8 +781,8 @@ void IblBakeRenderer::renderPrefilterCubemap(u32 prefilterSize, u32 mipLevels) {
       cmd->setViewport(extentValue, extentValue);
       cmd->setScissor(extentValue, extentValue);
       cmd->bindPipeline(pipeline);
-      cmd->bindResources(m_resourceManager, pipeline, work.item);
-      cmd->executeWorkItem(work.item);
+      cmd->bindResources(m_resourceManager, pipeline, work.input, work.desc);
+      cmd->executeRenderInput(work.input, work.desc);
       cmd->endRenderPass();
       m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                                m_device.getGraphicsQueue());
@@ -744,8 +810,8 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   RenderTargetDesc target =
       RenderTargetDesc::offscreenColor(ImageFormat::RGBA16Float);
   auto work = makeFullscreenBakeItem("ibl_brdf_lut", target);
-  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work.item);
-  auto pipeline = m_resourceManager.getOrCreatePipeline(work.item);
+  syncBakeItemResources(m_resourceManager, m_cmdBufferManager, work);
+  auto pipeline = m_resourceManager.getOrCreatePipeline(work.pipelineBuildDesc);
 
   auto cmd = m_cmdBufferManager.beginSingleTimeCommands();
   transitionTexture2D(
@@ -760,8 +826,8 @@ void IblBakeRenderer::clearBrdfLut(u32 size) {
   cmd->setViewport(size, size);
   cmd->setScissor(size, size);
   cmd->bindPipeline(pipeline);
-  cmd->bindResources(m_resourceManager, pipeline, work.item);
-  cmd->executeWorkItem(work.item);
+  cmd->bindResources(m_resourceManager, pipeline, work.input, work.desc);
+  cmd->executeRenderInput(work.input, work.desc);
   cmd->endRenderPass();
   m_cmdBufferManager.endSingleTimeCommands(std::move(cmd),
                                            m_device.getGraphicsQueue());

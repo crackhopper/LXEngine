@@ -90,6 +90,10 @@ private:
 // stable with the shader-side ABI unless the entire draw contract is migrated.
 struct alignas(16) PerDrawLayoutBase {
   Mat4f model = Mat4f::identity();
+  u32 materialIndex = 0;
+  u32 reserved0 = 0;
+  u32 reserved1 = 0;
+  u32 reserved2 = 0;
 };
 
 /// Transitional alias for the current engine-wide draw push-constant ABI.

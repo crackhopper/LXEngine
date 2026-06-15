@@ -10,9 +10,8 @@ Use this skill when writing or editing LXEngine notes: concepts, design docs, tu
 Always read:
 
 - `AGENTS.md`
-- `openspec/specs/notes-writing-style/spec.md`
 - the target note, index page, or navigation file being changed
-- directly relevant current docs under `notes/concepts/`, `notes/subsystems/`, and `openspec/specs/`
+- directly relevant current docs under `notes/concepts/`, `notes/subsystems/`, and `docs/superpowers/specs/`
 - directly relevant code/assets before making current-behavior claims
 
 ## Core Rules

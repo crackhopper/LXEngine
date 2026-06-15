@@ -1,8 +1,8 @@
 // game_app.cpp
-#include "core/gpu/engine_loop.hpp"
-#include "core/rhi/renderer.hpp"
-#include "core/rhi/index_buffer.hpp"
 #include "core/asset/texture.hpp"
+#include "core/gpu/engine_loop.hpp"
+#include "core/rhi/index_buffer.hpp"
+#include "core/rhi/renderer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/utils/filesystem_tools.hpp"
 
@@ -10,16 +10,15 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 
 // 窗口系统
-#include "infra/window/window.hpp"
-#include "infra/material_loader/generic_material_loader.hpp"
-#include "core/scene/orbit_camera_controller.hpp"
-#include "core/scene/freefly_camera_controller.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/components/skeleton_component.hpp"
+#include "core/scene/freefly_camera_controller.hpp"
+#include "core/scene/orbit_camera_controller.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/window/window.hpp"
 #include "integration/scene_test_helpers.hpp"
 
 #include <array>
@@ -80,7 +79,7 @@ void syncOrbitFromCamera(OrbitCameraController &controller,
 int main() {
   expSetEnvVK();
   if (!initializeRuntimeAssetRoot()) {
-    std::cerr << "Failed to locate runtime resources for blinnphong_0\n";
+    std::cerr << "Failed to locate runtime resources\n";
     return 1;
   }
 
@@ -106,14 +105,11 @@ int main() {
   });
 
   auto indexBufferPtr = IndexBuffer::create({0, 1, 2});
-  auto meshPtr = Mesh::create(vertexBufferPtr, indexBufferPtr,
-                              BoundingBox{{-1.0f, -1.0f, 0.0f},
-                                          {1.0f, 1.0f, 0.0f}});
+  auto meshPtr =
+      Mesh::create(vertexBufferPtr, indexBufferPtr,
+                   BoundingBox{{-1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}});
 
-  auto material = LX_infra::loadGenericMaterial("assets/materials/blinnphong_default.material");
-  material->setParameter(LX_core::StringID("MaterialUBO"),
-                         LX_core::StringID("enableNormal"), 0);
-  material->syncGpuData();
+  auto material = LX_test::makeForwardMinimalMaterialForVulkanTests();
 
   auto skeletonPtr = Skeleton::create({});
 
@@ -138,10 +134,10 @@ int main() {
 
   if (testDebugEnabled()) {
     std::cerr << "[TriangleTest] window=" << window->getWidth() << "x"
-              << window->getHeight() << ", vertexBytes="
-              << vertexBufferPtr->getByteSize() << ", indexBytes="
-              << indexBufferPtr->getByteSize() << ", indices={0,1,2}"
-              << std::endl;
+              << window->getHeight()
+              << ", vertexBytes=" << vertexBufferPtr->getByteSize()
+              << ", indexBytes=" << indexBufferPtr->getByteSize()
+              << ", indices={0,1,2}" << std::endl;
   }
 
   auto input = window->getInputState();
@@ -209,14 +205,13 @@ int main() {
           const Vec4f viewPos = view * debugPositions[i];
           const Vec4f clipPos = proj * viewPos;
           std::cerr << "[TriangleTest] vertex" << i << " view=(" << viewPos.x
-                    << "," << viewPos.y << "," << viewPos.z << ","
-                    << viewPos.w << "), clip=(" << clipPos.x << ","
-                    << clipPos.y << "," << clipPos.z << "," << clipPos.w
-                    << ")";
+                    << "," << viewPos.y << "," << viewPos.z << "," << viewPos.w
+                    << "), clip=(" << clipPos.x << "," << clipPos.y << ","
+                    << clipPos.z << "," << clipPos.w << ")";
           if (clipPos.w != 0.0f) {
             std::cerr << ", ndc=(" << clipPos.x / clipPos.w << ","
-                      << clipPos.y / clipPos.w << ","
-                      << clipPos.z / clipPos.w << ")";
+                      << clipPos.y / clipPos.w << "," << clipPos.z / clipPos.w
+                      << ")";
           }
           std::cerr << std::endl;
         }

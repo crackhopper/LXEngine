@@ -120,11 +120,12 @@ TARGETS = [
             [src/core/asset/parameter_buffer.hpp](../../../../../src/core/asset/parameter_buffer.hpp)
             的类型定义来看：这个类为什么要拆成 `ParameterBuffer`
             和 `MaterialInstance` 两层，以及为什么它现在坚持
-            “按 canonical material bindings 分组的运行时资源表 + pass 级只读筛选”这条主线。
+            “surface envelope + material source signature + 资源依赖账本”这条主线。
 
             可以先带着一个问题阅读：`MaterialTemplate` 已经定义了 pass 和 shader，
-            为什么还需要一个 `MaterialInstance`？答案是，template 负责“结构是什么”，
-            instance 负责“这一帧真正要喂给 backend 的实例数据是什么”。
+            为什么还需要一个 `MaterialInstance`？答案是，material asset 负责描述
+            “表面是什么”，instance 负责把这份表面合同、资源依赖和运行时状态整理成
+            scene / render path 可以消费的事实。
             """
         ).strip(),
         related_sources=(
@@ -203,7 +204,7 @@ TARGETS = [
     SourceAnalysisTarget(
         source="src/core/frame_graph/render_queue.hpp",
         output="notes/source_analysis/src/core/frame_graph/render_queue.md",
-        title="RenderQueue：把 scene × pass 收口成可消费的 draw 列表",
+        title="RenderQueue：把 scene × pass 收口成可消费的 RenderWorkItem 列表",
         intro=textwrap.dedent(
             """\
             这一页从
@@ -211,11 +212,11 @@ TARGETS = [
             和它的实现
             [src/core/frame_graph/render_queue.cpp](../../../../../src/core/frame_graph/render_queue.cpp)
             出发，关注的不是"队列里有哪些 API"，而是 `RenderQueue` 在数据流里的位置：
-            它是 per-pass 的 RenderingItem 收口点，把 `Scene` 的扁平容器视角翻译成
-            backend 能直接消费的 draw 列表。
+            它是 per-pass 的 RenderWorkItem 收口点，把 `Scene` 的扁平容器视角翻译成
+            backend 能直接消费的 draw / dispatch 列表。
 
             可以先带着一个问题阅读：为什么 `RenderQueue` 不是一个全局队列？答案是，
-            同一个 renderable 在不同 pass 下的 RenderingItem 本就不同（不同 shader、
+            同一个 renderable 在不同 pass 下的 RenderWorkItem 本就不同（不同 shader、
             不同 binding、不同 pipelineKey），合并会让"按 pipelineKey 聚合"的语义崩塌；
             这里只在单个 pass 内部完成 REQ-009 两轴筛选、稳定排序、和 pipeline 去重。
             """
@@ -228,7 +229,7 @@ TARGETS = [
     SourceAnalysisTarget(
         source="src/core/frame_graph/frame_graph.hpp",
         output="notes/source_analysis/src/core/frame_graph/frame_graph.md",
-        title="FrameGraph：把 scene 翻译成按 pass 组织的 RenderingItem 列表",
+        title="FrameGraph：把 scene 翻译成按 pass 组织的 RenderWorkItem 列表",
         intro=textwrap.dedent(
             """\
             这一页从
@@ -236,14 +237,13 @@ TARGETS = [
             和它的实现
             [src/core/frame_graph/frame_graph.cpp](../../../../../src/core/frame_graph/frame_graph.cpp)
             出发，关注的不是"FrameGraph 有哪些方法"，而是它在 frame_graph 子系统里的
-            位置：FramePass 把 (name, target, queue) 三件强绑定的字段打包成一条 pass 的
-            完整描述，FrameGraph 在加载期把每条 pass 上的 RenderQueue 各自填好，再做一次
-            跨 pass 的 PipelineKey 全局去重。
+            位置：FramePass 把 pass 身份、target、queue、resource flow 和 RenderPathNode
+            contract 打包成一条 pass 的完整描述，FrameGraph 在加载期把每条 pass 上的
+            RenderWorkQueue 各自填好，compile 时校验资源依赖并输出稳定 pass 顺序。
 
-            可以先带着一个问题阅读：为什么 core 层的 FrameGraph 不做 pass reorder、不做
-            attachment 复用、不做依赖分析？答案是这些都属于 backend 渲染图的职责；
-            core 层这层"frame graph"只承担"per-pass per-scene 预构建"的薄壳角色，
-            把语义留给 RenderQueue 和 backend。
+            可以先带着一个问题阅读：core 层的 FrameGraph 已经负责哪些 graph 语义，
+            又把什么留给 backend？答案是它负责 resource registry 校验、DAG 排序和
+            per-pass queue 构建，但不持有 backend attachment，也不做 aliasing / barrier 推导。
             """
         ).strip(),
         related_sources=(
@@ -302,7 +302,7 @@ TARGETS = [
             `PipelineKey` 负责回答“是不是同一条 pipeline”，`PipelineBuildDesc`
             负责回答“如果要创建它，backend 需要哪些输入”。
 
-            可以先带着一个问题阅读：为什么 `RenderingItem` 已经有 shader、material、
+            可以先带着一个问题阅读：为什么 `RenderWorkItem` 已经有 shader、material、
             vertex buffer，还要额外保存 `pipelineKey`？答案是，渲染提交和 pipeline
             预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
             """
@@ -322,19 +322,20 @@ TARGETS = [
             """\
             这一页把 offline renderer 当成一条独立实验管线来读，入口是
             [src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
-            关注的问题是：为什么离线渲染不直接复用 realtime FrameGraph，而是先把
-            scene 文档编译成 `OfflineSceneIR`，再打包成 compute shader 的 storage buffer。
+            关注的问题是：为什么离线渲染不直接复用 realtime draw item，而是把
+            scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 compute shader 的 storage buffer。
 
             可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
-            `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineSceneCompiler`、
-            `GpuSceneBuilder`、`ComputeBvhBuilder` 和 `VulkanOfflineRenderer` 的分层里。
+            `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineRenderJob`、
+            `OfflineSceneLoader`、`offline_scene_storage_resources`、`SoftwareComputeOfflineIntegrator`
+            和 `VulkanOfflineRenderer` 的分层里。
             """
         ).strip(),
         related_sources=(
-            "src/core/offline/offline_scene.hpp",
-            "src/infra/offline/offline_scene_compiler.hpp",
-            "src/backend/vulkan/offline/gpu_scene_builder.hpp",
-            "src/backend/vulkan/offline/compute_bvh_builder.hpp",
+            "src/core/offline/offline_render_job.hpp",
+            "src/core/offline/offline_scene_storage_resources.hpp",
+            "src/infra/offline/offline_scene_loader.hpp",
+            "src/backend/vulkan/offline/software_compute_offline_integrator.hpp",
         ),
         nav_order=900,
     ),

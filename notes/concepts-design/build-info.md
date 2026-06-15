@@ -89,4 +89,4 @@ Node 工具使用 `@lxe/build-info` file dependency 复用共享 package。`lxe_
 
 - [项目目录结构](project-layout.md)
 - [Offline Renderer 教程](../tutorial/offline-renderer/index.md)
-- [REQ-066-a: BuildInfo 与输出产物溯源](../requirements/066-a-build-info-and-artifact-provenance.md)
+- [REQ-066-a: BuildInfo 与输出产物溯源](../requirements/finished/066-a-build-info-and-artifact-provenance.md)

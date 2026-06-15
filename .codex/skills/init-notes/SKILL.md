@@ -13,7 +13,7 @@ Use this skill when the user:
 - asks to generate `notes/README.md`, `notes/get-started.md`, or subsystem docs from scratch
 - wants subsystem docs regenerated after a large restructuring
 
-Do not use this skill to modify code, top-level `README.md`, `CLAUDE.md`, `AGENTS.md`, `notes/requirements/`, or `openspec/`.
+Do not use this skill to modify code, top-level `README.md`, `CLAUDE.md`, `AGENTS.md`, `notes/requirements/`, or `docs/superpowers/specs/`.
 
 ## Scope
 
@@ -144,7 +144,7 @@ Write all confirmed files. Summarise what landed and suggest:
 
 ## Guardrails
 
-- Only write inside `notes/`. Never touch source code, top-level `README.md`, `CLAUDE.md`, `AGENTS.md`, `notes/requirements/`, or `openspec/`.
+- Only write inside `notes/`. Never touch source code, top-level `README.md`, `CLAUDE.md`, `AGENTS.md`, `notes/requirements/`, or `docs/superpowers/specs/`.
 - All `path:line` references must come from a real grep hit in this session.
 - Do not invent build or test commands. If the project does not advertise one, write TODO and move on.
 - One subsystem per file. Do not merge multiple subsystems into a combined "architecture" document — that is a separate follow-up.

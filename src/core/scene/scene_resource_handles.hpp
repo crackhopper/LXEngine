@@ -20,5 +20,8 @@ struct LightHandle final : ResourceHandleBase {};
 struct SkeletonHandle final : ResourceHandleBase {};
 struct CameraHandle final : ResourceHandleBase {};
 struct ObjectHandle final : ResourceHandleBase {};
+struct RenderPathGraphHandle final : ResourceHandleBase {};
+struct RenderFeatureHandle final : ResourceHandleBase {};
+struct ShaderHandle final : ResourceHandleBase {};
 
 } // namespace LX_core

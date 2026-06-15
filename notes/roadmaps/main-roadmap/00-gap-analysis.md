@@ -8,9 +8,9 @@
 |---|---|
 | Editor | `lxe_editor` 是主入口，支持 scene tree、inspector、toolbar、command bus、API、recording |
 | Scene | `SceneNode` 有 transform、父子层级、path、component、camera/light/renderable 组织 |
-| Material | `.material` loader、template/pass、instance parameter/resource、system-owned binding 已就位 |
-| Render queue | `FrameGraph` 持有 `FramePass`，`RenderQueue` 按 pass/target 从 scene 生成 `RenderingItem` |
-| Pipeline | `PipelineKey` + `PipelineBuildDesc` + Vulkan `PipelineCache` 已能预构建 forward/debug pipeline |
+| Material | `.material v2` surface envelope、material contract reflection、RenderPathGraph、RenderFeature、SceneResourceTable 依赖模型已进入主线 |
+| Render queue | `FrameGraph` 持有 `FramePass`，`RenderWorkQueue` 按 pass/target 从 scene 生成 `RenderWorkItem` |
+| Pipeline | `PipelineKey(MaterialTypeVariant, RenderPathNodeSignature)` + `PipelineBuildDesc` + Vulkan `PipelineCache` 已能预构建 graphics/compute pipeline |
 | Light | `DirectionalLight` / `PointLight` / `SpotLight` 数据与 editor 作者入口已存在，`SceneLightsUBO` 已有 |
 | Asset files | `.scene.yaml`、`.material`、model/texture loader 可用 |
 | Agent-adjacent | CommandBus、HTTP/WebSocket API、recording、manager MCP debug 通道已有基础 |
@@ -21,14 +21,13 @@
 
 | 缺口 | 当前代码状态 | 为什么阻塞下一步 |
 |---|---|---|
-| Offscreen render target | `RenderTarget` 只有 format/sample 描述，没有 GPU attachment 生命周期 | shadow map、HDR scene color、G-Buffer 都要离屏写入 |
-| Pass input/output | `FramePass` 只有 name/target/queue，不声明读写资源 | 无法表达 Shadow 写 depth、Forward 读 shadow |
-| Pass execution | Vulkan renderer 在一个 swapchain render pass 内循环所有 queue | shadow/G-Buffer 需要不同 render pass/framebuffer/layout |
-| Barrier / layout transition | 当前没有 frame-graph 级资源状态推导 | depth texture 写后读、color attachment 采样都需要同步 |
-| Pipeline target identity | `RenderTarget` 当前未进入 `PipelineKey` | MRT、depth-only、HDR target 会影响 pipeline 兼容性 |
-| Debug/inspection | 无 render target / G-Buffer debug view | 多 pass 问题很难只靠画面判断 |
+| RenderPathGraph hard cut | Forward/Deferred/Post/Debug/OfflineRT 正在从 runtime 手写分支收敛到 graph 文件 | 需要防止旧默认 graph、旧 material technique 或 silent fallback 泄漏 |
+| Bindless / material storage | `SceneResourceTable` 和 material storage 基础已就位，完整 indirect material batching 仍在推进 | 大场景和 package load 需要稳定 typed index / handle |
+| Backend graph execution | core `FrameGraph::compile()` 已有 DAG；backend attachment aliasing、barrier 全量推导和多 queue timeline 仍未完成 | HDR/post/deferred/offline 等路径需要统一执行层 |
+| Pipeline identity closure | key 已收敛为 material type/source variant + RenderPathNode signature | 还需要持续审计旧 object/target 独立轴和测试 fixture |
+| Package canonical state | 资源 handle、pipeline cache、SceneResourceTable 序列化还在 active REQ 中 | BMW/Sponza 等大资产需要快速、可验证加载 |
 
-结论：**FrameGraph v1 是 shadow、CSM 和后续 G-Buffer 的共同前置**。v0.1.1 只把 active 队列推进到 CSM，G-Buffer 保持 pending。
+结论：当前最大风险已经从“能否表达多 pass”转为“能否把旧材质/管线桥彻底切掉，并让 realtime/offline/package 全部消费同一套 graph/resource truth”。
 
 ## 已经不是主阻塞的内容
 

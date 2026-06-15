@@ -19,6 +19,82 @@ static std::string readFileToString(const std::filesystem::path &path) {
   return ss.str();
 }
 
+static std::filesystem::path
+findShaderIncludeRoot(const std::filesystem::path &filePath) {
+  std::filesystem::path probe = filePath.parent_path();
+  for (int i = 0; i < 6; ++i) {
+    if (std::filesystem::exists(probe / "common")) {
+      return probe;
+    }
+    const auto parent = probe.parent_path();
+    if (parent == probe) {
+      break;
+    }
+    probe = parent;
+  }
+  return filePath.parent_path();
+}
+
+static std::string stripKnownShaderRoot(std::string path) {
+  const std::string schemeSeparator = "://";
+  const std::size_t schemePos = path.find(schemeSeparator);
+  if (schemePos != std::string::npos) {
+    path = path.substr(schemePos + schemeSeparator.size());
+  }
+
+  const std::string shaderRoot = "shaders/glsl/";
+  const std::size_t shaderRootPos = path.find(shaderRoot);
+  if (shaderRootPos != std::string::npos) {
+    return path.substr(shaderRootPos + shaderRoot.size());
+  }
+
+  const std::string commonRoot = "common/";
+  const std::size_t commonRootPos = path.find(commonRoot);
+  if (commonRootPos != std::string::npos) {
+    return path.substr(commonRootPos);
+  }
+
+  return path;
+}
+
+static std::string quoteGlslIncludePath(const std::string &path) {
+  std::string quoted = "\"";
+  for (const char c : path) {
+    if (c == '\\' || c == '"') {
+      quoted.push_back('\\');
+    }
+    quoted.push_back(c);
+  }
+  quoted.push_back('"');
+  return quoted;
+}
+
+static std::string
+materialContractSourceMacroValue(const LX_core::ResourceUri &sourceUri) {
+  return quoteGlslIncludePath(stripKnownShaderRoot(sourceUri.string()));
+}
+
+static void replaceAll(std::string &source, const std::string &from,
+                       const std::string &to) {
+  if (from.empty()) {
+    return;
+  }
+  std::size_t pos = 0;
+  while ((pos = source.find(from, pos)) != std::string::npos) {
+    source.replace(pos, from.size(), to);
+    pos += to.size();
+  }
+}
+
+static void applyMaterialContractIncludeVariant(
+    std::string &source, const std::optional<std::string> &includeValue) {
+  if (!includeValue.has_value()) {
+    return;
+  }
+  replaceAll(source, "#include LX_MATERIAL_CONTRACT_SOURCE",
+             "#include " + *includeValue);
+}
+
 class FileIncluder final : public shaderc::CompileOptions::IncluderInterface {
 public:
   explicit FileIncluder(std::filesystem::path includeRoot)
@@ -38,8 +114,14 @@ public:
     const std::filesystem::path fullPath =
         requestedPath.is_absolute() ? requestedPath : baseDir / requestedPath;
 
-    include->sourceName = fullPath.lexically_normal().string();
-    include->content = readFileToString(fullPath);
+    std::filesystem::path resolvedPath = fullPath.lexically_normal();
+    include->content = readFileToString(resolvedPath);
+    if (include->content.empty() && !requestedPath.is_absolute() &&
+        resolvedPath.parent_path() != m_includeRoot) {
+      resolvedPath = (m_includeRoot / requestedPath).lexically_normal();
+      include->content = readFileToString(resolvedPath);
+    }
+    include->sourceName = resolvedPath.string();
     if (include->content.empty()) {
       include->content =
           "#error failed to read shader include: " + include->sourceName;
@@ -140,14 +222,34 @@ ShaderCompiler::compileFile(const std::filesystem::path &filePath,
                                shaderc_env_version_vulkan_1_3);
   options.SetOptimizationLevel(shaderc_optimization_level_zero);
   options.SetIncluder(
-      std::make_unique<FileIncluder>(filePath.parent_path()));
+      std::make_unique<FileIncluder>(findShaderIncludeRoot(filePath)));
 
   // Inject variant macros
+  std::optional<std::string> materialContractIncludeValue;
   for (const auto &v : variants) {
-    if (v.enabled) {
-      options.AddMacroDefinition(v.macroName, "1");
+    if (!v.enabled) {
+      continue;
+    }
+
+    const bool sourceIncludeMacro =
+        v.macroName == "LX_MATERIAL_CONTRACT_SOURCE" &&
+        v.materialContractSource.has_value();
+    if (!v.macroName.empty() && !sourceIncludeMacro) {
+      const std::string value = v.macroValue.value_or("1");
+      options.AddMacroDefinition(v.macroName, value);
+    }
+
+    if (v.materialContractSource.has_value()) {
+      materialContractIncludeValue =
+          materialContractSourceMacroValue(*v.materialContractSource);
+      options.AddMacroDefinition("LX_MATERIAL_CONTRACT_SOURCE",
+                                 *materialContractIncludeValue);
+    } else if (v.macroName == "LX_MATERIAL_CONTRACT_SOURCE" &&
+               v.macroValue.has_value()) {
+      materialContractIncludeValue = *v.macroValue;
     }
   }
+  applyMaterialContractIncludeVariant(source, materialContractIncludeValue);
 
   // Compile
   auto module = compiler.CompileGlslToSpv(

@@ -56,9 +56,10 @@ root:
       mesh:
         uri: assets/models/damaged_helmet/DamagedHelmet.gltf # -> mesh asset
       material:
-        uri: assets/materials/blinnphong_textured.material   # -> MaterialInstance
+        uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material # -> MaterialInstance
       materialOverrides:
-        MaterialUBO.baseColor: [0.8, 0.7, 0.4]                # -> reflected parameter write
+        baseColor: { kind: rgb, value: [0.8, 0.7, 0.4] }     # -> material envelope override
+        roughness: { kind: float, value: 0.35 }
 ```
 
 这个 YAML 片段体现了资产系统的核心关系：scene 不直接嵌入模型和材质内容，而是保存 URI 和少量覆盖值。加载时再根据 URI 找到真实资产。
@@ -82,17 +83,17 @@ root:
 
 ## 材质覆盖属于 scene 对资产实例的局部改写
 
-同一个 `.material` 可以被多个节点引用。scene 里的 `materialOverrides` / `nodeMaterialOverrides` 表示“这个节点使用这份材质时，某些参数换成文档里的值”。
+同一个 `.material` 可以被多个节点引用。scene 里的 `materialOverrides` / `nodeMaterialOverrides` 表示“这个节点使用这份材质时，某些参数换成文档里的值”。当前 v2 材质覆盖目标是 BSDF 参数 envelope，不是旧的 `binding.member`。
 
 ```yaml
 material:
-  uri: assets/materials/rtr_experiment_template.material
+  uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material
 materialOverrides:
-  MaterialUBO.warmColor: [1.0, 0.8, 0.25, 1.0] # -> binding.member
-  MaterialUBO.coolColor: [0.1, 0.25, 0.8, 1.0]
+  baseColor: { kind: rgb, value: [1.0, 0.8, 0.25] }
+  roughness: { kind: float, value: 0.25 }
 ```
 
-覆盖写入时会用材质反射结果校验 binding 和 member 是否存在，类型是否匹配。也就是说，scene 只声明想改什么参数；参数是否合法由材质系统的反射接口决定。
+覆盖写入时会用材质 contract 校验参数是否存在、kind 是否匹配、资源 URI 是否能解析。也就是说，scene 只声明想改什么参数；参数是否合法由材质系统决定。
 
 ## 和场景系统文档的关系
 

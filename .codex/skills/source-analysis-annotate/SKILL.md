@@ -90,7 +90,7 @@ Keep the analysis narrow:
 - avoid wandering into full subsystem documentation
 - if a helper type is required to explain a cache / descriptor / ownership / layout concept, annotate that helper type in place instead of faking completeness in the main file's comments
 
-If the user really wants broad design exploration, use `openspec-explore` instead of turning source comments into a subsystem essay.
+If the user really wants broad design exploration, use Superpowers brainstorming instead of turning source comments into a subsystem essay.
 
 ## Validation
 

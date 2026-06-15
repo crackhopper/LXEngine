@@ -1,135 +1,137 @@
 # 从 .material 到 MaterialInstance
 
-`.material` 文件像一张点菜单：它告诉 loader 这道材质用哪份 shader、开哪些变体、有哪些 pass、默认参数和默认纹理是什么。真正进入 scene 的不是 YAML 节点本身，而是 loader 创建出的 `MaterialInstance`。
-
-当前入口是 `LX_infra::loadGenericMaterial(path)`。它会解析 YAML、编译 shader、反射 binding、构造 `MaterialTemplate`，最后创建并填充 `MaterialInstance`。
+`.material` 文件现在是一张表面材质说明书。它不告诉 renderer “用哪个 pass 画”，也不指定 shader；它只描述 BSDF type、参数 envelope 和材质自己依赖的资源。真正的 pass 和 shader 来自 `RenderPathGraph`。
 
 ## 一份当前可用的 .material
 
 ```yaml
-shader: rtr_experiment_template       # -> assets/shaders/glsl/rtr_experiment_template.vert/.frag
-
-passes:
-  Forward:                            # -> MaterialTemplate::setPassDefinition(StringID("Forward"), ...)
-    renderState:                      # -> MaterialPassDefinition.renderState
-      cullMode: Back                  # -> RenderState.cullMode
-      depthTest: true                 # -> RenderState.depthTestEnable
-      depthWrite: true                # -> RenderState.depthWriteEnable
-
-parameters:
-  MaterialUBO.surfaceColor: [0.8, 0.35, 0.25] # -> MaterialInstance::setParameter("MaterialUBO", "surfaceColor", Vec3f)
-  MaterialUBO.accentColor: [0.15, 0.4, 0.95, 1.0]
-  MaterialUBO.mixAmount: 0.35
-  MaterialUBO.mode: 0
+schema: lxe.material.v2
+bsdf:
+  type: uber
+  source: assets://shaders/glsl/common/materials/uber.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [1.0, 1.0, 1.0] }
+    Ks: { kind: rgb, value: [0.04, 0.04, 0.04] }
+    eta: { kind: float, value: 1.5 }
+    uroughness: { kind: float, value: 0.5 }
+    vroughness: { kind: float, value: 0.5 }
 ```
 
-这里的 `shader` 是 basename，不是任意路径。loader 会在当前 runtime root 下找 `assets/shaders/glsl/<name>.vert` 和 `<name>.frag`。
+这份文件的重点是 `schema: lxe.material.v2`。根字段只描述 surface contract；pass、shader、source/target 和 render state 由 RenderPathGraph 提供。
 
 ## Loader 的执行顺序
 
 | 步骤 | 代码行为 | 产物 |
 |---|---|---|
-| 解析 YAML | 读取 `shader`、`variants`、`passes`、`parameters`、`resources`、`variantRules` | loader 内部节点 |
-| 找 shader 目录 | `getRuntimeShaderSourceDir()` | `assets/shaders/glsl/` |
-| 编译每个 pass | `ShaderCompiler::compileProgram(vert, frag, variants)` | SPIR-V stages |
-| 反射 shader | `ShaderReflector::reflect()` / `reflectVertexInputs()` | bindings + vertex inputs |
-| 校验 YAML | 参数和纹理名必须存在于 material-owned reflection | fail-fast 或继续 |
-| 建 template | `setPassDefinition()` 后 `rebuildMaterialInterface()` | canonical material interface |
-| 建 instance | `MaterialInstance::create(tmpl)` | 参数 buffer 和 pass enable 初始状态 |
-| 写默认值 | `applyParameters()` / `applyResources()` | parameter bytes + texture resources |
-| 标记上传 | `syncGpuData()` | dirty parameter buffers |
+| 解析 YAML | root 必须是 map，`schema` 必须是 `lxe.material.v2` | parser 内部模型 |
+| 校验 root allowlist | 只允许 `schema`、`bsdf`、`renderClass`、`tags`、`metadata` | root field diagnostics |
+| 读取 BSDF header | 读取 `bsdf.type` 和 `bsdf.source` | material type + contract URI |
+| 反射材质 contract | 通过 `MaterialContractReflection` 得到参数、storage ABI、accessor ABI | `MaterialContractReflection` |
+| 对齐 type/status | contract `declaredType` 必须等于 `bsdf.type`，`status` 必须 supported | fail-fast |
+| 校验参数 envelope | 每个参数必须存在于 contract，required 参数必须写出，kind 必须在 allowlist | fail-fast 或继续收集诊断 |
+| 注册依赖资源 | texture、spectrum、bsdf table、material ref 等 URI 进入 `SceneResourceTable` 依赖图 | typed resource handles |
+| 创建 instance | 构造 `MaterialInstance`，写入 bsdf type、source URI/signature、reflection hash | runtime material |
+| 写入 envelope | `setMaterialEnvelope(...)` 保存参数 envelope | material state dirty/version |
 
-这条链路的关键是：`.material` 不直接描述 Vulkan descriptor set，也不直接描述 pipeline。它描述的是材质的逻辑结构和默认数据，loader 再把这些信息翻译成 engine runtime 对象。
+这条链路的关键是：`.material` 不直接描述 Vulkan descriptor set，也不直接描述 pipeline。它描述 surface contract；渲染路径再决定这份 surface contract 被哪个 pass 消费。
 
-## passes 可以省略，但 shader 不能省略
+代码入口集中在 `src/infra/material_loader/material_resource_parser.cpp:437`。其中 root allowlist 在 `src/infra/material_loader/material_resource_parser.cpp:107`，contract source 加载和 type/status 校验在 `src/infra/material_loader/material_resource_parser.cpp:474`，资源依赖注册在 `src/infra/material_loader/material_resource_parser.cpp:580`。
 
-当前 `.material` 必须有顶层 `shader`。如果没有写 `passes`，loader 会自动创建一个默认 `Forward` pass：
+## Contract source 是必须字段
+
+`bsdf.source` 缺失会直接失败，因为 parser 必须先读 `.contract.glsl` 才知道参数名、required/optional、允许的 kind 和 storage ABI。
 
 ```yaml
-shader: blinnphong_0
-
-parameters:
-  MaterialUBO.baseColor: [1.0, 1.0, 1.0]
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  parameters:
+    Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
+    sigma: { kind: float, value: 0.0 }
 ```
 
-等价于“用 `blinnphong_0` 编译一个 `Pass_Forward`，render state 使用默认值”。如果需要不同 pass 用不同 shader 或 render state，就显式写 `passes`。
-
-## variants 和 variantRules
+这份文件缺 `bsdf.source`，parser 无法反射参数和 storage ABI。正确写法是：
 
 ```yaml
-variants:
-  USE_LIGHTING: true
-  USE_UV: true
+schema: lxe.material.v2
+bsdf:
+  type: matte
+  source: assets://shaders/glsl/common/materials/matte.contract.glsl
+  parameters:
+    Kd: { kind: rgb, value: [0.8, 0.7, 0.6] }
+    sigma: { kind: float, value: 0.0 }
+```
 
-variantRules:
-  - requires: [USE_NORMAL_MAP]
-    depends: [USE_LIGHTING, USE_UV]
+## RenderPathGraph 负责 pass 和 shader
+
+Forward 的 pass 结构写在 `assets/render_paths/forward_main.render-path.yaml`：
+
+```yaml
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
 
 passes:
-  Forward:
-    variants:
-      USE_NORMAL_MAP: false
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: techniques/Forward/pbr
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+        - target: depth.main
+          format: D32Float
+          depth: true
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+    targets: [hdr.color, depth.main]
 ```
 
-loader 会把顶层 variants 和 pass 内 variants 合并，再编译该 pass 的 shader。`variantRules` 用来提前挡住不合法组合，例如开启 normal map 却没有 UV。
+这里的 `material.bsdf` 是 graph 对材质 envelope 的依赖声明。graph 也显式声明 attachment contract、geometry contract、render state 和 shader URI，所以 renderer 不需要从材质文件里推导 Forward/Deferred/OfflineRT 结构。
 
-enabled variants 属于结构信息，会进入 pipeline signature。它们不是普通材质参数。
+## MaterialInstance 保存什么
 
-## parameters 只能写 reflected buffer member
-
-参数 key 必须是 `bindingName.memberName`：
-
-```yaml
-parameters:
-  MaterialUBO.shininess: 32.0
-```
-
-loader 会先确认：
-
-| 校验 | 原因 |
+| 数据 | 当前位置 |
 |---|---|
-| `MaterialUBO` 是 shader reflection 中的 material-owned buffer binding | instance 需要一个 `ParameterBuffer` |
-| `shininess` 是该 binding 的 reflected member | 写入需要 offset 和类型 |
-| YAML 值类型和 reflected member 类型匹配 | 避免把 Vec4 写进 float |
+| BSDF type | `MaterialInstance::m_bsdfType` |
+| material source URI/signature/reflection hash | `m_materialSourceUri` / `m_materialSourceSignature` / `m_materialSourceReflectionHash` |
+| contract reflection | `m_materialContractReflection` |
+| render class / authoring tags | `m_renderClass` / `m_tags` |
+| 参数 envelope | `m_materialEnvelopesByName` |
+| texture/spectrum/bsdf-table 等依赖 | `m_materialDependencies` |
+| 非 surface shader binding buffer | `m_parameterBuffersByName`，只给 post/procedural 等非 surface 资源路径使用 |
 
-当前支持写入 `float`、`int`、`Vec3`、`Vec4`。
+## Envelope 字段保持运行时形态
 
-## resources 只写材质拥有的纹理默认值
+运行时 envelope 只接收渲染所需的字段：
 
-```yaml
-resources:
-  albedoMap: white       # -> placeholder texture
-  normalMap: normal      # -> placeholder texture
-```
+| 字段 | 含义 |
+|---|---|
+| `kind` | 参数类型，例如 `float`、`rgb`、`texture`、`spectrum` |
+| `value` | inline 参数值 |
+| `uri` | texture、spectrum、material ref 或 BSDF table 资源 URI |
+| `valueType` | texture 参数的采样值类型，例如 `rgb` 或 `float` |
 
-`resources` 只接受 material-owned `Texture2D` / `TextureCube` binding。它不是 shader 可见资源总表，所以不能写：
-
-```yaml
-resources:
-  SceneLightsUBO: system # 当前不支持，也不是 resources 的职责
-```
-
-`SceneLightsUBO`、`CameraUBO`、`LightUBO`、`Bones` 是系统保留 binding，由 scene/camera/light/skeleton 路径注入。
-
-## pass-scoped parameters/resources 当前不支持
-
-当前 loader 允许 pass 内读取 `shader`、`variants`、`renderState`，但 pass-scoped `parameters` 和 `resources` 会被拒绝。原因是 `MaterialInstance` 保存的是一套 canonical 参数和资源集合，不是“每个 pass 一套实例数据”。
+转换器、导入器或调试工具产生的 provenance 信息应写在 report、manifest 或 metadata 中，不写进参数 envelope：
 
 ```yaml
-passes:
-  Forward:
-    parameters:          # 当前会报错
-      MaterialUBO.mode: 1
+Kd: { kind: rgb, value: [0.8, 0.7, 0.6], source: explicit }
 ```
 
-如果多个 pass 使用同一个 `MaterialUBO`，它们必须共享同一份 reflected layout 和同一份实例值。
+`source` 这样的字段不是 runtime envelope 字段。这样可以保证 `.material` 的参数段只表示渲染输入，而不是导入过程。
 
 ## 我们已经学会了什么
 
-`.material` 是材质资产的入口，但运行时真正使用的是 `MaterialInstance`。loader 会把 YAML、shader 编译、reflection、template interface 和默认值写入串成一条固定链路。理解这条链路后，我们再看 template 和 instance 的职责边界就会清楚很多。
+`.material` 现在只回答“表面是什么”。它变成 `MaterialInstance` 后保存 BSDF envelope、source signature 和资源依赖；RenderPathGraph 再把这份 surface data 接到具体 pass、shader 和 target contract 上。
 
 ## 下一步
 
-- [模板与 Pass：材质的结构定义](template-blueprint.md)
-- [Shader 在材质中的角色](shader.md)
+- [Material Contract v2](material-contract-v2.md)
+- [多 Pass 材质怎样变成 RenderWork](pass-rendering-flow.md)
 - [创建与排错自定义材质](custom-template.md)

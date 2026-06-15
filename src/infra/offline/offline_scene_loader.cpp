@@ -2,7 +2,6 @@
 
 #include "core/asset/builtin_meshes.hpp"
 #include "core/asset/material_instance.hpp"
-#include "core/frame_graph/pass.hpp"
 #include "core/math/bounds.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -199,6 +198,7 @@ resolveMaterialPath(const OfflineAssetResolver &resolver,
     const OfflineAssetResolver &resolver, const std::optional<std::string> &uri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
+    SceneResourceTable &resourceTable,
     std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
   const auto materialPath = resolveMaterialPath(resolver, uri);
   const std::string cacheKey = materialPath.lexically_normal().string();
@@ -215,14 +215,14 @@ resolveMaterialPath(const OfflineAssetResolver &resolver,
             return std::filesystem::path(assetUri);
           },
       .loadGenericMaterial =
-          [&materialCache](const std::filesystem::path &path) {
+          [&materialCache, &resourceTable](const std::filesystem::path &path) {
             const std::string key = path.lexically_normal().string();
             MaterialInstanceSharedPtr prototype;
             if (const auto it = materialCache.find(key);
                 it != materialCache.end()) {
               prototype = it->second;
             } else {
-              prototype = LX_infra::loadGenericMaterial(path);
+              prototype = LX_infra::loadGenericMaterial(path, resourceTable);
               materialCache.emplace(key, prototype);
             }
             return prototype->cloneInstanceData();
@@ -327,6 +327,8 @@ registerMeshUri(SceneResourceTable &table, const OfflineAssetResolver &resolver,
 
 struct LoadState final {
   OfflineLoadedScene loaded;
+  OfflineShaderProvider offlineShaderProvider;
+  LX_core::IShaderSharedPtr providedOfflineShader;
   std::unordered_map<std::string, RegisteredMesh> meshByUri;
   std::unordered_map<std::string, MaterialHandle> materialByKey;
   std::unordered_map<std::string, MaterialInstanceSharedPtr> materialCache;
@@ -334,49 +336,25 @@ struct LoadState final {
   bool directionalLightLoaded = false;
 };
 
-[[nodiscard]] const MaterialBindingDocument *
-findMaterialBindingByTag(const SceneNodeDocument &node,
-                         const std::string &tag) {
-  for (const auto &binding : node.materials) {
-    if (binding.tag == tag) {
-      return &binding;
+[[nodiscard]] LX_core::IShaderSharedPtr resolveProvidedOfflineShader(
+    LoadState &state) {
+  if (!state.offlineShaderProvider) {
+    return nullptr;
+  }
+  if (!state.providedOfflineShader) {
+    state.providedOfflineShader = state.offlineShaderProvider();
+    if (!state.providedOfflineShader) {
+      throw std::runtime_error(
+          "offline shader provider returned no shader");
     }
   }
-  return nullptr;
-}
-
-[[nodiscard]] MaterialInstanceSharedPtr loadTaggedMaterialInstance(
-    const OfflineAssetResolver &resolver, const SceneNodeDocument &node,
-    const MaterialBindingDocument &binding,
-    std::unordered_map<std::string, MaterialInstanceSharedPtr> &materialCache) {
-  if (binding.source != "gltf") {
-    return loadMaterialInstance(
-        resolver,
-        binding.uri.empty() ? std::nullopt
-                            : std::optional<std::string>{binding.uri},
-        binding.materialOverrides, binding.nodeMaterialOverrides,
-        materialCache);
-  }
-  return LX_infra::scene_asset::loadSceneMaterialBinding({
-      .meshUri = node.meshUri,
-      .binding = binding,
-      .materialOverrides = node.materialOverrides,
-      .nodeMaterialOverrides = node.nodeMaterialOverrides,
-      .resolveAssetPath =
-          [&resolver](const std::string &assetUri) {
-            return resolver.resolve(assetUri);
-          },
-      .loadGenericMaterial =
-          [](const std::filesystem::path &path) {
-            return LX_infra::loadGenericMaterial(path);
-          },
-  });
+  return state.providedOfflineShader;
 }
 
 void visitNode(const OfflineAssetResolver &resolver,
                const SceneNodeDocument &node, const std::string &parentPath,
                const Mat4f &parentWorld, const std::string &cameraPath,
-               const std::string &materialTag, LoadState &state) {
+               LoadState &state) {
   const std::string path = joinPath(parentPath, node);
   const Mat4f world = parentWorld * node.transform.toMat4();
 
@@ -402,44 +380,19 @@ void visitNode(const OfflineAssetResolver &resolver,
 
   if (node.meshUri.has_value()) {
     const std::string &meshUri = *node.meshUri;
-    const MaterialBindingDocument *taggedBinding =
-        materialTag.empty() ? nullptr
-                            : findMaterialBindingByTag(node, materialTag);
-    if (!materialTag.empty() && taggedBinding == nullptr) {
-      state.loaded.warnings.push_back("offline materialTag skipped object " +
-                                      path + ": missing tag " + materialTag);
-      for (const auto &child : node.children) {
-        visitNode(resolver, child, path, world, cameraPath, materialTag, state);
-      }
-      return;
-    }
-
     const RegisteredMesh mesh = registerMeshUri(
         state.loaded.table, resolver, meshUri, state.meshByUri);
 
     const std::string materialKey =
-        taggedBinding != nullptr
-            ? (materialTag + "|" + taggedBinding->uri + "|" + path)
-            : (node.materialUri.value_or("missing") + "|" + path);
+        node.materialUri.value_or("missing") + "|" + path;
     MaterialHandle materialHandle;
     if (const auto it = state.materialByKey.find(materialKey);
         it != state.materialByKey.end()) {
       materialHandle = it->second;
     } else {
-      MaterialInstanceSharedPtr material;
-      if (taggedBinding != nullptr) {
-        material = loadTaggedMaterialInstance(resolver, node, *taggedBinding,
-                                              state.materialCache);
-      } else {
-        material = loadMaterialInstance(
-            resolver, node.materialUri, node.materialOverrides,
-            node.nodeMaterialOverrides, state.materialCache);
-      }
-      if (!state.loaded.offlineShader && material &&
-          material->isPassEnabled(LX_core::Pass_OfflineRayTrace)) {
-        state.loaded.offlineShader =
-            material->getPassShader(LX_core::Pass_OfflineRayTrace);
-      }
+      MaterialInstanceSharedPtr material = loadMaterialInstance(
+          resolver, node.materialUri, node.materialOverrides,
+          node.nodeMaterialOverrides, state.loaded.table, state.materialCache);
       materialHandle = state.loaded.table.registerMaterial(
           material->cloneInstanceDataUnique());
       state.materialByKey.emplace(materialKey, materialHandle);
@@ -451,30 +404,30 @@ void visitNode(const OfflineAssetResolver &resolver,
   }
 
   for (const auto &child : node.children) {
-    visitNode(resolver, child, path, world, cameraPath, materialTag, state);
+    visitNode(resolver, child, path, world, cameraPath, state);
   }
 }
 
 } // namespace
 
-OfflineSceneLoader::OfflineSceneLoader(OfflineAssetResolver resolver)
-    : m_resolver(std::move(resolver)) {}
+OfflineSceneLoader::OfflineSceneLoader(
+    OfflineAssetResolver resolver, OfflineShaderProvider offlineShaderProvider)
+    : m_resolver(std::move(resolver)),
+      m_offlineShaderProvider(std::move(offlineShaderProvider)) {}
 
 OfflineLoadedScene
 OfflineSceneLoader::load(const LX_infra::scene_io::SceneDocument &document,
                          const std::string &cameraPath) const {
   LoadState state;
+  state.offlineShaderProvider = m_offlineShaderProvider;
+  state.loaded.offlineShader = resolveProvidedOfflineShader(state);
   const std::string requestedCamera =
       cameraPath.empty() ? document.gameplayCameraPath() : cameraPath;
-  const std::string materialTag =
-      document.hasRenderProfileDocument()
-          ? document.renderProfileDocument().offline.materialTag
-          : std::string{};
 
   const auto &root = document.rootNode();
   for (const auto &child : root.children) {
     visitNode(m_resolver, child, "", root.transform.toMat4(), requestedCamera,
-              materialTag, state);
+              state);
   }
 
   if (!state.cameraLoaded) {

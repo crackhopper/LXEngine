@@ -5,21 +5,27 @@
 #include <filesystem>
 #include <optional>
 
+namespace LX_core {
+class SceneResourceTable;
+}
+
 namespace LX_infra {
 
 struct GenericMaterialLoadOptions final {
   std::optional<bool> forceIbl;
   std::optional<bool> alphaTransparency;
-  bool enableDeferredPass = false;
 };
 
 /// Load a material from a YAML material definition file (.material).
-/// The file describes shader(s), variants, canonical default parameters,
-/// canonical default resources, and per-pass shader/render-state structure.
-/// Each pass can optionally specify its own shader, but runtime parameter
-/// values remain instance-global. No material-type-specific C++ code is needed.
+/// Only material v2 files are accepted. They are parsed as PBRT BSDF envelope
+/// contracts without shader compilation or material-local pass shader data.
 LX_core::MaterialInstanceSharedPtr
 loadGenericMaterial(const std::filesystem::path &materialPath,
+                    const GenericMaterialLoadOptions &options = {});
+
+LX_core::MaterialInstanceSharedPtr
+loadGenericMaterial(const std::filesystem::path &materialPath,
+                    LX_core::SceneResourceTable &resourceTable,
                     const GenericMaterialLoadOptions &options = {});
 
 } // namespace LX_infra

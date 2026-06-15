@@ -42,14 +42,14 @@ void appendSortedSceneMaterialResources(DescriptorResourceList &out,
 
   std::vector<std::pair<u32, DescriptorResourceRef>> sorted;
   for (const auto &binding : shader->getReflectionBindings()) {
-    if (isSystemOwnedBinding(binding.name)) {
+    if (!isMaterialOwnedBinding(binding.name)) {
       continue;
     }
 
     const StringID bindingId(binding.name);
     if (binding.type == ShaderPropertyType::UniformBuffer ||
         binding.type == ShaderPropertyType::StorageBuffer) {
-      auto resource = material.getParameterResource(bindingId);
+      auto resource = material.getShaderBindingResource(bindingId);
       if (!resource.isValid()) {
         throw std::logic_error("SceneDescriptorResourceResolver missing "
                                "material buffer resource '" +
