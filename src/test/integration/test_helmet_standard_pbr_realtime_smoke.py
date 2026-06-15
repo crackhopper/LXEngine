@@ -307,21 +307,57 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            probes = self._debug_color_transfer_ramp_probes()
+            probes[0]["green"] = 80
             payload = self._write_debug_color_transfer_bundle(
                 root,
-                probes=[
-                    {
-                        "target": "debug.ramp.srgb",
-                        "label": "gray18",
-                        "expected": 118,
-                        "red": 118,
-                        "green": 80,
-                        "blue": 118,
-                    }
-                ],
+                probes=probes,
             )
 
             with self.assertRaisesRegex(RuntimeError, "probe mismatch"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_missing_ramp_probe_coverage(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            probes = self._debug_color_transfer_ramp_probes()
+            probes = [
+                probe
+                for probe in probes
+                if not (
+                    probe["target"] == "debug.ramp.unorm_manual_srgb"
+                    and probe["label"] == "half"
+                )
+            ]
+            payload = self._write_debug_color_transfer_bundle(root, probes=probes)
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "missing required ramp probe.*debug.ramp.unorm_manual_srgb.*half",
+            ):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_empty_output_file(
+        self,
+    ) -> None:
+        module = self._load_realtime_render_module()
+        self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=self._debug_color_transfer_ramp_probes(),
+                empty_files={"ramp_srgb_attachment.png"},
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "debug color-transfer output empty.*ramp_srgb_attachment.png",
+            ):
                 module.require_debug_color_transfer_bundle(root, json.dumps(payload))
 
     def test_require_debug_color_transfer_bundle_accepts_ramp_probes(self) -> None:
@@ -329,24 +365,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            probes = [
-                {
-                    "target": "debug.ramp.srgb",
-                    "label": "gray18",
-                    "expected": 118,
-                    "red": 118,
-                    "green": 117,
-                    "blue": 119,
-                },
-                {
-                    "target": "debug.ramp.unorm_manual_srgb",
-                    "label": "half",
-                    "expected": 188,
-                    "red": 188,
-                    "green": 189,
-                    "blue": 187,
-                },
-            ]
+            probes = self._debug_color_transfer_ramp_probes()
             payload = self._write_debug_color_transfer_bundle(root, probes=probes)
 
             result = module.require_debug_color_transfer_bundle(
@@ -429,9 +448,49 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         }
 
     @staticmethod
+    def _debug_color_transfer_ramp_probes() -> list[dict[str, object]]:
+        return [
+            {
+                "target": "debug.ramp.srgb",
+                "label": "gray18",
+                "expected": 118,
+                "red": 118,
+                "green": 117,
+                "blue": 119,
+            },
+            {
+                "target": "debug.ramp.srgb",
+                "label": "half",
+                "expected": 188,
+                "red": 188,
+                "green": 189,
+                "blue": 187,
+            },
+            {
+                "target": "debug.ramp.unorm_manual_srgb",
+                "label": "gray18",
+                "expected": 118,
+                "red": 119,
+                "green": 118,
+                "blue": 117,
+            },
+            {
+                "target": "debug.ramp.unorm_manual_srgb",
+                "label": "half",
+                "expected": 188,
+                "red": 187,
+                "green": 188,
+                "blue": 189,
+            },
+        ]
+
+    @staticmethod
     def _write_debug_color_transfer_bundle(
-        root: Path, probes: list[dict[str, object]]
+        root: Path,
+        probes: list[dict[str, object]],
+        empty_files: set[str] | None = None,
     ) -> dict[str, object]:
+        empty_files = empty_files or set()
         output_dir = root / "debug"
         output_dir.mkdir()
         for name in [
@@ -444,7 +503,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             "ramp_srgb_attachment.png",
             "ramp_unorm_manual_srgb.png",
         ]:
-            (output_dir / name).write_bytes(b"debug")
+            (output_dir / name).write_bytes(b"" if name in empty_files else b"debug")
         manifest_path = output_dir / "manifest.json"
         manifest_path.write_text(json.dumps({"probes": probes}), encoding="utf-8")
         return {

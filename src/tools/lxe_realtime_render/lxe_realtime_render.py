@@ -438,9 +438,19 @@ def require_debug_color_transfer_bundle(
         path = output_dir / name
         if not path.is_file():
             raise RuntimeError(f"debug color-transfer output missing: {path}")
+        if path.stat().st_size <= 0:
+            raise RuntimeError(f"debug color-transfer output empty: {path}")
     probes = manifest.get("probes", [])
     if not isinstance(probes, list) or not probes:
         raise RuntimeError("debug color-transfer manifest has no probes")
+    probe_keys = {(probe["target"], probe["label"]) for probe in probes}
+    for target in ("debug.ramp.srgb", "debug.ramp.unorm_manual_srgb"):
+        for label in ("gray18", "half"):
+            if (target, label) not in probe_keys:
+                raise RuntimeError(
+                    "debug color-transfer manifest missing required ramp probe: "
+                    f"target={target} label={label}"
+                )
     for probe in probes:
         expected = int(probe["expected"])
         for channel in ("red", "green", "blue"):
