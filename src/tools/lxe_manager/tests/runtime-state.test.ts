@@ -62,8 +62,7 @@ describe("resolveManagerConfig", () => {
         "/repo",
         "build",
         "src",
-        "demos",
-        "lxe_editor",
+        "editor",
         process.platform === "win32" ? "lxe_editor.exe" : "lxe_editor",
       ),
     );

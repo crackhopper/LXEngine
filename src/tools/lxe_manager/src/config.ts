@@ -30,8 +30,7 @@ export function resolveManagerConfig(input: {
         input.repoRoot,
         "build",
         "src",
-        "demos",
-        "lxe_editor",
+        "editor",
         executableName,
       ),
   };
