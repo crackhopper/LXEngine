@@ -878,6 +878,7 @@ void writeDebugColorTransferManifest(
   }
   out << "  ]\n"
       << "}\n";
+  out.close();
   if (!out) {
     throw std::runtime_error("failed to finish debug color transfer manifest " +
                              path.string());
@@ -2657,6 +2658,10 @@ public:
 
     m_swapchain->waitForAllFrames();
     device().waitIdle();
+    std::unique_ptr<LX_core::LightBase> directionalLightSnapshot;
+    if (const LX_core::DirectionalLight *light = mainDirectionalLight()) {
+      directionalLightSnapshot = light->cloneUnique();
+    }
     std::vector<LX_core::MaterialInstance::UniquePtr> debugMaterials;
     std::vector<std::unique_ptr<LX_core::FrameGraphSampledResource>>
         debugSampledResources;
@@ -2670,6 +2675,7 @@ public:
       std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
       decltype(m_currentLiveStats) currentLiveStats;
       decltype(m_lastLiveStats) lastLiveStats;
+      std::unique_ptr<LX_core::LightBase> directionalLightSnapshot;
 
       ~TemporaryFrameGraphState() {
         if (renderer.m_foundation) {
@@ -2687,11 +2693,19 @@ public:
         renderer.m_liveRenderView = std::move(liveRenderView);
         renderer.m_currentLiveStats = currentLiveStats;
         renderer.m_lastLiveStats = lastLiveStats;
+        if (const auto *snapshot =
+                dynamic_cast<const LX_core::DirectionalLight *>(
+                    directionalLightSnapshot.get())) {
+          if (LX_core::DirectionalLight *light =
+                  renderer.mainDirectionalLight()) {
+            light->restoreShadowCascadeStateFrom(*snapshot);
+            renderer.refreshShadowCascadeUboSnapshots(*light);
+          }
+        }
         renderer.resetOffscreenFramebuffers();
         if (renderer.m_foundation) {
           renderer.resourceManager().clearFrameGraphAttachments();
         }
-        renderer.updateDirectionalLightCascades();
       }
     } restore{
         .renderer = *this,
@@ -2703,6 +2717,7 @@ public:
         .liveRenderView = std::move(m_liveRenderView),
         .currentLiveStats = m_currentLiveStats,
         .lastLiveStats = m_lastLiveStats,
+        .directionalLightSnapshot = std::move(directionalLightSnapshot),
     };
 
     auto &cameraComponent = camera->get();

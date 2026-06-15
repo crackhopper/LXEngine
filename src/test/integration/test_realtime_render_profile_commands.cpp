@@ -1,6 +1,8 @@
 #include "backend/vulkan/vulkan_realtime_renderer.hpp"
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/offline/offline_render_profile.hpp"
+#include "core/scene/components/camera_component.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/scene.hpp"
 #include "infra/image/rgba_image_io.hpp"
 #include "editor/app/editor_session.hpp"
@@ -12,6 +14,7 @@
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <limits>
@@ -49,6 +52,59 @@ void expectRuntimeErrorContaining(Fn &&fn, std::string_view expected,
     return;
   }
   EXPECT(false, message);
+}
+
+[[nodiscard]] bool nearlyEqual(const float a, const float b,
+                               const float eps = 1.0e-4f) {
+  return std::abs(a - b) <= eps;
+}
+
+[[nodiscard]] bool vec3NearlyEqual(const LX_core::Vec3f &a,
+                                   const LX_core::Vec3f &b) {
+  return nearlyEqual(a.x, b.x) && nearlyEqual(a.y, b.y) &&
+         nearlyEqual(a.z, b.z);
+}
+
+[[nodiscard]] bool vec4NearlyEqual(const LX_core::Vec4f &a,
+                                   const LX_core::Vec4f &b) {
+  return nearlyEqual(a.x, b.x) && nearlyEqual(a.y, b.y) &&
+         nearlyEqual(a.z, b.z) && nearlyEqual(a.w, b.w);
+}
+
+[[nodiscard]] bool mat4NearlyEqual(const LX_core::Mat4f &a,
+                                   const LX_core::Mat4f &b) {
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      if (!nearlyEqual(a(row, col), b(row, col), 1.0e-3f)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool
+debugViewNearlyEqual(const LX_core::DirectionalShadowCascadeDebugView &a,
+                     const LX_core::DirectionalShadowCascadeDebugView &b) {
+  return vec3NearlyEqual(a.eye, b.eye) && vec3NearlyEqual(a.target, b.target) &&
+         vec3NearlyEqual(a.up, b.up) && nearlyEqual(a.left, b.left, 1.0e-3f) &&
+         nearlyEqual(a.right, b.right, 1.0e-3f) &&
+         nearlyEqual(a.bottom, b.bottom, 1.0e-3f) &&
+         nearlyEqual(a.top, b.top, 1.0e-3f) &&
+         nearlyEqual(a.nearPlane, b.nearPlane, 1.0e-3f) &&
+         nearlyEqual(a.farPlane, b.farPlane, 1.0e-3f);
+}
+
+[[nodiscard]] LX_core::CameraComponent &
+makeShadowTestCamera(LX_core::Scene &scene, const char *name,
+                     const LX_core::Vec3f &eye, const LX_core::Vec3f &target) {
+  auto node = LX_core::SceneNode::create(name);
+  auto camera = node->addComponent<LX_core::CameraComponent>();
+  scene.addCamera(node);
+  camera->get().lookAt(eye, target, {0.0f, 1.0f, 0.0f});
+  camera->get().setNearPlane(0.25f);
+  camera->get().setFarPlane(120.0f);
+  return camera->get();
 }
 
 void testRealtimeRenderLsAndRun() {
@@ -346,6 +402,56 @@ void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
       "raw PNG writer should reject expected-size overflow");
 }
 
+void testDirectionalLightRuntimeShadowStateRestoresFromSnapshot() {
+  auto scene = LX_core::Scene::create(LX_core::SceneNode::create("root"));
+  LX_core::CameraComponent &mainCamera = makeShadowTestCamera(
+      *scene, "main_cam", {3.0f, 2.0f, 8.0f}, {0.0f, 0.0f, 0.0f});
+  LX_core::CameraComponent &debugCamera = makeShadowTestCamera(
+      *scene, "debug_cam", {-6.0f, 5.0f, 4.0f}, {0.5f, 0.5f, 0.0f});
+
+  LX_core::DirectionalLight light;
+  light.setShadowCascadeCount(4);
+  light.updateShadowCascadesForCamera(mainCamera);
+  const std::unique_ptr<LX_core::LightBase> snapshotBase = light.cloneUnique();
+  const auto *snapshot =
+      dynamic_cast<const LX_core::DirectionalLight *>(snapshotBase.get());
+  EXPECT(snapshot != nullptr,
+         "directional light clone should preserve concrete type");
+  if (snapshot == nullptr) {
+    return;
+  }
+
+  const auto expectedParam = snapshot->getDirectionalUBO().param;
+  const auto expectedDebugView = snapshot->getShadowCascadeDebugView(0);
+
+  light.updateShadowCascadesForCamera(debugCamera);
+  EXPECT(!mat4NearlyEqual(light.getDirectionalUBO().param.cascadeViewProj[0],
+                          expectedParam.cascadeViewProj[0]),
+         "debug camera should mutate directional cascade state");
+
+  light.restoreShadowCascadeStateFrom(*snapshot);
+  const auto &restoredParam = light.getDirectionalUBO().param;
+  EXPECT(mat4NearlyEqual(restoredParam.shadowViewProj,
+                         expectedParam.shadowViewProj),
+         "restore should recover active shadow matrix");
+  EXPECT(mat4NearlyEqual(restoredParam.cascadeViewProj[0],
+                         expectedParam.cascadeViewProj[0]),
+         "restore should recover cascade matrix");
+  EXPECT(
+      vec4NearlyEqual(restoredParam.cascadeSplits, expectedParam.cascadeSplits),
+      "restore should recover cascade splits");
+  EXPECT(vec4NearlyEqual(restoredParam.cascadeDepthRanges,
+                         expectedParam.cascadeDepthRanges),
+         "restore should recover cascade depth ranges");
+  const auto restoredDebugView = light.getShadowCascadeDebugView(0);
+  EXPECT(restoredDebugView.has_value() == expectedDebugView.has_value(),
+         "restore should recover cascade debug-view validity");
+  if (restoredDebugView.has_value() && expectedDebugView.has_value()) {
+    EXPECT(debugViewNearlyEqual(*restoredDebugView, *expectedDebugView),
+           "restore should recover cascade debug-view data");
+  }
+}
+
 void testDebugColorTransferExportRejectsUninitializedRendererBeforeStub() {
   LX_core::backend::VulkanRealtimeRenderer renderer;
   expectRuntimeErrorContaining(
@@ -482,6 +588,7 @@ int main() {
   testDebugColorTransferExportResultJson();
   testDebugColorTransferExportResultJsonEscapesControlBytes();
   testRawRgba8PngRejectsInvalidPayloadsBeforeStb();
+  testDirectionalLightRuntimeShadowStateRestoresFromSnapshot();
   testDebugColorTransferExportRejectsUninitializedRendererBeforeStub();
   testDebugColorTransferExportRejectsCollapsedProbeExtentBeforeRendererWork();
   testRenderDebugColorTransferCommandUsesExportHook();

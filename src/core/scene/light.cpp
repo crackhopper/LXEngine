@@ -109,8 +109,8 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
 
 DirectionalLight::DirectionalLight()
     : m_ubo(std::make_unique<DirectionalLightData>()),
-      m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_DeferredLighting,
-                         Pass_Shadow}) {
+      m_supportedPasses(
+          {Pass_Forward, Pass_Deferred, Pass_DeferredLighting, Pass_Shadow}) {
   const Vec3f defaultDirection = m_pendingDirection.normalized();
   m_ubo->param.dir =
       Vec4f{defaultDirection.x, defaultDirection.y, defaultDirection.z, 0.0f};
@@ -369,6 +369,25 @@ void DirectionalLight::updateShadowCascadesForCamera(
   emitLightPropertyChanged();
 }
 
+void DirectionalLight::restoreShadowCascadeStateFrom(
+    const DirectionalLight &snapshot) {
+  m_ubo->param.dir = snapshot.m_ubo->param.dir;
+  m_ubo->param.shadowViewProj = snapshot.m_ubo->param.shadowViewProj;
+  std::copy(std::begin(snapshot.m_ubo->param.cascadeViewProj),
+            std::end(snapshot.m_ubo->param.cascadeViewProj),
+            std::begin(m_ubo->param.cascadeViewProj));
+  m_ubo->param.cascadeSplits = snapshot.m_ubo->param.cascadeSplits;
+  m_ubo->param.cascadeDepthRanges = snapshot.m_ubo->param.cascadeDepthRanges;
+  std::copy(std::begin(snapshot.m_shadowCascadeDebugViews),
+            std::end(snapshot.m_shadowCascadeDebugViews),
+            std::begin(m_shadowCascadeDebugViews));
+  std::copy(std::begin(snapshot.m_shadowCascadeDebugViewValid),
+            std::end(snapshot.m_shadowCascadeDebugViewValid),
+            std::begin(m_shadowCascadeDebugViewValid));
+  m_ubo->setDirty();
+  emitLightPropertyChanged();
+}
+
 std::optional<DirectionalShadowCascadeDebugView>
 DirectionalLight::getShadowCascadeDebugView(const u32 cascadeIndex) const {
   if (cascadeIndex >= MaxShadowCascades ||
@@ -463,8 +482,7 @@ void DirectionalLight::emitLightPropertyChanged() const {
 }
 
 PointLight::PointLight()
-    : m_supportedPasses({Pass_Forward, Pass_Deferred,
-                         Pass_DeferredLighting}) {}
+    : m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_DeferredLighting}) {}
 
 std::unique_ptr<LightBase> PointLight::cloneUnique() const {
   auto clone = std::make_unique<PointLight>();
@@ -535,8 +553,7 @@ void PointLight::emitLightPropertyChanged() const {
 }
 
 SpotLight::SpotLight()
-    : m_supportedPasses({Pass_Forward, Pass_Deferred,
-                         Pass_DeferredLighting}) {}
+    : m_supportedPasses({Pass_Forward, Pass_Deferred, Pass_DeferredLighting}) {}
 
 std::unique_ptr<LightBase> SpotLight::cloneUnique() const {
   auto clone = std::make_unique<SpotLight>();

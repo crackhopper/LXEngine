@@ -162,6 +162,7 @@ public:
   void setShadowDistance(float distance);
   void updateShadowCascadesForCamera(const CameraComponent &camera,
                                      float splitLambda = 0.5f);
+  void restoreShadowCascadeStateFrom(const DirectionalLight &snapshot);
   [[nodiscard]] std::optional<DirectionalShadowCascadeDebugView>
   getShadowCascadeDebugView(u32 cascadeIndex) const;
   [[nodiscard]] DirectionalLightDataUniquePtr
