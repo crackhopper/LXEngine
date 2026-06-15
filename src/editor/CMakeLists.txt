@@ -30,6 +30,7 @@ set(LXE_EDITOR_SOURCES
   panels/scene_tree_panel.cpp
   panels/viewport_overlay.cpp
   project/builtin_asset_catalog.cpp
+  project/debug_render_export.cpp
   project/project_catalog.cpp
   project/project_document.cpp
   project/project_session.cpp

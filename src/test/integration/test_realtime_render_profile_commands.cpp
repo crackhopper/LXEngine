@@ -186,12 +186,59 @@ void testVulkanRealtimeProfileOutputApiShape() {
   EXPECT(result.width == 64 && result.height == 32,
          "result exposes output extent");
 }
+
+void testDebugColorTransferExportApiShape() {
+  using LX_core::backend::VulkanDebugColorTransferExportRequest;
+  using LX_core::backend::VulkanDebugColorTransferExportResult;
+  using LX_core::backend::VulkanDebugColorTransferTargetRecord;
+  using LX_core::backend::VulkanRenderer;
+  using LX_core::backend::VulkanRealtimeRenderer;
+
+  static_assert(std::is_same_v<
+                decltype(std::declval<VulkanRenderer &>()
+                             .exportDebugColorTransfer(
+                                 std::declval<
+                                     const VulkanDebugColorTransferExportRequest
+                                         &>())),
+                VulkanDebugColorTransferExportResult>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<VulkanRealtimeRenderer &>()
+                             .exportDebugColorTransfer(
+                                 std::declval<
+                                     const VulkanDebugColorTransferExportRequest
+                                         &>())),
+                VulkanDebugColorTransferExportResult>);
+
+  VulkanDebugColorTransferExportRequest request{
+      .cameraPath = "/editor_cam",
+      .outputDirectory = "artifacts/debug/color-transfer",
+  };
+  EXPECT(request.cameraPath == "/editor_cam",
+         "debug export request should expose camera path");
+  EXPECT(request.outputDirectory.filename() == "color-transfer",
+         "debug export request should expose output directory");
+
+  VulkanDebugColorTransferExportResult result;
+  result.manifestPath = "manifest.json";
+  result.targets.push_back(VulkanDebugColorTransferTargetRecord{
+      .name = "debug.ramp.srgb",
+      .path = "ramp_srgb_attachment.png",
+      .format = "R8G8B8A8_SRGB",
+      .width = 64,
+      .height = 64,
+  });
+  EXPECT(result.manifestPath.filename() == "manifest.json",
+         "debug export result should expose manifest path");
+  EXPECT(result.targets.size() == 1,
+         "debug export result should expose target records");
+}
 } // namespace
 
 int main() {
   testRealtimeRenderLsAndRun();
   testRealtimeProfileOutputHelpersBuildStableJson();
   testVulkanRealtimeProfileOutputApiShape();
+  testDebugColorTransferExportApiShape();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";

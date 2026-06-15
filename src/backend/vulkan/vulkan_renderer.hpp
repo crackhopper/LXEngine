@@ -63,6 +63,8 @@ public:
   VulkanRealtimeProfileOutputResult generateRealtimeProfileOutput(
       SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
       const std::filesystem::path &basePath);
+  VulkanDebugColorTransferExportResult exportDebugColorTransfer(
+      const VulkanDebugColorTransferExportRequest &request);
 
 private:
   std::unique_ptr<VulkanRealtimeRenderer> p_realtime;

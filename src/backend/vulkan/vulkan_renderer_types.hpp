@@ -2,7 +2,9 @@
 
 #include "core/platform/types.hpp"
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace LX_core::backend {
 
@@ -51,6 +53,51 @@ struct VulkanRealtimeProfileOutputResult final {
   VulkanRealtimeRenderInputStats renderInputStats;
   u32 width = 0;
   u32 height = 0;
+};
+
+struct VulkanDebugColorTransferTargetRecord final {
+  std::string name;
+  std::filesystem::path path;
+  std::string format;
+  u32 width = 0;
+  u32 height = 0;
+  double minValue = 0.0;
+  double maxValue = 0.0;
+  double meanValue = 0.0;
+  double nonZeroRatio = 0.0;
+};
+
+struct VulkanDebugColorTransferProbeRecord final {
+  std::string target;
+  std::string label;
+  u32 x = 0;
+  u32 y = 0;
+  u32 red = 0;
+  u32 green = 0;
+  u32 blue = 0;
+  u32 expected = 0;
+};
+
+struct VulkanDebugColorTransferFormatFacts final {
+  std::string surfaceFormat;
+  std::string surfaceColorSpace;
+  std::string swapchainImageViewFormat;
+  std::string swapchainTargetFormat;
+};
+
+struct VulkanDebugColorTransferExportRequest final {
+  std::optional<std::string> cameraPath;
+  std::filesystem::path outputDirectory;
+  u32 width = 0;
+  u32 height = 0;
+};
+
+struct VulkanDebugColorTransferExportResult final {
+  std::filesystem::path manifestPath;
+  std::filesystem::path outputDirectory;
+  VulkanDebugColorTransferFormatFacts formatFacts;
+  std::vector<VulkanDebugColorTransferTargetRecord> targets;
+  std::vector<VulkanDebugColorTransferProbeRecord> probes;
 };
 
 } // namespace LX_core::backend

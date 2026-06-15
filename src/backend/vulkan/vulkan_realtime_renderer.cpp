@@ -2381,6 +2381,12 @@ public:
     return result;
   }
 
+  VulkanDebugColorTransferExportResult exportDebugColorTransfer(
+      const VulkanDebugColorTransferExportRequest &) {
+    throw std::runtime_error(
+        "debug color transfer export is not implemented");
+  }
+
 private:
   struct PendingScreenDump final {
     std::filesystem::path path;
@@ -3382,6 +3388,12 @@ VulkanRealtimeRenderer::generateRealtimeProfileOutput(
     const std::filesystem::path &basePath) {
   return p_impl->generateRealtimeProfileOutput(std::move(scene), output,
                                                basePath);
+}
+
+VulkanDebugColorTransferExportResult
+VulkanRealtimeRenderer::exportDebugColorTransfer(
+    const VulkanDebugColorTransferExportRequest &request) {
+  return p_impl->exportDebugColorTransfer(request);
 }
 
 } // namespace LX_core::backend

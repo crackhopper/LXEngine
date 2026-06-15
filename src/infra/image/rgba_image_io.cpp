@@ -93,6 +93,23 @@ void writeToneMappedPng(const std::filesystem::path &path,
   }
 }
 
+void writeRawRgba8Png(const std::filesystem::path &path, u32 width, u32 height,
+                      const std::vector<unsigned char> &rgba) {
+  const usize expectedSize =
+      static_cast<usize>(width) * static_cast<usize>(height) * 4u;
+  if (width == 0 || height == 0 || rgba.size() != expectedSize) {
+    throw std::runtime_error("invalid raw RGBA8 PNG payload for " +
+                             path.string());
+  }
+  const int ok =
+      stbi_write_png(path.string().c_str(), static_cast<int>(width),
+                     static_cast<int>(height), 4, rgba.data(),
+                     static_cast<int>(width * 4u));
+  if (ok == 0) {
+    throw std::runtime_error("failed to write raw RGBA8 PNG " + path.string());
+  }
+}
+
 void writeRawRgba32f(const std::filesystem::path &path,
                      const LX_core::offline::OfflineReadbackImage &image) {
   std::ofstream stream(path, std::ios::binary);

@@ -97,4 +97,9 @@ VulkanRealtimeProfileOutputResult VulkanRenderer::generateRealtimeProfileOutput(
                                                    basePath);
 }
 
+VulkanDebugColorTransferExportResult VulkanRenderer::exportDebugColorTransfer(
+    const VulkanDebugColorTransferExportRequest &request) {
+  return p_realtime->exportDebugColorTransfer(request);
+}
+
 } // namespace LX_core::backend
