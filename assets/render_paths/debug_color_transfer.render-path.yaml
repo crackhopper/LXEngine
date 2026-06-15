@@ -80,7 +80,7 @@ passes:
           format: RGBA8Srgb
           samples: 1
           layers: 1
-    sources: [debug.ldr.linear]
+    sources: [debug.ldr.linear, feature.toneMapping]
     targets: [debug.final.srgb]
     renderState:
       cullMode: None
@@ -102,7 +102,7 @@ passes:
           format: RGBA8
           samples: 1
           layers: 1
-    sources: [debug.ldr.linear]
+    sources: [debug.ldr.linear, feature.toneMapping]
     targets: [debug.final.unorm_manual_srgb]
     renderState:
       cullMode: None

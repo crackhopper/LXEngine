@@ -6,6 +6,7 @@
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <filesystem>
@@ -203,6 +204,70 @@ void testDebugColorTransferRenderPathGraphAssetParses() {
          "debug graph should use Forward render path");
   EXPECT(graph.passes.size() == 6,
          "debug graph should declare Forward plus five diagnostic passes");
+
+  const auto findPass = [&](const std::string &id)
+      -> const LX_core::RenderPassNode * {
+    for (const auto &pass : graph.passes) {
+      if (pass.id == id) {
+        return &pass;
+      }
+    }
+    return nullptr;
+  };
+  const auto passHasSource = [](const LX_core::RenderPassNode &pass,
+                                const std::string &source) {
+    return std::find(pass.sources.begin(), pass.sources.end(), source) !=
+           pass.sources.end();
+  };
+
+  const auto *debugToneMap = findPass("DebugToneMapLinear");
+  const auto *debugSrgb = findPass("DebugSrgbAttachment");
+  const auto *debugUnorm = findPass("DebugUnormManualSrgb");
+  const auto *debugRampSrgb = findPass("DebugRampSrgb");
+  const auto *debugRampUnorm = findPass("DebugRampUnormManualSrgb");
+  EXPECT(debugToneMap != nullptr,
+         "debug graph should contain DebugToneMapLinear pass");
+  EXPECT(debugSrgb != nullptr,
+         "debug graph should contain DebugSrgbAttachment pass");
+  EXPECT(debugUnorm != nullptr,
+         "debug graph should contain DebugUnormManualSrgb pass");
+  EXPECT(debugRampSrgb != nullptr,
+         "debug graph should contain DebugRampSrgb pass");
+  EXPECT(debugRampUnorm != nullptr,
+         "debug graph should contain DebugRampUnormManualSrgb pass");
+  if (debugToneMap != nullptr) {
+    EXPECT(debugToneMap->shaderUri ==
+               LX_core::ResourceUri("debug_color_transfer_tonemap"),
+           "DebugToneMapLinear should use tonemap shader");
+  }
+  if (debugSrgb != nullptr) {
+    EXPECT(debugSrgb->shaderUri ==
+               LX_core::ResourceUri("debug_color_transfer_copy"),
+           "DebugSrgbAttachment should use copy shader");
+    EXPECT(passHasSource(*debugSrgb, "feature.toneMapping"),
+           "DebugSrgbAttachment should depend on tone mapping feature");
+  }
+  if (debugUnorm != nullptr) {
+    EXPECT(debugUnorm->shaderUri ==
+               LX_core::ResourceUri("debug_color_transfer_copy"),
+           "DebugUnormManualSrgb should use copy shader");
+    EXPECT(passHasSource(*debugUnorm, "feature.toneMapping"),
+           "DebugUnormManualSrgb should depend on tone mapping feature");
+  }
+  if (debugRampSrgb != nullptr) {
+    EXPECT(debugRampSrgb->shaderUri ==
+               LX_core::ResourceUri("debug_color_transfer_ramp"),
+           "DebugRampSrgb should use ramp shader");
+    EXPECT(passHasSource(*debugRampSrgb, "feature.toneMapping"),
+           "DebugRampSrgb should depend on tone mapping feature");
+  }
+  if (debugRampUnorm != nullptr) {
+    EXPECT(debugRampUnorm->shaderUri ==
+               LX_core::ResourceUri("debug_color_transfer_ramp"),
+           "DebugRampUnormManualSrgb should use ramp shader");
+    EXPECT(passHasSource(*debugRampUnorm, "feature.toneMapping"),
+           "DebugRampUnormManualSrgb should depend on tone mapping feature");
+  }
 
   bool sawFinalSrgbAttachment = false;
   bool sawRampSrgbAttachment = false;
