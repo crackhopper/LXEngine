@@ -114,6 +114,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
+  test_lxe_image_probe
   test_offline_integrator_selection
   test_offline_gpu_scene
 
@@ -220,6 +221,7 @@ endif()
 add_custom_target(BuildTest)
 add_dependencies(BuildTest
   lxe_compare_exr
+  lxe_image_probe
   lxe_offline_render
   lxe_realtime_render
 )
@@ -245,6 +247,10 @@ endforeach()
 
 if(TARGET test_lxe_compare_exr_metrics)
   target_link_libraries(test_lxe_compare_exr_metrics PRIVATE lxe_compare_exr_core)
+endif()
+
+if(TARGET test_lxe_image_probe)
+  target_link_libraries(test_lxe_image_probe PRIVATE lxe_image_probe_core)
 endif()
 
 if(TARGET test_diagnostics_compare)
