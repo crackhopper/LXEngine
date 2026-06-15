@@ -3354,4 +3354,12 @@ VulkanRealtimeRenderer::generateRealtimeProfileOutput(
                                                basePath);
 }
 
+VulkanDebugColorTransferExportResult
+VulkanRealtimeRenderer::exportDebugColorTransfer(
+    const VulkanDebugColorTransferExportRequest &) {
+  throw std::runtime_error(
+      "debug color transfer export is not available after the render-path "
+      "shader layout migration; use live render-target dumps instead");
+}
+
 } // namespace LX_core::backend
