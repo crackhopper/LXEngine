@@ -22,6 +22,16 @@ void VulkanRenderer::uploadData() { p_realtime->uploadData(); }
 
 void VulkanRenderer::draw() { p_realtime->draw(); }
 
+void VulkanRenderer::setLiveRenderView(
+    std::optional<gpu::LiveRenderView> view) {
+  p_realtime->setLiveRenderView(std::move(view));
+}
+
+gpu::LiveRenderSubmissionStats
+VulkanRenderer::liveRenderSubmissionStats() const {
+  return p_realtime->liveRenderSubmissionStats();
+}
+
 void VulkanRenderer::setDrawUiCallback(std::function<void()> cb) {
   p_realtime->setDrawUiCallback(std::move(cb));
 }

@@ -12,6 +12,7 @@ void EngineLoop::initialize(WindowSharedPtr window, RendererSharedPtr renderer) 
   m_scene.reset();
   m_clock = Clock{};
   m_updateHook = {};
+  m_liveRenderView.reset();
   m_running = false;
   m_rebuildRequested = false;
   DebugDraw::reset();
@@ -25,7 +26,20 @@ void EngineLoop::startScene(SceneSharedPtr scene) {
   }
   DebugDraw::attachScene(m_scene);
   m_renderer->initScene(m_scene);
+  m_renderer->setLiveRenderView(m_liveRenderView);
   m_rebuildRequested = false;
+}
+
+void EngineLoop::setLiveRenderView(std::optional<LiveRenderView> view) {
+  m_liveRenderView = std::move(view);
+  if (m_renderer) {
+    m_renderer->setLiveRenderView(m_liveRenderView);
+  }
+}
+
+LiveRenderSubmissionStats EngineLoop::liveRenderSubmissionStats() const {
+  return m_renderer ? m_renderer->liveRenderSubmissionStats()
+                    : LiveRenderSubmissionStats{};
 }
 
 void EngineLoop::setUpdateHook(UpdateHook hook) {
@@ -54,6 +68,7 @@ void EngineLoop::tickFrame() {
   if (DebugDraw::endFrame()) {
     m_renderer->initScene(m_scene);
   }
+  m_renderer->setLiveRenderView(m_liveRenderView);
   m_renderer->uploadData();
   m_renderer->draw();
 }

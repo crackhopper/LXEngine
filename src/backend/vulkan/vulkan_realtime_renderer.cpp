@@ -1023,6 +1023,13 @@ public:
   void setPostProcessSettings(const VulkanPostProcessSettings &settings) {
     m_postProcessSettings = settings;
   }
+  void setLiveRenderView(std::optional<LX_core::gpu::LiveRenderView> view) {
+    m_liveRenderView = std::move(view);
+  }
+  [[nodiscard]] LX_core::gpu::LiveRenderSubmissionStats
+  liveRenderSubmissionStats() const {
+    return m_lastLiveStats;
+  }
   [[nodiscard]] const VulkanPostProcessSettings &postProcessSettings() const {
     return m_postProcessSettings;
   }
@@ -1062,6 +1069,37 @@ public:
       }
     }
     return false;
+  }
+
+  [[nodiscard]] static bool isBindlessSceneDescriptor(
+      const LX_core::DescriptorResourceRef &descriptor) {
+    const LX_core::StringID name = descriptor.getBindingName();
+    return name == LX_core::StringID("SceneObjects") ||
+           name == LX_core::StringID("SceneDraws") ||
+           name == LX_core::StringID("SceneMaterials") ||
+           name == LX_core::StringID("SceneMaterialRefs") ||
+           name == LX_core::StringID("SceneSourceMaterialRecords") ||
+           name == LX_core::StringID("SceneTextures");
+  }
+
+  void recordLiveDescStats(const LX_core::RenderInputDesc &desc) {
+    ++m_currentLiveStats.compilerInputCount;
+    if (desc.accepted()) {
+      ++m_currentLiveStats.acceptedInputCount;
+      m_currentLiveStats.submittedDrawCount += desc.stats.submittedDrawCount;
+      m_currentLiveStats.submittedDispatchCount +=
+          desc.stats.submittedDispatchCount;
+      m_currentLiveStats.fallbackObservedCount +=
+          desc.stats.fallbackObservedCount;
+      for (const LX_core::DescriptorResourceRef &descriptor :
+           desc.bindingPlan.descriptors) {
+        if (isBindlessSceneDescriptor(descriptor)) {
+          ++m_currentLiveStats.bindlessSceneDescriptorCount;
+        }
+      }
+    } else {
+      ++m_currentLiveStats.rejectedInputCount;
+    }
   }
 
   void syncDescriptorResource(const LX_core::DescriptorResourceRef &resource) {
@@ -1143,6 +1181,10 @@ public:
   makeRealtimeRenderWorkOptionsForCompiledPass(
       std::optional<usize> compiledPassIndex) const {
     LX_core::RenderWorkBuildContext::RealtimeOptions options;
+    if (m_liveRenderView.has_value()) {
+      options.cameraResource = m_liveRenderView->cameraResource;
+      options.visibleMask = m_liveRenderView->visibleMask;
+    }
     options.passPreparationFacts.reserve(m_basePassPreparationFacts.size() + 1);
     for (const auto &[_, facts] : m_basePassPreparationFacts) {
       options.passPreparationFacts.push_back(facts);
@@ -1524,6 +1566,8 @@ public:
     }
 
     const VkExtent2D extent = m_swapchain->getExtent();
+    m_currentLiveStats = {};
+    m_currentLiveStats.usedExplicitCamera = m_liveRenderView.has_value();
 
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     u32 imageIndex = 0;
@@ -1636,6 +1680,9 @@ public:
     }
 
     m_frameIndex++;
+    m_currentLiveStats.usedBindlessSceneDescriptors =
+        m_currentLiveStats.bindlessSceneDescriptorCount > 0;
+    m_lastLiveStats = m_currentLiveStats;
   }
 
   void setDrawUiCallback(std::function<void()> cb) {
@@ -2360,15 +2407,19 @@ private:
     PreparedRenderPassInputs prepared = prepareRenderPassInputs(pass, context);
     syncRenderUploadPlan(prepared.inputs, prepared.descs);
     for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      recordLiveDescStats(desc);
       if (!desc.accepted()) {
         recordDiagnostic(desc);
         continue;
       }
       const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
       auto pipeline = resourceManager().getOrCreatePipeline(desc);
+      ++m_currentLiveStats.descPipelineLookupCount;
       cmd.bindPipeline(pipeline);
       cmd.bindResources(resourceManager(), pipeline, input, desc);
+      ++m_currentLiveStats.descBoundInputCount;
       cmd.executeRenderInput(input, desc);
+      ++m_currentLiveStats.descExecutedInputCount;
     }
   }
 
@@ -3201,6 +3252,9 @@ private:
   VulkanPostProcessSettings m_postProcessSettings{};
   infra::Gui m_gui{};
   std::function<void()> m_drawUiCallback{};
+  std::optional<LX_core::gpu::LiveRenderView> m_liveRenderView;
+  LX_core::gpu::LiveRenderSubmissionStats m_currentLiveStats;
+  LX_core::gpu::LiveRenderSubmissionStats m_lastLiveStats;
   std::optional<PendingScreenDump> m_pendingScreenDump;
   std::vector<VkImageLayout> m_swapchainImageLayouts;
   std::vector<LX_core::DirectionalLightDataUniquePtr>
@@ -3226,6 +3280,16 @@ void VulkanRealtimeRenderer::initScene(SceneSharedPtr scene) {
 void VulkanRealtimeRenderer::uploadData() { p_impl->uploadData(); }
 
 void VulkanRealtimeRenderer::draw() { p_impl->draw(); }
+
+void VulkanRealtimeRenderer::setLiveRenderView(
+    std::optional<gpu::LiveRenderView> view) {
+  p_impl->setLiveRenderView(std::move(view));
+}
+
+gpu::LiveRenderSubmissionStats
+VulkanRealtimeRenderer::liveRenderSubmissionStats() const {
+  return p_impl->liveRenderSubmissionStats();
+}
 
 void VulkanRealtimeRenderer::setDrawUiCallback(std::function<void()> cb) {
   p_impl->setDrawUiCallback(std::move(cb));

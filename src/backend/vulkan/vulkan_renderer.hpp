@@ -33,6 +33,9 @@ public:
 
   void uploadData() override;
   void draw() override;
+  void setLiveRenderView(std::optional<gpu::LiveRenderView> view) override;
+  [[nodiscard]] gpu::LiveRenderSubmissionStats
+  liveRenderSubmissionStats() const override;
 
   // Register a callback invoked every frame inside the swapchain render pass,
   // between Gui::beginFrame() and scene draw calls. Replace semantics; pass

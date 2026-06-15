@@ -1,8 +1,10 @@
 #pragma once
 #include "core/math/mat.hpp"
+#include "core/rhi/live_render_view.hpp"
 #include "core/scene/scene.hpp"
 #include "core/platform/window.hpp"
 
+#include <optional>
 #include <memory>
 #include <vector>
 
@@ -26,7 +28,15 @@ public:
   virtual void uploadData() = 0;
   // 绘制渲染对象：录制命令+提交
   virtual void draw() = 0;
-  
+
+  virtual void setLiveRenderView(std::optional<LiveRenderView> view) {
+    (void)view;
+  }
+
+  [[nodiscard]] virtual LiveRenderSubmissionStats
+  liveRenderSubmissionStats() const {
+    return {};
+  }
 };
 
 using RendererSharedPtr = std::shared_ptr<Renderer>;

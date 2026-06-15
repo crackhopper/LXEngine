@@ -24,6 +24,9 @@ public:
 
   void uploadData() override;
   void draw() override;
+  void setLiveRenderView(std::optional<gpu::LiveRenderView> view) override;
+  [[nodiscard]] gpu::LiveRenderSubmissionStats
+  liveRenderSubmissionStats() const override;
 
   void setDrawUiCallback(std::function<void()> cb);
   void setPostProcessSettings(const VulkanPostProcessSettings &settings);

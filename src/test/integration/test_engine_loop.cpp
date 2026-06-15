@@ -101,11 +101,20 @@ public:
     ++drawCalls;
     events.push_back("draw");
   }
+  void setLiveRenderView(std::optional<gpu::LiveRenderView> view) override {
+    lastLiveRenderView = std::move(view);
+  }
+  [[nodiscard]] gpu::LiveRenderSubmissionStats
+  liveRenderSubmissionStats() const override {
+    return liveStats;
+  }
 
   int initSceneCalls = 0;
   int uploadCalls = 0;
   int drawCalls = 0;
   SceneSharedPtr lastScene;
+  std::optional<gpu::LiveRenderView> lastLiveRenderView;
+  gpu::LiveRenderSubmissionStats liveStats{};
   std::vector<std::string> events;
 };
 
@@ -244,6 +253,50 @@ void testRunContinuesAfterCloseVeto() {
   EXPECT(renderer->uploadCalls >= 1, "a vetoed close should allow frame execution");
 }
 
+void testLiveRenderViewIsForwardedToRenderer() {
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+
+  gpu::LiveRenderView view;
+  view.cameraPath = "camera.forward";
+  view.previewEnabled = true;
+  view.editorOverlayVisible = false;
+  loop.setLiveRenderView(view);
+
+  loop.startScene(makeScene());
+
+  EXPECT(renderer->lastLiveRenderView.has_value(),
+         "setLiveRenderView before startScene should be applied");
+
+  gpu::LiveRenderView nextView;
+  nextView.cameraPath = "camera.live_tick";
+  loop.setLiveRenderView(nextView);
+  loop.tickFrame();
+  EXPECT(renderer->lastLiveRenderView.has_value(),
+         "tickFrame should forward latest live render view");
+  EXPECT(renderer->lastLiveRenderView->cameraPath == "camera.live_tick",
+         "tickFrame forwards latest live render view");
+}
+
+void testLiveRenderSubmissionStatsAreForwardedFromRenderer() {
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  EngineLoop loop;
+  loop.initialize(window, renderer);
+  loop.startScene(makeScene());
+
+  renderer->liveStats.compilerInputCount = 7;
+  renderer->liveStats.acceptedInputCount = 6;
+  renderer->liveStats.usedExplicitCamera = true;
+
+  const auto stats = loop.liveRenderSubmissionStats();
+  EXPECT(stats.compilerInputCount == 7, "loop should forward renderer live stats");
+  EXPECT(stats.acceptedInputCount == 6, "loop should forward renderer accepted count");
+  EXPECT(stats.usedExplicitCamera, "loop should forward explicit-camera stat");
+}
+
 } // namespace
 
 int main() {
@@ -255,6 +308,8 @@ int main() {
   testRunStopsAfterStopCalled();
   testRunStopsOnWindowClose();
   testRunContinuesAfterCloseVeto();
+  testLiveRenderViewIsForwardedToRenderer();
+  testLiveRenderSubmissionStatsAreForwardedFromRenderer();
 
   if (failures > 0) {
     std::cerr << "FAILED: " << failures << " assertion(s)\n";

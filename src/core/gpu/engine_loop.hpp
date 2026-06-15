@@ -4,6 +4,7 @@
 #include "core/rhi/renderer.hpp"
 #include "core/time/clock.hpp"
 
+#include <optional>
 #include <functional>
 
 namespace LX_core::gpu {
@@ -14,6 +15,8 @@ public:
 
   void initialize(WindowSharedPtr window, RendererSharedPtr renderer);
   void startScene(SceneSharedPtr scene);
+  void setLiveRenderView(std::optional<LiveRenderView> view);
+  [[nodiscard]] LiveRenderSubmissionStats liveRenderSubmissionStats() const;
   void setUpdateHook(UpdateHook hook);
   void requestSceneRebuild();
   void tickFrame();
@@ -31,6 +34,7 @@ private:
   SceneSharedPtr m_scene;
   Clock m_clock;
   UpdateHook m_updateHook;
+  std::optional<LiveRenderView> m_liveRenderView;
   bool m_running = false;
   bool m_rebuildRequested = false;
 };
