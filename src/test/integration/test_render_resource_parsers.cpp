@@ -182,6 +182,65 @@ void testDefaultRenderPathGraphAssetParses() {
   }
 }
 
+void testDebugColorTransferRenderPathGraphAssetParses() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse(
+      "assets/render_paths/debug_color_transfer.render-path.yaml",
+      readTextFile("assets/render_paths/debug_color_transfer.render-path.yaml"));
+
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "debug color transfer graph asset should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "debug color transfer graph should not emit diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
+    return;
+  }
+
+  const auto &graph = *parsed.renderPathGraph;
+  EXPECT(graph.name == "DebugColorTransfer",
+         "debug graph should retain name");
+  EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
+         "debug graph should use Forward render path");
+  EXPECT(graph.passes.size() == 6,
+         "debug graph should declare Forward plus five diagnostic passes");
+
+  bool sawSrgbAttachment = false;
+  bool sawUnormAttachment = false;
+  bool sawLinearLdr = false;
+  for (const auto &pass : graph.passes) {
+    for (const auto &attachment : pass.attachments) {
+      if (attachment.target == "debug.final.srgb" ||
+          attachment.target == "debug.ramp.srgb") {
+        sawSrgbAttachment =
+            sawSrgbAttachment ||
+            attachment.format == LX_core::ImageFormat::RGBA8Srgb;
+      }
+      if (attachment.target == "debug.final.unorm_manual_srgb" ||
+          attachment.target == "debug.ramp.unorm_manual_srgb") {
+        sawUnormAttachment =
+            sawUnormAttachment ||
+            attachment.format == LX_core::ImageFormat::RGBA8;
+      }
+      if (attachment.target == "debug.ldr.linear") {
+        sawLinearLdr =
+            sawLinearLdr ||
+            attachment.format == LX_core::ImageFormat::RGBA16Float;
+      }
+    }
+  }
+  EXPECT(sawSrgbAttachment, "debug graph should contain SRGB attachments");
+  EXPECT(sawUnormAttachment, "debug graph should contain UNORM attachments");
+  EXPECT(sawLinearLdr, "debug graph should contain linear LDR float target");
+
+  const LX_core::FrameGraph frameGraph =
+      LX_core::buildFrameGraphFromRenderPathGraph(
+          graph, LX_core::GraphResourceRegistry::makeDefault());
+  const auto compiled =
+      frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
+  EXPECT(compiled.isValid(),
+         "debug graph asset should compile into a FrameGraph plan");
+}
+
 void testRenderPathGraphParsesSrgbSwapchainAttachment() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://srgb-swapchain.render-path.yaml",
@@ -835,6 +894,7 @@ int main() {
   testRenderFeatureParsesPureEnvelope();
   testDefaultRenderFeatureAssetParses();
   testDefaultRenderPathGraphAssetParses();
+  testDebugColorTransferRenderPathGraphAssetParses();
   testRenderPathGraphParsesSrgbSwapchainAttachment();
   testDefaultDeferredRenderPathGraphAssetParses();
   testRenderFeatureRejectsPassAndShaderFields();

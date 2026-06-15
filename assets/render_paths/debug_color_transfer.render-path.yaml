@@ -1,0 +1,156 @@
+schema: lxe.render-path-graph.v1
+name: DebugColorTransfer
+renderPath: Forward
+
+features:
+  toneMapping:
+    uri: effects/tone_mapping.render-feature.yaml
+
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [matte, uber, metal, substrate, standard-pbr]
+        required: true
+      geometry:
+        vertex: position-only
+        topology: triangle-list
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+    targets: [hdr.color, depth.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+      blendEnable: false
+
+  - id: DebugToneMapLinear
+    stage: raster
+    dispatch: fullscreen
+    shader: debug_color_transfer_tonemap
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.ldr.linear
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+    sources: [hdr.color, feature.toneMapping]
+    targets: [debug.ldr.linear]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false
+
+  - id: DebugSrgbAttachment
+    stage: raster
+    dispatch: fullscreen
+    shader: debug_color_transfer_copy
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.final.srgb
+          format: RGBA8Srgb
+          samples: 1
+          layers: 1
+    sources: [debug.ldr.linear]
+    targets: [debug.final.srgb]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false
+
+  - id: DebugUnormManualSrgb
+    stage: raster
+    dispatch: fullscreen
+    shader: debug_color_transfer_copy
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.final.unorm_manual_srgb
+          format: RGBA8
+          samples: 1
+          layers: 1
+    sources: [debug.ldr.linear]
+    targets: [debug.final.unorm_manual_srgb]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false
+
+  - id: DebugRampSrgb
+    stage: raster
+    dispatch: fullscreen
+    shader: debug_color_transfer_ramp
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.ramp.srgb
+          format: RGBA8Srgb
+          samples: 1
+          layers: 1
+    sources: [feature.toneMapping]
+    targets: [debug.ramp.srgb]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false
+
+  - id: DebugRampUnormManualSrgb
+    stage: raster
+    dispatch: fullscreen
+    shader: debug_color_transfer_ramp
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: debug.ramp.unorm_manual_srgb
+          format: RGBA8
+          samples: 1
+          layers: 1
+    sources: [feature.toneMapping]
+    targets: [debug.ramp.unorm_manual_srgb]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false

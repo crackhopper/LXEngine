@@ -16,6 +16,15 @@ inline const StringID Pass_BloomThreshold = StringID("BloomThreshold");
 inline const StringID Pass_BloomBlurH = StringID("BloomBlurH");
 inline const StringID Pass_BloomBlurV = StringID("BloomBlurV");
 inline const StringID Pass_PostProcess = StringID("PostProcess");
+inline const StringID Pass_DebugToneMapLinear =
+    StringID("DebugToneMapLinear");
+inline const StringID Pass_DebugSrgbAttachment =
+    StringID("DebugSrgbAttachment");
+inline const StringID Pass_DebugUnormManualSrgb =
+    StringID("DebugUnormManualSrgb");
+inline const StringID Pass_DebugRampSrgb = StringID("DebugRampSrgb");
+inline const StringID Pass_DebugRampUnormManualSrgb =
+    StringID("DebugRampUnormManualSrgb");
 inline const StringID Pass_DebugOverlay = StringID("DebugOverlay");
 
 } // namespace LX_core
