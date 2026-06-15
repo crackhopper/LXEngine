@@ -158,7 +158,10 @@ std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
           0,
           LX_core::ShaderStage::Fragment,
           {LX_core::StructMemberInfo{
-              "params", LX_core::ShaderPropertyType::Vec4, 0, 16}}},
+               "params", LX_core::ShaderPropertyType::Vec4, 0, 16},
+           LX_core::StructMemberInfo{"ambientColorIntensity",
+                                     LX_core::ShaderPropertyType::Vec4, 16,
+                                     16}}},
   };
 }
 
@@ -271,6 +274,20 @@ std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
                                      LX_core::ShaderPropertyType::Vec4, 0, 16},
            LX_core::StructMemberInfo{"color", LX_core::ShaderPropertyType::Vec4,
                                      16, 16}}},
+      LX_core::ShaderResourceBinding{
+          "EnvironmentUBO",
+          3,
+          3,
+          LX_core::ShaderPropertyType::UniformBuffer,
+          1,
+          sizeof(LX_core::EnvironmentData::Param),
+          0,
+          LX_core::ShaderStage::Fragment,
+          {LX_core::StructMemberInfo{
+               "params", LX_core::ShaderPropertyType::Vec4, 0, 16},
+           LX_core::StructMemberInfo{"ambientColorIntensity",
+                                     LX_core::ShaderPropertyType::Vec4, 16,
+                                     16}}},
   };
 }
 

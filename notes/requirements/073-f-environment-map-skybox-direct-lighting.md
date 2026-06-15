@@ -8,6 +8,13 @@
 
 本 REQ 只处理第一层：环境贴图作为远场背景和直接可见光源进入 realtime graph。它不实现 local reflection probe，不做 irradiance/specular IBL 间接光照，不扩展 PBRT 高阶材质。
 
+2026-06-16 补充：在 HDR cubemap/skybox 完整接入前，允许
+`scene.environment` 提供一个 color-only 环境光 fallback：
+`ambientColor` + `ambientIntensity`。它在 lighting 阶段参与
+Forward/Deferred PBR，不能作为 postprocess 加色或 exposure 替代品。该
+fallback 用于让 Helmet 等直接光对比场景获得均匀单色环境贡献，后续由
+cubemap irradiance / prefiltered radiance 取代。
+
 ## 目标
 
 1. 让 skybox/background pass 由 RenderPathGraph 显式声明，而不是由 backend helper 注入。
@@ -49,6 +56,8 @@ Forward / Deferred graph SHALL 显式声明 skybox/background pass 或等价 ful
 | `intensity` | 环境亮度 multiplier |
 | `rotation` | 环境贴图 yaw 或等价方向参数 |
 | `visibleInBackground` | 背景可见性，不等同于 lighting contribution |
+| `ambientColor` | 临时单色环境光颜色，未来由 cubemap irradiance 替代 |
+| `ambientIntensity` | 临时单色环境光 multiplier，0 表示关闭 |
 
 这些参数必须：
 

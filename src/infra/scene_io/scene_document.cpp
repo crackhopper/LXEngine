@@ -577,22 +577,28 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   if (!node.IsMap()) {
     throw std::runtime_error("expected map for scene.environment");
   }
-  if (const auto enabled = node["enabled"]; enabled) {
-    state.enabled = enabled.as<bool>();
-  }
-  if (const auto hdrUri = node["hdrUri"]; hdrUri) {
-    state.hdrUri = hdrUri.as<std::string>();
-    validateSceneAssetUriInternal(state.hdrUri, "scene.environment.hdrUri");
-  }
-  if (const auto skyboxEnabled = node["skyboxEnabled"]; skyboxEnabled) {
-    state.skyboxEnabled = skyboxEnabled.as<bool>();
-  }
-  if (const auto intensity = node["intensity"]; intensity) {
-    state.intensity = intensity.as<float>();
-  }
-  if (const auto roughnessMipCount = node["roughnessMipCount"];
-      roughnessMipCount) {
-    state.roughnessMipCount = roughnessMipCount.as<float>();
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "enabled") {
+      state.enabled = value.as<bool>();
+    } else if (key == "hdrUri") {
+      state.hdrUri = value.as<std::string>();
+      validateSceneAssetUriInternal(state.hdrUri, "scene.environment.hdrUri");
+    } else if (key == "skyboxEnabled") {
+      state.skyboxEnabled = value.as<bool>();
+    } else if (key == "intensity") {
+      state.intensity = value.as<float>();
+    } else if (key == "roughnessMipCount") {
+      state.roughnessMipCount = value.as<float>();
+    } else if (key == "ambientColor") {
+      state.ambientColor =
+          loadVec3(value, "scene.environment.ambientColor");
+    } else if (key == "ambientIntensity") {
+      state.ambientIntensity = value.as<float>();
+    } else {
+      throw std::runtime_error("unknown scene.environment field: " + key);
+    }
   }
   if (state.enabled && state.hdrUri.empty()) {
     throw std::runtime_error(
@@ -1018,6 +1024,10 @@ void saveEnvironmentState(YAML::Emitter &out,
   out << YAML::Key << "intensity" << YAML::Value << state.intensity;
   out << YAML::Key << "roughnessMipCount" << YAML::Value
       << state.roughnessMipCount;
+  out << YAML::Key << "ambientColor" << YAML::Value;
+  saveVec3(out, state.ambientColor);
+  out << YAML::Key << "ambientIntensity" << YAML::Value
+      << state.ambientIntensity;
   out << YAML::EndMap;
 }
 

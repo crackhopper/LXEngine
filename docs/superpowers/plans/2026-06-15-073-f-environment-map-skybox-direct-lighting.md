@@ -9,6 +9,9 @@ RenderFeature + SceneResourceTable.
 
 ## Tasks
 
+- [x] Add a color-only `scene.environment` fallback with
+  `ambientColor`/`ambientIntensity`, parsed strictly and evaluated in
+  Forward/Deferred lighting before postprocess.
 - [ ] Add `effects/environment_lighting.render-feature.yaml` with typed
   `skyboxEnabled`, `intensity`, `rotation`, and `visibleInBackground`
   parameters.

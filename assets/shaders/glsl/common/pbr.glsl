@@ -57,6 +57,29 @@ vec3 lxPbrF0(vec3 baseColor, float metallic) {
   return mix(vec3(0.04), baseColor, clamp(metallic, 0.0, 1.0));
 }
 
+vec3 lxEvaluateConstantEnvironmentLight(vec3 baseColor,
+                                        float metallic,
+                                        float roughness,
+                                        float ao,
+                                        float NdotV,
+                                        vec3 F0,
+                                        vec4 ambientColorIntensity) {
+  vec3 ambientRadiance =
+      max(ambientColorIntensity.rgb, vec3(0.0)) *
+      max(ambientColorIntensity.a, 0.0);
+  if (max(max(ambientRadiance.r, ambientRadiance.g), ambientRadiance.b) <=
+      0.0) {
+    return vec3(0.0);
+  }
+
+  float clampedMetallic = clamp(metallic, 0.0, 1.0);
+  float clampedRoughness = clamp(roughness, 0.04, 1.0);
+  vec3 F = lxFresnelSchlickRoughness(NdotV, F0, clampedRoughness);
+  vec3 diffuse = (vec3(1.0) - F) * (1.0 - clampedMetallic) * baseColor;
+  vec3 specular = F * (1.0 - clampedRoughness * 0.5);
+  return (diffuse + specular) * ambientRadiance * clamp(ao, 0.0, 1.0);
+}
+
 vec3 lxPbrDirectBrdf(LxPbrDirectInput pbr) {
   vec3 N = normalize(pbr.normal);
   vec3 V = normalize(pbr.viewDir);

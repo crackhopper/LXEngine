@@ -46,6 +46,22 @@ The shader consumes:
 Surface/material parameters remain in material source contracts. Environment
 visibility, intensity and rotation are render-feature parameters.
 
+Before cubemap irradiance is fully graph-authored, `scene.environment` may also
+carry a color-only fallback:
+
+```yaml
+environment:
+  enabled: false
+  ambientColor: [0.08, 0.08, 0.10]
+  ambientIntensity: 0.7
+  skyboxEnabled: false
+```
+
+This fallback is evaluated in Forward/Deferred lighting before postprocess. It
+is not an exposure change and not a postprocess color add. Diffuse contribution
+is material-aware (`baseColor`, `metallic`, `ao`) and the specular term is a
+small roughness/Fresnel approximation until cubemap IBL replaces it.
+
 ## Required Rejections
 
 - Graph missing `scene.environment` while skybox pass is enabled.

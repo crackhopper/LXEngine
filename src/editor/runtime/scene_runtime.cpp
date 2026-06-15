@@ -506,6 +506,16 @@ loadEnvironmentResources(const EnvironmentState &environment,
     timer.emplace(g_sceneLoadTimingStats->environmentMs);
   }
   LX_core::IblEnvironmentResources resources;
+  const auto makeEnvironmentUbo = [&](float prefilteredMipCount = 1.0f) {
+    return std::make_unique<LX_core::EnvironmentData>(
+        iblEnabled ? environment.intensity : 0.0f, prefilteredMipCount,
+        environment.ambientColor, environment.ambientIntensity);
+  };
+  if (environment.hdrUri.empty()) {
+    resources.skyboxEnabled = false;
+    resources.environmentUbo = makeEnvironmentUbo();
+    return resources;
+  }
   const auto hdrPath =
       resolveRuntimeOrProjectAssetPath(assetRoots, environment.hdrUri);
   const auto hdrTexture = infra::TextureLoader::loadHdrTexture(hdrPath);
@@ -526,9 +536,8 @@ loadEnvironmentResources(const EnvironmentState &environment,
       hdrTexture, LX_core::StringID("PrefilteredEnvMap"), 64u,
       roughnessMipCount, &actualPrefilterMipCount);
   resources.brdfLut = makeNeutralBrdfLutSampler();
-  resources.environmentUbo = std::make_unique<LX_core::EnvironmentData>(
-      iblEnabled ? environment.intensity : 0.0f,
-      static_cast<float>(actualPrefilterMipCount));
+  resources.environmentUbo =
+      makeEnvironmentUbo(static_cast<float>(actualPrefilterMipCount));
   return resources;
 }
 
@@ -1473,8 +1482,8 @@ buildRuntimeFromDocument(const SceneDocument &document,
                          std::vector<std::filesystem::path> assetRoots = {}) {
   LX_core::SceneRealtimeRenderSettings effectiveRealtimeSettings =
       document.realtimeRenderSettings();
-  const bool environmentEnabled =
-      document.hasEnvironment() && document.environment().enabled;
+  const bool hasEnvironment = document.hasEnvironment();
+  const bool environmentEnabled = hasEnvironment && document.environment().enabled;
   effectiveRealtimeSettings.ibl =
       effectiveRealtimeSettings.ibl && environmentEnabled;
   ScopedSceneRealtimeRenderSettings realtimeSettingsScope(
@@ -1487,10 +1496,15 @@ buildRuntimeFromDocument(const SceneDocument &document,
   runtime->scene = LX_core::Scene::create(document.sceneName(), nullptr);
   runtime->scene->setRenderSettings(document.renderSettings());
   runtime->scene->setRealtimeRenderSettings(effectiveRealtimeSettings);
-  if (environmentEnabled) {
+  if (hasEnvironment) {
     runtime->scene->resources().setIblEnvironmentResources(
         loadEnvironmentResources(document.environment(), runtime->assetRoots,
                                  effectiveRealtimeSettings.ibl));
+  } else {
+    LX_core::IblEnvironmentResources resources;
+    resources.environmentUbo = std::make_unique<LX_core::EnvironmentData>();
+    runtime->scene->resources().setIblEnvironmentResources(
+        std::move(resources));
   }
 
   while (!runtime->scene->getLightHandles().empty()) {

@@ -747,8 +747,8 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   if (environment == bindings.end() ||
       environment->type != ShaderPropertyType::UniformBuffer ||
       environment->set != 3 || environment->binding != 3 ||
-      environment->size != 16) {
-    std::cerr << "  FAIL: EnvironmentUBO set=3 binding=3 size=16 missing\n";
+      environment->size != 32) {
+    std::cerr << "  FAIL: EnvironmentUBO set=3 binding=3 size=32 missing\n";
     return false;
   }
 
@@ -896,6 +896,26 @@ static bool testPbrFragmentAppliesDirectionalLightIntensity(
   }
 
   std::cout << "  PASS: PBR fragment applies directional intensity\n";
+  return true;
+}
+
+static bool
+testPbrFragmentAppliesConstantEnvironmentLight(
+    const std::filesystem::path &fragPath) {
+  std::cout << "  Test: PBR fragment applies constant environment light\n";
+  const auto source = readTextFile(fragPath);
+  if (source.find("lxEvaluateConstantEnvironmentLight") == std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should apply constant environment "
+                 "lighting before postprocess\n";
+    return false;
+  }
+  if (source.find("environment.ambientColorIntensity") == std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should source ambient lighting from "
+                 "EnvironmentUBO\n";
+    return false;
+  }
+
+  std::cout << "  PASS: PBR fragment applies constant environment light\n";
   return true;
 }
 
@@ -1164,6 +1184,8 @@ int main(int argc, char *argv[]) {
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
+    ++failures;
+  if (!testPbrFragmentAppliesConstantEnvironmentLight(fragPath))
     ++failures;
   if (!testShadowDepthOnlyUsesSceneDrawRecords(shaderDir))
     ++failures;

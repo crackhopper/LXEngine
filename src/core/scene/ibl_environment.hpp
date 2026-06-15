@@ -12,15 +12,26 @@ namespace LX_core {
 struct alignas(16) EnvironmentData final : public IGpuResource {
   struct Param {
     Vec4f params{0.0f, 1.0f, 0.0f, 0.0f};
+    Vec4f ambientColorIntensity{0.0f, 0.0f, 0.0f, 0.0f};
   };
 
   explicit EnvironmentData(float iblIntensity = 0.0f,
-                           float prefilteredMipCount = 1.0f) {
+                           float prefilteredMipCount = 1.0f,
+                           Vec3f ambientColor = Vec3f{0.0f, 0.0f, 0.0f},
+                           float ambientIntensity = 0.0f) {
     param.params = Vec4f{iblIntensity, prefilteredMipCount, 0.0f, 0.0f};
+    param.ambientColorIntensity =
+        Vec4f{ambientColor.x, ambientColor.y, ambientColor.z,
+              ambientIntensity};
   }
 
   void setParams(float iblIntensity, float prefilteredMipCount) {
     param.params = Vec4f{iblIntensity, prefilteredMipCount, 0.0f, 0.0f};
+    setDirty();
+  }
+
+  void setAmbient(Vec3f color, float intensity) {
+    param.ambientColorIntensity = Vec4f{color.x, color.y, color.z, intensity};
     setDirty();
   }
 

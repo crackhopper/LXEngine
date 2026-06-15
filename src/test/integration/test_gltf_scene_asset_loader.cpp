@@ -471,6 +471,22 @@ bool loadSceneThrowsFor(const std::string &yamlText,
   return false;
 }
 
+LX_infra::scene_io::SceneDocument
+loadSceneDocumentFromText(const std::string &yamlText) {
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_environment_ambient_scene.scene.yaml";
+  writeTextFile(path, yamlText);
+  try {
+    auto document = LX_infra::scene_io::loadSceneDocument(path);
+    std::filesystem::remove(path);
+    return document;
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+}
+
 bool saveSceneThrowsForDeletedExtension(const std::string &expectedDiagnostic) {
   LX_infra::scene_io::SceneDocument document;
   document.setSceneName("Programmatic Deleted Extension");
@@ -705,6 +721,61 @@ void testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave() {
          "scene document save should reject deleted opaque extension fields");
 }
 
+void testSceneDocumentLoadsAmbientEnvironmentColor() {
+  const std::string yamlText = R"yaml(
+scene:
+  name: Ambient Environment
+  gameplayCameraPath: /game_cam
+  environment:
+    enabled: false
+    ambientColor: [0.08, 0.08, 0.1]
+    ambientIntensity: 0.7
+    skyboxEnabled: false
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+)yaml";
+  const auto document = loadSceneDocumentFromText(yamlText);
+  expect(document.hasEnvironment(),
+         "ambient environment should keep scene.environment present");
+  const auto &environment = document.environment();
+  expectNear(environment.ambientColor.x, 0.08f,
+             "ambient environment red should parse");
+  expectNear(environment.ambientColor.y, 0.08f,
+             "ambient environment green should parse");
+  expectNear(environment.ambientColor.z, 0.1f,
+             "ambient environment blue should parse");
+  expectNear(environment.ambientIntensity, 0.7f,
+             "ambient environment intensity should parse");
+}
+
+void testSceneDocumentRejectsInvalidAmbientEnvironmentColor() {
+  const std::string yamlText = R"yaml(
+scene:
+  name: Invalid Ambient Environment
+  gameplayCameraPath: /game_cam
+  environment:
+    enabled: false
+    ambientColor: [0.08, 0.08]
+    ambientIntensity: 0.7
+root:
+  nodeName: scene_root
+  name: ''
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+)yaml";
+  expect(loadSceneThrowsFor(yamlText, "scene.environment.ambientColor"),
+         "scene document should reject ambientColor with wrong arity");
+}
+
 } // namespace
 
 int main() {
@@ -718,6 +789,8 @@ int main() {
   testSceneDocumentRejectsDeletedOpaqueMaterialField();
   testSceneDocumentRejectsDeletedNodeMaterialsSchema();
   testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave();
+  testSceneDocumentLoadsAmbientEnvironmentColor();
+  testSceneDocumentRejectsInvalidAmbientEnvironmentColor();
   std::cout << "test_gltf_scene_asset_loader passed\n";
   return 0;
 }

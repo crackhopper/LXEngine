@@ -92,8 +92,12 @@ struct EnvironmentState final {
   bool skyboxEnabled = true;
   float intensity = 1.0f;
   float roughnessMipCount = 5.0f;
+  LX_core::Vec3f ambientColor{0.0f, 0.0f, 0.0f};
+  float ambientIntensity = 0.0f;
 
-  [[nodiscard]] bool empty() const { return !enabled && hdrUri.empty(); }
+  [[nodiscard]] bool empty() const {
+    return !enabled && hdrUri.empty() && ambientIntensity <= 0.0f;
+  }
 };
 
 struct MaterialBindingDocument final {

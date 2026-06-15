@@ -21,13 +21,15 @@ layout(set = 2, binding = 0) uniform LightUBO {
     vec4 color;
 } light;
 
+layout(set = 3, binding = 3) uniform EnvironmentUBO {
+    vec4 params;
+    vec4 ambientColorIntensity;
+} environment;
+
 #ifdef HAS_IBL
 layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
 layout(set = 3, binding = 1) uniform samplerCube PrefilteredEnvMap;
 layout(set = 3, binding = 2) uniform sampler2D BrdfLut;
-layout(set = 3, binding = 3) uniform EnvironmentUBO {
-    vec4 params;
-} environment;
 #endif
 
 vec3 reconstructWorldPosition(vec2 uv, float depth) {
@@ -74,13 +76,16 @@ void main() {
     clearcoat.factor = clearcoatFactor;
     clearcoat.roughness = clearcoatRoughness;
 
+    vec3 F0 = lxPbrF0(albedoAlpha.rgb, metallic);
+    float NdotV = max(dot(N, V), 0.0);
     vec3 color = lxPbrLayeredClearcoatDirectLight(pbrInput, clearcoat);
+    color += lxEvaluateConstantEnvironmentLight(
+        albedoAlpha.rgb, metallic, roughness, ao, NdotV, F0,
+        environment.ambientColorIntensity);
 
 #ifdef HAS_IBL
     float iblIntensity = max(environment.params.x, 0.0);
     if (iblIntensity > 0.0) {
-        vec3 F0 = lxPbrF0(albedoAlpha.rgb, metallic);
-        float NdotV = max(dot(N, V), 0.0);
         vec3 F_ibl = lxFresnelSchlickRoughness(NdotV, F0, roughness);
         vec3 kD_ibl = (vec3(1.0) - F_ibl) * (1.0 - metallic);
 
