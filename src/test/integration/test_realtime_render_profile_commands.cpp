@@ -2,13 +2,16 @@
 #include "backend/vulkan/vulkan_realtime_renderer.hpp"
 #include "editor/commands/command_bus.hpp"
 #include "editor/app/editor_state.hpp"
+#include "editor/app/editor_session.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/scene.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/project/debug_render_export.hpp"
 #include "editor/project/realtime_render_profile.hpp"
+#include "editor/runtime/camera_rig.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_view_rect.hpp"
+#include "editor/ui/ui_overlay.hpp"
 #include "infra/image/rgba_image_io.hpp"
 
 #include <filesystem>
@@ -253,6 +256,28 @@ void testDebugColorTransferExportApiShape() {
          "debug export result should expose target records");
 }
 
+void testDebugColorTransferExportResultJson() {
+  LX_core::backend::VulkanDebugColorTransferExportResult result;
+  result.manifestPath = "artifacts/debug/color-transfer/manifest.json";
+  result.outputDirectory = "artifacts/debug/color-transfer";
+  result.targets.push_back(LX_core::backend::VulkanDebugColorTransferTargetRecord{
+      .name = "debug.final.srgb",
+      .path = "artifacts/debug/color-transfer/srgb_attachment.png",
+      .format = "R8G8B8A8_SRGB",
+      .width = 64,
+      .height = 32,
+  });
+
+  const std::string json =
+      LX_demo::lxe_editor::debugColorTransferExportResultJson(result);
+  EXPECT(json.find("\"manifestPath\"") != std::string::npos,
+         "debug export JSON should expose manifest path");
+  EXPECT(json.find("srgb_attachment.png") != std::string::npos,
+         "debug export JSON should expose target path");
+  EXPECT(json.find("\"width\":64") != std::string::npos,
+         "debug export JSON should expose width");
+}
+
 void testDebugColorTransferExportResultJsonEscapesControlBytes() {
   LX_core::backend::VulkanDebugColorTransferExportResult result;
   result.manifestPath =
@@ -323,6 +348,134 @@ void testRawRgba8PngRejectsInvalidPayloadsBeforeStb() {
       "invalid raw RGBA8 PNG payload",
       "raw PNG writer should reject expected-size overflow");
 }
+
+void testRenderDebugColorTransferCommandUsesExportHook() {
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  bool hookCalled = false;
+  session.initialize(
+      {},
+      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
+          .exportColorTransferPath =
+              [&hookCalled](
+                  const LX_core::backend::VulkanDebugColorTransferExportRequest
+                      &request) {
+                hookCalled = true;
+                EXPECT(request.cameraPath.has_value(),
+                       "debug export should pass camera path to hook");
+                EXPECT(*request.cameraPath == "/editor_cam",
+                       "debug export should preserve camera path");
+                EXPECT(request.outputDirectory.generic_string() ==
+                           "artifacts/debug/color-transfer",
+                       "debug export should pass output directory to hook");
+
+                LX_core::backend::VulkanDebugColorTransferExportResult result;
+                result.manifestPath =
+                    "artifacts/debug/color-transfer/manifest.json";
+                result.outputDirectory = "artifacts/debug/color-transfer";
+                result.targets.push_back(
+                    LX_core::backend::VulkanDebugColorTransferTargetRecord{
+                        .name = "debug.final.srgb",
+                        .path =
+                            "artifacts/debug/color-transfer/srgb_attachment.png",
+                        .format = "R8G8B8A8_SRGB",
+                        .width = 64,
+                        .height = 32,
+                    });
+                return result;
+              }},
+      {});
+
+  const auto response = session.commandBus().dispatch(
+      "render debug export-path color-transfer /editor_cam "
+      "artifacts/debug/color-transfer");
+
+  EXPECT(response.ok,
+         "render debug export-path color-transfer should succeed with hook");
+  EXPECT(hookCalled,
+         "render debug export-path color-transfer should call export hook");
+  EXPECT(response.message ==
+             "debug color transfer exported: "
+             "artifacts/debug/color-transfer/manifest.json",
+         "debug export response should name manifest path");
+  EXPECT(response.structured.find("\"manifestPath\"") != std::string::npos,
+         "debug export response should return structured manifest JSON");
+  EXPECT(response.structured.find("srgb_attachment.png") != std::string::npos,
+         "debug export response should return target JSON");
+}
+
+void testRenderDebugColorTransferCommandReportsUnavailableHook() {
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize({}, {}, {});
+
+  const auto response = session.commandBus().dispatch(
+      "render debug export-path color-transfer");
+
+  EXPECT(!response.ok,
+         "render debug export-path color-transfer should fail without hook");
+  EXPECT(response.message ==
+             "render debug export-path color-transfer unavailable",
+         "unavailable debug export should report exact diagnostic");
+}
+
+void testRenderDebugColorTransferCommandReportsUsageError() {
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize(
+      {},
+      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
+          .exportColorTransferPath =
+              [](const LX_core::backend::VulkanDebugColorTransferExportRequest
+                     &) {
+                return LX_core::backend::
+                    VulkanDebugColorTransferExportResult{};
+              }},
+      {});
+
+  const auto response = session.commandBus().dispatch(
+      "render debug export-path color-transfer /editor_cam out extra");
+
+  EXPECT(!response.ok,
+         "render debug export-path color-transfer should reject extra args");
+  EXPECT(response.message ==
+             "usage: render debug export-path color-transfer [camera-path] "
+             "[out-dir]",
+         "extra debug export args should report exact usage");
+}
+
+void testRenderDebugColorTransferCommandReportsStubException() {
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize(
+      {},
+      LX_demo::lxe_editor::LxeEditorSession::RenderDebugCommandHooks{
+          .exportColorTransferPath =
+              [](const LX_core::backend::VulkanDebugColorTransferExportRequest
+                     &) -> LX_core::backend::
+                         VulkanDebugColorTransferExportResult {
+                throw std::runtime_error(
+                    "debug color transfer export is not implemented");
+              }},
+      {});
+
+  const auto response = session.commandBus().dispatch(
+      "render debug export-path color-transfer");
+
+  EXPECT(!response.ok,
+         "render debug export-path color-transfer should report hook errors");
+  EXPECT(response.message ==
+             "debug color transfer export is not implemented",
+         "debug export should propagate backend stub diagnostic");
+}
 } // namespace
 
 int main() {
@@ -330,8 +483,13 @@ int main() {
   testRealtimeProfileOutputHelpersBuildStableJson();
   testVulkanRealtimeProfileOutputApiShape();
   testDebugColorTransferExportApiShape();
+  testDebugColorTransferExportResultJson();
   testDebugColorTransferExportResultJsonEscapesControlBytes();
   testRawRgba8PngRejectsInvalidPayloadsBeforeStb();
+  testRenderDebugColorTransferCommandUsesExportHook();
+  testRenderDebugColorTransferCommandReportsUnavailableHook();
+  testRenderDebugColorTransferCommandReportsUsageError();
+  testRenderDebugColorTransferCommandReportsStubException();
   if (failures != 0) {
     std::cerr << "test_realtime_render_profile_commands failed with "
               << failures << " failure(s)\n";

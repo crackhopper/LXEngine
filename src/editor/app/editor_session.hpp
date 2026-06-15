@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/vulkan/vulkan_renderer_types.hpp"
 #include "editor/commands/command_bus.hpp"
 #include "editor/app/editor_state.hpp"
 #include "core/gpu/engine_loop.hpp"
@@ -67,6 +68,9 @@ public:
     std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;
     std::function<LX_core::gpu::LiveRenderSubmissionStats()>
         liveRenderSubmissionStats;
+    std::function<LX_core::backend::VulkanDebugColorTransferExportResult(
+        const LX_core::backend::VulkanDebugColorTransferExportRequest &)>
+        exportColorTransferPath;
   };
 
   struct RealtimeRenderProfileHooks final {

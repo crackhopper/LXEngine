@@ -12,6 +12,7 @@
 #include "core/scene/scene_render_settings.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "editor/project/builtin_asset_catalog.hpp"
+#include "editor/project/debug_render_export.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/project/project_catalog.hpp"
 #include "editor/project/scene_builder.hpp"
@@ -1334,7 +1335,8 @@ void LxeEditorSession::rebuildBindings(
   m_commandBus->registerHandler(
       "render",
       "render debug dump <target> [camera-path] [path] | render debug "
-      "stats <target> | render debug live-stats",
+      "stats <target> | render debug live-stats | render debug export-path "
+      "color-transfer [camera-path] [out-dir]",
       [this](std::vector<std::string> args) {
         if (args.size() == 2 && args[0] == "debug" &&
             args[1] == "live-stats") {
@@ -1390,12 +1392,45 @@ void LxeEditorSession::rebuildBindings(
             return makeCommandError(e.what());
           }
         }
+        if (args.size() >= 3 && args[0] == "debug" &&
+            args[1] == "export-path" && args[2] == "color-transfer") {
+          if (!m_renderDebugCommandHooks.exportColorTransferPath) {
+            return makeCommandError(
+                "render debug export-path color-transfer unavailable");
+          }
+          if (args.size() > 5) {
+            return makeCommandError(
+                "usage: render debug export-path color-transfer "
+                "[camera-path] [out-dir]");
+          }
+
+          LX_core::backend::VulkanDebugColorTransferExportRequest request;
+          if (args.size() >= 4) {
+            request.cameraPath = args[3];
+          }
+          if (args.size() == 5) {
+            request.outputDirectory = std::filesystem::path(args[4]);
+          }
+
+          try {
+            const auto result =
+                m_renderDebugCommandHooks.exportColorTransferPath(request);
+            return makeCommandOk(
+                "debug color transfer exported: " +
+                    result.manifestPath.generic_string(),
+                debugColorTransferExportResultJson(result));
+          } catch (const std::exception &e) {
+            return makeCommandError(e.what());
+          }
+        }
 
         if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
             args.size() > 5) {
           return makeCommandError(
               "usage: render debug dump <target> [camera-path] [path] | "
-              "render debug stats <target> | render debug live-stats");
+              "render debug stats <target> | render debug live-stats | "
+              "render debug export-path color-transfer [camera-path] "
+              "[out-dir]");
         }
         if (!m_renderDebugCommandHooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");

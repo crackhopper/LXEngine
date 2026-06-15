@@ -1076,6 +1076,12 @@ int main(int argc, char **argv) {
               return renderLoop ? renderLoop->liveRenderSubmissionStats()
                                 : LX_core::gpu::LiveRenderSubmissionStats{};
             },
+        .exportColorTransferPath =
+            [vulkanRenderer](
+                const LX_core::backend::VulkanDebugColorTransferExportRequest
+                    &request) {
+              return vulkanRenderer->exportDebugColorTransfer(request);
+            },
     };
     demo::LxeEditorSession::RealtimeRenderProfileHooks
         realtimeRenderProfileHooks{
