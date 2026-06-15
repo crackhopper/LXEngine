@@ -23,7 +23,6 @@
 | [01 当前光源积木](01-current-light-building-blocks.md) | 三类 light 在代码和场景里如何表示 |
 | [02 在场景里定义光源](02-define-lights-in-scene.md) | 用 scene document 与 command 创建、保存光源 |
 | [03 C++ 扩展光源能力](03-extend-light-in-cpp.md) | 当前手工扩展要经过哪些模块 |
-| [04 SceneLightsUBO 与 shader 边界](04-scene-lights-shader-boundary.md) | 多光源数据结构、shader 消费现状与后续统一 light record 方向 |
 | [05 在 editor 中验证](05-verify-and-debug-lights.md) | Inspector、debug helper、shader 现象如何一起检查 |
 
 ## 当前真实边界

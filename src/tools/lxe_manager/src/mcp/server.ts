@@ -6,6 +6,7 @@ import {
 } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, resolve, sep } from "node:path";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import type { ToolArguments, ToolHandler, ToolResult } from "./types.js";
 
 interface EditorClientSurface {
@@ -330,6 +331,9 @@ export function createResourceHandlers(
   };
 }
 
+// Store SSE transports by session ID
+const sseTransports = new Map<string, SSEServerTransport>();
+
 export function createMcpHttpServer(input: {
   handlers: Record<string, ToolHandler>;
   resources?: ResourceHandlers;
@@ -337,58 +341,153 @@ export function createMcpHttpServer(input: {
   dashboard?: DashboardConfig;
   buildInfo?: string;
 }): Server {
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    console.error("[MCP] Request:", request.method, url.pathname);
+
     if (await handleDashboardRequest(input, request, response)) {
       return;
     }
 
-    if (request.url !== "/mcp") {
-      writeJson(response, 404, {
-        ok: false,
-        error: { code: "not_found", message: "unknown endpoint" },
-      });
-      return;
-    }
-    if (request.method !== "POST") {
-      writeJson(response, 405, {
-        ok: false,
-        error: { code: "method_not_allowed", message: "POST required" },
-      });
-      return;
-    }
-    if (input.bearerToken && !isAuthorized(request, input.bearerToken)) {
-      writeJson(response, 401, {
-        ok: false,
-        error: { code: "unauthorized", message: "missing or invalid token" },
-      });
+    // Unified bearer guard for MCP endpoints. The dashboard owns its own auth
+    // (public HTML page + authenticated /api/* routes handled above), and
+    // unknown paths fall through to the 404 below without touching auth state.
+    const isMcpEndpoint = url.pathname === "/mcp" || url.pathname === "/messages";
+    if (isMcpEndpoint && input.bearerToken && !isAuthorized(request, input.bearerToken)) {
+      writeUnauthorized(response);
       return;
     }
 
-    try {
-      const rpcRequest = JSON.parse(await readBody(request)) as JsonRpcRequest;
-      const rpcResponse = await handleJsonRpcRequest(
-        input.handlers,
-        rpcRequest,
-        input.resources,
-        input.buildInfo,
-      );
-      if (!rpcResponse) {
-        response.writeHead(202);
-        response.end();
+    // SSE endpoint for establishing the stream
+    if (url.pathname === "/mcp" && request.method === "GET") {
+      try {
+        // Create a new SSE transport for the client
+        const transport = new SSEServerTransport("/messages", response);
+        const sessionId = transport.sessionId;
+        sseTransports.set(sessionId, transport);
+
+        // Set up onclose handler to clean up transport when closed
+        transport.onclose = async () => {
+          console.error(`[MCP] SSE transport closed for session ${sessionId}`);
+          sseTransports.delete(sessionId);
+        };
+
+        // Bind the JSON-RPC dispatcher once when the session is opened. The SDK
+        // invokes it for every message the client POSTs to
+        // /messages?sessionId=..., so it must not be re-attached per request
+        // (re-binding on every POST is racy under concurrent messages).
+        transport.onmessage = async (message) => {
+          try {
+            const rpcResponse = await handleJsonRpcRequest(
+              input.handlers,
+              message,
+              input.resources,
+              input.buildInfo,
+            );
+            if (rpcResponse) {
+              await transport.send(rpcResponse as Parameters<typeof transport.send>[0]);
+            }
+          } catch (error) {
+            console.error("[MCP] Error handling message:", error);
+          }
+        };
+
+        // Start the SSE stream
+        await transport.start();
+        console.error(`[MCP] SSE stream established with session ID: ${sessionId}`);
+        return;
+      } catch (error) {
+        console.error("[MCP] Error establishing SSE stream:", error);
+        if (!response.headersSent) {
+          writeJson(response, 500, {
+            ok: false,
+            error: { code: "sse_error", message: error instanceof Error ? error.message : String(error) },
+          });
+        }
         return;
       }
-      writeJson(response, 200, rpcResponse, postResponseActionFor(rpcResponse));
-    } catch (error) {
-      writeJson(response, 200, {
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: -32700,
-          message: error instanceof Error ? error.message : String(error),
-        },
+    }
+
+    // Client POSTs JSON-RPC here, addressed by the sessionId learned from the
+    // SSE `endpoint` event. The response is streamed back over the SSE
+    // connection via the onmessage dispatcher bound when the session opened.
+    if (url.pathname === "/messages" && request.method === "POST") {
+      // Extract session ID from URL query parameter
+      const sessionId = url.searchParams.get("sessionId");
+      if (!sessionId) {
+        writeJson(response, 400, { ok: false, error: { code: "missing_session_id", message: "Missing sessionId parameter" } });
+        return;
+      }
+
+      const transport = sseTransports.get(sessionId);
+      if (!transport) {
+        writeJson(response, 404, { ok: false, error: { code: "session_not_found", message: "Session not found" } });
+        return;
+      }
+
+      try {
+        const parsedBody = JSON.parse(await readBody(request));
+        await transport.handlePostMessage(request, response, parsedBody);
+        return;
+      } catch (error) {
+        console.error("[MCP] Error handling POST message:", error);
+        writeJson(response, 500, {
+          ok: false,
+          error: { code: "handle_error", message: error instanceof Error ? error.message : String(error) },
+        });
+        return;
+      }
+    }
+
+    // Legacy stateless JSON-RPC over POST /mcp (codex / streamable-HTTP
+    // clients). Behavior is intentionally unchanged from the pre-SSE server;
+    // SSE clients never reach this branch.
+    if (url.pathname === "/mcp" && request.method === "POST") {
+      try {
+        const rpcRequest = JSON.parse(await readBody(request)) as JsonRpcRequest;
+        const rpcResponse = await handleJsonRpcRequest(
+          input.handlers,
+          rpcRequest,
+          input.resources,
+          input.buildInfo,
+        );
+        if (!rpcResponse) {
+          response.writeHead(202);
+          response.end();
+          return;
+        }
+        writeJson(response, 200, rpcResponse, postResponseActionFor(rpcResponse));
+      } catch (error) {
+        writeJson(response, 200, {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32700,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+      return;
+    }
+
+    writeJson(response, 404, {
+      ok: false,
+      error: { code: "not_found", message: "unknown endpoint" },
+    });
+  });
+
+  // Clean up all transports on server close
+  server.on("close", () => {
+    for (const [sessionId, transport] of sseTransports.entries()) {
+      console.error(`[MCP] Closing transport for session ${sessionId}`);
+      transport.close().catch((error) => {
+        console.error(`[MCP] Error closing transport for session ${sessionId}:`, error);
       });
     }
+    sseTransports.clear();
   });
+
+  return server;
 }
 
 async function handleDashboardRequest(

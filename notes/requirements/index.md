@@ -26,4 +26,3 @@
 - [REQ-077-c: 3DGS Vulkan Splat Pass](077-c-3dgs-vulkan-splat-pass.md)
 - [REQ-077-d: 3DGS Editor Scene Validation](077-d-3dgs-editor-scene-validation.md)
 - [REQ-077-e: 3DGS System Design And Tutorial](077-e-3dgs-system-design-and-tutorial.md)
-- [REQ-078-a: Async FrameGraph Execution And Multi-Queue Synchronization](078-a-async-framegraph-execution-and-multi-queue-synchronization.md)

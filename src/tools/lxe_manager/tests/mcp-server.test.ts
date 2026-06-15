@@ -36,6 +36,58 @@ function close(server: Server): Promise<void> {
   });
 }
 
+// Opens a Server-Sent Events stream and yields parsed events one at a time.
+// Used to drive the MCP SSE transport (GET /mcp -> endpoint event, then JSON-RPC
+// responses arrive as `message` events) the way a real stream client would.
+async function openSse(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<{
+  nextEvent: () => Promise<{ event: string; data: string }>;
+  close: () => Promise<void>;
+}> {
+  const res = await fetch(url, headers ? { headers } : undefined);
+  if (!res.ok || !res.body) {
+    throw new Error(`SSE handshake failed with status ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const nextEvent = async (): Promise<{ event: string; data: string }> => {
+    for (;;) {
+      const normalized = buffer.replace(/\r\n/g, "\n");
+      const boundary = normalized.indexOf("\n\n");
+      if (boundary >= 0) {
+        const raw = normalized.slice(0, boundary);
+        buffer = normalized.slice(boundary + 2);
+        let event = "message";
+        const dataLines: string[] = [];
+        for (const line of raw.split("\n")) {
+          if (line.startsWith("event:")) {
+            event = line.slice("event:".length).trim();
+          } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice("data:".length).replace(/^ /, ""));
+          }
+        }
+        return { event, data: dataLines.join("\n") };
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        throw new Error("SSE stream closed before next event arrived");
+      }
+      buffer = normalized + decoder.decode(value, { stream: true });
+    }
+  };
+
+  return {
+    nextEvent,
+    close: async () => {
+      await reader.cancel();
+    },
+  };
+}
+
 function makeBmp24(width: number, height: number): Buffer {
   const rowStride = Math.ceil((width * 3) / 4) * 4;
   const pixelBytes = rowStride * height;
@@ -1020,5 +1072,91 @@ describe("mcp tool handlers", () => {
         message: "dashboard cannot call tool: editor.pick",
       },
     });
+  });
+
+  it("serves SSE handshake and routes JSON-RPC over /messages for stream clients", async () => {
+    const handlers = createToolHandlers(makeInput());
+    const resources = createResourceHandlers(makeInput().editorClient);
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
+    });
+    const port = await listen(server);
+
+    const sse = await openSse(`http://127.0.0.1:${port}/mcp`);
+
+    // The transport emits an `endpoint` event telling the client where to POST.
+    const endpoint = await sse.nextEvent();
+    expect(endpoint.event).toBe("endpoint");
+    expect(endpoint.data).toContain("/messages?sessionId=");
+
+    const backchannel = `http://127.0.0.1:${port}${endpoint.data}`;
+
+    // initialize over the POST back-channel; the response comes back via SSE.
+    const initPost = await fetch(backchannel, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+    });
+    expect(initPost.status).toBe(202);
+
+    const initEvent = await sse.nextEvent();
+    expect(initEvent.event).toBe("message");
+    expect(JSON.parse(initEvent.data)).toMatchObject({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        capabilities: { tools: {}, resources: {} },
+        serverInfo: {
+          buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
+        },
+      },
+    });
+
+    // tools/list reuses the same session (proves onmessage is bound once, not
+    // re-attached per request).
+    await fetch(backchannel, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    const listEvent = await sse.nextEvent();
+    expect(JSON.parse(listEvent.data)).toMatchObject({
+      jsonrpc: "2.0",
+      id: 2,
+      result: {
+        tools: expect.arrayContaining([
+          expect.objectContaining({ name: "editor.get_summary" }),
+        ]),
+      },
+    });
+
+    await sse.close();
+  });
+
+  it("requires bearer auth on the SSE and /messages endpoints", async () => {
+    const handlers = createToolHandlers(makeInput());
+    const resources = createResourceHandlers(makeInput().editorClient);
+    server = createMcpHttpServer({
+      handlers,
+      resources,
+      bearerToken: "secret",
+      buildInfo: "lxe_manager 0.1.0-dev (test, Node v1, linux-x64)",
+    });
+    const port = await listen(server);
+
+    const unauthorizedGet = await fetch(`http://127.0.0.1:${port}/mcp`);
+    expect(unauthorizedGet.status).toBe(401);
+
+    const unauthorizedPost = await fetch(
+      `http://127.0.0.1:${port}/messages?sessionId=missing`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      },
+    );
+    expect(unauthorizedPost.status).toBe(401);
   });
 });

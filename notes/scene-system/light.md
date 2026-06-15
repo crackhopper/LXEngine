@@ -56,4 +56,4 @@ light:                         # -> LightNodeState
 - [文档到 Runtime](document-runtime-flow.md)
 - [材质系统](../concepts/material/index.md)
 - [light.hpp](/home/lixiang/proj/LXEngine/src/core/scene/light.hpp:1)
-- [SceneLightsUBO 与 shader 边界](../tutorial/custom-light/04-scene-lights-shader-boundary.md)
+- [在 editor 中验证](../tutorial/custom-light/05-verify-and-debug-lights.md)

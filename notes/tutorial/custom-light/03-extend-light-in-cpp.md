@@ -55,4 +55,4 @@
 
 ## 下一步
 
-进入 [04 SceneLightsUBO 与 shader 边界](04-scene-lights-shader-boundary.md)，把当前 light 数据和 shader 真实消费范围对齐。
+进入 [05 在 editor 中验证](05-verify-and-debug-lights.md)，用 Inspector、debug helper 和 shader 现象一起检查。

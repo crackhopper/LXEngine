@@ -1,4 +1,4 @@
-# serve_site.ps1 — 启动本地 MkDocs 开发服务器预览 notes/
+﻿# serve_site.ps1 — 启动本地 MkDocs 开发服务器预览 notes/
 #
 # 用法:
 #   .\scripts\notes\serve_site.ps1                         # 默认 0.0.0.0:8110（LAN 可访问）
@@ -420,3 +420,4 @@ try {
     }
 }
 exit $LASTEXITCODE
+
