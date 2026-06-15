@@ -358,6 +358,21 @@ void testDebugColorTransferExportRejectsUninitializedRendererBeforeStub() {
       "debug color transfer export should not expose the old backend stub");
 }
 
+void testDebugColorTransferExportRejectsCollapsedProbeExtentBeforeRendererWork() {
+  LX_core::backend::VulkanRealtimeRenderer renderer;
+  expectRuntimeErrorContaining(
+      [&renderer]() {
+        renderer.exportDebugColorTransfer(
+            LX_core::backend::VulkanDebugColorTransferExportRequest{
+                .outputDirectory = "artifacts/debug/color-transfer",
+                .width = 4,
+                .height = 1});
+      },
+      "at least 10x1",
+      "debug color transfer export should reject ramp probe extents that "
+      "collapse fixed probe bands before touching renderer state");
+}
+
 void testRenderDebugColorTransferCommandUsesExportHook() {
   LX_core::CommandBus bus;
   bool hookCalled = false;
@@ -468,6 +483,7 @@ int main() {
   testDebugColorTransferExportResultJsonEscapesControlBytes();
   testRawRgba8PngRejectsInvalidPayloadsBeforeStb();
   testDebugColorTransferExportRejectsUninitializedRendererBeforeStub();
+  testDebugColorTransferExportRejectsCollapsedProbeExtentBeforeRendererWork();
   testRenderDebugColorTransferCommandUsesExportHook();
   testRenderDebugColorTransferCommandReportsUnavailableHook();
   testRenderDebugColorTransferCommandReportsUsageError();

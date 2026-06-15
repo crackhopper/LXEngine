@@ -69,6 +69,8 @@ constexpr const char *kDefaultDeferredRenderPathGraphAsset =
     "assets/render_paths/deferred_main.render-path.yaml";
 constexpr const char *kDefaultDeferredBloomRenderPathGraphAsset =
     "assets/render_paths/deferred_bloom.render-path.yaml";
+constexpr u32 kDebugColorTransferMinProbeWidth = 10;
+constexpr u32 kDebugColorTransferMinProbeHeight = 1;
 
 bool strictBindlessValidationEnabled() {
   return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
@@ -128,6 +130,21 @@ void resolveMaterialSourceVariantsOrThrow(
     message += diagnostic;
   }
   throw std::runtime_error(message);
+}
+
+void validateDebugColorTransferExtent(const VkExtent2D extent) {
+  if (extent.width == 0 || extent.height == 0) {
+    throw std::runtime_error(
+        "debug color transfer export extent must be positive");
+  }
+  if (extent.width < kDebugColorTransferMinProbeWidth ||
+      extent.height < kDebugColorTransferMinProbeHeight) {
+    throw std::runtime_error(
+        "debug color transfer export extent must be at least " +
+        std::to_string(kDebugColorTransferMinProbeWidth) + "x" +
+        std::to_string(kDebugColorTransferMinProbeHeight) +
+        " pixels for fixed ramp probes");
+  }
 }
 
 /// REQ-009: reverse of resource_manager.cpp's toVkFormat(ImageFormat).
@@ -861,6 +878,10 @@ void writeDebugColorTransferManifest(
   }
   out << "  ]\n"
       << "}\n";
+  if (!out) {
+    throw std::runtime_error("failed to finish debug color transfer manifest " +
+                             path.string());
+  }
 }
 
 LX_core::RenderTargetDesc
@@ -2599,12 +2620,17 @@ public:
 
   VulkanDebugColorTransferExportResult exportDebugColorTransfer(
       const VulkanDebugColorTransferExportRequest &request) {
-    if (!m_foundation || !m_swapchain || !m_scene) {
-      throw std::runtime_error("renderer is not initialized");
-    }
     if ((request.width == 0) != (request.height == 0)) {
       throw std::runtime_error(
           "debug color transfer export width and height must both be set");
+    }
+    if (request.width != 0 && request.height != 0) {
+      validateDebugColorTransferExtent(
+          VkExtent2D{request.width, request.height});
+    }
+
+    if (!m_foundation || !m_swapchain || !m_scene) {
+      throw std::runtime_error("renderer is not initialized");
     }
 
     auto camera = cameraForDebugDump(request.cameraPath);
@@ -2616,10 +2642,7 @@ public:
     if (request.width != 0 && request.height != 0) {
       extent = VkExtent2D{request.width, request.height};
     }
-    if (extent.width == 0 || extent.height == 0) {
-      throw std::runtime_error(
-          "debug color transfer export extent must be positive");
-    }
+    validateDebugColorTransferExtent(extent);
 
     const auto timestamp =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2631,6 +2654,56 @@ public:
                std::to_string(timestamp))
             : request.outputDirectory;
     std::filesystem::create_directories(outputDir);
+
+    m_swapchain->waitForAllFrames();
+    device().waitIdle();
+    std::vector<LX_core::MaterialInstance::UniquePtr> debugMaterials;
+    std::vector<std::unique_ptr<LX_core::FrameGraphSampledResource>>
+        debugSampledResources;
+    struct TemporaryFrameGraphState final {
+      Impl &renderer;
+      LX_core::FrameGraph frameGraph;
+      LX_core::CompiledFrameGraph compiledFrameGraph;
+      decltype(m_basePassPreparationFacts) basePassPreparationFacts;
+      decltype(m_compiledPassDescriptorResources)
+          compiledPassDescriptorResources;
+      std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
+      decltype(m_currentLiveStats) currentLiveStats;
+      decltype(m_lastLiveStats) lastLiveStats;
+
+      ~TemporaryFrameGraphState() {
+        if (renderer.m_foundation) {
+          if (renderer.m_swapchain) {
+            renderer.m_swapchain->waitForAllFrames();
+          }
+          renderer.device().waitIdle();
+        }
+        renderer.m_frameGraph = std::move(frameGraph);
+        renderer.m_compiledFrameGraph = std::move(compiledFrameGraph);
+        renderer.m_basePassPreparationFacts =
+            std::move(basePassPreparationFacts);
+        renderer.m_compiledPassDescriptorResources =
+            std::move(compiledPassDescriptorResources);
+        renderer.m_liveRenderView = std::move(liveRenderView);
+        renderer.m_currentLiveStats = currentLiveStats;
+        renderer.m_lastLiveStats = lastLiveStats;
+        renderer.resetOffscreenFramebuffers();
+        if (renderer.m_foundation) {
+          renderer.resourceManager().clearFrameGraphAttachments();
+        }
+        renderer.updateDirectionalLightCascades();
+      }
+    } restore{
+        .renderer = *this,
+        .frameGraph = std::move(m_frameGraph),
+        .compiledFrameGraph = std::move(m_compiledFrameGraph),
+        .basePassPreparationFacts = std::move(m_basePassPreparationFacts),
+        .compiledPassDescriptorResources =
+            std::move(m_compiledPassDescriptorResources),
+        .liveRenderView = std::move(m_liveRenderView),
+        .currentLiveStats = m_currentLiveStats,
+        .lastLiveStats = m_lastLiveStats,
+    };
 
     auto &cameraComponent = camera->get();
     updateDirectionalLightCascadesForCamera(cameraComponent);
@@ -2657,43 +2730,6 @@ public:
                                             expectedPasses);
     resolveMaterialSourceVariantsOrThrow(
         *m_scene, debugGraph, LX_core::ResourceUri(kDebugGraphAsset));
-
-    std::vector<LX_core::MaterialInstance::UniquePtr> debugMaterials;
-    struct TemporaryFrameGraphState final {
-      Impl &renderer;
-      LX_core::FrameGraph frameGraph;
-      LX_core::CompiledFrameGraph compiledFrameGraph;
-      decltype(m_basePassPreparationFacts) basePassPreparationFacts;
-      decltype(m_compiledPassDescriptorResources)
-          compiledPassDescriptorResources;
-      std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
-
-      ~TemporaryFrameGraphState() {
-        if (renderer.m_foundation) {
-          renderer.device().waitIdle();
-        }
-        renderer.m_frameGraph = std::move(frameGraph);
-        renderer.m_compiledFrameGraph = std::move(compiledFrameGraph);
-        renderer.m_basePassPreparationFacts =
-            std::move(basePassPreparationFacts);
-        renderer.m_compiledPassDescriptorResources =
-            std::move(compiledPassDescriptorResources);
-        renderer.m_liveRenderView = std::move(liveRenderView);
-        renderer.resetOffscreenFramebuffers();
-        if (renderer.m_foundation) {
-          renderer.resourceManager().clearFrameGraphAttachments();
-        }
-        renderer.updateDirectionalLightCascades();
-      }
-    } restore{
-        .renderer = *this,
-        .frameGraph = std::move(m_frameGraph),
-        .compiledFrameGraph = std::move(m_compiledFrameGraph),
-        .basePassPreparationFacts = std::move(m_basePassPreparationFacts),
-        .compiledPassDescriptorResources =
-            std::move(m_compiledPassDescriptorResources),
-        .liveRenderView = std::move(m_liveRenderView),
-    };
 
     m_frameGraph = LX_core::buildFrameGraphFromRenderPathGraph(
         debugGraph, LX_core::GraphResourceRegistry::makeDefault());
@@ -2757,7 +2793,7 @@ public:
             LX_core::GlobalStringTable::get().toDebugString(pass.name));
       }
     }
-    attachFrameGraphSampledResources();
+    attachFrameGraphSampledResources(&debugSampledResources);
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
 
@@ -2800,7 +2836,6 @@ public:
     syncCompiledFramePassUploadPlans();
     preparePipelinesForLoadedScene();
 
-    device().waitIdle();
     m_currentLiveStats = {};
     auto cmd = commandBufferManager().beginSingleTimeCommands();
     for (usize passIndex = 0;
@@ -3306,20 +3341,29 @@ private:
     resourceManager().preloadPipelines(pipelineDescs);
   }
 
-  void attachFrameGraphSampledResources() {
+  void attachFrameGraphSampledResources(
+      std::vector<std::unique_ptr<LX_core::FrameGraphSampledResource>>
+          *localResources = nullptr) {
     m_compiledPassDescriptorResources.clear();
     m_compiledPassDescriptorResources.resize(
         m_compiledFrameGraph.getPasses().size());
 
     const auto appendReadToCompiledPass =
-        [this](usize compiledPassIndex, const LX_core::FrameGraphRead &read) {
+        [this, localResources](usize compiledPassIndex,
+                               const LX_core::FrameGraphRead &read) {
           if (read.bindingName == LX_core::StringID{}) {
             return;
           }
           auto resource = std::make_unique<LX_core::FrameGraphSampledResource>(
               read.resource, read.bindingName);
-          const auto resourceRef =
-              m_scene->resources().addRenderGpuResource(std::move(resource));
+          LX_core::GpuResourceRef resourceRef;
+          if (localResources != nullptr) {
+            localResources->push_back(std::move(resource));
+            resourceRef = LX_core::GpuResourceRef{*localResources->back()};
+          } else {
+            resourceRef =
+                m_scene->resources().addRenderGpuResource(std::move(resource));
+          }
           m_compiledPassDescriptorResources[compiledPassIndex].emplace_back(
               resourceRef.get());
         };
