@@ -1,0 +1,26 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "LogoAzure"
+"pbrtType": "matte"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["matte"]
+    "line": 57
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.157092005, 0.390300989, 0.641520977]
+    "line": 58
+"parameterOrder": ["type", "Kd"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 56
+  "endLine": 58
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoAzure.material"
+  "strategy": "matte-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

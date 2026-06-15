@@ -1,0 +1,46 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "brakeDisc"
+"pbrtType": "uber"
+"parameters":
+  "roughness":
+    "pbrtKey": "float roughness"
+    "type": "float"
+    "value": [0.0104080001]
+    "line": 111
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["uber"]
+    "line": 112
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.594117999, 0.588559985, 0.588559985]
+    "line": 113
+  "Ks":
+    "pbrtKey": "rgb Ks"
+    "type": "rgb"
+    "value": [0.5, 0.5, 0.5]
+    "line": 114
+  "Kt":
+    "pbrtKey": "rgb Kt"
+    "type": "rgb"
+    "value": [0, 0, 0]
+    "line": 115
+  "opacity":
+    "pbrtKey": "rgb opacity"
+    "type": "rgb"
+    "value": [1, 1, 1]
+    "line": 116
+"parameterOrder": ["roughness", "type", "Kd", "Ks", "Kt", "opacity"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 110
+  "endLine": 116
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/brakeDisc.material"
+  "strategy": "uber-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

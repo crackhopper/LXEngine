@@ -1,0 +1,14 @@
+"schema": "lxe.material.v2"
+"bsdf":
+  "type": "mix"
+  "source": "assets://shaders/glsl/common/materials/mix.contract.glsl"
+  "parameters":
+    "namedmaterial1":
+      "kind": "materialRef"
+      "uri": "LEATHER-white.material"
+    "namedmaterial2":
+      "kind": "materialRef"
+      "uri": "LEATHER-black.material"
+    "amount":
+      "kind": "float"
+      "value": 0.2

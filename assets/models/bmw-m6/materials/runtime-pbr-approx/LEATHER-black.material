@@ -1,0 +1,11 @@
+"schema": "lxe.material.v2"
+"bsdf":
+  "type": "matte"
+  "source": "assets://shaders/glsl/common/materials/matte.contract.glsl"
+  "parameters":
+    "Kd":
+      "kind": "rgb"
+      "value": [0.01, 0.01, 0.01]
+    "sigma":
+      "kind": "float"
+      "value": 0.0

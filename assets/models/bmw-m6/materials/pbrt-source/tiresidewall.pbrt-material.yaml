@@ -1,0 +1,36 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "tiresidewall"
+"pbrtType": "uber"
+"parameters":
+  "roughness":
+    "pbrtKey": "float roughness"
+    "type": "float"
+    "value": [0.104080001]
+    "line": 164
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["uber"]
+    "line": 165
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.0639400035, 0.0623500012, 0.0623500012]
+    "line": 166
+  "Ks":
+    "pbrtKey": "rgb Ks"
+    "type": "rgb"
+    "value": [0.156844014, 0.190024012, 0.189532006]
+    "line": 167
+"parameterOrder": ["roughness", "type", "Kd", "Ks"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 163
+  "endLine": 167
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tiresidewall.material"
+  "strategy": "uber-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

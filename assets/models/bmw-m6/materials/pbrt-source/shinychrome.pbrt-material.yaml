@@ -1,0 +1,39 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "shinychrome"
+"pbrtType": "metal"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["metal"]
+    "line": 150
+  "k":
+    "pbrtKey": "spectrum k"
+    "type": "spectrum"
+    "value": "spds/Al.k.spd"
+    "line": 151
+  "eta":
+    "pbrtKey": "spectrum eta"
+    "type": "spectrum"
+    "value": "spds/Al.eta.spd"
+    "line": 152
+"parameterOrder": ["type", "k", "eta"]
+"resourceRefs":
+  -
+    "parameter": "k"
+    "input": "/home/lixiang/proj/LXEngine/data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/spds/Al.k.spd"
+    "output": "data/scenes/bmw-m6/spds/Al.k.spd"
+  -
+    "parameter": "eta"
+    "input": "/home/lixiang/proj/LXEngine/data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/spds/Al.eta.spd"
+    "output": "data/scenes/bmw-m6/spds/Al.eta.spd"
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 149
+  "endLine": 152
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/shinychrome.material"
+  "strategy": "metal-surface-material-v2"
+  "precisionLoss": ["spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate"]
+"unsupportedByCurrentRenderer": ["spectral eta/k retained as Material v2 spectrum resources; realtime spectral conductor support may still be approximate"]

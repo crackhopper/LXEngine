@@ -1,0 +1,36 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "LEATHER"
+"pbrtType": "mix"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": "mix"
+    "line": 48
+  "namedmaterial1":
+    "pbrtKey": "string namedmaterial1"
+    "type": "string"
+    "value": "LEATHER-white"
+    "line": 49
+  "namedmaterial2":
+    "pbrtKey": "string namedmaterial2"
+    "type": "string"
+    "value": "LEATHER-black"
+    "line": 50
+  "amount":
+    "pbrtKey": "rgb amount"
+    "type": "rgb"
+    "value": [0.2, 0.2, 0.2]
+    "line": 51
+"parameterOrder": ["type", "namedmaterial1", "namedmaterial2", "amount"]
+"resourceRefs": []
+"namedMaterialRefs": ["LEATHER-white", "LEATHER-black"]
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 47
+  "endLine": 51
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER.material"
+  "strategy": "mix-surface-material-v2"
+  "precisionLoss": ["PBRT mix material references retained in Material v2; realtime nested material mixing may still be unsupported"]
+"unsupportedByCurrentRenderer": ["PBRT mix material references retained in Material v2; realtime nested material mixing may still be unsupported"]

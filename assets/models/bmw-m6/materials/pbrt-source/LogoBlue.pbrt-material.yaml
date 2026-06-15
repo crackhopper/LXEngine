@@ -1,0 +1,26 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "LogoBlue"
+"pbrtType": "matte"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["matte"]
+    "line": 65
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.191944003, 0.515774012, 0.616523981]
+    "line": 66
+"parameterOrder": ["type", "Kd"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 64
+  "endLine": 66
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LogoBlue.material"
+  "strategy": "matte-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

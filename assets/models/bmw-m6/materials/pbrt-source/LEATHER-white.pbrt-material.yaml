@@ -1,0 +1,30 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "LEATHER-white"
+"pbrtType": "fourier"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["fourier"]
+    "line": 42
+  "bsdffile":
+    "pbrtKey": "string bsdffile"
+    "type": "string"
+    "value": "bsdfs/leather.bsdf"
+    "line": 43
+"parameterOrder": ["type", "bsdffile"]
+"resourceRefs":
+  -
+    "parameter": "bsdffile"
+    "input": "/home/lixiang/proj/LXEngine/data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bsdfs/leather.bsdf"
+    "output": "data/scenes/bmw-m6/bsdfs/leather.bsdf"
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 41
+  "endLine": 43
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/LEATHER-white.material"
+  "strategy": "fourier-surface-material-v2"
+  "precisionLoss": ["Fourier BSDF table retained in Material v2; realtime Fourier BSDF evaluation may still be unsupported"]
+"unsupportedByCurrentRenderer": ["Fourier BSDF table retained in Material v2; realtime Fourier BSDF evaluation may still be unsupported"]

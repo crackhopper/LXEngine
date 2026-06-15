@@ -1,0 +1,21 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "HeadLightGlass01"
+"pbrtType": "glass"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["glass"]
+    "line": 39
+"parameterOrder": ["type"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 38
+  "endLine": 39
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLightGlass01.material"
+  "strategy": "glass-surface-material-v2"
+  "precisionLoss": ["PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate"]
+"unsupportedByCurrentRenderer": ["PBRT glass transmission/refraction retained in Material v2; realtime transparent dielectric support may still be approximate"]

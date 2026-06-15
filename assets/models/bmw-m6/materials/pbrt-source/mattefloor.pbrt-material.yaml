@@ -1,0 +1,26 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "mattefloor"
+"pbrtType": "matte"
+"parameters":
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["matte"]
+    "line": 146
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.0954879969, 0.0715420023, 0.0303969998]
+    "line": 147
+"parameterOrder": ["type", "Kd"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 145
+  "endLine": 147
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/mattefloor.material"
+  "strategy": "matte-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

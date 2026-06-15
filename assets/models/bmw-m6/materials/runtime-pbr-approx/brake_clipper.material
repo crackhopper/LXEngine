@@ -1,0 +1,11 @@
+"schema": "lxe.material.v2"
+"bsdf":
+  "type": "uber"
+  "source": "assets://shaders/glsl/common/materials/uber.contract.glsl"
+  "parameters":
+    "Kd":
+      "kind": "rgb"
+      "value": [0.49267599, 0.132439002, 0.132439002]
+    "Ks":
+      "kind": "rgb"
+      "value": [0.558982015, 0.558982015, 0.558982015]

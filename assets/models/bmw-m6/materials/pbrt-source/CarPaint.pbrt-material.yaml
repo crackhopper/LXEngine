@@ -1,0 +1,41 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "CarPaint"
+"pbrtType": "substrate"
+"parameters":
+  "uroughness":
+    "pbrtKey": "float uroughness"
+    "type": "float"
+    "value": [0.0005]
+    "line": 21
+  "vroughness":
+    "pbrtKey": "float vroughness"
+    "type": "float"
+    "value": [0.00051]
+    "line": 22
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["substrate"]
+    "line": 23
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.4, 0.03, 0.03]
+    "line": 24
+  "Ks":
+    "pbrtKey": "rgb Ks"
+    "type": "rgb"
+    "value": [0.3, 0.3, 0.3]
+    "line": 25
+"parameterOrder": ["uroughness", "vroughness", "type", "Kd", "Ks"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 20
+  "endLine": 25
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/CarPaint.material"
+  "strategy": "substrate-surface-material-v2"
+  "precisionLoss": ["PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate"]
+"unsupportedByCurrentRenderer": ["PBRT substrate layered diffuse/specular model retained in Material v2; realtime layered BRDF support may still be approximate"]

@@ -1,0 +1,36 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "tire"
+"pbrtType": "uber"
+"parameters":
+  "roughness":
+    "pbrtKey": "float roughness"
+    "type": "float"
+    "value": [0.104080001]
+    "line": 155
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["uber"]
+    "line": 156
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.0639400035, 0.0623500012, 0.0623500012]
+    "line": 157
+  "Ks":
+    "pbrtKey": "rgb Ks"
+    "type": "rgb"
+    "value": [0.156844014, 0.190024012, 0.189532006]
+    "line": 158
+"parameterOrder": ["roughness", "type", "Kd", "Ks"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 154
+  "endLine": 158
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/tire.material"
+  "strategy": "uber-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []

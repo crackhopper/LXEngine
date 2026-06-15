@@ -1,0 +1,17 @@
+"schema": "lxe.material.v2"
+"bsdf":
+  "type": "substrate"
+  "source": "assets://shaders/glsl/common/materials/substrate.contract.glsl"
+  "parameters":
+    "Kd":
+      "kind": "rgb"
+      "value": [0.4, 0.03, 0.03]
+    "Ks":
+      "kind": "rgb"
+      "value": [0.3, 0.3, 0.3]
+    "uroughness":
+      "kind": "float"
+      "value": 0.0005
+    "vroughness":
+      "kind": "float"
+      "value": 0.00051

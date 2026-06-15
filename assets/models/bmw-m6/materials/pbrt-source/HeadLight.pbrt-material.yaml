@@ -1,0 +1,46 @@
+"schema": "lxe.pbrtMaterialSource.v1"
+"name": "HeadLight"
+"pbrtType": "uber"
+"parameters":
+  "roughness":
+    "pbrtKey": "float roughness"
+    "type": "float"
+    "value": [0.0104080001]
+    "line": 28
+  "type":
+    "pbrtKey": "string type"
+    "type": "string"
+    "value": ["uber"]
+    "line": 29
+  "Kd":
+    "pbrtKey": "rgb Kd"
+    "type": "rgb"
+    "value": [0.639999986, 0.639999986, 0.639999986]
+    "line": 30
+  "Ks":
+    "pbrtKey": "rgb Ks"
+    "type": "rgb"
+    "value": [0.5, 0.5, 0.5]
+    "line": 31
+  "Kt":
+    "pbrtKey": "rgb Kt"
+    "type": "rgb"
+    "value": [0, 0, 0]
+    "line": 32
+  "opacity":
+    "pbrtKey": "rgb opacity"
+    "type": "rgb"
+    "value": [1, 1, 1]
+    "line": 33
+"parameterOrder": ["roughness", "type", "Kd", "Ks", "Kt", "opacity"]
+"resourceRefs": []
+"namedMaterialRefs": []
+"sourceLocation":
+  "file": "data/pbrt-v3-scenes/pbrt-v3-scenes/bmw-m6/bmw-m6.pbrt"
+  "startLine": 27
+  "endLine": 33
+"runtimeApproximation":
+  "uri": "data/scenes/bmw-m6/materials/runtime-pbr-approx/HeadLight.material"
+  "strategy": "uber-surface-material-v2"
+  "precisionLoss": []
+"unsupportedByCurrentRenderer": []
