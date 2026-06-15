@@ -27,7 +27,9 @@ TextureLoader::~TextureLoader() = default;
 
 void TextureLoader::load(const std::string& filename) {
   int width, height, channels;
-  stbi_set_flip_vertically_on_load(true);
+  // glTF and the renderer sample LDR texture data with v=0 at the first image
+  // row. Flipping here misaligns all material maps before shader sampling.
+  stbi_set_flip_vertically_on_load(false);
   unsigned char* imageData = stbi_load(filename.c_str(), &width, &height, &channels, STBI_rgb_alpha);
 
   if (!imageData) {

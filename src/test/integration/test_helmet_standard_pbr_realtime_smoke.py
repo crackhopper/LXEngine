@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from PIL import Image
+
 
 class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
     @classmethod
@@ -108,6 +110,12 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertEqual(desc_executed_input_count, accepted_input_count)
         self.assertTrue(payload.get("cpuSrgbPngPath"))
         self.assertTrue(payload.get("metadataPath"))
+        self.assertGreaterEqual(
+            self._count_green_glow_pixels(
+                self.source_dir / payload["cpuSrgbPngPath"]
+            ),
+            128,
+        )
 
     def test_require_output_files_rejects_missing_render_input_stats(self) -> None:
         module = self._load_realtime_render_module()
@@ -235,6 +243,15 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertIsInstance(value, int)
         self.assertNotIsInstance(value, bool)
         return value
+
+    @staticmethod
+    def _count_green_glow_pixels(path: Path) -> int:
+        image = Image.open(path).convert("RGB")
+        return sum(
+            1
+            for red, green, blue in image.getdata()
+            if green > 80 and green > red * 1.25 and green > blue * 1.05
+        )
 
     @staticmethod
     def _full_render_input_stats(
