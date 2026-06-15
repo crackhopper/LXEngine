@@ -133,7 +133,8 @@ foreach(SHADER_FILE ${GLSL_VERT_FILES} ${GLSL_FRAG_FILES} ${GLSL_COMP_FILES})
   )
 endforeach()
 
-add_custom_target(CompileShaders DEPENDS SyncShaderRuntimeSources ${SPV_FILES})
 add_custom_target(CompileMaterialSourceShaderVariants
   DEPENDS SyncShaderRuntimeSources ${MATERIAL_SOURCE_VARIANT_SPV_FILES}
 )
+add_custom_target(CompileShaders DEPENDS SyncShaderRuntimeSources ${SPV_FILES})
+add_dependencies(CompileShaders CompileMaterialSourceShaderVariants)
