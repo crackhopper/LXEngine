@@ -34,6 +34,10 @@ Makefile
 .asset_cache/
 artifacts/
 
+# Generated binaries and local smoke scratch inputs.
+*.spv
+tmp_*/
+
 # Large locally imported/sample assets stay outside Git. Use assets-downloader
 # cache or local project assets when rendering these scenes.
 assets/models/3dgs_train_sample/point_cloud.ply
