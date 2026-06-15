@@ -56,10 +56,6 @@ public:
       const std::optional<std::filesystem::path> &screenPath = std::nullopt);
   FrameGraphAttachmentDumpResult statsFrameGraphAttachment(
       std::string_view attachmentName);
-  FrameGraphAttachmentDumpResult dumpDebugRenderTarget(
-      std::string_view passName,
-      const std::optional<std::string> &cameraPath = std::nullopt,
-      const std::optional<std::filesystem::path> &path = std::nullopt);
   VulkanRealtimeProfileOutputResult generateRealtimeProfileOutput(
       SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
       const std::filesystem::path &basePath);

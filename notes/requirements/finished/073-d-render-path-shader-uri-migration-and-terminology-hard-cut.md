@@ -2,7 +2,7 @@
 
 > 2026-06-13 拆分：本 REQ 从原 `REQ-073-c` 拆出，负责把默认 shader URI 和术语从旧 `techniques/...` 硬切到 `render_paths/...`。`REQ-073-c` 先建立 material source shader variant / final reflection / pipeline identity，本 REQ 在这个基础上迁移默认 asset、resolver、测试和 rejection diagnostics。
 >
-> 2026-06-14 范围修正：本 REQ 同时承接已经由 `REQ-073-a/b/c` 建好的 realtime material source 正向路径硬切。旧 runtime material pass 注入、旧 resolver alias、旧 Forward/Deferred shader tree 和旧正向测试不再保留；更宽的 draw/descriptor fallback 清理仍由 `REQ-073-f` 处理。
+> 2026-06-14 范围修正：本 REQ 同时承接已经由 `REQ-073-a/b/c` 建好的 realtime material source 正向路径硬切。旧 runtime material pass 注入、旧 resolver alias、旧 Forward/Deferred shader tree 和旧正向测试不再保留；更宽的 draw/descriptor fallback 清理仍由 `REQ-076-b` 处理。
 
 ## 背景
 
@@ -34,8 +34,8 @@
 
 - 不实现 material source shader variant；由 `REQ-073-c` 处理。
 - 不要求 raster work item 全部进入 indirect batch；由 `REQ-073-e` 处理。
-- 不删除更宽的 realtime 旧 draw/descriptor fallback；由 `REQ-073-f` 处理。但 `REQ-073-a/b/c` 正向路径相关的旧 runtime pass 注入、旧 shader URI fallback 和旧正向测试由本 REQ 删除。
-- 不处理 OfflineRT 默认配置入口硬切；由 `REQ-073-g` / `REQ-073-h` 处理。
+- 不删除更宽的 realtime 旧 draw/descriptor fallback；由 `REQ-076-b` 处理。但 `REQ-073-a/b/c` 正向路径相关的旧 runtime pass 注入、旧 shader URI fallback 和旧正向测试由本 REQ 删除。
+- 不处理 OfflineRT 默认配置入口硬切；由 `REQ-076-c` / `REQ-076-d` 处理。
 - 不实现 package、BC7 或 pipeline cache blob。
 
 ## 需求
@@ -100,7 +100,7 @@ migrated validation profile SHALL 输出可审计 diagnostics：
 - rejected legacy shader URI。
 - expected `render_paths/...` URI。
 - RenderPathGraph asset URI。
-- pass id；结构化 pass stage diagnostic 由 `REQ-073-g` 的 stage-specific RenderPass contract 承接。
+- pass id；结构化 pass stage diagnostic 由 `REQ-076-c` 的 stage-specific RenderPass contract 承接。
 - resolver search path。
 
 无法解析或遇到 legacy URI 时必须停止渲染准备，不能隐藏为 fallback shader。
@@ -177,7 +177,7 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 
 - 不让 `techniques/...` 成为 resolver fallback。
 - 不保留两套正向 shader source tree。
-- 不把 OfflineRT 旧 provider / config hard cut 塞入本 REQ；OfflineRT 默认入口由 `REQ-073-g` / `REQ-073-h` 处理。
+- 不把 OfflineRT 旧 provider / config hard cut 塞入本 REQ；OfflineRT 默认入口由 `REQ-076-c` / `REQ-076-d` 处理。
 - 不在本 REQ 删除 realtime material fallback；这里仅完成 URI 和术语硬切。
 
 ## 依赖
@@ -187,8 +187,8 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 ## 后续工作
 
 - `REQ-073-e`: Indirect material batching and diagnostics。
-- `REQ-073-f`: Realtime material path hard cut and smoke。
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- `REQ-076-b`: Realtime material path hard cut and smoke。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
 
 ## 实施状态
 
@@ -197,7 +197,7 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 主要实现：
 
 - 新增共享 RenderPath shader URI resolver，`render_paths/...` 为 realtime 正向 namespace，`techniques/...` 失败并输出迁移 diagnostic。
-- Forward / Deferred realtime shader source tree 迁移到 `assets/shaders/glsl/render_paths/...`，旧 `assets/shaders/glsl/techniques/Forward` 和 `Deferred` 删除；`OfflineRT` 保持给 `REQ-073-g/h`。
+- Forward / Deferred realtime shader source tree 迁移到 `assets/shaders/glsl/render_paths/...`，旧 `assets/shaders/glsl/techniques/Forward` 和 `Deferred` 删除；`OfflineRT` 保持给 `REQ-076-c/d`。
 - 默认 RenderPathGraph asset、shader build、parser/source-variant tests 迁移到 `render_paths/...`。
 - 删除旧 runtime Forward PBR material pass 注入。
 - renderer 增加 `preparePipelinesForLoadedScene()`，在加载场景资源和 FrameGraph/upload 同步完成后显式进行 pipeline preparation。
@@ -206,7 +206,7 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 
 范围修正：
 
-- R5 中原要求的结构化 pass stage diagnostic 暂不作为 073-d 完成条件。当前 resolver 接口只接收 graph URI、pass id 和 shader URI；RenderPass stage 仍停留在 parser / RenderPassNode 层，resolver 无法可靠输出 stage。该项转交 `REQ-073-g`，随 stage-specific RenderPass contract 一起实现 resolver API 的 stage 传递和负向诊断测试。
+- R5 中原要求的结构化 pass stage diagnostic 暂不作为 073-d 完成条件。当前 resolver 接口只接收 graph URI、pass id 和 shader URI；RenderPass stage 仍停留在 parser / RenderPassNode 层，resolver 无法可靠输出 stage。该项转交 `REQ-076-c`，随 stage-specific RenderPass contract 一起实现 resolver API 的 stage 传递和负向诊断测试。
 
 实现提交：
 
@@ -231,11 +231,11 @@ rg/audit ordinary positive tests、default assets 和 runtime default path，断
 
 ## 归档记录
 
-2026-06-14 复核通过。073-d 已完成 realtime `render_paths/...` URI hard cut、旧 Forward/Deferred shader tree 删除、旧 runtime Forward PBR material pass 注入删除、strict material-source validation 和加载场景资源完成后的显式 pipeline preparation。R5 中结构化 pass stage diagnostic 已范围修正并转交 `REQ-073-g`。
+2026-06-14 复核通过。073-d 已完成 realtime `render_paths/...` URI hard cut、旧 Forward/Deferred shader tree 删除、旧 runtime Forward PBR material pass 注入删除、strict material-source validation 和加载场景资源完成后的显式 pipeline preparation。R5 中结构化 pass stage diagnostic 已范围修正并转交 `REQ-076-c`。
 
 本次归档前验证：
 
 - `ninja -C build test_material_source_contract test_material_v2_parser test_material_v2_resource_dependencies test_scene_resource_upload_view_v2 test_bindless_indirect_contract test_scene_resource_table test_material_source_variant_pipeline test_pipeline_identity test_pipeline_build_info test_shader_compiler test_073d_render_path_hard_cut`
 - `ctest --test-dir build --output-on-failure -R 'test_(material_source_contract|material_v2_parser|material_v2_resource_dependencies|scene_resource_upload_view_v2|bindless_indirect_contract|scene_resource_table|material_source_variant_pipeline|pipeline_identity|pipeline_build_info|shader_compiler|073d_render_path_hard_cut)$'`
 - `rg -n "defaultTechnique|techniques/Forward|techniques/Deferred|techniques:" src assets` 无输出。
-- `find assets/shaders/glsl/techniques -maxdepth 1 -type d -print` 只剩 OfflineRT legacy 目录，归属 `REQ-073-g` / `REQ-073-h`。
+- `find assets/shaders/glsl/techniques -maxdepth 1 -type d -print` 只剩 OfflineRT legacy 目录，归属 `REQ-076-c` / `REQ-076-d`。

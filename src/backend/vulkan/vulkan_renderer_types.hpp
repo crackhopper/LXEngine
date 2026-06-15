@@ -14,7 +14,7 @@ enum class VulkanPostProcessOutputEncoding : u32 {
 };
 
 struct VulkanPostProcessSettings final {
-  bool bloomEnabled = true;
+  bool bloomEnabled = false;
   float bloomIntensity = 0.25f;
   float bloomThreshold = 1.0f;
   float bloomSoftKnee = 0.5f;

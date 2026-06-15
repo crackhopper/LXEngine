@@ -62,7 +62,7 @@ public:
 
   struct RenderDebugCommandHooks final {
     std::function<RenderDebugDumpResult(
-        std::string_view, const std::optional<std::string> &,
+        std::string_view, const std::filesystem::path &,
         const std::filesystem::path &)>
         dumpRenderTarget;
     std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;

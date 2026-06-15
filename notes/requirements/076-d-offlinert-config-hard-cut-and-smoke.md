@@ -1,20 +1,20 @@
-# REQ-073-h: OfflineRT Smoke And Package Readiness Gate
+# REQ-076-d: OfflineRT Smoke And Package Readiness Gate
 
-> 2026-06-14 再校准：OfflineRT old bridge deletion 已并入 `REQ-073-g`。本 REQ 不再负责删除 `OfflineShaderProvider`、`offlineShader`、`ensureOfflineRayTracePass()`、`createOfflineRenderFrameGraph()` 或 `Pass_OfflineRayTrace` 默认分支；这些默认路径 hard cut 必须在 `REQ-073-g` 完成。本 REQ 只作为 hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
+> 2026-06-14 再校准：OfflineRT old bridge deletion 已并入 `REQ-076-c`。本 REQ 不再负责删除 `OfflineShaderProvider`、`offlineShader`、`ensureOfflineRayTracePass()`、`createOfflineRenderFrameGraph()` 或 `Pass_OfflineRayTrace` 默认分支；这些默认路径 hard cut 必须在 `REQ-076-c` 完成。本 REQ 只作为 hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
 
 ## 背景
 
-`REQ-073-g` 将 OfflineRT 默认入口硬切到 RenderPathGraph / FrameGraph / SceneResourceTable / offline compute compiler 路径，并删除旧硬编码 bridge。
+`REQ-076-c` 将 OfflineRT 默认入口硬切到 RenderPathGraph / FrameGraph / SceneResourceTable / offline compute compiler 路径，并删除旧硬编码 bridge。
 
-本 REQ 接在 `REQ-073-g` 后面，回答一个更具体的问题：旧 bridge 删除后，复杂资产和 package 前置状态是否仍然可靠。它不是第二次迁移，也不是保留兼容层的理由。
+本 REQ 接在 `REQ-076-c` 后面，回答一个更具体的问题：旧 bridge 删除后，复杂资产和 package 前置状态是否仍然可靠。它不是第二次迁移，也不是保留兼容层的理由。
 
 ## 承接与边界
 
 | 来源 | 本 REQ 承接内容 | 当前边界 |
 |---|---|---|
-| `REQ-073-g` | OfflineRT graph-driven compute path、old bridge hard cut、small scene default path | 本 REQ 只做复杂场景 smoke 和 readiness gate |
+| `REQ-076-c` | OfflineRT graph-driven compute path、old bridge hard cut、small scene default path | 本 REQ 只做复杂场景 smoke 和 readiness gate |
 | `REQ-073-e` | `RenderDrawInput` / compiler model | 本 REQ 不改 compiler 模型 |
-| `REQ-073-f` | transparent / BMW realtime follow-up | 本 REQ 只验证 OfflineRT，不扩展 realtime transparent path |
+| `REQ-076-b` | transparent / BMW realtime follow-up | 本 REQ 只验证 OfflineRT，不扩展 realtime transparent path |
 | `REQ-074-b` | package canonical state readiness | 本 REQ 给 package 阶段提供 offline graph path readiness 证据 |
 
 ## 目标
@@ -26,7 +26,7 @@
 
 ## 非目标
 
-- 不删除旧 bridge；删除职责属于 `REQ-073-g`。
+- 不删除旧 bridge；删除职责属于 `REQ-076-c`。
 - 不添加新的 offline integrator 算法。
 - 不实现 package 文件格式或 pipeline cache blob。
 - 不做 offline/realtime 图像等价阈值比较。
@@ -121,16 +121,16 @@ diagnostic 至少包含：
 
 ## 边界与约束
 
-- 不恢复任何已由 `REQ-073-g` 删除的旧 default path。
+- 不恢复任何已由 `REQ-076-c` 删除的旧 default path。
 - 不用 path/name substring 选择 strictness；strictness 来自 validation profile/property。
 - 不把 `techniques/OfflineRT` 作为 resolver fallback。
 - 不让 `VulkanRenderer` facade、`VulkanRealtimeRenderer` 或 editor realtime path 增加 offline branch。
 
 ## 依赖
 
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path and old bridge hard cut。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path and old bridge hard cut。
 - `REQ-073-e`: `RenderDrawInput` / compiler model。
-- `REQ-073-f`: transparent BMW material path and smoke。
+- `REQ-076-b`: transparent BMW material path and smoke。
 
 ## 后续工作
 

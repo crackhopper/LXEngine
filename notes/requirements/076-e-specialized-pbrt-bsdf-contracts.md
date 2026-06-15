@@ -1,6 +1,6 @@
-# REQ-073-i: Specialized PBRT BSDF Contracts
+# REQ-076-e: Specialized PBRT BSDF Contracts
 
-> 2026-06-13 顺延：本 REQ 原为 `REQ-073-h`，因 `REQ-073-c` 进一步拆出 URI migration 而顺延为 `REQ-073-i`。`REQ-073-a` 已完成 Material v3 source contract、metallic realtime extension、PBRT 参数保留和 unsupported 诊断边界，但没有承诺完整 PBRT BSDF 物理模型。本 REQ 专门承接 `glass`、`fourier`、`mix`、conductor `eta/k` 等高阶 PBRT 材质表达，避免把这些后续物理模型塞回 073-a/b 的 clean architecture gate。
+> 2026-06-15 顺延：本 REQ 原在 073 suffix family 中排队，因环境光、probe bake、IBL lighting 和 RenderFeature 参数 hard cut 插入到前置窗口，现顺延为 `REQ-076-e`。`REQ-073-a` 已完成 Material v3 source contract、metallic realtime extension、PBRT 参数保留和 unsupported 诊断边界，但没有承诺完整 PBRT BSDF 物理模型。本 REQ 专门承接 `glass`、`fourier`、`mix`、conductor `eta/k` 等高阶 PBRT 材质表达，避免把这些后续物理模型塞回 073-a/b 的 clean architecture gate。
 
 ## 背景
 
@@ -26,7 +26,7 @@ PBRT 资产里还存在更复杂的材质语义：
 
 ## 非目标
 
-- 不阻塞 `REQ-073-b` 到 `REQ-073-h` 的 clean material/render/offline path。
+- 不阻塞 `REQ-073-b` 到 `REQ-076-d` 的 clean material/render/offline path；实现时必须遵守 `REQ-076-a` 的 RenderFeature 参数边界。
 - 不回滚 `REQ-073-a` 的 metallic realtime source contract。
 - 不在 pass shader 中添加 material type/source runtime branch。
 - 不实现 package 文件格式、BC7 压缩或 pipeline cache blob。
@@ -157,12 +157,12 @@ PBRT converter SHALL 保留原始高阶材质参数，并输出明确诊断。
 
 - `REQ-073-a`: Material v3 source contract、PBRT 参数保留和 accessor ABI。
 - `REQ-073-c`: Material source shader variant boundary。
-- `REQ-073-f`: realtime material path hard cut and smoke。
-- `REQ-073-h`: OfflineRT config hard cut and smoke。
+- `REQ-076-b`: realtime material path hard cut and smoke。
+- `REQ-076-d`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 
-- `REQ-075-a`: Offline/realtime equivalence 可以选择 supported PBRT source 作为对比对象。
+- `REQ-076-f`: Offline/realtime equivalence 可以选择 supported PBRT source 作为对比对象。
 
 ## 实施状态
 

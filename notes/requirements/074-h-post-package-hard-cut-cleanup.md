@@ -1,17 +1,17 @@
-# REQ-074-g: Post-package Hard Cut And Cleanup
+# REQ-074-h: Post-package Hard Cut And Cleanup
 
-> 2026-06-13 更新：本 REQ 在 package restore、GPU pipeline cache restore 和 BMW M6 加载性能验收完成后，再做一次架构硬切与清理。`REQ-073-f` 已完成 realtime hard cut，`REQ-073-h` 已完成 OfflineRT hard cut；本 REQ 聚焦 package / cache 实现期间新增或保留的临时 bridge，使新架构成为 offline/realtime 对比的唯一默认入口。
+> 2026-06-15 顺延：本 REQ 原为 `REQ-074-g`，因 reflection probe / bake path 插入到 `REQ-074-g`，现顺延为 `REQ-074-h`。本 REQ 只清理 package / GPU cache 实现期间新增或保留的临时 bridge；transparent/BMW realtime hard cut 和 OfflineRT 默认入口 hard cut 分别由 `REQ-076-b`、`REQ-076-c`、`REQ-076-d` 处理。
 
 ## 背景
 
-`REQ-073-f`、`REQ-073-h` 和 `REQ-074-b` 在 package 前切掉会污染 canonical data 的旧路径。package 和 GPU cache 完成后，还可能留下为了迁移保留的 bridge、debug fallback、旧测试 fixture 或临时 adapter。进入 offline/realtime render equivalence 前，需要再次清理，避免对比结果被旧路径绕过。
+`REQ-074-b` 在 package 前复核 canonical data，`REQ-074-c/d/e/f` 继续实现 package 文件、restore、GPU cache 和 BMW M6 加载性能验收。package 和 GPU cache 完成后，仍可能留下为了迁移保留的 package restore bridge、cache fallback、debug fixture 或临时 adapter。进入后续 realtime / OfflineRT hard cut 与 offline/realtime equivalence 前，需要先把 package/cache 自己引入的临时路径清理掉。
 
 ## 目标
 
 1. 删除 package / GPU cache 实现期间保留的临时 bridge。
 2. 禁止 default validation 走旧 source parse fallback、legacy descriptor 或 non-package restore shortcuts。
 3. 收窄 legacy token audit allowlist。
-4. 为 `REQ-075-a` offline/realtime 对比提供唯一默认架构路径。
+4. 为后续 `REQ-076-b/c/d/f` 提供不含 package/cache shortcut 的默认路径。
 
 ## 需求
 
@@ -41,7 +41,7 @@ package or source SceneResourceTable
   -> realtime/offline render entry
 ```
 
-No old material-local technique, `MaterialUBO`, per-material descriptor, silent non-bindless fallback, OfflineShaderProvider or hardcoded OfflineRT FrameGraph may satisfy this path.
+Package/cache 实现不得用 old material-local technique、`MaterialUBO`、per-material descriptor、silent non-bindless fallback、metadata-only package resource 或 cache shortcut 满足这条路径。更宽的 transparent/BMW 和 OfflineRT 默认入口 hard cut 继续由 `REQ-076-b/c/d` 处理。
 
 ### R3: Audit Tightening
 
@@ -78,7 +78,7 @@ Any remaining legacy/debug path requires explicit flag and is absent from packag
 
 - 不 add new package features。
 - 不 tune performance。
-- 不 implement image equivalence thresholds; `REQ-075-a` handles that。
+- 不 implement image equivalence thresholds; `REQ-076-f` handles that。
 
 ## 依赖
 
@@ -86,7 +86,10 @@ Any remaining legacy/debug path requires explicit flag and is absent from packag
 
 ## 后续工作
 
-- `REQ-075-a`: offline/realtime render equivalence on new architecture。
+- `REQ-076-b`: transparent / BMW realtime material path and smoke。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
+- `REQ-076-d`: OfflineRT smoke and package readiness gate。
+- `REQ-076-f`: offline/realtime render equivalence on new architecture。
 
 ## 实施状态
 

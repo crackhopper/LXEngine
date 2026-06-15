@@ -64,6 +64,29 @@ PBR shader 的重点是 source contract 和 render path contract 的组合。`.m
 
 这些 fullscreen shader 的顶点阶段通常只用 `gl_VertexIndex` 生成一个覆盖全屏的大三角形，不需要 mesh vertex buffer。PostProcess / Bloom 的 graph 入口必须使用 `render_paths/Post/...`，resolver 不再接受 `post_process` 这类 root short name 或直接 `.frag` 文件路径。仍保留的 builder 手写路径应被视为待硬切的执行层细节。
 
+`PostProcessUBO` 当前包含 `exposure`、`toneMappingMode`、`gamma` 和
+`bloomIntensity`。这些值不是 surface material 的参数；它们由
+`VulkanPostProcessBuilder::createStandardPostProcessMaterial(...)` 创建
+PostProcess fullscreen `MaterialInstance` 时写入 shader binding parameter。
+`assets/effects/tone_mapping.render-feature.yaml` 仍然作为
+`feature.toneMapping` 的 graph 依赖存在，但当前 realtime builder 并没有把这份
+feature asset 的参数逐项读出后注入 `PostProcessUBO`。
+
+`gamma` 现在还承担了输出编码选择的职责。backend 在创建 PostProcess material
+前会检查 swapchain target：
+
+| Target format | Builder 传入的输出编码 | 写入 `PostProcessUBO.gamma` |
+|---|---|---|
+| sRGB swapchain target | `Linear` | `1.0` |
+| UNORM swapchain target | `Srgb` | `2.2` |
+
+shader 只读取 `gamma` 并调用 `lxLinearToSrgbGamma(mapped, gamma)`。因此
+`gamma = 1.0` 表示 shader 不做 gamma 编码，把 linear mapped color 交给
+sRGB attachment；`gamma = 2.2` 表示 shader 自己做 gamma 编码后写入 UNORM
+attachment。这个设计能表达当前行为，但它把两个概念压进了一个字段。更清晰的
+后续设计应像 debug color transfer shader 那样加入显式
+`outputEncodingMode`，让 shader 同时读取“是否编码”和“gamma 数值”。
+
 ## IBL Bake Shader
 
 IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先把 equirectangular HDR 变成 cubemap，再生成 diffuse irradiance、roughness prefilter 和 BRDF LUT，最后 PBR shader 才能快速采样。

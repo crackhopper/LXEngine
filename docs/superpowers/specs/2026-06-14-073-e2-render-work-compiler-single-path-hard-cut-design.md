@@ -301,7 +301,7 @@ Semantics:
 - The compiler generates one built-in fullscreen-triangle `RenderDrawInput`.
 - `fullscreen-triangle` rejects `object`, `material`, and `geometry` subfields.
 
-Compute input schema is reserved for `REQ-073-g`. This spec keeps the extension
+Compute input schema is reserved for `REQ-076-c`. This spec keeps the extension
 point at `input.kind` but does not introduce OfflineRT-specific public compiler
 types.
 

@@ -238,7 +238,7 @@ LxBsdfSampleOutput lxSampleBsdf(LxBsdfSampleInput input);
 rg -n "materialType|materialSource|MATERIAL_TYPE_|type ==|switch .*source|MaterialUBO|debug material|fallback" assets/shaders/glsl/techniques src/core src/backend src/infra
 ```
 
-- [ ] Any match on a positive 073-c path must be removed or marked as a later `073-f` legacy boundary.
+- [ ] Any match on a positive 073-c path must be removed or marked as a later `076-b` legacy boundary.
 
 ---
 

@@ -1,6 +1,6 @@
 # REQ-071-b: RenderPathGraph / RenderPassNode / RenderFeature 与 FrameGraph Contract
 
-> 2026-06-14 归档：RenderPathGraph、RenderPassNode、RenderFeature 与 FrameGraph contract 已经成为当前代码基础；剩余 Material v3 hard cut、OfflineRT graph path、legacy bridge 删除和非 mesh 渲染扩展分别由 `REQ-073-*`、`REQ-076-c` 承接。
+> 2026-06-14 归档：RenderPathGraph、RenderPassNode、RenderFeature 与 FrameGraph contract 已经成为当前代码基础；剩余 Material v3 hard cut、OfflineRT graph path、legacy bridge 删除和非 mesh 渲染扩展分别由 `REQ-073-*` / `REQ-076-b`、`REQ-076-c/d`、`REQ-076-i` 承接。
 
 > 2026-06-10 新增：本 REQ 是 `REQ-071` 连续需求族的第二步。目标是在 `REQ-071-a` 的 PBRT `SurfaceMaterial` pure envelope 参数层之上，定义显式 `RenderPath`、`RenderPathGraph`、`RenderPassNode`、`RenderFeature`、source/target 和 FrameGraph 构建合同，删除代码内部对 pass 枚举、shader、target 和依赖关系的隐式兜底。
 
@@ -419,7 +419,7 @@ scene 指定 `Deferred`，active graph 不支持某 object 的 `RenderClass` / B
 
 - `REQ-071-a`：SurfaceMaterial pure envelope、SurfaceMaterialTemplate 与 MaterialInstance 边界已明确。
 - `REQ-067-a`：SceneResourceTable 提供 scene resources 和 object/material handles。
-- `REQ-076-a`：Realtime renderer 拆分有助于接入 FrameGraph executor。
+- `REQ-076-j`：Realtime renderer 拆分有助于接入 FrameGraph executor。
 
 ## 后续工作
 

@@ -1,4 +1,4 @@
-# REQ-076-c: RenderPathGraph / Material / Effect Non-Mesh Rendering Extension
+# REQ-076-i: RenderPathGraph / Material / Effect Non-Mesh Rendering Extension
 
 > 原 `REQ-059-a` 重排并改写。当前不再保留“论文实验 sandbox”作为 active 目标；本 REQ 聚焦扩展现有 RenderPathGraph、material、effect 架构，使它能承载 3DGS 等非 mesh 渲染结构，而不是把它们硬塞进 Mesh / SurfaceMaterial。
 
@@ -134,10 +134,10 @@ SurfaceMaterial 继续表达 BSDF、surface shading 和 material instance。非 
 ## 依赖
 
 - `REQ-073-e`
-- `REQ-073-f`
-- `REQ-073-g`
-- `REQ-073-h`
-- `REQ-075-a`
+- `REQ-076-a`
+- `REQ-076-f`
+- `REQ-076-g`
+- `REQ-076-h`
 
 历史上 `REQ-067-a`、`REQ-071-b`、`REQ-071-c` 提供了 SceneResourceTable 和 RenderPathGraph 基础，但它们已归档，不再作为 active 前置。
 

@@ -316,7 +316,8 @@ VulkanPostProcessBuilder::VulkanPostProcessBuilder(
     : m_settings(settings) {}
 
 LX_core::MaterialInstanceUniquePtr
-VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
+VulkanPostProcessBuilder::createStandardPostProcessMaterial(
+    VulkanPostProcessOutputEncoding outputEncoding) const {
   auto shader = std::make_shared<StaticFullscreenShader>(
       kPostProcessShaderName, loadGraphicsShaderStages(kPostProcessShaderName),
       postProcessBindings());
@@ -335,8 +336,11 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial() const {
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
                                         LX_core::StringID("toneMappingMode"),
                                         0);
+  const float outputGamma =
+      outputEncoding == VulkanPostProcessOutputEncoding::Srgb ? 2.2f : 1.0f;
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
-                                        LX_core::StringID("gamma"), 2.2f);
+                                        LX_core::StringID("gamma"),
+                                        outputGamma);
   material->writeShaderBindingParameter(
       LX_core::StringID("PostProcessUBO"), LX_core::StringID("bloomIntensity"),
       m_settings.bloomEnabled ? m_settings.bloomIntensity : 0.0f);

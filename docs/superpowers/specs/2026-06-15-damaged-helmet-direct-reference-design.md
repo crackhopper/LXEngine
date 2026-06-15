@@ -61,7 +61,7 @@ Commit the Khronos Damaged Helmet screenshot as a diagnostic reference:
 - Raw screenshot:
   `https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/screenshot/screenshot.png`
 - Repository target:
-  `assets/reference/damaged_helmet/khronos_screenshot.png`
+  `assets/models/damaged_helmet/reference/khronos_screenshot.png`
 
 Add attribution/license text beside the screenshot. The Khronos README credits
 the rebuild/conversion under CC BY 4.0 and the earlier model version under
@@ -207,7 +207,7 @@ xvfb-run -a python3 -m unittest tests.lxe_editor.test_live_viewport
 
 Required visual verification:
 
-- open `assets/reference/damaged_helmet/khronos_screenshot.png`;
+- open `assets/models/damaged_helmet/reference/khronos_screenshot.png`;
 - open the generated CPU sRGB PNG from
   `artifacts/reference/damaged_helmet_direct/`;
 - open the generated `hdr.color` dump when it is viewable as an image;

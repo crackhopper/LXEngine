@@ -68,7 +68,7 @@ input:
 - 不实现 shader source variant；由 `REQ-073-c` 处理。
 - 不迁移 shader URI / RenderPath 术语；由 `REQ-073-d` 处理。
 - 不处理非 opaque material/pass 扩展。
-- 不实现 OfflineRT graph asset；由 `REQ-073-g` 继续处理。
+- 不实现 OfflineRT graph asset；由 `REQ-076-c` 继续处理。
 - 不实现 package、BC7、pipeline cache serialization 或 offline/realtime equivalence。
 
 ## 需求
@@ -231,7 +231,7 @@ Helmet realtime smoke SHALL 验证：
 
 ## 后续工作
 
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
 - Additional non-opaque material/pass policies on the same compiler model。
 
 ## 实施状态

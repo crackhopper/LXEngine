@@ -104,8 +104,8 @@ Same package restore produces same pipeline key/build desc list.
 
 - `REQ-074-c`: LxScenePackage file format。
 - `REQ-074-d`: SceneResourceTable package serialization and restore。
-- `REQ-073-f`: realtime material path hard cut and smoke。
-- `REQ-073-h`: OfflineRT config hard cut and smoke。
+- `REQ-076-b`: realtime material path hard cut and smoke。
+- `REQ-076-d`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 

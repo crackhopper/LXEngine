@@ -40,6 +40,7 @@
 #include "vulkan_post_process_builder.hpp"
 #include "vulkan_renderer_foundation.hpp"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -135,9 +136,11 @@ void resolveMaterialSourceVariantsOrThrow(
 LX_core::ImageFormat toImageFormat(VkFormat format) {
   switch (format) {
   case VK_FORMAT_B8G8R8A8_SRGB:
+    return LX_core::ImageFormat::BGRA8Srgb;
   case VK_FORMAT_B8G8R8A8_UNORM:
     return LX_core::ImageFormat::BGRA8;
   case VK_FORMAT_R8G8B8A8_SRGB:
+    return LX_core::ImageFormat::RGBA8Srgb;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return LX_core::ImageFormat::RGBA8;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
@@ -164,10 +167,14 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
   switch (format) {
   case LX_core::ImageFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case LX_core::ImageFormat::RGBA8Srgb:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case LX_core::ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case LX_core::ImageFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
+  case LX_core::ImageFormat::BGRA8Srgb:
+    return VK_FORMAT_B8G8R8A8_SRGB;
   case LX_core::ImageFormat::R8:
     return VK_FORMAT_R8_UNORM;
   case LX_core::ImageFormat::D32Float:
@@ -190,12 +197,16 @@ std::string vkFormatName(VkFormat format) {
     return "D32_SFLOAT_S8_UINT";
   case VK_FORMAT_R8G8B8A8_UNORM:
     return "R8G8B8A8_UNORM";
+  case VK_FORMAT_R8G8B8A8_SRGB:
+    return "R8G8B8A8_SRGB";
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return "R16G16B16A16_SFLOAT";
   case VK_FORMAT_R32G32B32A32_SFLOAT:
     return "R32G32B32A32_SFLOAT";
   case VK_FORMAT_B8G8R8A8_UNORM:
     return "B8G8R8A8_UNORM";
+  case VK_FORMAT_B8G8R8A8_SRGB:
+    return "B8G8R8A8_SRGB";
   default:
     return "VkFormat(" + std::to_string(static_cast<int>(format)) + ")";
   }
@@ -207,7 +218,9 @@ VkDeviceSize dumpByteSize(VkFormat format, u32 width, u32 height) {
   switch (format) {
   case VK_FORMAT_D32_SFLOAT:
   case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_B8G8R8A8_UNORM:
+  case VK_FORMAT_B8G8R8A8_SRGB:
     return pixelCount * 4u;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return pixelCount * 8u;
@@ -270,13 +283,16 @@ std::vector<unsigned char> makeBmpPixelsFromDump(VkFormat format, u32 width,
   }
 
   if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+      format == VK_FORMAT_R8G8B8A8_SRGB ||
+      format == VK_FORMAT_B8G8R8A8_SRGB ||
       format == VK_FORMAT_B8G8R8A8_UNORM) {
     const auto *rgba = static_cast<const unsigned char *>(mappedData);
     for (u32 y = 0; y < height; ++y) {
       for (u32 x = 0; x < width; ++x) {
         const usize i =
             (static_cast<usize>(y) * width + static_cast<usize>(x)) * 4u;
-        if (format == VK_FORMAT_B8G8R8A8_UNORM) {
+        if (format == VK_FORMAT_B8G8R8A8_UNORM ||
+            format == VK_FORMAT_B8G8R8A8_SRGB) {
           bgrPixels.push_back(rgba[i + 0u]);
           bgrPixels.push_back(rgba[i + 1u]);
           bgrPixels.push_back(rgba[i + 2u]);
@@ -362,15 +378,17 @@ DumpScalarStats computeDumpScalarStats(VkFormat format, u32 width, u32 height,
       pushScalar(pixels[i]);
     }
   } else if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+             format == VK_FORMAT_R8G8B8A8_SRGB ||
+             format == VK_FORMAT_B8G8R8A8_SRGB ||
              format == VK_FORMAT_B8G8R8A8_UNORM) {
     const auto *pixels = static_cast<const unsigned char *>(mappedData);
+    const bool sourceIsBgra = format == VK_FORMAT_B8G8R8A8_UNORM ||
+                              format == VK_FORMAT_B8G8R8A8_SRGB;
     for (usize i = 0; i < pixelCount; ++i) {
       const usize base = i * 4u;
-      const double r =
-          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 2u : 0u)] / 255.0;
+      const double r = pixels[base + (sourceIsBgra ? 2u : 0u)] / 255.0;
       const double g = pixels[base + 1u] / 255.0;
-      const double b =
-          pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 0u : 2u)] / 255.0;
+      const double b = pixels[base + (sourceIsBgra ? 0u : 2u)] / 255.0;
       pushScalar(std::max({r, g, b}));
     }
   } else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
@@ -780,37 +798,6 @@ std::string sanitizeAttachmentName(std::string_view name) {
   return out.empty() ? "attachment" : out;
 }
 
-LX_core::StringID passIdFromDebugName(std::string_view passName) {
-  if (passName == "Forward") {
-    return LX_core::Pass_Forward;
-  }
-  if (passName == "BloomThreshold") {
-    return LX_core::Pass_BloomThreshold;
-  }
-  if (passName == "BloomBlurH") {
-    return LX_core::Pass_BloomBlurH;
-  }
-  if (passName == "BloomBlurV") {
-    return LX_core::Pass_BloomBlurV;
-  }
-  if (passName == "PostProcess") {
-    return LX_core::Pass_PostProcess;
-  }
-  if (passName == "DebugOverlay") {
-    return LX_core::Pass_DebugOverlay;
-  }
-  throw std::runtime_error("unsupported debug render target pass: " +
-                           std::string(passName));
-}
-
-LX_core::StringID transientRenderPathNodeSignature(
-    LX_core::StringID passName, const LX_core::RenderTarget &target) {
-  LX_core::FramePass pass;
-  pass.name = passName;
-  pass.target = target.toDesc();
-  return LX_core::getFramePassRenderPathNodeSignature(pass);
-}
-
 void writeLe16(std::ostream &out, u16 value) {
   out.put(static_cast<char>(value & 0xffu));
   out.put(static_cast<char>((value >> 8u) & 0xffu));
@@ -876,6 +863,52 @@ void writeBmp24File(const std::filesystem::path &path, u32 width, u32 height,
     throw std::runtime_error("failed to write render target dump file: " +
                              path.string());
   }
+}
+
+std::string lowerExtension(const std::filesystem::path &path) {
+  std::string extension = path.extension().generic_string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return extension;
+}
+
+std::vector<unsigned char>
+makeRgbaPixelsFromBgr(u32 width, u32 height,
+                      const std::vector<unsigned char> &bgrPixels) {
+  const usize pixelCount = static_cast<usize>(width) * height;
+  if (bgrPixels.size() != pixelCount * 3u) {
+    throw std::runtime_error("invalid render target dump pixel payload");
+  }
+  std::vector<unsigned char> rgba(pixelCount * 4u);
+  for (usize i = 0; i < pixelCount; ++i) {
+    rgba[i * 4u + 0u] = bgrPixels[i * 3u + 2u];
+    rgba[i * 4u + 1u] = bgrPixels[i * 3u + 1u];
+    rgba[i * 4u + 2u] = bgrPixels[i * 3u + 0u];
+    rgba[i * 4u + 3u] = 255u;
+  }
+  return rgba;
+}
+
+void writeDebugImageFile(const std::filesystem::path &path, u32 width,
+                         u32 height,
+                         const std::vector<unsigned char> &bgrPixels) {
+  const std::string extension = lowerExtension(path);
+  if (extension == ".bmp") {
+    writeBmp24File(path, width, height, bgrPixels);
+    return;
+  }
+  if (extension == ".png") {
+    if (!path.parent_path().empty()) {
+      std::filesystem::create_directories(path.parent_path());
+    }
+    LX_infra::image::writeRawRgba8Png(
+        path, width, height, makeRgbaPixelsFromBgr(width, height, bgrPixels));
+    return;
+  }
+  throw std::runtime_error("render debug dump only supports .png or .bmp: " +
+                           path.string());
 }
 } // namespace
 
@@ -1378,6 +1411,22 @@ public:
     const auto bloomDesc = LX_core::RenderTargetDesc::offscreenColor(
         LX_core::ImageFormat::RGBA16Float);
     const auto assignGraphTarget = [&](LX_core::FramePass &pass) {
+      const auto syncSwapchainAttachmentFormats =
+          [&](LX_core::FramePass &swapchainPass) {
+            const auto colorFormats = swapchainDesc.getColorFormats();
+            usize colorIndex = 0;
+            for (auto &attachment : swapchainPass.attachments) {
+              if (attachment.depth) {
+                if (swapchainDesc.depthFormat.has_value()) {
+                  attachment.format = *swapchainDesc.depthFormat;
+                }
+                continue;
+              }
+              if (colorIndex < colorFormats.size()) {
+                attachment.format = colorFormats[colorIndex++];
+              }
+            }
+          };
       if (pass.name == LX_core::Pass_Forward) {
         pass.target = forwardHdrDesc;
       } else if (pass.name == LX_core::Pass_Deferred) {
@@ -1390,10 +1439,12 @@ public:
         pass.target = bloomDesc;
       } else if (pass.name == LX_core::Pass_PostProcess) {
         pass.target = swapchainDesc;
+        syncSwapchainAttachmentFormats(pass);
       } else if (pass.name == LX_core::Pass_Shadow) {
         pass.target = shadowTarget;
       } else if (pass.name == LX_core::Pass_DebugOverlay) {
         pass.target = swapchainDesc;
+        syncSwapchainAttachmentFormats(pass);
         pass.phase = LX_core::FrameGraphPhase::Debug;
       }
     };
@@ -1758,8 +1809,10 @@ public:
     const std::filesystem::path path = requestedPath.value_or(
         std::filesystem::path("data/debug/dump") /
         (std::to_string(timestamp) + "-" +
-         sanitizeAttachmentName(attachmentName) + ".bmp"));
-    (void)requestedScreenPath;
+         sanitizeAttachmentName(attachmentName) + ".png"));
+    if (requestedScreenPath.has_value()) {
+      m_pendingScreenDump = PendingScreenDump{.path = *requestedScreenPath};
+    }
 
     auto readback = VulkanBuffer::create(
         device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -1806,11 +1859,11 @@ public:
         makeBmpPixelsFromDump(attachment.format, width, height, mapped);
     readback->unmap();
 
-    writeBmp24File(path, width, height, bgrPixels);
+    writeDebugImageFile(path, width, height, bgrPixels);
 
     return VulkanFrameGraphAttachmentDumpResult{
         .path = path,
-        .screenPath = {},
+        .screenPath = requestedScreenPath.value_or(std::filesystem::path{}),
         .width = width,
         .height = height,
         .format = vkFormatName(attachment.format),
@@ -1898,171 +1951,6 @@ public:
         .maxValue = stats.maxValue,
         .meanValue = stats.meanValue,
         .nonZeroRatio = stats.nonZeroRatio,
-    };
-  }
-
-  VulkanFrameGraphAttachmentDumpResult dumpDebugRenderTarget(
-      std::string_view passName, const std::optional<std::string> &cameraPath,
-      const std::optional<std::filesystem::path> &requestedPath) {
-    if (!m_foundation || !m_swapchain || !m_scene) {
-      throw std::runtime_error("renderer is not initialized");
-    }
-
-    const StringID pass = passIdFromDebugName(passName);
-    auto camera = cameraForDebugDump(cameraPath);
-    if (!camera.has_value()) {
-      throw std::runtime_error("debug render target camera not found");
-    }
-
-    const auto timestamp =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    const std::filesystem::path path =
-        requestedPath.value_or(std::filesystem::path("data/debug/dump") /
-                               (std::to_string(timestamp) + "-" +
-                                sanitizeAttachmentName(passName) + ".bmp"));
-
-    LX_core::RenderTargetDesc targetDesc;
-    targetDesc.role = LX_core::RenderTargetRole::Offscreen;
-    targetDesc.colorFormat = LX_core::ImageFormat::BGRA8;
-    targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
-
-    auto &cameraComponent = camera->get();
-    updateDirectionalLightCascadesForCamera(cameraComponent);
-    LX_core::CameraResource cameraResource =
-        LX_core::Scene::makeCameraResource(cameraComponent.getSnapshot());
-
-    LX_core::FramePass debugPass;
-    debugPass.name = pass;
-    debugPass.target = targetDesc;
-    debugPass.stage = LX_core::RenderPassStage::Raster;
-    debugPass.dispatch = LX_core::RenderPassDispatch::Draw;
-    debugPass.input.kind = LX_core::RenderPassInputKind::SceneRenderables;
-    debugPass.renderPathNodeSignature =
-        LX_core::getFramePassRenderPathNodeSignature(debugPass);
-    const LX_core::RenderWorkBuildContext debugContext =
-        LX_core::RenderWorkBuildContext::realtime(
-            *m_scene, LX_core::RenderWorkBuildContext::RealtimeOptions{
-                          .cameraResource = cameraResource,
-                          .visibleMask = cameraComponent.getCullingMask() &
-                                         ~LX_core::Layer_EditorOverlay,
-                      });
-    PreparedRenderPassInputs prepared =
-        prepareRenderPassInputs(debugPass, debugContext);
-    const bool hasAcceptedInput =
-        std::any_of(prepared.descs.begin(), prepared.descs.end(),
-                    [](const LX_core::RenderInputDesc &desc) {
-                      return desc.accepted();
-                    });
-    if (!hasAcceptedInput) {
-      throw std::runtime_error("debug render target produced no draw inputs");
-    }
-    syncRenderUploadPlan(prepared.inputs, prepared.descs);
-
-    const VkExtent2D extent = m_swapchain->getExtent();
-    const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("debug.dump.color." + std::to_string(timestamp)));
-    const auto depthRef = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID("debug.dump.depth." + std::to_string(timestamp)));
-
-    const VkDeviceSize byteSize = static_cast<VkDeviceSize>(extent.width) *
-                                  static_cast<VkDeviceSize>(extent.height) * 4u;
-    auto readback = VulkanBuffer::create(
-        device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    device().waitIdle();
-    auto cmd = commandBufferManager().beginSingleTimeCommands();
-
-    auto &colorAttachment = resourceManager().createOrGetFrameGraphAttachment(
-        colorRef.name, extent, VK_FORMAT_B8G8R8A8_UNORM,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-            VK_IMAGE_USAGE_SAMPLED_BIT);
-    auto &depthAttachment = resourceManager().createOrGetFrameGraphAttachment(
-        depthRef.name, extent, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-
-    transitionFrameGraphAttachment(
-        colorRef, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
-    transitionFrameGraphAttachment(
-        depthRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
-
-    std::vector<VkImageView> attachments{
-        colorAttachment.texture->getImageView(),
-        depthAttachment.texture->getImageView(),
-    };
-    auto &renderPass = resourceManager().getRenderPass(targetDesc);
-    auto framebuffer = VulkanFrameBuffer::create(
-        device(), renderPass.getHandle(), attachments, extent);
-
-    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
-                         extent, renderPass.getClearValues());
-    cmd->setViewport(extent.width, extent.height);
-    cmd->setScissor(extent.width, extent.height);
-    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
-      if (!desc.accepted()) {
-        recordDiagnostic(desc);
-        continue;
-      }
-      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
-      auto pipeline = resourceManager().getOrCreatePipeline(desc);
-      cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, input, desc);
-      cmd->executeRenderInput(input, desc);
-    }
-    cmd->endRenderPass();
-
-    transitionFrameGraphAttachment(
-        colorRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
-    VkBufferImageCopy region{};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
-    region.imageOffset = {0, 0, 0};
-    region.imageExtent = {extent.width, extent.height, 1};
-    vkCmdCopyImageToBuffer(cmd->getHandle(),
-                           colorAttachment.texture->getHandle(),
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           readback->getHandle(), 1, &region);
-    commandBufferManager().endSingleTimeCommands(std::move(cmd),
-                                                 device().getGraphicsQueue());
-
-    const auto *rgba = static_cast<const unsigned char *>(readback->map());
-    std::vector<unsigned char> bgrPixels;
-    bgrPixels.reserve(static_cast<usize>(extent.width) *
-                      static_cast<usize>(extent.height) * 3u);
-    for (u32 y = 0; y < extent.height; ++y) {
-      for (u32 x = 0; x < extent.width; ++x) {
-        const usize i =
-            (static_cast<usize>(y) * extent.width + static_cast<usize>(x)) * 4u;
-        bgrPixels.push_back(rgba[i + 0u]);
-        bgrPixels.push_back(rgba[i + 1u]);
-        bgrPixels.push_back(rgba[i + 2u]);
-      }
-    }
-    readback->unmap();
-
-    writeBmp24File(path, extent.width, extent.height, bgrPixels);
-    return VulkanFrameGraphAttachmentDumpResult{
-        .path = path,
-        .screenPath = {},
-        .width = extent.width,
-        .height = extent.height,
-        .format = vkFormatName(VK_FORMAT_B8G8R8A8_UNORM),
     };
   }
 
@@ -2468,8 +2356,15 @@ private:
 
   void addStandardPostProcessItem(const LX_core::RenderTargetDesc &target) {
     VulkanPostProcessBuilder builder(m_postProcessSettings);
+    const auto colorFormats = target.getColorFormats();
+    const bool targetIsSrgb =
+        !colorFormats.empty() && LX_core::isSrgbImageFormat(colorFormats.front());
+    const VulkanPostProcessOutputEncoding outputEncoding =
+        targetIsSrgb ? VulkanPostProcessOutputEncoding::Linear
+                     : VulkanPostProcessOutputEncoding::Srgb;
     addFullscreenMaterialItem(LX_core::Pass_PostProcess, target,
-                              builder.createStandardPostProcessMaterial(),
+                              builder.createStandardPostProcessMaterial(
+                                  outputEncoding),
                               "PostProcessFullscreenTriangle");
   }
 
@@ -2524,25 +2419,6 @@ private:
       }
     }
     return std::nullopt;
-  }
-
-  std::optional<std::reference_wrapper<LX_core::CameraComponent>>
-  cameraForDebugDump(const std::optional<std::string> &cameraPath) const {
-    if (!m_scene) {
-      return std::nullopt;
-    }
-    if (cameraPath.has_value() && !cameraPath->empty()) {
-      LX_core::SceneNode *node = m_scene->findByPath(*cameraPath);
-      if (!node) {
-        return std::nullopt;
-      }
-      auto camera = node->getComponent<LX_core::CameraComponent>();
-      if (!camera) {
-        return std::nullopt;
-      }
-      return camera->get();
-    }
-    return mainCameraComponent();
   }
 
   void updateDirectionalLightCascades() {
@@ -3188,7 +3064,7 @@ private:
       }
     }
     dump.readback->unmap();
-    writeBmp24File(dump.path, dump.width, dump.height, bgrPixels);
+    writeDebugImageFile(dump.path, dump.width, dump.height, bgrPixels);
   }
 
   void rebuildSwapchain() {
@@ -3337,13 +3213,6 @@ VulkanFrameGraphAttachmentDumpResult
 VulkanRealtimeRenderer::statsFrameGraphAttachment(
     std::string_view attachmentName) {
   return p_impl->statsFrameGraphAttachment(attachmentName);
-}
-
-VulkanFrameGraphAttachmentDumpResult
-VulkanRealtimeRenderer::dumpDebugRenderTarget(
-    std::string_view passName, const std::optional<std::string> &cameraPath,
-    const std::optional<std::filesystem::path> &path) {
-  return p_impl->dumpDebugRenderTarget(passName, cameraPath, path);
 }
 
 VulkanRealtimeProfileOutputResult

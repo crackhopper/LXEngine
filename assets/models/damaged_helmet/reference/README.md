@@ -1,7 +1,7 @@
 # Damaged Helmet Reference Screenshot
 
-This directory contains the Khronos Damaged Helmet reference screenshot used for
-LXEngine rendering diagnostics.
+This directory contains the Khronos Damaged Helmet reference screenshot kept
+beside the local DamagedHelmet model for LXEngine rendering diagnostics.
 
 Source page:
 https://github.com/KhronosGroup/glTF-Sample-Assets/blob/main/Models/DamagedHelmet/README.md

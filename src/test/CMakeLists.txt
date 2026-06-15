@@ -4,6 +4,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_bindless_indirect_contract
   test_bindless_validation_contract
   test_gltf_scene_asset_loader
+  test_lxe_editor_render_debug_dump
   test_lxe_editor_source_boundary
   test_material_source_variant_pipeline
   test_render_path_graph_pass_contract
@@ -43,6 +44,10 @@ foreach(TEST_EXE ${TEST_INTEGRATION_EXE_LIST})
   endif()
   lx_register_ctest(${TEST_EXE})
 endforeach()
+
+if(TARGET ${LXE_EDITOR_LIB})
+  target_link_libraries(test_lxe_editor_render_debug_dump PRIVATE ${LXE_EDITOR_LIB})
+endif()
 
 foreach(TEST_EXE
     test_lxe_editor_source_boundary

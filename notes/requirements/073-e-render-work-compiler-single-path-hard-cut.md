@@ -15,7 +15,7 @@
 - hard cut 前，旧 union-like work item 把 direct helper raster、offline compute dispatch、descriptor resources、shader info、pipeline key 和 backend submission payload 塞在同一个结构里。
 - hard cut 前，pipeline desc、pipeline lookup 和 resource upload 仍可从旧 public payload / queue 派生。
 - hard cut 前，Helmet realtime smoke 从 batch-named metadata 读取 coverage；本 REQ 要把这些观测点迁到 `RenderInputDesc` / backend desc consumption。
-- `REQ-073-g` 需要 compute pass；如果它重新扩展旧 queue 或把 compute 塞进 `RenderDrawInput`，会再次发明一套近似类。
+- `REQ-076-c` 需要 compute pass；如果它重新扩展旧 queue 或把 compute 塞进 `RenderDrawInput`，会再次发明一套近似类。
 
 这些都是立项期历史事实，不是当前完成态。完成态必须只有一条通用 work pipeline，realtime raster、future realtime compute、OfflineRT compute 都复用同一组底层概念。
 
@@ -33,8 +33,8 @@
 ## 非目标
 
 - 不改变 Material v3 source contract、BSDF 字段或 shader ABI；这些由 `REQ-073-a` / `REQ-073-b` / `REQ-073-c` 处理。
-- 不实现 OfflineRT graph asset、offline shader URI 迁移或 offline scene loading hard cut；由 `REQ-073-g` 处理。
-- 不扩展 transparent/BMW realtime path；由 `REQ-073-f` / `REQ-073-h` 处理。
+- 不实现 OfflineRT graph asset、offline shader URI 迁移或 offline scene loading hard cut；由 `REQ-076-c` 处理。
+- 不扩展 transparent/BMW realtime path；由 `REQ-076-b` 处理。
 - 不实现 Vulkan pipeline cache blob 持久化；由 `REQ-074-e` 处理。
 - 不把旧 `RenderWorkQueue` 改名成另一个 public owner 后保留。
 
@@ -241,7 +241,7 @@ Desc records 不拥有也不携带执行数据；除 `inputIndex` 外，它们�
 - 列出保留概念、必须删除的旧概念和禁止重命名保留的旧概念。
 - 说明 `RenderDrawInput` 不是 compute input。
 - 说明 `FramePass` 替代并删除旧 `RenderWorkQueue`。
-- 链接 `REQ-073-e`、`REQ-073-g` 和本 REQ。
+- 链接 `REQ-073-e`、`REQ-076-c` 和本 REQ。
 
 ### R10: Legacy Concept Hard Cut Audit
 
@@ -329,7 +329,7 @@ rg audit 断言旧概念在 `src` 和 `assets` 中 zero-hit，并且 docs 已指
 - `notes/nav.yml`
 - `docs/superpowers/specs/2026-06-14-073-e-opaque-indirect-batching-design.md`
 - `notes/requirements/073-e-indirect-material-batching-and-diagnostics.md`
-- `notes/requirements/073-g-offlinert-render-path-graph-compute-path.md`
+- `notes/requirements/076-c-offlinert-render-path-graph-compute-path.md`
 - `src/core/frame_graph/frame_graph*`
 - deleted old frame-graph queue files。
 - `src/core/frame_graph/render_input.*`
@@ -360,9 +360,9 @@ rg audit 断言旧概念在 `src` 和 `assets` 中 zero-hit，并且 docs 已指
 
 ## 下游工作
 
-- `REQ-073-f`: transparent / BMW realtime path 应使用本 REQ 的 single work compiler model。
-- `REQ-073-g`: OfflineRT compute path 应依赖本 REQ 的 `RenderComputeInput` / compute compiler / `RenderInputDesc` 模型；不得新建 `Offline*Compiler` public path。
-- `REQ-073-h`: hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
+- `REQ-076-b`: transparent / BMW realtime path 应使用本 REQ 的 single work compiler model。
+- `REQ-076-c`: OfflineRT compute path 应依赖本 REQ 的 `RenderComputeInput` / compute compiler / `RenderInputDesc` 模型；不得新建 `Offline*Compiler` public path。
+- `REQ-076-d`: hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
 - `REQ-074-e`: pipeline cache serialization 应从 `RenderInputDesc` / `PipelineBuildDesc` 收集 pipeline cache metadata。
 
 ## 实施状态
@@ -376,7 +376,7 @@ rg audit 断言旧概念在 `src` 和 `assets` 中 zero-hit，并且 docs 已指
 - `RenderDrawInput`、`RenderComputeInput` 是当前正向 typed input；`RenderInputDesc` 是当前正向 prepared result。
 - `RenderInputDesc.pipelineBuildDesc` 驱动 pipeline lookup；upload plan 消费 `RenderInput[]` + `RenderInputDesc[]`。
 - `validatePreparedRenderInputs()` 校验 descs；Helmet smoke 读取 `renderInputStats`。
-- `Pass_OfflineRayTrace` 旧 token 已不在 `src` / `assets` 中；当前 offline 临时 graph pass 是 file-local `OfflineCompute`，后续 OfflineRT graph asset / shader side-channel hard cut 归 `REQ-073-g`。
+- `Pass_OfflineRayTrace` 旧 token 已不在 `src` / `assets` 中；当前 offline 临时 graph pass 是 file-local `OfflineCompute`，后续 OfflineRT graph asset / shader side-channel hard cut 归 `REQ-076-c`。
 
 Task 9 最终审计证据：
 

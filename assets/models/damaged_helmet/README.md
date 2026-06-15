@@ -24,6 +24,7 @@ PBR 主测试模型，用于验证 metallic-roughness 工作流、法线贴图�
 | Default_emissive.jpg | 95 KB |
 | Default_metalRoughness.jpg | 1.3 MB |
 | Default_normal.jpg | 506 KB |
+| reference/khronos_screenshot.png | 28 KB |
 
 **总计**: ~3.7 MB
 
@@ -31,3 +32,9 @@ PBR 主测试模型，用于验证 metallic-roughness 工作流、法线贴图�
 
 - 1 mesh, 15,452 triangles
 - 5 张纹理贴图 (albedo, AO, emissive, metalRoughness, normal)
+
+## Reference 渲染图
+
+`reference/khronos_screenshot.png` 是 Khronos Damaged Helmet README 中的官方
+reference 渲染图，用于和 LXEngine 的当前渲染结果做视觉诊断对比。它随模型放置，
+不是运行时加载资产。

@@ -59,7 +59,7 @@ constexpr const char *kDefaultProjectId = "lxe_default";
     const std::filesystem::path &targetPath) {
   const auto parent = targetPath.parent_path();
   const std::string stem = targetPath.stem().generic_string();
-  return parent / (stem + "-screen.bmp");
+  return parent / (stem + "-screen.png");
 }
 
 [[nodiscard]] std::filesystem::path defaultDumpPathForTarget(
@@ -70,7 +70,7 @@ constexpr const char *kDefaultProjectId = "lxe_default";
           .count();
   return std::filesystem::path("data/debug/dump") /
          (std::to_string(timestamp) + "-" + sanitizeDumpName(targetName) +
-          ".bmp");
+          ".png");
 }
 
 [[nodiscard]] std::string jsonEscape(const std::string &text) {
@@ -222,7 +222,7 @@ void LxeEditorSession::registerRenderDebugCommand(
     LX_core::CommandBus &bus, RenderDebugCommandHooks &hooks) {
   bus.registerHandler(
       "render",
-      "render debug dump <target> [camera-path] [path] | render debug "
+      "render debug dump <attachment> [path] | render debug "
       "stats <target> | render debug live-stats | render debug export-path "
       "color-transfer [camera-path] [out-dir]",
       [&hooks](std::vector<std::string> args) {
@@ -310,9 +310,9 @@ void LxeEditorSession::registerRenderDebugCommand(
         }
 
         if (args.size() < 3 || args[0] != "debug" || args[1] != "dump" ||
-            args.size() > 5) {
+            args.size() > 4) {
           return makeCommandError(
-              "usage: render debug dump <target> [camera-path] [path] | "
+              "usage: render debug dump <attachment> [path] | "
               "render debug stats <target> | render debug live-stats | "
               "render debug export-path color-transfer [camera-path] "
               "[out-dir]");
@@ -321,21 +321,21 @@ void LxeEditorSession::registerRenderDebugCommand(
           return makeCommandError("render debug dump unavailable");
         }
 
-        const bool targetIsPass =
-            args[2] == "Forward" || args[2] == "DebugOverlay";
-        std::optional<std::string> cameraPath;
-        std::filesystem::path outputPath = defaultDumpPathForTarget(args[2]);
-        if (args.size() == 4 && targetIsPass) {
-          cameraPath = args[3];
-        } else if (args.size() == 4) {
-          outputPath = std::filesystem::path(args[3]);
-        } else if (args.size() == 5) {
-          cameraPath = args[3];
-          outputPath = std::filesystem::path(args[4]);
+        if (args[2] == "Forward" || args[2] == "DebugOverlay") {
+          return makeCommandError(
+              "render debug pass dump path was removed; dump a frame graph "
+              "attachment such as hdr.color");
         }
+
+        std::filesystem::path outputPath = defaultDumpPathForTarget(args[2]);
+        if (args.size() == 4) {
+          outputPath = std::filesystem::path(args[3]);
+        }
+        const std::filesystem::path screenPath =
+            pairedScreenDumpPath(outputPath);
         try {
           const RenderDebugDumpResult dump =
-              hooks.dumpRenderTarget(args[2], cameraPath, outputPath);
+              hooks.dumpRenderTarget(args[2], outputPath, screenPath);
           std::ostringstream structured;
           structured << "{\"path\":\""
                      << jsonEscape(dump.path.generic_string()) << "\"";

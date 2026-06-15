@@ -1,4 +1,4 @@
-# REQ-075-a: Offline Realtime Equivalence On New Architecture
+# REQ-076-f: Offline Realtime Equivalence On New Architecture
 
 > 2026-06-12 更新：本 REQ 在 Material v3、bindless/indirect、OfflineRT config hard cut、BC7、package restore、GPU pipeline cache 和 post-package cleanup 完成后，重新执行 offline 与 realtime 渲染对比。目标是验证新架构上的 Helmet/BMW 输出一致性，而不是验证旧 bridge。
 
@@ -82,13 +82,13 @@ Equivalence test fails if old material/render fallback is used.
 
 - Does not add new material features。
 - Does not add package features。
-- Unsupported PBRT features must be reported explicitly, not silently approximated. Exact support or named approximation for `glass`、`fourier`、`mix`、conductor `eta/k` belongs to `REQ-073-i`; this equivalence REQ may compare those sources only after they are marked supported there.
+- Unsupported PBRT features must be reported explicitly, not silently approximated. Exact support or named approximation for `glass`、`fourier`、`mix`、conductor `eta/k` belongs to `REQ-076-e`; this equivalence REQ may compare those sources only after they are marked supported there.
 
 ## 依赖
 
-- `REQ-073-h`: OfflineRT config hard cut and smoke。
-- `REQ-073-i`: Specialized PBRT BSDF contracts，only when the equivalence profile selects specialized PBRT sources rather than unsupported diagnostics。
-- `REQ-074-g`: post-package hard cut and cleanup。
+- `REQ-076-d`: OfflineRT config hard cut and smoke。
+- `REQ-076-e`: Specialized PBRT BSDF contracts，only when the equivalence profile selects specialized PBRT sources rather than unsupported diagnostics。
+- `REQ-074-h`: post-package hard cut and cleanup。
 
 ## 实施状态
 

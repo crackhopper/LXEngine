@@ -38,30 +38,34 @@
 
 10. **speculative 候选编号用字母**：研究文档中的“未来 REQ”用字母占位（`REQ-A`、`REQ-B` ...），不要占用数字号。数字号留给真正落地到 `notes/requirements/`、`pending/` 或 `planned/` 的文件。
 
-## 当前 active REQ（实施顺序快照，2026-06-14）
+## 当前 active REQ（实施顺序快照，2026-06-15）
 
-2026-06-14 复核 active 文件后，把旧 `REQ-054-a`、`REQ-057-a`、`REQ-058-a`、`REQ-059-a`、`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 按当前代码事实归档、合并或重排。大文件拆分类需求合并后置到 `REQ-076-d`，3DGS 链路按当前代码事实重排到队尾 `REQ-077-a` 到 `REQ-077-e`。
+2026-06-14 复核 active 文件后，把旧 `REQ-054-a`、`REQ-057-a`、`REQ-058-a`、`REQ-059-a`、`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 按当前代码事实归档、合并或重排。大文件拆分类需求合并后置到 `REQ-076-j`，3DGS 链路按当前代码事实重排到队尾 `REQ-077-a` 到 `REQ-077-e`。
 
 | REQ | 主题 | 实施窗口 |
 |---|---|---|
 | `REQ-053-b` | Assets Downloader 外部资源下载与导入工具 | 外部/内置资产下载、导入、转换、路径管理 |
-| `REQ-073-e` | Indirect Material Batching And Diagnostics | indirect batching；本轮未处理 |
-| `REQ-073-f` | Realtime Material Path Hard Cut And Smoke | realtime clean gate；本轮未处理 |
-| `REQ-073-g` | OfflineRT RenderPathGraph Compute Path | OfflineRT graph path；本轮未处理 |
-| `REQ-073-h` | OfflineRT Config Hard Cut And Smoke | OfflineRT config hard cut；本轮未处理 |
-| `REQ-073-i` | Specialized PBRT BSDF Contracts | PBRT 高阶材质 source；本轮未处理 |
+| `REQ-073-e` | Indirect Material Batching And Diagnostics | indirect batching；`REQ-073-e2` hard cut 已完成，保留需求背景 |
+| `REQ-073-f` | Environment Map Skybox Direct Lighting | environment / skybox 直接光照 graph 化 |
 | `REQ-074-a` | Texture Compression Pipeline With BC7 | BC7 压缩；本轮未处理 |
 | `REQ-074-b` | Package Canonical State Readiness Gate | package 前 clean gate；本轮未处理 |
 | `REQ-074-c` | LxScenePackage File Format | package 文件格式；本轮未处理 |
 | `REQ-074-d` | SceneResourceTable Package Serialization And Restore | CPU package restore；本轮未处理 |
 | `REQ-074-e` | GPU Pipeline Cache Package Metadata And Vulkan Restore | GPU pipeline cache restore；本轮未处理 |
 | `REQ-074-f` | BMW M6 Package Load Performance Comparison | package 性能验收；本轮未处理 |
-| `REQ-074-g` | Post-package Hard Cut And Cleanup | package 后 hard cut；本轮未处理 |
-| `REQ-075-a` | Offline Realtime Equivalence On New Architecture | 新架构等价验证；本轮未处理 |
-| `REQ-076-a` | Advanced Offline Path Tracing Reference | Material v3 / OfflineRT 稳定后的完整 path tracing reference |
-| `REQ-076-b` | Editor Offline Render Integration | editor 触发、取消、查看离线 job |
-| `REQ-076-c` | RenderPathGraph / Material / Effect Non-Mesh Rendering Extension | 3DGS 等非 mesh 渲染架构前置 |
-| `REQ-076-d` | Large File Decomposition Backlog | 合并 Vulkan realtime / core commands / SceneRuntime 大文件拆分 |
+| `REQ-074-g` | Reflection Probe And Bake Render Path | reflection probe、probe bake cache、graph bake path |
+| `REQ-074-h` | Post-package Hard Cut And Cleanup | package 后 hard cut；本轮未处理 |
+| `REQ-075-a` | IBL Lighting Post Effect | Forward / Deferred IBL lighting effect 消费 |
+| `REQ-076-a` | RenderFeature Parameter Architecture Hard Cut | RenderFeature 参数配置化、反射校验、拒绝 C++ 硬编码 |
+| `REQ-076-b` | Transparent BMW Material Path And Smoke | transparent / BMW realtime clean gate |
+| `REQ-076-c` | OfflineRT RenderPathGraph Compute Path | OfflineRT graph path |
+| `REQ-076-d` | OfflineRT Smoke And Package Readiness Gate | OfflineRT config hard cut / smoke |
+| `REQ-076-e` | Specialized PBRT BSDF Contracts | PBRT 高阶材质 source |
+| `REQ-076-f` | Offline Realtime Equivalence On New Architecture | 新架构等价验证 |
+| `REQ-076-g` | Advanced Offline Path Tracing Reference | Material v3 / OfflineRT 稳定后的完整 path tracing reference |
+| `REQ-076-h` | Editor Offline Render Integration | editor 触发、取消、查看离线 job |
+| `REQ-076-i` | RenderPathGraph / Material / Effect Non-Mesh Rendering Extension | 3DGS 等非 mesh 渲染架构前置 |
+| `REQ-076-j` | Large File Decomposition Backlog | 合并 Vulkan realtime / core commands / SceneRuntime 大文件拆分 |
 | `REQ-077-a` | 3DGS PLY Loader 与 CPU Resource | 3DGS 数据解析；队尾后置 |
 | `REQ-077-b` | 3DGS Runtime Resource 与 Scene Node | Scene/runtime 接入；队尾后置 |
 | `REQ-077-c` | 3DGS Vulkan Splat Pass | 首个可视化渲染闭环；队尾后置 |
@@ -103,11 +107,12 @@
 
 ## 历史
 
-- 2026-06-14：删除 active `REQ-072`。原 071 收口审计、legacy hard cut、bindless validation、package 和 equivalence 工作已由后续 active `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-*` 承接，不再保留独立 active 需求；同步删除 072 专属 Superpowers spec / plan。
+- 2026-06-14：删除 active `REQ-072`。原 071 收口审计、legacy hard cut、bindless validation、package 和 equivalence 工作已由后续 active `REQ-073-*`、`REQ-074-*`、`REQ-076-f`、`REQ-076-*` 承接，不再保留独立 active 需求；同步删除 072 专属 Superpowers spec / plan。
 - 2026-06-14：移除旧 tutorial registry pending 候选 `REQ-042-a/b/c`。教程和 editor design 改为只讲当前 command-first、scene-node、light 数据/shader 边界；light asset/custom light registry、toolbar registry、node kind registry 不再作为当前 roadmap 或教程 future workflow 暴露。
-- 2026-06-14：继续整理 active 顺序。`REQ-054-a` 归档，offline graph/default path 并入 `REQ-073-g`，old config bridge 删除并入 `REQ-073-h`，renderer 大文件拆分并入 `REQ-076-d`。旧 `REQ-057-a`、`REQ-058-a`、`REQ-059-a` 重排为 `REQ-076-a`、`REQ-076-b`、`REQ-076-c`，其中 `REQ-076-c` 改写为支持 3DGS 等非 mesh 渲染结构的 RenderPathGraph/material/effect 架构扩展。`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 归档，剩余事项由 `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-b/c` 承接。
+- 2026-06-14：继续整理 active 顺序。`REQ-054-a` 归档，offline graph/default path 后续承接到 `REQ-076-c`，old config bridge 删除承接到 `REQ-076-d`，renderer 大文件拆分承接到 `REQ-076-j`。旧 `REQ-057-a`、`REQ-058-a`、`REQ-059-a` 重排到当前 `REQ-076-g`、`REQ-076-h`、`REQ-076-i`，其中 `REQ-076-i` 改写为支持 3DGS 等非 mesh 渲染结构的 RenderPathGraph/material/effect 架构扩展。`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 归档，剩余事项由 `REQ-073-*`、`REQ-074-*`、`REQ-076-b/c/d/f/h` 承接。
 - 2026-06-14：新增 `REQ-078-a`，把 FrameGraph barrier plan、split barrier、timeline semaphore、multi-queue scheduling、async compute 和 secondary command buffer parallel recording 集中后置到 realtime / OfflineRT / 3DGS 可用闭环之后，避免打断 `REQ-073-*` 短期渲染目标。
-- 2026-06-14：继续整理 active 顺序。旧 `REQ-069-a/b/c` 合并为 `REQ-076-d` 并移到 `REQ-076-c` 之后；3DGS active 链从旧 `REQ-061-a` 到 `REQ-065-a` 重排为 `REQ-077-a` 到 `REQ-077-e`，并按当前代码事实修正为“只有 assets-downloader cache 表面，尚无 loader/runtime/render/editor 闭环”。
+- 2026-06-14：继续整理 active 顺序。旧 `REQ-069-a/b/c` 合并为 `REQ-076-j` 并移到 `REQ-076-i` 之后；3DGS active 链从旧 `REQ-061-a` 到 `REQ-065-a` 重排为 `REQ-077-a` 到 `REQ-077-e`，并按当前代码事实修正为“只有 assets-downloader cache 表面，尚无 loader/runtime/render/editor 闭环”。
+- 2026-06-15：按 Helmet/reference 渲染问题后的 IBL 路线重排当前渲染需求。`REQ-073-f` 改为 environment map / skybox 直接光照；`REQ-074-g` 改为 reflection probe 与 bake render path；`REQ-075-a` 改为 IBL lighting post effect；`REQ-076-a` 新增 RenderFeature 参数架构 hard cut，要求 feature/effect 参数配置化、反射校验，并拒绝 C++ hardcoded / 手动 `MaterialInstance` 正向路径。原 transparent、OfflineRT、PBRT、equivalence、path tracing、editor offline、non-mesh 和大文件拆分需求顺延到 `REQ-076-b` 到 `REQ-076-j`。
 - 2026-06-14：按当前代码复核 `REQ-072` 之前的 active 需求。已完成或已由当前架构取代的 `REQ-045-a/b/c`、`REQ-046-a` 到 `REQ-052-a`、`REQ-053-a`、`REQ-054-b`、`REQ-055-a`、`REQ-056-a`、`REQ-060-a`、`REQ-063-a`、`REQ-066-a`、`REQ-067-b`、`REQ-070-a`、`REQ-071-a/d/e/f/g` 归档到 `finished/`；仍未完成的 `REQ-053-b`、`REQ-054-a`、`REQ-057-a` 到 `REQ-059-a`、`REQ-061-a`、`REQ-062-a`、`REQ-063-b` 到 `REQ-065-a`、`REQ-067-a` 到 `REQ-069-c`、`REQ-071-b/c` 当时保留在 active，并同步实施状态到当前代码事实。后续同日整理又把其中一部分继续归档或重排。
 - 2026-06-10：新增 `REQ-071-a` 到 `REQ-071-f`，把 SurfaceMaterial pure envelope、RenderPathGraph/RenderFeature、SceneResourceTable parser/resource ownership、GPUResourceTable/pipeline cache/upload task、scene package 和 helmet/BMW offline-realtime 渲染等价验证收敛为一个连续需求族。该族承接 `REQ-067-a/b` 的 SceneResourceTable 资源模型和 `REQ-070-a` 的 BMW M6 转换输入，目标是先把材质/渲染合同说清楚，再实现加载性能和对齐验收。
 - 2026-06-01：新增 `REQ-052-a` 到 `REQ-059-a`，建立 Offline Rendering Lab 主线。路线优先级为 Ground Truth Image Renderer、Bake Asset Generator / PBR Reference、Editor Integrated Preview、Research Sandbox；第一版选择 Vulkan compute 离线 renderer，不以 CPU path tracer 或 Vulkan hardware RT pipeline 起步。随后将 `REQ-054` 拆成 `054-a` renderer foundation/realtime/offline 拆分与 `054-b` compute offline renderer MVP，避免继续扩大当前 2200+ 行 `VulkanRendererImpl`。补充 `REQ-053-b` `assets-downloader`，管理大型网络资产下载、导入、转换和 scene 路径引用，避免 git 仓库膨胀。Bake asset generator 暂不进入 active 实施队列，拆入 `planned/`，记录 reflection probe、irradiance/SH 和 lightmap 的原理与计划；未来执行时再重新取 active REQ 编号。

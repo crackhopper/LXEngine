@@ -315,7 +315,7 @@ makeDefaultForwardRenderPathGraph
 
 ## 实施状态
 
-2026-06-14 复核关闭：071-g 的 legacy boundary removal audit 已实现并有静态审计测试覆盖；后续默认路径清理继续由 `REQ-073-f` / `REQ-073-h` / `REQ-074-g` 承接。
+2026-06-14 复核关闭：071-g 的 legacy boundary removal audit 已实现并有静态审计测试覆盖；后续默认路径清理继续由 `REQ-076-b` / `REQ-076-d` / `REQ-074-g` 承接。
 
 已实施（2026-06-11）。
 

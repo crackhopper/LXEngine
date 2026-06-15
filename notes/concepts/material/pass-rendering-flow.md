@@ -17,6 +17,14 @@ Surface material 只说明“表面是什么”；真正的多 pass 来自 activ
 
 pass 节点同时声明 `stage`、`dispatch`、`shader`、`input`、`sources`、`targets`、`rendering.attachments` 和 `renderState`。这些字段会进入 RenderPathNode signature，成为 pipeline identity 的一部分。
 
+当前 realtime 默认关闭 bloom。`VulkanPostProcessSettings::bloomEnabled`
+的默认值是 `false`，所以 Forward 默认选择
+`assets/render_paths/forward_main.render-path.yaml`，Deferred 默认选择
+`assets/render_paths/deferred_main.render-path.yaml`。`forward_bloom` /
+`deferred_bloom` 仍然是显式开启 bloom 时使用的 graph：它们多出
+`BloomThreshold`、`BloomBlurH`、`BloomBlurV`，最终 `PostProcess` 再读取
+`bloom.blur`。
+
 ## 一个 RenderInput 只属于一个 pass
 
 `RenderWorkCompiler::buildInputs()` 按单个 `FramePass` 生成输入：
@@ -86,6 +94,40 @@ FrameGraph::compile(registry)
 ```
 
 它仍然不持有 backend attachment，也不做 attachment aliasing；backend 执行层负责把 compiled pass 转成具体 framebuffer/render pass/dynamic rendering 状态。
+
+## PostProcess 写入真实 swapchain 格式
+
+PostProcess 的 graph asset 写的是逻辑目标 `swapchain.color`。真正执行前，
+Vulkan backend 会先从设备选择出的 surface format 推导当前 swapchain
+target，并保留 `BGRA8Srgb` / `RGBA8Srgb` 这类 sRGB 信息。随后
+`initScene()` 会把 `PostProcess` 和 `DebugOverlay` 的 target 与 attachment
+contract 同步成真实 swapchain format。
+
+这一步很重要：如果 surface image view 是 `VK_FORMAT_B8G8R8A8_SRGB`，而
+pipeline contract 仍然按 `BGRA8` / UNORM 创建，就会把颜色编码责任说不清。
+当前约定是：
+
+| Swapchain target | PostProcess shader 输出 | 谁做 sRGB encode |
+|---|---|---|
+| `BGRA8Srgb` / `RGBA8Srgb` | linear mapped color | Vulkan sRGB attachment |
+| `BGRA8` / `RGBA8` | shader 手动 gamma 后的 sRGB-like color | shader |
+
+因此，PostProcess fullscreen material 创建前会先看 target color format，再决定
+传给 `PostProcessUBO.gamma` 的值。sRGB target 下写 `gamma = 1.0`，UNORM
+target 下写 `gamma = 2.2`。这是当前实现；更清晰的后续设计应该给
+`PostProcessUBO` 增加显式 `outputEncodingMode`，避免把“输出编码模式”和
+“显示 gamma 数值”混在一个字段里。
+
+## Debug dump 有两个观察面
+
+`render debug dump <attachment> [path]` 当前只允许 dump frame graph
+attachment，例如 `hdr.color`。这张图观察的是中间 HDR buffer：它还没有经过
+PostProcess、bloom 合成、tone mapping 或 swapchain sRGB 写入。
+
+同一个命令会同时安排一张 paired screen dump，路径为目标文件名加
+`-screen.png`。这张图来自最终 swapchain copy，并且触发时会跳过 GUI frame，
+所以它才接近“live 最终画面 minus UI”。旧的 `Forward` / `DebugOverlay`
+pass dump 会临时 offscreen 重渲，已经不再是合法调试路径。
 
 ## PipelineBuildDesc 从 RenderInputDesc 提供
 

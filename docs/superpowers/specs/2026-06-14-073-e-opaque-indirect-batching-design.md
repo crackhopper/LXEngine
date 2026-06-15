@@ -87,8 +87,8 @@ REQ family:
 
 - `REQ-073-e2` owns the hard cut to `RenderWorkCompiler`, typed `RenderInput`,
   and `RenderInputDesc`.
-- `REQ-073-f` extends the same compiler path for transparent sorting behavior.
-- `REQ-073-g` extends the same compiler path for OfflineRT graph-driven compute.
+- `REQ-076-b` extends the same compiler path for transparent sorting behavior.
+- `REQ-076-c` extends the same compiler path for OfflineRT graph-driven compute.
 - `REQ-074-e` consumes deterministic pipeline build desc extraction from
   `RenderInputDesc.pipelineBuildDesc`.
 

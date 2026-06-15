@@ -1,4 +1,4 @@
-# REQ-073-f: Transparent BMW Material Path And Smoke
+# REQ-076-b: Transparent BMW Material Path And Smoke
 
 > 2026-06-14 重新收束：旧 realtime material fallback hard cut 已前移到 `REQ-073-d` 和 `REQ-073-e`。本 REQ 不再清理 073a/b/c 的旧兼容路径；它只在 Task 8/9 后的 `RenderPathGraph input -> FramePass input contract -> RenderWorkCompiler -> typed RenderInput[] -> RenderInputDesc[] facts -> backend execution` 模型上扩展 transparent sorting policy、glass material、BMW converter/shader 覆盖和 BMW realtime smoke。
 
@@ -33,8 +33,8 @@ BMW M6 相比 Helmet 多出透明/玻璃相关材质。透明物体不能简单�
 - 不重新打开 073e opaque batching 架构。
 - 不引入透明专用的第二套 batch compiler。
 - 不实现 package、BC7、pipeline cache serialization。
-- 不处理 OfflineRT compute path；由 `REQ-073-g` / `REQ-073-h` 处理。
-- 不做 offline/realtime 图像等价阈值；由 `REQ-075-a` 处理。
+- 不处理 OfflineRT compute path；由 `REQ-076-c` / `REQ-076-d` 处理。
+- 不做 offline/realtime 图像等价阈值；由 `REQ-076-f` 处理。
 
 ## 需求
 
@@ -183,8 +183,8 @@ ordinary positive tests 和 production path 不得保留这些 token 作为成�
 
 ## 后续工作
 
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-h`: OfflineRT config hard cut and smoke。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
+- `REQ-076-d`: OfflineRT config hard cut and smoke。
 - `REQ-074-a`: Texture compression pipeline with BC7。
 
 ## 实施状态

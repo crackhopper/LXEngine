@@ -1,6 +1,6 @@
 # REQ-067-a: SceneResourceTable 与 Bindless-Ready 资源模型
 
-> 2026-06-14 归档：当前 SceneResourceTable、typed handle、upload view 和 bindless-ready resource model 已经形成代码基础；剩余 realtime batching、hard cut、package canonical state 和非 mesh resource 扩展分别由 `REQ-073-e`、`REQ-073-f`、`REQ-074-*`、`REQ-076-c` 承接。
+> 2026-06-14 归档：当前 SceneResourceTable、typed handle、upload view 和 bindless-ready resource model 已经形成代码基础；剩余 realtime batching、hard cut、package canonical state 和非 mesh resource 扩展分别由 `REQ-073-e`、`REQ-076-b`、`REQ-074-*`、`REQ-076-i` 承接。
 
 > 2026-06-02 新增：把场景渲染资源从 `SceneNode is IRenderable` 的临时组合模型，收敛为由 `SceneResourceTable` 统一持有、组件通过 handle 引用、渲染器通过 snapshot 消费的 bindless-ready 资源模型。
 
@@ -382,5 +382,5 @@ offline BVH SHALL 基于 primitive/index/vertex 关系构建，不应强制把 m
 仍未完成的核心边界：
 
 - `SceneNode` 仍继承 `IRenderable`，`Scene` 仍保留 `IRenderableSharedPtr` renderable collection；component-only renderable ownership 尚未完成。
-- realtime 默认路径还没有完全消费 bindless-ready typed arrays / indirect draw records；这部分后续由 `REQ-073-e` / `REQ-073-f` 继续推进。
+- realtime 默认路径还没有完全消费 bindless-ready typed arrays / indirect draw records；这部分后续由 `REQ-073-e` / `REQ-076-b` 继续推进。
 - memory pool / pending release、resource allocator 与 package canonical state 仍不属于当前已完成范围。

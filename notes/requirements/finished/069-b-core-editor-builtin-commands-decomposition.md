@@ -1,6 +1,6 @@
 # REQ-069-b: Core Editor Builtin Commands 单文件拆分
 
-> 2026-06-14 归档：本文件已并入 `REQ-076-a: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
+> 2026-06-14 归档：本文件已并入 `REQ-076-j: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
 
 > 2026-06-02 新增：`REQ-069` 系列第二步，只拆分 `src/core/editor/commands/builtin_commands.cpp`。本需求不实现新命令。
 

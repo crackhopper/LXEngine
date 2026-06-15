@@ -55,7 +55,7 @@ SUPERPOWERS_SECTION_TITLE = "Superpowers"
 SUPERPOWERS_SPECS_SECTION_TITLE = "设计 Specs"
 SUPERPOWERS_PLANS_SECTION_TITLE = "执行 Plans"
 DEFAULT_SUPERPOWERS_RECENT_DAYS = 0
-DEFAULT_SUPERPOWERS_ACTIVE_REQS = "073"
+DEFAULT_SUPERPOWERS_ACTIVE_REQS = "auto"
 HEADING_RE = re.compile(r"^#\s+(.+?)\s*$")
 NATURAL_TOKEN_RE = re.compile(r"(\d+)")
 DATED_SUPERPOWERS_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-.+\.md$")
@@ -252,7 +252,7 @@ def write_superpowers_collection_index(
     lines = [
         f"# {title}",
         "",
-        "本页由 `scripts/notes/generate_site_config.py` 自动生成。这里只镜像当前活跃需求编号命中的 Superpowers 文档。默认活跃编号为 `073`；可用 `NOTES_SUPERPOWERS_ACTIVE_REQS` 调整，或用 `NOTES_SUPERPOWERS_RECENT_DAYS` 临时打开最近 N 天窗口。",
+        "本页由 `scripts/notes/generate_site_config.py` 自动生成。这里只镜像当前活跃需求编号命中的 Superpowers 文档。默认从 active requirements 自动收集编号；可用 `NOTES_SUPERPOWERS_ACTIVE_REQS` 调整，或用 `NOTES_SUPERPOWERS_RECENT_DAYS` 临时打开最近 N 天窗口。",
         "",
     ]
     if docs:

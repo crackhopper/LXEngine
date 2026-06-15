@@ -1,14 +1,14 @@
-# REQ-076-b: Editor Offline Render Integration
+# REQ-076-h: Editor Offline Render Integration
 
-> 原 `REQ-058-a` 重排到 `REQ-076-b`。当前代码已有 `OfflineRenderJob`、`lxe_offline_render`、`outputProfiles`、EXR/PNG 输出和实时/离线对比辅助工具；本 REQ 只保留 editor 侧离线调用、状态、取消和结果查看工作流。
+> 原 `REQ-058-a` 重排到 `REQ-076-h`。当前代码已有 `OfflineRenderJob`、`lxe_offline_render`、`outputProfiles`、EXR/PNG 输出和实时/离线对比辅助工具；本 REQ 只保留 editor 侧离线调用、状态、取消和结果查看工作流。
 
 ## 背景
 
-离线 renderer 的 CLI、job 描述和输出文件能力已经存在，便于测试、CI、批处理和 ground truth 对比。等 `REQ-073-g` / `REQ-073-h` 完成 OfflineRT 默认图路径和旧 side-channel 删除后，editor 应提供入口来触发离线渲染、显示进度、查看 preview、打开输出目录，并最终接入 `REQ-075-a` 的实时/离线等价性对比结果。
+离线 renderer 的 CLI、job 描述和输出文件能力已经存在，便于测试、CI、批处理和 ground truth 对比。等 `REQ-076-c` / `REQ-076-d` 完成 OfflineRT 默认图路径和旧 side-channel 删除后，editor 应提供入口来触发离线渲染、显示进度、查看 preview、打开输出目录，并最终接入 `REQ-076-f` 的实时/离线等价性对比结果。
 
 场景资产仍由 editor 负责组织。对于 assets-downloader 生成的 cache 资产，本 REQ 只依赖当前 scene document / cache URI 能力，不要求完整 Asset Browser。
 
-本 REQ 排在 `REQ-076-a` 之后。它不改变离线算法，只把稳定的离线路径接入 editor。
+本 REQ 排在 `REQ-076-g` 之后。它不改变离线算法，只把稳定的离线路径接入 editor。
 
 ## 目标
 
@@ -76,7 +76,7 @@ ImGui editor 首版最小 UI：
 
 ### R4: Realtime/offline 对比预留
 
-首版可以只显示 preview。若 `REQ-075-a` 或 CLI 工具已经产出比较结果，editor 首版只需要保存足够 metadata，供后续面板显示：
+首版可以只显示 preview。若 `REQ-076-f` 或 CLI 工具已经产出比较结果，editor 首版只需要保存足够 metadata，供后续面板显示：
 
 - 当前 viewport screenshot
 - offline PNG
@@ -110,10 +110,10 @@ ImGui editor 首版最小 UI：
 
 ## 依赖
 
-- `REQ-073-g`
-- `REQ-073-h`
-- `REQ-075-a`
-- `REQ-076-a`（仅当 editor 需要 reference/path tracing profile）
+- `REQ-076-c`
+- `REQ-076-d`
+- `REQ-076-f`
+- `REQ-076-g`（仅当 editor 需要 reference/path tracing profile）
 
 planned bake job 不属于本 REQ 依赖；未来若启动 bake 实现，再扩展 editor 入口。
 
@@ -126,6 +126,6 @@ planned bake job 不属于本 REQ 依赖；未来若启动 bake 实现，再扩�
 
 ## 实施状态
 
-2026-06-14 重排后状态：保留 active，后置到 `REQ-076-b`。核心 offline job/CLI 已存在，但 editor 集成尚未完成。
+2026-06-14 重排后状态：保留 active，后置到 `REQ-076-h`。核心 offline job/CLI 已存在，但 editor 集成尚未完成。
 
 当前已有 `OfflineRenderJob`、`validateOfflineRenderJob`、`lxe_offline_render` CLI 和 offline image writer；editor 侧还没有完整 offline job 面板、命令/API、进度、取消、输出预览和结果定位工作流。

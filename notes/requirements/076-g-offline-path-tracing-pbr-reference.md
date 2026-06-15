@@ -1,12 +1,12 @@
-# REQ-076-a: Advanced Offline Path Tracing Reference
+# REQ-076-g: Advanced Offline Path Tracing Reference
 
-> 2026-06-14 重排：本需求原为 `REQ-057-a`，现放到 `REQ-075-a` 之后。它不再服务旧 offline MVP，而是在 Material v3、OfflineRT RenderPathGraph、package/cleanup 和 offline/realtime equivalence 的新架构稳定后，实现更完整的光追 reference。
+> 2026-06-14 重排：本需求原为 `REQ-057-a`，现放到 `REQ-076-f` 之后。它不再服务旧 offline MVP，而是在 Material v3、OfflineRT RenderPathGraph、package/cleanup 和 offline/realtime equivalence 的新架构稳定后，实现更完整的光追 reference。
 
 ## 背景
 
-当前代码已有 Vulkan/software compute direct offline renderer、`OfflineRenderJob`、SceneResourceTable upload view、EXR/PNG 输出、OfflineRT shader 基础和 offline/realtime 对比工具。`REQ-073-g/h` 会把 OfflineRT 默认路径硬切到 RenderPathGraph 配置；`REQ-075-a` 会验证新架构下 realtime/offline direct 输出一致性。
+当前代码已有 Vulkan/software compute direct offline renderer、`OfflineRenderJob`、SceneResourceTable upload view、EXR/PNG 输出、OfflineRT shader 基础和 offline/realtime 对比工具。`REQ-076-c/d` 会把 OfflineRT 默认路径硬切到 RenderPathGraph 配置；`REQ-076-f` 会验证新架构下 realtime/offline direct 输出一致性。
 
-在这些基础稳定之前，直接实现完整 path tracing 容易把算法问题和架构 bridge 混在一起。因此本 REQ 后置到 `REQ-075-a` 之后，目标变成“在干净架构上扩展更完整的光追效果”，而不是继续修补旧 MVP。
+在这些基础稳定之前，直接实现完整 path tracing 容易把算法问题和架构 bridge 混在一起。因此本 REQ 后置到 `REQ-076-f` 之后，目标变成“在干净架构上扩展更完整的光追效果”，而不是继续修补旧 MVP。
 
 ## 目标
 
@@ -21,8 +21,8 @@
 - 不恢复旧 `OfflineShaderProvider`、`offlineShader` side channel 或 hardcoded FrameGraph。
 - 不实现 Vulkan hardware ray tracing；如需要，应单独起新 REQ。
 - 不实现 denoiser、spectral rendering、bidirectional path tracing 或 MLT。
-- 不实现 editor 调用入口；editor 入口由 `REQ-076-b` 承接。
-- 不定义新的材质 source contract；PBRT 高阶材质支持由 `REQ-073-i` 决定。
+- 不实现 editor 调用入口；editor 入口由 `REQ-076-h` 承接。
+- 不定义新的材质 source contract；PBRT 高阶材质支持由 `REQ-076-e` 决定。
 
 ## 需求
 
@@ -34,7 +34,7 @@
 
 - 使用与 realtime 同源的 material source reflection hash。
 - 支持 metallic/roughness workflow 的 GGX / Smith / Schlick 基础 BRDF。
-- 对 `REQ-073-i` 标记 supported 的 PBRT source，提供对应 reference path。
+- 对 `REQ-076-e` 标记 supported 的 PBRT source，提供对应 reference path。
 - 对未支持 BSDF 输出明确 unsupported diagnostic，不静默近似。
 - AOV/metadata 记录 material source URI、source reflection hash 和 selected BSDF path。
 
@@ -127,21 +127,21 @@ EXR 输出可以使用多通道或多文件，但 metadata 必须记录 AOV 命�
 
 ## 边界与约束
 
-- 只在 `REQ-073-g/h` hard cut 后的新 OfflineRT 默认路径上实现。
+- 只在 `REQ-076-c/d` hard cut 后的新 OfflineRT 默认路径上实现。
 - 不新增旧式 offline material pass。
 - 不把 research integrator registry 作为前置；本 REQ 先交付一个明确 reference integrator。
 - 不要求 editor UI。
 
 ## 依赖
 
-- `REQ-073-g`: OfflineRT RenderPathGraph compute path。
-- `REQ-073-h`: OfflineRT config hard cut and smoke。
-- `REQ-073-i`: specialized PBRT BSDF contracts，只有选择 PBRT 高阶 source 时需要。
-- `REQ-075-a`: offline/realtime equivalence on new architecture。
+- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
+- `REQ-076-d`: OfflineRT config hard cut and smoke。
+- `REQ-076-e`: specialized PBRT BSDF contracts，只有选择 PBRT 高阶 source 时需要。
+- `REQ-076-f`: offline/realtime equivalence on new architecture。
 
 ## 后续工作
 
-- `REQ-076-b`: editor offline render integration。
+- `REQ-076-h`: editor offline render integration。
 - 未来 bake route 可基于本 reference integrator 生成 bake targets，届时重新起 active REQ。
 - Vulkan hardware ray tracing backend 如需要，单独起新 REQ。
 

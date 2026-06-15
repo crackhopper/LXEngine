@@ -1,6 +1,6 @@
-# REQ-076-d: Large File Decomposition Backlog
+# REQ-076-j: Large File Decomposition Backlog
 
-> 2026-06-14 新增并重排到 `REQ-076-d`：旧 `REQ-069-a/b/c` 按“一份大文件一个需求”拆开管理，实施顺序过早且容易和功能主线交织。当前先合并为一个后置代码卫生需求，排在 `REQ-076-c` 之后；后续执行时一次只拆一个大文件，保持等价搬迁和测试闭环。
+> 2026-06-14 新增并重排到 `REQ-076-j`：旧 `REQ-069-a/b/c` 按“一份大文件一个需求”拆开管理，实施顺序过早且容易和功能主线交织。当前先合并为一个后置代码卫生需求，排在 `REQ-076-i` 之后；后续执行时一次只拆一个大文件，保持等价搬迁和测试闭环。
 
 ## 背景
 
@@ -24,7 +24,7 @@
 ## 非目标
 
 - 不新增 renderer feature、editor command、scene schema 或 material 行为。
-- 不替代 `REQ-073-*` / `REQ-074-*` 的 hard cut，也不替代 `REQ-076-c` 的非 mesh 架构扩展。
+- 不替代 `REQ-073-*` / `REQ-074-*` 的 hard cut，也不替代 `REQ-076-i` 的非 mesh 架构扩展。
 - 不在拆分时实现 3DGS、package、offline/realtime equivalence 或 PBRT 材质能力。
 - 不用“降行数”作为唯一目标；每个新文件必须有清晰职责和测试覆盖。
 
@@ -178,9 +178,9 @@ ctest --test-dir build --output-on-failure -R \
 
 ## 依赖
 
-- `REQ-073-g` / `REQ-073-h`: OfflineRT default graph path 与旧 side-channel 删除。
-- `REQ-073-e` / `REQ-073-f`: realtime material batching and hard cut diagnostics。
-- `REQ-076-c`: RenderPathGraph / material / effect 非 mesh 扩展完成后，再拆 renderer 主文件可避免把新边界藏进 helper。
+- `REQ-076-c` / `REQ-076-d`: OfflineRT default graph path 与旧 side-channel 删除。
+- `REQ-073-e` / `REQ-076-b`: realtime material batching and hard cut diagnostics。
+- `REQ-076-i`: RenderPathGraph / material / effect 非 mesh 扩展完成后，再拆 renderer 主文件可避免把新边界藏进 helper。
 
 历史上 `REQ-054-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 提供了 renderer boundary、profile output、RenderPathGraph 与 SceneResourceTable 基础，但它们已归档，不再作为 active 依赖。
 

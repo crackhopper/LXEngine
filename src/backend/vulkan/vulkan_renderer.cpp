@@ -83,13 +83,6 @@ VulkanRenderer::statsFrameGraphAttachment(std::string_view attachmentName) {
   return p_realtime->statsFrameGraphAttachment(attachmentName);
 }
 
-VulkanRenderer::FrameGraphAttachmentDumpResult
-VulkanRenderer::dumpDebugRenderTarget(
-    std::string_view passName, const std::optional<std::string> &cameraPath,
-    const std::optional<std::filesystem::path> &path) {
-  return p_realtime->dumpDebugRenderTarget(passName, cameraPath, path);
-}
-
 VulkanRealtimeProfileOutputResult VulkanRenderer::generateRealtimeProfileOutput(
     SceneSharedPtr scene, const LX_core::offline::OutputProfile &output,
     const std::filesystem::path &basePath) {

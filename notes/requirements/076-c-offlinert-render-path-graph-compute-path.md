@@ -1,4 +1,4 @@
-# REQ-073-g: OfflineRT RenderPathGraph Compute Path
+# REQ-076-c: OfflineRT RenderPathGraph Compute Path
 
 > 2026-06-15 Task 8/9 校准：`REQ-073-e2` single work compiler model 已完成。当前 offline path 通过 file-local `OfflineCompute` pass、`RenderWorkCompiler`、`RenderComputeInput` 和 `RenderInputDesc` 提交 compute dispatch；旧 offline pass token 已从 `src` / `assets` 删除。本文剩余范围是 OfflineRT graph asset、compute block / graph resource vocabulary、`OfflineRenderJob::offlineShader` side channel 删除、`createOfflineRenderFrameGraph()` 默认路径替换，以及 graph-driven pipeline desc。
 
@@ -36,7 +36,7 @@ Offline file-local OfflineCompute pass
 | `REQ-073-c` | final material source variant / RenderPathNode pipeline identity 已建立 | OfflineRT shader 也应从 graph pass URI 和 final reflection 进入 pipeline input |
 | `REQ-073-d` | realtime 已迁到 `render_paths/...` URI | OfflineRT shader URI 也要迁到 graph-driven `render_paths/OfflineRT/...` |
 | `REQ-073-e2` | `FramePass` / `RenderWorkCompiler` / `RenderInput` / `RenderInputDesc` 单轨模型 | OfflineRT compute 必须复用该模型，不新增 public compiler/queue 系统 |
-| `REQ-073-h` | hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate | 本 REQ 负责默认 OfflineRT graph path 的结构切换；073h 负责复杂场景 smoke |
+| `REQ-076-d` | hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate | 本 REQ 负责默认 OfflineRT graph path 的结构切换；076-d 负责复杂场景 smoke |
 
 ## 目标
 
@@ -53,8 +53,8 @@ Offline file-local OfflineCompute pass
 - 不实现新的 path tracing BSDF、采样器、降噪、多 bounce 或 MIS。
 - 不实现 package 文件格式；由 `REQ-074-c` 处理。
 - 不实现 Vulkan pipeline cache blob 持久化；由 `REQ-074-e` 处理。
-- 不做 offline/realtime 图像等价阈值验收；由 `REQ-075-a` 处理。
-- 不推进 `REQ-073-f` 的 transparent/BMW realtime path。
+- 不做 offline/realtime 图像等价阈值验收；由 `REQ-076-f` 处理。
+- 不推进 `REQ-076-b` 的 transparent/BMW realtime path。
 - 不新增第二套 public graph / contract / compiler 系统。
 
 ## 需求
@@ -329,7 +329,7 @@ OfflineRT graph path SHALL 保持 offline renderer 边界。
 
 ## 下游工作
 
-- `REQ-073-h`: hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
+- `REQ-076-d`: hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
 - `REQ-074-e`: pipeline cache serialization 应从 `RenderInputDesc` / `PipelineBuildDesc` 收集 pipeline cache metadata。
 
 ## 实施状态

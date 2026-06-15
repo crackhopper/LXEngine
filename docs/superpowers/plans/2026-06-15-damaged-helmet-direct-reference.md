@@ -12,8 +12,8 @@
 
 ## File Structure
 
-- Create `assets/reference/damaged_helmet/khronos_screenshot.png`: committed Khronos reference screenshot.
-- Create `assets/reference/damaged_helmet/README.md`: attribution and license note for the screenshot.
+- Create `assets/models/damaged_helmet/reference/khronos_screenshot.png`: committed Khronos reference screenshot.
+- Create `assets/models/damaged_helmet/reference/README.md`: attribution and license note for the screenshot.
 - Modify `src/test/integration/test_lxe_gltf_material_convert.py`: assert the default generated scene remains direct-only and uses the chosen reference camera/light setup.
 - Modify `src/test/integration/test_gltf_scene_asset_loader.cpp`: assert Damaged Helmet is one mesh/one primitive/one material and its metallic-roughness texture carries nontrivial channel data through existing `TextureLoader`.
 - Modify `src/test/integration/test_shader_compiler.cpp`: add a shader audit proving standard-PBR no longer delegates direct evaluation to Lambert and uses the shared GGX helper.
@@ -28,29 +28,29 @@
 ### Task 1: Add Khronos Reference Screenshot
 
 **Files:**
-- Create: `assets/reference/damaged_helmet/khronos_screenshot.png`
-- Create: `assets/reference/damaged_helmet/README.md`
+- Create: `assets/models/damaged_helmet/reference/khronos_screenshot.png`
+- Create: `assets/models/damaged_helmet/reference/README.md`
 
 - [ ] **Step 1: Download the reference image**
 
 Run:
 
 ```bash
-mkdir -p assets/reference/damaged_helmet
-curl -L -o assets/reference/damaged_helmet/khronos_screenshot.png \
+mkdir -p assets/models/damaged_helmet/reference
+curl -L -o assets/models/damaged_helmet/reference/khronos_screenshot.png \
   https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/screenshot/screenshot.png
-file assets/reference/damaged_helmet/khronos_screenshot.png
+file assets/models/damaged_helmet/reference/khronos_screenshot.png
 ```
 
 Expected:
 
 ```text
-assets/reference/damaged_helmet/khronos_screenshot.png: PNG image data
+assets/models/damaged_helmet/reference/khronos_screenshot.png: PNG image data
 ```
 
 - [ ] **Step 2: Add attribution and license note**
 
-Create `assets/reference/damaged_helmet/README.md` with:
+Create `assets/models/damaged_helmet/reference/README.md` with:
 
 ```markdown
 # Damaged Helmet Reference Screenshot
@@ -74,13 +74,13 @@ diagnostic reference image for visual comparison. It is not a CC0 runtime asset.
 Run:
 
 ```bash
-git status --short assets/reference/damaged_helmet
+git status --short assets/models/damaged_helmet/reference
 ```
 
 Expected:
 
 ```text
-?? assets/reference/damaged_helmet/
+?? assets/models/damaged_helmet/reference/
 ```
 
 - [ ] **Step 4: Commit**
@@ -88,8 +88,8 @@ Expected:
 Run:
 
 ```bash
-git add assets/reference/damaged_helmet/khronos_screenshot.png \
-  assets/reference/damaged_helmet/README.md
+git add assets/models/damaged_helmet/reference/khronos_screenshot.png \
+  assets/models/damaged_helmet/reference/README.md
 git commit -m "test: add damaged helmet reference screenshot"
 ```
 
@@ -686,7 +686,7 @@ artifacts/reference/damaged_helmet_direct/hdr-color.bmp exists
 Use the local image viewer tool on:
 
 ```text
-assets/reference/damaged_helmet/khronos_screenshot.png
+assets/models/damaged_helmet/reference/khronos_screenshot.png
 ```
 
 Parse the render payload for the generated PNG path:
@@ -713,7 +713,7 @@ Create `artifacts/reference/damaged_helmet_direct/visual-comparison.md` after op
 ```markdown
 # Damaged Helmet Direct Reference Visual Comparison
 
-Reference: `assets/reference/damaged_helmet/khronos_screenshot.png`
+Reference: `assets/models/damaged_helmet/reference/khronos_screenshot.png`
 Realtime PNG: `use the cpuSrgbPngPath printed from realtime_result.json`
 HDR dump: `artifacts/reference/damaged_helmet_direct/hdr-color.bmp`
 
@@ -840,8 +840,8 @@ git status shows only intended changes and known pre-existing dirty files
 Run `git status --short` and stage only files changed by this plan. Use this explicit staging command so unrelated dirty files stay out of the commit:
 
 ```bash
-git add assets/reference/damaged_helmet/khronos_screenshot.png \
-  assets/reference/damaged_helmet/README.md \
+git add assets/models/damaged_helmet/reference/khronos_screenshot.png \
+  assets/models/damaged_helmet/reference/README.md \
   src/test/integration/test_lxe_gltf_material_convert.py \
   src/test/integration/test_gltf_scene_asset_loader.cpp \
   src/test/integration/test_shader_compiler.cpp \

@@ -4,7 +4,7 @@
 
 **Goal:** Implement `REQ-073-d` so realtime Material source rendering uses `render_paths/...`, deletes old `techniques/Forward|Deferred` implementation paths, rejects old URIs, and prepares pipelines explicitly after scene resources and material source variants are complete.
 
-**Architecture:** Add one shared RenderPath shader URI resolver and make both graph resource parsing and material source variant resolution use it. Migrate Forward/Deferred shader files and default graph assets to `render_paths/...`, delete old positive tests and compatibility branches, and harden preparation with strict material-source validation and an explicit pipeline preparation phase. Keep OfflineRT `techniques/OfflineRT` out of this slice because `REQ-073-g/h` owns OfflineRT graph migration.
+**Architecture:** Add one shared RenderPath shader URI resolver and make both graph resource parsing and material source variant resolution use it. Migrate Forward/Deferred shader files and default graph assets to `render_paths/...`, delete old positive tests and compatibility branches, and harden preparation with strict material-source validation and an explicit pipeline preparation phase. Keep OfflineRT `techniques/OfflineRT` out of this slice because `REQ-076-c/d` owns OfflineRT graph migration.
 
 **Tech Stack:** C++20, CMake/Ninja, yaml-cpp, shaderc/glslc, Vulkan backend, existing LXEngine simple integration-test harness.
 
@@ -757,7 +757,7 @@ In `assets/shaders/CMakeLists.txt`, replace the opening runtime asset layout com
 
 In `assets/shaders/README.md`, replace references to `assets/shaders/glsl/techniques/Forward` and `assets/shaders/glsl/techniques/Deferred` with `assets/shaders/glsl/render_paths/Forward` and `assets/shaders/glsl/render_paths/Deferred`.
 
-Keep any `techniques/OfflineRT` text only if the sentence explicitly says OfflineRT migration is owned by `REQ-073-g/h`.
+Keep any `techniques/OfflineRT` text only if the sentence explicitly says OfflineRT migration is owned by `REQ-076-c/d`.
 
 - [ ] **Step 2.4: Update runtime shader-output discovery**
 
@@ -938,7 +938,7 @@ Do not replace:
 shaderDir / "techniques" / "OfflineRT"
 ```
 
-because OfflineRT migration belongs to `REQ-073-g/h`.
+because OfflineRT migration belongs to `REQ-076-c/d`.
 
 Update user-facing failure text that says `techniques` for Forward/Deferred to say `render_paths`.
 
@@ -1635,7 +1635,7 @@ Before reporting completion:
 
 - [ ] `assets/shaders/glsl/techniques/Forward` does not exist.
 - [ ] `assets/shaders/glsl/techniques/Deferred` does not exist.
-- [ ] `assets/shaders/glsl/techniques/OfflineRT` may still exist for `REQ-073-g/h`.
+- [ ] `assets/shaders/glsl/techniques/OfflineRT` may still exist for `REQ-076-c/d`.
 - [ ] Default graph assets contain no `techniques/...`.
 - [ ] `scene_runtime.cpp` contains no `ensureRealtimeForwardSurfacePass` and no `techniques/Forward/pbr`.
 - [ ] Parser diagnostics reject old URIs with `legacy shader URI` and `render_paths/...`.

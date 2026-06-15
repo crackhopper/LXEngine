@@ -42,8 +42,8 @@ This design intentionally excludes:
 
 - `techniques/...` to `render_paths/...` URI migration, owned by `REQ-073-d`;
 - indirect draw batching and batch split diagnostics, owned by `REQ-073-e`;
-- deleting all realtime fallback paths, owned by `REQ-073-f`;
-- OfflineRT config and entry hard cuts, owned by `REQ-073-g/h`.
+- deleting all realtime fallback paths, owned by `REQ-076-b`;
+- OfflineRT config and entry hard cuts, owned by `REQ-076-c/d`.
 
 The excluded work is not a workaround permission. The 073-c positive path must
 not rely on old fallback behavior to pass tests or smoke.
