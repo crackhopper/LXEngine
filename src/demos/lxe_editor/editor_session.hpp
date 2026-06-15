@@ -42,6 +42,10 @@ public:
     u32 width = 0;
     u32 height = 0;
     std::string format;
+    double minValue = 0.0;
+    double maxValue = 0.0;
+    double meanValue = 0.0;
+    double nonZeroRatio = 0.0;
   };
 
   struct DisplayCommandHooks final {
@@ -111,6 +115,7 @@ private:
   handleProjectCommand(const std::vector<std::string> &args);
   [[nodiscard]] LX_core::CommandResult
   handleSceneCommand(const std::vector<std::string> &args);
+  [[nodiscard]] bool hasPendingSceneOpen() const;
   [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
   [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
   [[nodiscard]] std::string realtimeRenderProfilesJson() const;

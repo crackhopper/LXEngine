@@ -454,7 +454,7 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
     return makeCommandError(
         "active project scene is not loaded; wait for scene open to finish");
   }
-  if (m_pendingRuntime.has_value()) {
+  if (hasPendingSceneOpen()) {
     return makeCommandError(
         "active scene open is pending; wait for the next update tick");
   }
@@ -491,11 +491,11 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
 }
 
 void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
-  if (!m_pendingRuntime.has_value()) {
+  if (!hasPendingSceneOpen()) {
     return;
   }
 
-  SceneRuntime nextRuntime = std::move(*m_pendingRuntime);
+  std::optional<SceneRuntime> pendingRuntime = std::move(m_pendingRuntime);
   const std::optional<std::filesystem::path> nextScenePath = m_pendingScenePath;
   std::optional<EditorSceneStateDocument> nextEditorSceneState =
       std::move(m_pendingEditorSceneState);
@@ -503,7 +503,16 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   m_pendingScenePath.reset();
   m_pendingEditorSceneState.reset();
 
+  SceneRuntime nextRuntime;
   try {
+    if (pendingRuntime.has_value()) {
+      nextRuntime = std::move(*pendingRuntime);
+    } else {
+      if (!nextScenePath.has_value()) {
+        throw std::runtime_error("pending scene open has no scene path");
+      }
+      nextRuntime.loadFromDocumentPath(*nextScenePath);
+    }
     loop.startScene(nextRuntime.scene());
   } catch (const std::exception &error) {
     try {
@@ -555,24 +564,22 @@ void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   }
 }
 
+bool LxeEditorSession::hasPendingSceneOpen() const {
+  return m_pendingRuntime.has_value() || m_pendingScenePath.has_value();
+}
+
 LX_core::CommandResult LxeEditorSession::queueActiveSceneOpen() {
   const auto activePath = m_projectSession.activeScenePath();
   if (!activePath.has_value()) {
     return makeCommandError("no active project scene; use project init first");
   }
   try {
-    SceneRuntime loaded;
-    loaded.loadFromDocumentPath(*activePath);
-    const auto loadedPath = loaded.documentPath();
-    if (!loadedPath.has_value()) {
-      return makeCommandError("queued scene open produced no document path");
-    }
-    m_pendingRuntime = std::move(loaded);
-    m_pendingScenePath = *loadedPath;
-    m_pendingEditorSceneState = loadEditorSceneStateIfPresent(*loadedPath);
+    m_pendingRuntime.reset();
+    m_pendingScenePath = *activePath;
+    m_pendingEditorSceneState = loadEditorSceneStateIfPresent(*activePath);
     return makeCommandOk(
-        "queued scene open for next update tick: " + loadedPath->string(),
-        "{\"path\":\"" + jsonEscape(loadedPath->string()) +
+        "queued scene open for next update tick: " + activePath->string(),
+        "{\"path\":\"" + jsonEscape(activePath->string()) +
             "\",\"status\":\"queued\",\"deferredUntil\":\"next_update_tick\"}");
   } catch (const std::exception &e) {
     return makeCommandError(e.what());
@@ -587,7 +594,7 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
   if (!activePath.has_value()) {
     return makeCommandError("project has no active scene");
   }
-  if (m_pendingRuntime.has_value()) {
+  if (hasPendingSceneOpen()) {
     return makeCommandError(
         "active scene open is pending; wait for the next update tick");
   }
@@ -1177,6 +1184,20 @@ void LxeEditorSession::rebuildBindings(
                 }
                 return out;
               },
+          .realtimeRenderMode =
+              [this]() -> std::optional<LX_core::SceneRealtimeRenderMode> {
+            return m_runtime.document().realtimeRenderSettings().mode;
+          },
+          .setRealtimeRenderMode =
+              [this](const LX_core::SceneRealtimeRenderMode mode) {
+                switch (mode) {
+                case LX_core::SceneRealtimeRenderMode::Forward:
+                  return setRealtimeRenderMode("forward");
+                case LX_core::SceneRealtimeRenderMode::Deferred:
+                  return setRealtimeRenderMode("deferred");
+                }
+                return makeCommandError("unsupported realtime render mode");
+              },
       });
   m_viewportOverlay = std::make_unique<LX_core::ViewportOverlay>(
       *m_commandBus, m_editorState, *m_runtime.scene());
@@ -1322,7 +1343,11 @@ void LxeEditorSession::rebuildBindings(
           }
           structured << ",\"width\":" << dump.width
                      << ",\"height\":" << dump.height << ",\"format\":\""
-                     << jsonEscape(dump.format) << "\"}";
+                     << jsonEscape(dump.format) << "\""
+                     << ",\"stats\":{\"min\":" << dump.minValue
+                     << ",\"max\":" << dump.maxValue
+                     << ",\"mean\":" << dump.meanValue
+                     << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
           return makeCommandOk(
               "render target dumped: " + dump.path.generic_string(),
               structured.str());

@@ -10,6 +10,7 @@
 #include "demos/lxe_editor/editor_scene_state.hpp"
 #include "demos/lxe_editor/realtime_render_profile.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -108,6 +109,22 @@ void cleanupProject(const std::string &projectName) {
   std::ifstream in(path, std::ios::binary);
   return std::string(std::istreambuf_iterator<char>(in),
                      std::istreambuf_iterator<char>());
+}
+
+[[nodiscard]] std::filesystem::path findRepoRoot() {
+  std::filesystem::path current = std::filesystem::current_path();
+  for (int depth = 0; depth < 6; ++depth) {
+    if (std::filesystem::exists(current / "data" / "scenes" / "bmw-m6" /
+                                "pbrt_bmw_m6.scene.yaml") &&
+        std::filesystem::exists(current / "src" / "demos" / "lxe_editor")) {
+      return current;
+    }
+    if (current == current.parent_path()) {
+      break;
+    }
+    current = current.parent_path();
+  }
+  return std::filesystem::current_path();
 }
 
 void writeTextFile(const std::filesystem::path &path,
@@ -463,6 +480,165 @@ void testSceneOpenClearsSelectionAndDebugDrawState() {
 
   LX_core::DebugDraw::reset();
   cleanupProject("lxe_default");
+}
+
+void testRealtimeRenderModeSwitchReloadsAfterDebugDraw() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for realtime mode reload test");
+  if (!initialized) {
+    return;
+  }
+
+  cleanupProject("editor_session_realtime_mode");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init pbr_ibl editor_session_realtime_mode")
+             .ok,
+         "project init should queue a realtime-capable scene");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+  loop.startScene(session.scene());
+  loop.setUpdateHook([](LX_core::Scene &, const LX_core::Clock &) {
+    LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
+  });
+
+  loop.tickFrame();
+  EXPECT(LX_core::DebugDraw::testing::hasRenderable(
+             LX_core::Layer_EditorOverlay),
+         "test should create a runtime debug draw node before mode reload");
+
+  const auto modeResult =
+      session.commandBus().dispatch("realtime-render mode deferred");
+  EXPECT(modeResult.ok, "realtime render mode switch should queue reload");
+
+  bool reloadThrew = false;
+  try {
+    session.flushPendingSceneOpen(loop);
+  } catch (const std::exception &error) {
+    reloadThrew = true;
+    std::cerr << "[FAIL] realtime mode reload threw: " << error.what()
+              << "\n";
+  }
+  EXPECT(!reloadThrew,
+         "realtime mode reload should not collide with debug draw nodes");
+  loop.tickFrame();
+
+  const auto status =
+      session.commandBus().dispatch("realtime-render mode status");
+  EXPECT(status.ok && status.structured.find("\"mode\":\"deferred\"") !=
+                          std::string::npos,
+         "reloaded scene should report deferred realtime mode");
+
+  const auto activePath = session.activeScenePath();
+  EXPECT(activePath.has_value(), "mode switch test should have active scene");
+  if (activePath.has_value()) {
+    EXPECT(readTextFile(*activePath).find("debug_draw_") == std::string::npos,
+           "mode switch should not persist debug draw runtime nodes");
+  }
+
+  LX_core::DebugDraw::reset();
+  cleanupProject("editor_session_realtime_mode");
+}
+
+void testRealtimeRenderModeSwitchReloadsBmwScene() {
+  const bool initialized = initializeRuntimeAssetRoot();
+  EXPECT(initialized,
+         "runtime asset root should initialize for BMW realtime mode test");
+  if (!initialized) {
+    return;
+  }
+
+  const std::filesystem::path repoRoot = findRepoRoot();
+  const std::filesystem::path bmwScene =
+      repoRoot / "data/scenes/bmw-m6/pbrt_bmw_m6.scene.yaml";
+  EXPECT(std::filesystem::exists(bmwScene),
+         "BMW converted scene should exist for realtime mode test");
+  if (!std::filesystem::exists(bmwScene)) {
+    return;
+  }
+
+  cleanupProject("editor_session_bmw_mode");
+
+  LX_core::EditorState editorState;
+  LX_demo::lxe_editor::CameraRig rig;
+  LX_demo::lxe_editor::UiOverlay ui;
+  LX_demo::lxe_editor::LxeEditorSession session(rig, ui, editorState);
+  session.initialize();
+
+  EXPECT(session.commandBus()
+             .dispatch("project init empty editor_session_bmw_mode")
+             .ok,
+         "project init should queue an empty scene before BMW import");
+
+  auto window = std::make_shared<FakeWindow>();
+  auto renderer = std::make_shared<FakeRenderer>();
+  LX_core::gpu::EngineLoop loop;
+  loop.initialize(window, renderer);
+  session.flushPendingSceneOpen(loop);
+
+  const auto importResult = session.commandBus().dispatch(
+      "scene import " + bmwScene.generic_string() + " bmw_mode");
+  EXPECT(importResult.ok, "BMW scene import should queue imported scene");
+  session.flushPendingSceneOpen(loop);
+  loop.startScene(session.scene());
+
+  EXPECT(session.scene()->getSceneName() == "PBRT BMW M6",
+         "BMW mode test should load the imported BMW scene");
+  loop.setUpdateHook([](LX_core::Scene &, const LX_core::Clock &) {
+    LX_core::DebugDraw::drawLine({0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
+  });
+
+  loop.tickFrame();
+
+  const auto modeStart = std::chrono::steady_clock::now();
+  const auto modeResult =
+      session.commandBus().dispatch("realtime-render mode deferred");
+  const auto modeElapsed = std::chrono::steady_clock::now() - modeStart;
+  EXPECT(modeResult.ok, "BMW realtime render mode switch should queue reload");
+  EXPECT(modeElapsed < std::chrono::seconds(2),
+         "BMW realtime mode command should not synchronously reload scene");
+
+  bool reloadThrew = false;
+  try {
+    session.flushPendingSceneOpen(loop);
+  } catch (const std::exception &error) {
+    reloadThrew = true;
+    std::cerr << "[FAIL] BMW realtime mode reload threw: " << error.what()
+              << "\n";
+  }
+  EXPECT(!reloadThrew,
+         "BMW realtime mode reload should not collide with runtime nodes");
+  loop.tickFrame();
+
+  const auto status =
+      session.commandBus().dispatch("realtime-render mode status");
+  EXPECT(status.ok && status.structured.find("\"mode\":\"deferred\"") !=
+                          std::string::npos,
+         "BMW scene should report deferred realtime mode after reload");
+
+  const auto activePath = session.activeScenePath();
+  EXPECT(activePath.has_value(), "BMW mode test should have active scene");
+  if (activePath.has_value()) {
+    const std::string saved = readTextFile(*activePath);
+    EXPECT(saved.find("debug_draw_") == std::string::npos,
+           "BMW mode switch should not persist debug draw runtime nodes");
+    EXPECT(saved.find("mode: deferred") != std::string::npos,
+           "BMW mode switch should persist deferred realtime mode");
+  }
+
+  LX_core::DebugDraw::reset();
+  cleanupProject("editor_session_bmw_mode");
 }
 
 void testProjectCloseCancelsPendingSceneOpen() {
@@ -1037,6 +1213,8 @@ int main() {
   testStartupClosesProjectWhenLastProjectSceneCannotLoad();
   testStartupWithoutLastProjectOpensDefaultProject();
   testSceneOpenClearsSelectionAndDebugDrawState();
+  testRealtimeRenderModeSwitchReloadsAfterDebugDraw();
+  testRealtimeRenderModeSwitchReloadsBmwScene();
   testProjectCloseCancelsPendingSceneOpen();
   testProjectCloseAfterLoadedSceneUpdatesEngineLoop();
   testProjectListMessageIncludesProjectIdsAndPaths();

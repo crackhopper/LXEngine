@@ -244,6 +244,86 @@ std::vector<unsigned char> makeBmpPixelsFromDump(VkFormat format, u32 width,
                            vkFormatName(format));
 }
 
+struct DumpScalarStats final {
+  double minValue = 0.0;
+  double maxValue = 0.0;
+  double meanValue = 0.0;
+  double nonZeroRatio = 0.0;
+};
+
+DumpScalarStats computeDumpScalarStats(VkFormat format, u32 width, u32 height,
+                                       const void *mappedData) {
+  const usize pixelCount = static_cast<usize>(width) * height;
+  if (pixelCount == 0) {
+    return {};
+  }
+
+  DumpScalarStats stats{
+      .minValue = std::numeric_limits<double>::max(),
+      .maxValue = 0.0,
+      .meanValue = 0.0,
+      .nonZeroRatio = 0.0,
+  };
+  usize nonZeroCount = 0;
+  const auto pushScalar = [&](double value) {
+    if (!std::isfinite(value)) {
+      value = 0.0;
+    }
+    value = std::abs(value);
+    stats.minValue = std::min(stats.minValue, value);
+    stats.maxValue = std::max(stats.maxValue, value);
+    stats.meanValue += value;
+    if (value > 1.0e-6) {
+      ++nonZeroCount;
+    }
+  };
+
+  if (format == VK_FORMAT_D32_SFLOAT) {
+    const auto *pixels = static_cast<const float *>(mappedData);
+    for (usize i = 0; i < pixelCount; ++i) {
+      pushScalar(pixels[i]);
+    }
+  } else if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+             format == VK_FORMAT_B8G8R8A8_UNORM) {
+    const auto *pixels = static_cast<const unsigned char *>(mappedData);
+    for (usize i = 0; i < pixelCount; ++i) {
+      const usize base = i * 4u;
+      const double r = pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 2u : 0u)] / 255.0;
+      const double g = pixels[base + 1u] / 255.0;
+      const double b = pixels[base + (format == VK_FORMAT_B8G8R8A8_UNORM ? 0u : 2u)] / 255.0;
+      pushScalar(std::max({r, g, b}));
+    }
+  } else if (format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+    const auto *pixels = static_cast<const u16 *>(mappedData);
+    for (usize i = 0; i < pixelCount; ++i) {
+      const usize base = i * 4u;
+      const double r = halfToFloat(pixels[base + 0u]);
+      const double g = halfToFloat(pixels[base + 1u]);
+      const double b = halfToFloat(pixels[base + 2u]);
+      pushScalar(std::max({std::abs(r), std::abs(g), std::abs(b)}));
+    }
+  } else if (format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+    const auto *pixels = static_cast<const float *>(mappedData);
+    for (usize i = 0; i < pixelCount; ++i) {
+      const usize base = i * 4u;
+      pushScalar(std::max({std::abs(static_cast<double>(pixels[base + 0u])),
+                           std::abs(static_cast<double>(pixels[base + 1u])),
+                           std::abs(static_cast<double>(pixels[base + 2u]))}));
+    }
+  } else {
+    throw std::runtime_error("render debug stats does not support " +
+                             vkFormatName(format));
+  }
+
+  stats.meanValue /= static_cast<double>(pixelCount);
+  stats.nonZeroRatio = static_cast<double>(nonZeroCount) /
+                       static_cast<double>(pixelCount);
+  if (stats.minValue == std::numeric_limits<double>::max()) {
+    stats.minValue = 0.0;
+  }
+  return stats;
+}
+
 LX_core::offline::OfflineReadbackImage
 makeRgba32fImageFromDump(VkFormat format, u32 width, u32 height,
                          const void *mappedData) {
@@ -755,11 +835,13 @@ void validateOffscreenWritesMatchTarget(
 
   if (pass.target.colorAttachmentCount() != colorWrites.size()) {
     throw std::runtime_error(
-        "Frame graph offscreen pass color write does not match target");
+        "Frame graph offscreen pass color write does not match target: " +
+        LX_core::GlobalStringTable::get().getName(pass.name.id));
   }
   if (pass.target.depthFormat.has_value() != depthWrite.has_value()) {
     throw std::runtime_error(
-        "Frame graph offscreen pass depth write does not match target");
+        "Frame graph offscreen pass depth write does not match target: " +
+        LX_core::GlobalStringTable::get().getName(pass.name.id));
   }
 }
 
@@ -958,6 +1040,9 @@ public:
              LX_core::ImageFormat::RGBA16Float,
              LX_core::ImageFormat::RGBA16Float},
             swapchainTarget.depthFormat);
+    const auto deferredLightingDesc =
+        LX_core::RenderTargetDesc::offscreenColor(
+            LX_core::ImageFormat::RGBA16Float);
     if (deferredMode) {
       m_frameGraph.addPass(
           LX_core::FramePass{LX_core::Pass_Deferred,
@@ -970,7 +1055,7 @@ public:
                               LX_core::FrameGraphWrite{sceneDepth}}});
       m_frameGraph.addPass(LX_core::FramePass{
           LX_core::Pass_DeferredLighting,
-          forwardHdrDesc,
+          deferredLightingDesc,
           {},
           {LX_core::FrameGraphRead::sampled(
                gbufferAlbedoAlpha.name,
@@ -1044,7 +1129,7 @@ public:
     if (deferredMode) {
       rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Deferred,
                                                  gbufferDesc);
-      addDeferredLightingItem(forwardHdrDesc);
+      addDeferredLightingItem(deferredLightingDesc);
     } else {
       rebuildPassQueueWithDefaultCameraResources(LX_core::Pass_Forward,
                                                  forwardHdrDesc);
@@ -1401,6 +1486,8 @@ public:
                                                  device().getGraphicsQueue());
 
     const void *mapped = readback->map();
+    const DumpScalarStats stats =
+        computeDumpScalarStats(attachment.format, width, height, mapped);
     std::vector<unsigned char> bgrPixels =
         makeBmpPixelsFromDump(attachment.format, width, height, mapped);
     readback->unmap();
@@ -1413,6 +1500,10 @@ public:
         .width = width,
         .height = height,
         .format = vkFormatName(attachment.format),
+        .minValue = stats.minValue,
+        .maxValue = stats.maxValue,
+        .meanValue = stats.meanValue,
+        .nonZeroRatio = stats.nonZeroRatio,
     };
   }
 

@@ -25,6 +25,26 @@ bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName)
                         (shaderName + ".frag.spv"));
 }
 
+bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
+  return hasShaderOutputsAtRoot(root, "pbr") &&
+         hasShaderOutputsAtRoot(root, "post_process") &&
+         hasShaderOutputsAtRoot(root, "deferred_lighting") &&
+         hasShaderOutputsAtRoot(root, "pbr_gbuffer");
+}
+
+std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
+  const std::vector<fs::path> candidates = {
+      runtimeRoot / "build",
+      runtimeRoot,
+  };
+  for (const auto &candidate : candidates) {
+    if (hasRuntimeAssetDirs(candidate) && hasCurrentShaderOutputsAtRoot(candidate)) {
+      return candidate;
+    }
+  }
+  return std::nullopt;
+}
+
 bool hasRuntimeResourceLayout(const fs::path& root, const std::string& shaderName) {
   return hasRuntimeAssetDirs(root) && hasShaderOutputsAtRoot(root, shaderName);
 }
@@ -115,7 +135,11 @@ fs::path getRuntimeShaderSourceDir() {
 }
 
 fs::path getRuntimeShaderBinaryDir() {
-  return requireRuntimeRoot() / "assets" / "shaders" / "glsl";
+  const fs::path runtimeRoot = requireRuntimeRoot();
+  if (const auto shaderRoot = findShaderBinaryRoot(runtimeRoot)) {
+    return *shaderRoot / "assets" / "shaders" / "glsl";
+  }
+  return runtimeRoot / "assets" / "shaders" / "glsl";
 }
 
 bool cdToWhereResourcesCouldFound(const std::string& shaderName) {
@@ -185,7 +209,7 @@ std::vector<char> readFile(const std::string &filename) {
   std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
   if (!file.is_open()) {
-    throw std::runtime_error("failed to open file!");
+    throw std::runtime_error("failed to open file: " + filename);
   }
 
   usize fileSize = static_cast<usize>(file.tellg());

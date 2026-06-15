@@ -1007,6 +1007,10 @@ int main(int argc, char **argv) {
                   .width = dumped.width,
                   .height = dumped.height,
                   .format = dumped.format,
+                  .minValue = dumped.minValue,
+                  .maxValue = dumped.maxValue,
+                  .meanValue = dumped.meanValue,
+                  .nonZeroRatio = dumped.nonZeroRatio,
               };
             },
     };

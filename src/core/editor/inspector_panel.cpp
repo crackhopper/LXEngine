@@ -104,6 +104,33 @@ formatMaterialParameterCommandArgs(const MaterialParameterValue &value) {
   return oss.str();
 }
 
+[[nodiscard]] const char *
+realtimeRenderModeLabel(const SceneRealtimeRenderMode mode) {
+  switch (mode) {
+  case SceneRealtimeRenderMode::Forward:
+    return "Forward";
+  case SceneRealtimeRenderMode::Deferred:
+    return "G-Buffer";
+  }
+  return "Forward";
+}
+
+[[nodiscard]] int realtimeRenderModeIndex(const SceneRealtimeRenderMode mode) {
+  switch (mode) {
+  case SceneRealtimeRenderMode::Forward:
+    return 0;
+  case SceneRealtimeRenderMode::Deferred:
+    return 1;
+  }
+  return 0;
+}
+
+[[nodiscard]] SceneRealtimeRenderMode realtimeRenderModeFromIndex(
+    const int index) {
+  return index == 1 ? SceneRealtimeRenderMode::Deferred
+                    : SceneRealtimeRenderMode::Forward;
+}
+
 [[nodiscard]] std::optional<u32> parseUnsignedText(std::string_view text) {
   const std::string trimmed = trim(text);
   if (trimmed.empty()) {
@@ -207,6 +234,7 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
   snapshot.hasSelection = true;
   snapshot.path = node.getPath();
   snapshot.name = node.getName();
+  snapshot.isSceneRoot = node.isSceneRoot();
   snapshot.translation = node.getTranslation();
   snapshot.rotationEulerDegrees = quatToEulerDegrees(node.getRotation());
   snapshot.scale = node.getScale();
@@ -287,6 +315,13 @@ InspectorPanel::Snapshot InspectorPanel::makeSnapshot() const {
     snapshot.materialParameters =
         m_materialCallbacks.materialParameters(snapshot.path);
   }
+  if (snapshot.isSceneRoot && m_materialCallbacks.realtimeRenderMode) {
+    if (const auto mode = m_materialCallbacks.realtimeRenderMode();
+        mode.has_value()) {
+      snapshot.hasRealtimeRenderMode = true;
+      snapshot.realtimeRenderMode = *mode;
+    }
+  }
   return snapshot;
 }
 
@@ -353,6 +388,14 @@ InspectorPanel::dispatchApplyMaterialOverride(std::string_view path,
                                               std::string_view field) {
   return m_commandBus.dispatch("apply_material_override " + quoteToken(path) +
                                " " + quoteToken(field));
+}
+
+CommandResult InspectorPanel::dispatchSetRealtimeRenderMode(
+    const SceneRealtimeRenderMode mode) {
+  if (!m_materialCallbacks.setRealtimeRenderMode) {
+    return CommandResult{false, "realtime render mode unavailable", {}};
+  }
+  return m_materialCallbacks.setRealtimeRenderMode(mode);
 }
 
 std::vector<std::string> InspectorPanel::discoverExperimentMaterialCandidates(
@@ -480,6 +523,8 @@ void InspectorPanel::syncDraftFromSnapshot(const Snapshot &snapshot) {
       break;
     }
   }
+  m_realtimeRenderModeDraft =
+      realtimeRenderModeIndex(snapshot.realtimeRenderMode);
   m_lightRangeDraft = snapshot.lightRange;
   m_lightInnerConeDraft = snapshot.lightInnerConeDegrees;
   m_lightOuterConeDraft = snapshot.lightOuterConeDegrees;
@@ -536,6 +581,23 @@ void InspectorPanel::drawSelection(const Snapshot &snapshot) {
   ImGui::Text("Mesh: %s", snapshot.hasMesh ? "yes" : "no");
   ImGui::Text("Material: %s", snapshot.hasMaterial ? "yes" : "no");
   ImGui::Text("Skeleton: %s", snapshot.hasSkeleton ? "yes" : "no");
+
+  if (snapshot.hasRealtimeRenderMode) {
+    constexpr const char *kRenderModes[] = {"Forward", "G-Buffer"};
+    if (ImGui::Combo("Render Mode", &m_realtimeRenderModeDraft, kRenderModes,
+                     IM_ARRAYSIZE(kRenderModes))) {
+      const CommandResult result = dispatchSetRealtimeRenderMode(
+          realtimeRenderModeFromIndex(m_realtimeRenderModeDraft));
+      if (result.ok) {
+        refreshDrafts();
+      } else {
+        m_realtimeRenderModeDraft =
+            realtimeRenderModeIndex(snapshot.realtimeRenderMode);
+      }
+    }
+    ImGui::Text("Pipeline: %s",
+                realtimeRenderModeLabel(snapshot.realtimeRenderMode));
+  }
   ImGui::Separator();
 
   ImGui::DragFloat3("Translation", m_translationDraft.data, 0.1f);

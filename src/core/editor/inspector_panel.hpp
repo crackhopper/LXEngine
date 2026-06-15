@@ -5,6 +5,7 @@
 #include "core/math/vec.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/scene_events.hpp"
+#include "core/scene/scene_render_settings.hpp"
 
 #include <array>
 #include <filesystem>
@@ -39,6 +40,8 @@ struct InspectorMaterialCallbacks {
   std::function<std::vector<MaterialParameterEditorValue>(
       const std::string &path)>
       materialParameters;
+  std::function<std::optional<SceneRealtimeRenderMode>()> realtimeRenderMode;
+  std::function<CommandResult(SceneRealtimeRenderMode)> setRealtimeRenderMode;
 };
 
 class InspectorPanel final {
@@ -82,6 +85,9 @@ public:
     bool proceduralMaterialEnabled = false;
     std::vector<std::string> materialPresets;
     std::vector<MaterialParameterEditorValue> materialParameters;
+    bool isSceneRoot = false;
+    bool hasRealtimeRenderMode = false;
+    SceneRealtimeRenderMode realtimeRenderMode = SceneRealtimeRenderMode::Forward;
   };
 
   InspectorPanel(CommandBus &commandBus, EditorState &editorState,
@@ -106,6 +112,8 @@ public:
                                                std::string_view value);
   [[nodiscard]] CommandResult
   dispatchApplyMaterialOverride(std::string_view path, std::string_view field);
+  [[nodiscard]] CommandResult
+  dispatchSetRealtimeRenderMode(SceneRealtimeRenderMode mode);
   [[nodiscard]] static std::vector<std::string>
   discoverExperimentMaterialCandidates(
       const std::filesystem::path &materialsDir);
@@ -154,6 +162,7 @@ private:
   std::array<char, 512> m_materialUriBuffer{};
   int m_materialPresetDraft = -1;
   Vec3f m_nodeBaseColorDraft{0.8f, 0.8f, 0.8f};
+  int m_realtimeRenderModeDraft = 0;
   float m_lightRangeDraft = 5.0f;
   float m_lightInnerConeDraft = 20.0f;
   float m_lightOuterConeDraft = 35.0f;
