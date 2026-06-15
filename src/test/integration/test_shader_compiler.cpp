@@ -1059,6 +1059,40 @@ static bool testSharedPbrKeepsLowRoughnessHighlights(
   return true;
 }
 
+static bool testStandardPbrContractUsesSharedGgxDirectBsdf(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: standard-pbr contract uses shared GGX direct BSDF\n";
+  const auto commonPbr = readTextFile(shaderDir / "common" / "pbr.glsl");
+  const auto standardPbr =
+      readTextFile(shaderDir / "common" / "materials" /
+                   "standard_pbr.contract.glsl");
+
+  if (commonPbr.find("vec3 lxPbrDirectBrdf(") == std::string::npos) {
+    std::cerr << "  FAIL: common/pbr.glsl should expose lxPbrDirectBrdf\n";
+    return false;
+  }
+  if (standardPbr.find("lxEvaluateLambertLikeBsdf(bsdfInput)") !=
+      std::string::npos) {
+    std::cerr << "  FAIL: standard-pbr direct evaluation still delegates to "
+                 "Lambert-like BSDF\n";
+    return false;
+  }
+  if (standardPbr.find("lxPbrDirectBrdf(pbrInput)") == std::string::npos) {
+    std::cerr << "  FAIL: standard-pbr direct evaluation should use shared "
+                 "GGX direct BRDF\n";
+    return false;
+  }
+  if (standardPbr.find("bsdfInput.metallic") == std::string::npos ||
+      standardPbr.find("bsdfInput.roughness") == std::string::npos) {
+    std::cerr << "  FAIL: standard-pbr direct evaluation should consume "
+                 "metallic and roughness\n";
+    return false;
+  }
+
+  std::cout << "  PASS: standard-pbr contract uses shared GGX direct BSDF\n";
+  return true;
+}
+
 static bool
 testSceneSystemAbiReflection(const std::filesystem::path &shaderDir) {
   std::cout << "  Test: scene system ABI SSBO reflection\n";
@@ -1259,6 +1293,8 @@ int main(int argc, char *argv[]) {
   if (!testShadowDepthOnlyUsesSceneDrawRecords(shaderDir))
     ++failures;
   if (!testSharedPbrKeepsLowRoughnessHighlights(shaderDir))
+    ++failures;
+  if (!testStandardPbrContractUsesSharedGgxDirectBsdf(shaderDir))
     ++failures;
   if (!testSceneSystemAbiReflection(shaderDir))
     ++failures;
