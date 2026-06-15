@@ -12,6 +12,7 @@
 #include "editor/runtime/recording_controller.hpp"
 #include "editor/project/realtime_render_profile.hpp"
 #include "editor/runtime/scene_runtime.hpp"
+#include "core/rhi/live_render_view.hpp"
 #include "editor/ui/ui_overlay.hpp"
 
 #include <filesystem>
@@ -99,6 +100,8 @@ public:
   runtimeScenePath() const;
   [[nodiscard]] SceneRuntime &runtime();
   [[nodiscard]] const SceneRuntime &runtime() const;
+  [[nodiscard]] std::optional<LX_core::gpu::LiveRenderView>
+  buildLiveRenderView() const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
   [[nodiscard]] std::optional<std::string> currentProjectDisplayName() const;
   [[nodiscard]] std::optional<std::string> currentProjectActiveScene() const;

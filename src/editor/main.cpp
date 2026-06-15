@@ -1289,6 +1289,7 @@ int main(int argc, char **argv) {
           static_cast<float>(clock.totalTime()),
           LX_core::Vec2f{static_cast<float>(windowWidth),
                          static_cast<float>(windowHeight)});
+      loop.setLiveRenderView(session.buildLiveRenderView());
 
       const demo::SceneInputEditMode inputMode =
           demo::SceneInputEditMode::Selection;

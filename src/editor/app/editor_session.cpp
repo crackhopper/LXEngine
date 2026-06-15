@@ -16,6 +16,7 @@
 #include "editor/project/project_catalog.hpp"
 #include "editor/project/scene_builder.hpp"
 #include "editor/runtime/scene_interaction_controller.hpp"
+#include "editor/render/editor_render_view.hpp"
 #include "infra/build_info/build_info.hpp"
 
 #include <chrono>
@@ -357,6 +358,27 @@ SceneRuntime &LxeEditorSession::runtime() { return m_runtime; }
 
 const SceneRuntime &LxeEditorSession::runtime() const { return m_runtime; }
 
+std::optional<LX_core::gpu::LiveRenderView>
+LxeEditorSession::buildLiveRenderView() const {
+  if (!m_runtime.scene()) {
+    return std::nullopt;
+  }
+
+  const auto editorView =
+      LX_editor::buildEditorRenderView(m_editorState, *m_runtime.scene(),
+                                      m_windowSize);
+  if (!editorView.has_value()) {
+    return std::nullopt;
+  }
+  return LX_core::gpu::LiveRenderView{
+      .cameraPath = editorView->cameraPath,
+      .cameraResource = editorView->cameraResource,
+      .visibleMask = editorView->visibleMask,
+      .viewportExtent = editorView->viewportExtent,
+      .previewEnabled = editorView->previewEnabled,
+      .editorOverlayVisible = editorView->editorOverlayVisible};
+}
+
 std::optional<std::string> LxeEditorSession::currentProjectId() const {
   const auto &project = m_projectSession.currentProject();
   if (!project.has_value()) {
@@ -518,6 +540,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   } catch (const std::exception &error) {
     try {
       loop.startScene(m_runtime.scene());
+      loop.setLiveRenderView(buildLiveRenderView());
     } catch (const std::exception &restoreError) {
       if (m_consolePanel) {
         m_consolePanel->appendSystemLine(
@@ -538,6 +561,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   m_sceneDirty = false;
   (void)nextScenePath;
   rebuildBindings(std::move(nextEditorSceneState));
+  loop.setLiveRenderView(buildLiveRenderView());
 }
 
 void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
