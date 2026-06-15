@@ -1,10 +1,10 @@
-#include "core/editor/command_bus.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
+#include "editor/app/editor_state.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/lxe_editor_api_server.hpp"
-#include "demos/lxe_editor/lxe_editor_api_service.hpp"
-#include "demos/lxe_editor/recording_controller.hpp"
-#include "demos/lxe_editor/runtime_state.hpp"
+#include "editor/api/lxe_editor_api_server.hpp"
+#include "editor/api/lxe_editor_api_service.hpp"
+#include "editor/runtime/recording_controller.hpp"
+#include "editor/app/runtime_state.hpp"
 
 #include <chrono>
 #include <array>

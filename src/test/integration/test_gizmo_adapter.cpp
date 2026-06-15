@@ -1,4 +1,4 @@
-#include "core/editor/gizmo_adapter.hpp"
+#include "editor/ui/gizmo_adapter.hpp"
 
 #include <cmath>
 #include <iostream>

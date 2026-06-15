@@ -1,0 +1,58 @@
+#pragma once
+
+#include "editor/commands/command_bus.hpp"
+
+#include <array>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace LX_core {
+
+class EditorState;
+class Scene;
+class SceneNode;
+
+class SceneTreePanel final {
+public:
+  SceneTreePanel(CommandBus &commandBus, EditorState &editorState, Scene &scene);
+
+  void draw();
+
+  void setPathInputText(std::string_view text);
+  [[nodiscard]] std::string getPathInputText() const;
+
+  [[nodiscard]] CommandResult submitPathJump();
+  [[nodiscard]] CommandResult dispatchSelectPath(std::string_view path);
+  [[nodiscard]] CommandResult dispatchRemovePath(std::string_view path);
+  [[nodiscard]] CommandResult dispatchCopyPath(std::string_view path);
+  [[nodiscard]] CommandResult dispatchPasteAsSiblingPath(std::string_view path);
+  [[nodiscard]] CommandResult dispatchDuplicatePath(std::string_view path);
+  [[nodiscard]] CommandResult handleNodeClick(SceneNode &node, bool ctrlHeld,
+                                              bool shiftHeld);
+  [[nodiscard]] bool isOpen() const;
+  void setOpen(bool open);
+
+private:
+  [[nodiscard]] CommandResult
+  dispatchSelectionPaths(const std::vector<std::string> &paths);
+  [[nodiscard]] std::vector<std::string>
+  buildAdditiveSelectionPaths(const SceneNode &node) const;
+  [[nodiscard]] std::vector<std::string>
+  buildSiblingRangeSelectionPaths(const SceneNode &node) const;
+  void handleFocusedShortcuts();
+  void beginRename(SceneNode &node);
+  void drawRenamePopup();
+  void drawNode(SceneNode &node);
+
+  CommandBus &m_commandBus;
+  EditorState &m_editorState;
+  Scene &m_scene;
+  std::array<char, 512> m_pathInputBuffer{};
+  std::array<char, 128> m_renameInputBuffer{};
+  std::string m_revealPath;
+  std::string m_renamePath;
+  bool m_open = true;
+};
+
+} // namespace LX_core

@@ -1,14 +1,14 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "core/debug_draw/debug_draw.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/app/editor_state.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/window/window.hpp"
-#include "demos/lxe_editor/camera_rig.hpp"
-#include "demos/lxe_editor/editor_session.hpp"
-#include "demos/lxe_editor/scene_interaction_controller.hpp"
-#include "demos/lxe_editor/ui_overlay.hpp"
+#include "editor/runtime/camera_rig.hpp"
+#include "editor/app/editor_session.hpp"
+#include "editor/runtime/scene_interaction_controller.hpp"
+#include "editor/ui/ui_overlay.hpp"
 
 #include <chrono>
 #include <cstdlib>

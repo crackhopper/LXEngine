@@ -1,5 +1,35 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+set(LXE_EDITOR_TESTS
+  test_command_bus
+  test_command_bus_v2
+  test_scene_tree_panel
+  test_editor_multi_select
+  test_inspector_panel
+  test_viewport_overlay
+  test_gizmo_adapter
+  test_lxe_editor_display_config
+  test_lxe_editor_log_file
+  test_lxe_editor_layout
+  test_lxe_editor_interaction
+  test_realtime_render_profile_commands
+  test_lxe_editor_api_service
+  test_lxe_editor_api_server
+  test_lxe_editor_memory_probe
+  test_lxe_editor_recording
+  test_project_document
+  test_project_catalog
+  test_project_session
+  test_scene_runtime
+)
+
+set(LXE_HAS_EDITOR_TARGET OFF)
+if(DEFINED LXE_EDITOR_LIB)
+  if(TARGET ${LXE_EDITOR_LIB})
+    set(LXE_HAS_EDITOR_TARGET ON)
+  endif()
+endif()
+
 set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_viewport_convention
   test_vulkan_buffer
@@ -78,6 +108,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
+  test_lxe_editor_source_boundary
   test_gltf_scene_asset_loader
   test_output_profile_resolution
   test_lxe_compare_exr_metrics
@@ -87,6 +118,11 @@ set(TEST_INTEGRATION_EXE_LIST
   # test_render_sphere
   # test_render_model
 )
+
+if(NOT LXE_HAS_EDITOR_TARGET)
+  list(REMOVE_ITEM TEST_INTEGRATION_EXE_LIST ${LXE_EDITOR_TESTS})
+  list(REMOVE_ITEM TEST_INTEGRATION_EXE_LIST test_lxe_editor_source_boundary)
+endif()
 
 set(TEST_VIDEO_DEVICE_EXE_LIST
   test_vulkan_buffer
@@ -164,18 +200,20 @@ set_tests_properties(test_lxe_gltf_material_convert PROPERTIES
   LABELS "auto;headless_ok"
 )
 
-add_test(
-  NAME test_helmet_standard_pbr_realtime_smoke
-  COMMAND
-    ${Python3_EXECUTABLE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_helmet_standard_pbr_realtime_smoke.py
-    --source-dir ${CMAKE_SOURCE_DIR}
-    --editor $<TARGET_FILE:lxe_editor>
-)
-set_tests_properties(test_helmet_standard_pbr_realtime_smoke PROPERTIES
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  LABELS "auto;requires_video_device"
-)
+if(TARGET lxe_editor)
+  add_test(
+    NAME test_helmet_standard_pbr_realtime_smoke
+    COMMAND
+      ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_helmet_standard_pbr_realtime_smoke.py
+      --source-dir ${CMAKE_SOURCE_DIR}
+      --editor $<TARGET_FILE:lxe_editor>
+  )
+  set_tests_properties(test_helmet_standard_pbr_realtime_smoke PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    LABELS "auto;requires_video_device"
+  )
+endif()
 
 add_custom_target(BuildTest)
 add_dependencies(BuildTest
@@ -250,6 +288,13 @@ if(TARGET test_render_resource_parsers)
   )
 endif()
 
+if(TARGET test_lxe_editor_source_boundary)
+  target_compile_definitions(test_lxe_editor_source_boundary
+    PRIVATE
+    LXE_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+  )
+endif()
+
 if(TARGET test_render_work_compiler)
   target_compile_definitions(test_render_work_compiler
     PRIVATE
@@ -278,16 +323,6 @@ if(TARGET test_default_deferred_render_path_graph_source)
   )
 endif()
 
-set(LXE_EDITOR_COMMAND_SOURCES
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/display_commands.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/lxe_editor_command_helpers.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/project_commands.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/realtime_render_commands.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/recording_commands.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/render_debug_commands.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/commands/scene_project_commands.cpp
-)
-
 # SDL input test needs USE_SDL define and SDL3 headers
 if(USE_SDL AND TARGET test_sdl_input)
   target_compile_definitions(test_sdl_input PRIVATE USE_SDL=1)
@@ -311,29 +346,10 @@ if(USE_SDL AND TARGET test_vulkan_frame_graph)
 endif()
 
 if(TARGET test_command_bus)
-  target_sources(test_command_bus PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
-    ${LXE_EDITOR_COMMAND_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-  )
-  target_include_directories(test_command_bus PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
   target_link_libraries(test_command_bus PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_realtime_render_profile_commands)
-  target_sources(test_realtime_render_profile_commands PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
-    ${LXE_EDITOR_COMMAND_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-  )
-  target_include_directories(test_realtime_render_profile_commands PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
   target_link_libraries(test_realtime_render_profile_commands PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
@@ -343,12 +359,7 @@ if(TARGET test_debug_ui_smoke)
 endif()
 
 if(TARGET test_lxe_editor_log_file)
-  target_sources(test_lxe_editor_log_file PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_log_file.cpp
-  )
-  target_include_directories(test_lxe_editor_log_file PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
+  target_link_libraries(test_lxe_editor_log_file PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_tree_panel)
@@ -372,135 +383,34 @@ if(TARGET test_gizmo_adapter)
 endif()
 
 if(TARGET test_lxe_editor_layout)
-  target_sources(test_lxe_editor_layout PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
-  )
-  target_include_directories(test_lxe_editor_layout PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
   target_link_libraries(test_lxe_editor_layout PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_display_config)
-  target_sources(test_lxe_editor_display_config PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/display_launch_options.cpp
-  )
+  target_link_libraries(test_lxe_editor_display_config PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_interaction)
-  target_sources(test_lxe_editor_interaction PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
-  )
-  target_include_directories(test_lxe_editor_interaction PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
   target_link_libraries(test_lxe_editor_interaction PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_session)
-  target_sources(test_lxe_editor_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
-    ${LXE_EDITOR_COMMAND_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
-  )
-  target_include_directories(test_lxe_editor_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_lxe_editor_session PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_api_service)
-  target_sources(test_lxe_editor_api_service PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
-    ${LXE_EDITOR_COMMAND_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-  )
-  target_include_directories(test_lxe_editor_api_service PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_lxe_editor_api_service PRIVATE imgui yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_lxe_editor_api_server)
-  target_sources(test_lxe_editor_api_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_protocol.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_api_server.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/api_token_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/runtime_state.cpp
-  )
-  target_include_directories(test_lxe_editor_api_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
-  target_link_libraries(test_lxe_editor_api_server PRIVATE yaml-cpp::yaml-cpp)
+  target_link_libraries(test_lxe_editor_api_server PRIVATE imgui yaml-cpp::yaml-cpp)
   if(WIN32)
     target_link_libraries(test_lxe_editor_api_server PRIVATE ws2_32)
   endif()
 endif()
 
 if(TARGET test_lxe_editor_memory_probe)
-  target_sources(test_lxe_editor_memory_probe PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/camera_rig.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_config_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_data_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/editor_scene_state.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/lxe_editor_commands.cpp
-    ${LXE_EDITOR_COMMAND_SOURCES}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/realtime_render_profile.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_interaction_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_input_routing.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/ui_overlay.cpp
-  )
-  target_include_directories(test_lxe_editor_memory_probe PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_lxe_editor_memory_probe PRIVATE imgui yaml-cpp::yaml-cpp)
-endif()
-
-if(TARGET test_lxe_editor_recording)
-  target_sources(test_lxe_editor_recording PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/recording_controller.cpp
-  )
-  target_include_directories(test_lxe_editor_recording PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-  )
 endif()
 
 if(TARGET test_offline_render_cli)
@@ -528,54 +438,30 @@ if(TARGET test_scene_document)
 endif()
 
 if(TARGET test_project_document)
-  target_sources(test_project_document PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-  )
-  target_include_directories(test_project_document PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_project_document PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_project_catalog)
-  target_sources(test_project_catalog PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-  )
-  target_include_directories(test_project_catalog PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_project_catalog PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_project_session)
-  target_sources(test_project_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_session.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-  )
-  target_include_directories(test_project_session PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_project_session PRIVATE yaml-cpp::yaml-cpp)
 endif()
 
 if(TARGET test_scene_runtime)
-  target_sources(test_scene_runtime PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/builtin_asset_catalog.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_builder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/project_document.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../demos/lxe_editor/scene_runtime.cpp
-  )
-  target_include_directories(test_scene_runtime PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../infra/external/yaml-cpp/include
-  )
   target_link_libraries(test_scene_runtime PRIVATE yaml-cpp::yaml-cpp)
 endif()
+
+foreach(LXE_EDITOR_TEST ${LXE_EDITOR_TESTS})
+  if(LXE_HAS_EDITOR_TARGET AND TARGET ${LXE_EDITOR_TEST})
+    target_link_libraries(${LXE_EDITOR_TEST} PRIVATE ${LXE_EDITOR_LIB})
+    target_include_directories(${LXE_EDITOR_TEST} PRIVATE
+      ${CMAKE_SOURCE_DIR}/src
+      ${CMAKE_SOURCE_DIR}/src/infra/external/yaml-cpp/include
+    )
+  endif()
+endforeach()
 
 set(TEST_APP_EXE_LIST
   test_render_triangle
@@ -591,7 +477,9 @@ foreach(TEST_EXE ${TEST_APP_EXE_LIST})
   add_dependencies(BuildTest ${TEST_EXE})
 endforeach()
 
-lx_register_python_ctest(test_lxe_editor_api_blackbox)
+if(TARGET lxe_editor)
+  lx_register_python_ctest(test_lxe_editor_api_blackbox)
+endif()
 
 # --- Shader compiler test (no GPU required, uses shaderc + SPIRV-Cross) ---
 # Compile shader_compiler sources directly to avoid depending on full LX_Infra/LX_Core libs

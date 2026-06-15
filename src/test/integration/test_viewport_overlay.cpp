@@ -1,11 +1,11 @@
 #include "core/asset/mesh.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/debug_draw/debug_draw.hpp"
-#include "core/editor/commands/builtin_commands.hpp"
-#include "core/editor/editor_config.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/commands/builtin_commands.hpp"
+#include "editor/app/editor_config.hpp"
+#include "editor/app/editor_state.hpp"
 #define private public
-#include "core/editor/viewport_overlay.hpp"
+#include "editor/panels/viewport_overlay.hpp"
 #undef private
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"

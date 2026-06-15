@@ -9,11 +9,12 @@ import type { ManagerConfig } from "../src/config.js";
 import type { ProcessSupervisor } from "../src/process/process-supervisor.js";
 
 function config(): ManagerConfig {
+  const editorExecutable = "/repo/build/src/editor/lxe_editor";
   return {
     repoRoot: "/repo",
     runtimeRoot: "/runtime",
     runtimeStatePath: "/runtime/data/lxe_editor/runtime_state.yaml",
-    editorExecutable: "/repo/build/src/demos/lxe_editor/lxe_editor",
+    editorExecutable,
   };
 }
 
@@ -29,7 +30,7 @@ function tempConfig(): { config: ManagerConfig; tokenPath: string } {
       repoRoot: "/repo",
       runtimeRoot,
       runtimeStatePath: path.join(dataDir, "runtime_state.yaml"),
-      editorExecutable: "/repo/build/src/demos/lxe_editor/lxe_editor",
+      editorExecutable: "/repo/build/src/editor/lxe_editor",
     },
   };
 }

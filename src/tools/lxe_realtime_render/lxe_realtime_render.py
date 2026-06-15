@@ -541,6 +541,7 @@ class PreservedEditorRuntimeState:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     root = repo_root_from_script()
+    default_editor = root / "build" / "src" / "editor" / "lxe_editor"
     parser = argparse.ArgumentParser(
         description="Run realtime-render run <profile> through a local editor."
     )
@@ -548,7 +549,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--profile", default="preview", help="Output profile name.")
     parser.add_argument(
         "--editor",
-        default=str(root / "build/src/demos/lxe_editor/lxe_editor"),
+        default=str(default_editor),
         help="lxe_editor executable path.",
     )
     parser.add_argument("--api-host", default="127.0.0.1")

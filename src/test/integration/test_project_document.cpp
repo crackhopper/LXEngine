@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/project_document.hpp"
+#include "editor/project/project_document.hpp"
 
 #include <filesystem>
 #include <fstream>

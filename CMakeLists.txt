@@ -66,6 +66,11 @@ add_subdirectory(src/core)
 add_subdirectory(src/infra)
 add_subdirectory(src/backend)
 
+option(LX_BUILD_EDITOR "Build the lxe_editor application" ON)
+if(LX_BUILD_EDITOR)
+  add_subdirectory(src/editor)
+endif()
+
 if(TARGET imgui)
   target_link_libraries(${CORE_LIB} PRIVATE imgui)
 endif()

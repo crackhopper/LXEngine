@@ -1,5 +1,5 @@
 #include "core/platform/window.hpp"
-#include "demos/lxe_editor/display_launch_options.hpp"
+#include "editor/app/display_launch_options.hpp"
 
 #include <iostream>
 #include <optional>

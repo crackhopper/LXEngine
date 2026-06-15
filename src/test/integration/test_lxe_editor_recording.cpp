@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/recording_controller.hpp"
+#include "editor/runtime/recording_controller.hpp"
 
 #include <filesystem>
 #include <fstream>

@@ -1,13 +1,13 @@
 #include "backend/vulkan/vulkan_renderer.hpp"
 #include "backend/vulkan/vulkan_realtime_renderer.hpp"
-#include "core/editor/command_bus.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
+#include "editor/app/editor_state.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/lxe_editor_commands.hpp"
-#include "demos/lxe_editor/realtime_render_profile.hpp"
-#include "demos/lxe_editor/scene_interaction_controller.hpp"
-#include "demos/lxe_editor/scene_view_rect.hpp"
+#include "editor/commands/lxe_editor_commands.hpp"
+#include "editor/project/realtime_render_profile.hpp"
+#include "editor/runtime/scene_interaction_controller.hpp"
+#include "editor/runtime/scene_view_rect.hpp"
 
 #include <filesystem>
 #include <iostream>

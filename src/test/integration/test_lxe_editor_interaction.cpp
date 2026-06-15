@@ -1,9 +1,9 @@
 #include "core/asset/mesh.hpp"
 #include "core/asset/material_template.hpp"
 #include "core/debug_draw/debug_draw.hpp"
-#include "core/editor/command_bus.hpp"
-#include "core/editor/commands/builtin_commands.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
+#include "editor/commands/builtin_commands.hpp"
+#include "editor/app/editor_state.hpp"
 #include "core/input/mock_input_state.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
@@ -13,10 +13,10 @@
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
 #include "core/utils/env.hpp"
-#include "demos/lxe_editor/scene_input_routing.hpp"
-#include "demos/lxe_editor/scene_interaction_controller.hpp"
-#include "demos/lxe_editor/scene_view_rect.hpp"
-#include "demos/lxe_editor/selection_camera_input.hpp"
+#include "editor/runtime/scene_input_routing.hpp"
+#include "editor/runtime/scene_interaction_controller.hpp"
+#include "editor/runtime/scene_view_rect.hpp"
+#include "editor/runtime/selection_camera_input.hpp"
 
 #include <cmath>
 #include <iostream>

@@ -41,7 +41,7 @@ if(Python3_Interpreter_FOUND)
   )
 endif()
 
-if(UNIX AND NOT APPLE AND Python3_Interpreter_FOUND)
+if(UNIX AND NOT APPLE AND Python3_Interpreter_FOUND AND TARGET lxe_editor)
   add_custom_target(RunRealtimeOfflineHelmetPbrCompareHeadless
     COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_SOURCE_DIR}/src/tools/lxe_realtime_render/lxe_realtime_render.py

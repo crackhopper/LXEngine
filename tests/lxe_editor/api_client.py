@@ -61,6 +61,7 @@ def _resolve_executable(repo_root: pathlib.Path) -> pathlib.Path:
         candidates.append(pathlib.Path(override))
     candidates.extend(
         [
+            repo_root / "build" / "src" / "editor" / "lxe_editor",
             repo_root / "build" / "src" / "demos" / "lxe_editor" / "lxe_editor",
         ]
     )

@@ -1,14 +1,14 @@
-#include "core/editor/command_bus.hpp"
-#include "core/editor/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
+#include "editor/app/editor_state.hpp"
 #include "core/scene/object.hpp"
 #include "core/scene/scene.hpp"
-#include "demos/lxe_editor/api_token_state.hpp"
-#include "demos/lxe_editor/lxe_editor_api_protocol.hpp"
-#include "demos/lxe_editor/lxe_editor_api_service.hpp"
-#include "demos/lxe_editor/lxe_editor_commands.hpp"
-#include "demos/lxe_editor/recording_controller.hpp"
-#include "demos/lxe_editor/scene_interaction_controller.hpp"
-#include "demos/lxe_editor/scene_view_rect.hpp"
+#include "editor/api/api_token_state.hpp"
+#include "editor/api/lxe_editor_api_protocol.hpp"
+#include "editor/api/lxe_editor_api_service.hpp"
+#include "editor/commands/lxe_editor_commands.hpp"
+#include "editor/runtime/recording_controller.hpp"
+#include "editor/runtime/scene_interaction_controller.hpp"
+#include "editor/runtime/scene_view_rect.hpp"
 
 #include <filesystem>
 #include <iostream>

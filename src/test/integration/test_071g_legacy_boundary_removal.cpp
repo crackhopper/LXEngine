@@ -212,7 +212,7 @@ int main() {
       {"src/core"},
       {"src/infra"},
       {"src/backend"},
-      {"src/demos/lxe_editor"},
+      {"src/editor"},
       {"assets/materials"},
       {"assets/shaders"},
       {"assets/scenes"},

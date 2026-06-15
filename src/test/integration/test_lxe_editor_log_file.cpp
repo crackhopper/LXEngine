@@ -1,4 +1,4 @@
-#include "demos/lxe_editor/editor_log_file.hpp"
+#include "editor/app/editor_log_file.hpp"
 
 #include <filesystem>
 #include <fstream>
