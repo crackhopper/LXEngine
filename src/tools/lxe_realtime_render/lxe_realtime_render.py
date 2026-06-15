@@ -415,6 +415,45 @@ def require_output_files(
     return payload
 
 
+def require_debug_color_transfer_bundle(
+    root: Path, structured: str
+) -> dict[str, object]:
+    payload = json.loads(structured)
+    manifest_path = resolved_result_path(root, str(payload.get("manifestPath", "")))
+    if not manifest_path.is_file():
+        raise RuntimeError(f"debug color-transfer manifest missing: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    required_files = [
+        "hdr_color.exr",
+        "hdr_color_preview.png",
+        "tone_mapped_linear.exr",
+        "tone_mapped_linear_preview.png",
+        "srgb_attachment.png",
+        "unorm_manual_srgb.png",
+        "ramp_srgb_attachment.png",
+        "ramp_unorm_manual_srgb.png",
+    ]
+    output_dir = manifest_path.parent
+    for name in required_files:
+        path = output_dir / name
+        if not path.is_file():
+            raise RuntimeError(f"debug color-transfer output missing: {path}")
+    probes = manifest.get("probes", [])
+    if not isinstance(probes, list) or not probes:
+        raise RuntimeError("debug color-transfer manifest has no probes")
+    for probe in probes:
+        expected = int(probe["expected"])
+        for channel in ("red", "green", "blue"):
+            actual = int(probe[channel])
+            if abs(actual - expected) > 8:
+                raise RuntimeError(
+                    f"debug color-transfer probe mismatch {probe['target']} "
+                    f"{probe['label']} {channel}: actual={actual} expected={expected}"
+                )
+    payload["manifest"] = manifest
+    return payload
+
+
 def prepare_smoke_project(
     root: Path, project_name: str, scene_path: Path, scene_id: str
 ) -> Path:
@@ -583,11 +622,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Fail unless realtime metadata proves the clean source path.",
     )
+    parser.add_argument(
+        "--debug-color-transfer",
+        action="store_true",
+        help="Run render debug export-path color-transfer after the scene loads.",
+    )
+    parser.add_argument(
+        "--require-debug-color-transfer",
+        action="store_true",
+        help="Fail unless debug color-transfer manifest and ramp probes validate.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    if args.require_debug_color_transfer and not args.debug_color_transfer:
+        raise RuntimeError(
+            "--require-debug-color-transfer requires --debug-color-transfer"
+        )
     root = repo_root_from_script()
     scene_path = Path(args.scene).resolve()
     editor_path = Path(args.editor).resolve()
@@ -666,6 +719,31 @@ def main(argv: list[str]) -> int:
                 args.min_average_luminance,
                 args.require_pipeline_metadata,
             )
+            if args.debug_color_transfer:
+                export_dir = (
+                    root
+                    / "artifacts"
+                    / "debug"
+                    / "color-transfer"
+                    / args.project_name
+                )
+                debug_response = editor_command(
+                    args.api_host,
+                    api_port,
+                    token,
+                    "render debug export-path color-transfer "
+                    f"/editor_cam {quote_command_token(str(export_dir))}",
+                    args.timeout_sec,
+                )
+                debug_structured = debug_response.get("structuredJson", "")
+                if not isinstance(debug_structured, str) or not debug_structured:
+                    raise RuntimeError(
+                        "debug color-transfer export did not return structured output"
+                    )
+                debug_payload = require_debug_color_transfer_bundle(
+                    root, debug_structured
+                )
+                payload["debugColorTransfer"] = debug_payload
             print(json.dumps(payload, sort_keys=True))
             return 0
         finally:

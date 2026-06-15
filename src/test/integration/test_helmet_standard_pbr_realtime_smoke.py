@@ -117,6 +117,63 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             128,
         )
 
+    def test_debug_color_transfer_export_bundle_has_ramp_proof(self) -> None:
+        scene = (
+            self.source_dir
+            / "assets"
+            / "scenes"
+            / "generated"
+            / "helmet_standard_pbr.scene.yaml"
+        )
+        command = [
+            sys.executable,
+            str(
+                self.source_dir
+                / "src"
+                / "tools"
+                / "lxe_realtime_render"
+                / "lxe_realtime_render.py"
+            ),
+            "--scene",
+            str(scene),
+            "--profile",
+            "preview",
+            "--xvfb",
+            "--debug-color-transfer",
+            "--require-debug-color-transfer",
+            "--project-name",
+            "codex_test_debug_color_transfer",
+        ]
+        if self.editor:
+            command.extend(["--editor", self.editor])
+
+        result = subprocess.run(
+            command,
+            cwd=self.source_dir,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode != 0:
+            self.fail(
+                "debug color-transfer smoke failed\n"
+                f"stdout:\n{result.stdout}\n"
+                f"stderr:\n{result.stderr}"
+            )
+
+        payload = json.loads(result.stdout.strip())
+        debug_payload = payload["debugColorTransfer"]
+        self.assertTrue(debug_payload["manifestPath"])
+        self.assertGreaterEqual(len(debug_payload["targets"]), 6)
+        probe_labels = {
+            probe["label"]
+            for probe in debug_payload["manifest"].get("probes", [])
+        }
+        self.assertIn("gray18", probe_labels)
+        self.assertIn("half", probe_labels)
+
     def test_require_output_files_rejects_missing_render_input_stats(self) -> None:
         module = self._load_realtime_render_module()
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -220,6 +277,84 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
                             False,
                         )
 
+    def test_require_debug_color_transfer_flag_requires_debug_export(self) -> None:
+        module = self._load_realtime_render_module()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "--require-debug-color-transfer requires --debug-color-transfer",
+        ):
+            module.main(
+                [
+                    "--scene",
+                    str(self.source_dir / "does-not-matter.scene.yaml"),
+                    "--require-debug-color-transfer",
+                ]
+            )
+
+    def test_require_debug_color_transfer_bundle_rejects_missing_probes(self) -> None:
+        module = self._load_realtime_render_module()
+        self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = self._write_debug_color_transfer_bundle(root, probes=[])
+
+            with self.assertRaisesRegex(RuntimeError, "no probes"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_rejects_probe_mismatch(self) -> None:
+        module = self._load_realtime_render_module()
+        self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            payload = self._write_debug_color_transfer_bundle(
+                root,
+                probes=[
+                    {
+                        "target": "debug.ramp.srgb",
+                        "label": "gray18",
+                        "expected": 118,
+                        "red": 118,
+                        "green": 80,
+                        "blue": 118,
+                    }
+                ],
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "probe mismatch"):
+                module.require_debug_color_transfer_bundle(root, json.dumps(payload))
+
+    def test_require_debug_color_transfer_bundle_accepts_ramp_probes(self) -> None:
+        module = self._load_realtime_render_module()
+        self.assertTrue(hasattr(module, "require_debug_color_transfer_bundle"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            probes = [
+                {
+                    "target": "debug.ramp.srgb",
+                    "label": "gray18",
+                    "expected": 118,
+                    "red": 118,
+                    "green": 117,
+                    "blue": 119,
+                },
+                {
+                    "target": "debug.ramp.unorm_manual_srgb",
+                    "label": "half",
+                    "expected": 188,
+                    "red": 188,
+                    "green": 189,
+                    "blue": 187,
+                },
+            ]
+            payload = self._write_debug_color_transfer_bundle(root, probes=probes)
+
+            result = module.require_debug_color_transfer_bundle(
+                root, json.dumps(payload)
+            )
+
+            self.assertEqual(result["manifest"], {"probes": probes})
+
     @classmethod
     def _load_realtime_render_module(cls):
         module_path = (
@@ -291,6 +426,37 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             "metadataPath": str(metadata_path.relative_to(root)),
             "width": 4,
             "height": 4,
+        }
+
+    @staticmethod
+    def _write_debug_color_transfer_bundle(
+        root: Path, probes: list[dict[str, object]]
+    ) -> dict[str, object]:
+        output_dir = root / "debug"
+        output_dir.mkdir()
+        for name in [
+            "hdr_color.exr",
+            "hdr_color_preview.png",
+            "tone_mapped_linear.exr",
+            "tone_mapped_linear_preview.png",
+            "srgb_attachment.png",
+            "unorm_manual_srgb.png",
+            "ramp_srgb_attachment.png",
+            "ramp_unorm_manual_srgb.png",
+        ]:
+            (output_dir / name).write_bytes(b"debug")
+        manifest_path = output_dir / "manifest.json"
+        manifest_path.write_text(json.dumps({"probes": probes}), encoding="utf-8")
+        return {
+            "manifestPath": str(manifest_path.relative_to(root)),
+            "targets": [
+                "hdr.color",
+                "debug.ldr.linear",
+                "debug.final.srgb",
+                "debug.final.unorm_manual_srgb",
+                "debug.ramp.srgb",
+                "debug.ramp.unorm_manual_srgb",
+            ],
         }
 
 
