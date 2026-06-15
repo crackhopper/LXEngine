@@ -17,6 +17,7 @@ set(LXE_EDITOR_TESTS
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
+  test_lxe_editor_render_view
   test_project_document
   test_project_catalog
   test_project_session
@@ -108,6 +109,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_lxe_editor_api_server
   test_lxe_editor_memory_probe
   test_lxe_editor_recording
+  test_lxe_editor_render_view
   test_lxe_editor_source_boundary
   test_gltf_scene_asset_loader
   test_output_profile_resolution
