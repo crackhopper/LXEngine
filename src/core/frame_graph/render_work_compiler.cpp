@@ -64,9 +64,13 @@ struct ComputePreparationFacts final {
 }
 
 [[nodiscard]] PipelineKey makePipelineKey(const FramePass &pass,
-                                          StringID pipelineVariantKey) {
+                                          StringID pipelineVariantKey,
+                                          const std::vector<
+                                              ShaderSpecializationConstant>
+                                              &specializationConstants = {}) {
   return PipelineKey::build(pipelineVariantKey,
-                            getFramePassRenderPathNodeSignature(pass));
+                            getFramePassRenderPathNodeSignature(pass),
+                            specializationConstants);
 }
 
 [[nodiscard]] PipelineKey makePipelineKey(const FramePass &pass,
@@ -179,7 +183,8 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
 
 [[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(
     const FramePass &pass, PipelineKey key,
-    const DrawPreparationFacts &facts) {
+    const DrawPreparationFacts &facts,
+    std::vector<ShaderSpecializationConstant> specializationConstants) {
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
   if (facts.shaderInfo) {
@@ -190,12 +195,14 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
   return PipelineBuildDesc::graphics(
       key, shaderVariantKeyFor(pass, facts), pass.target, std::move(stages),
       std::move(bindings), facts.vertexLayout, facts.renderState, facts.topology,
-      pass.renderingMode, pass.attachments);
+      pass.renderingMode, pass.attachments,
+      std::move(specializationConstants));
 }
 
 [[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(
     const FramePass &pass, PipelineKey key,
-    const ComputePreparationFacts &facts) {
+    const ComputePreparationFacts &facts,
+    std::vector<ShaderSpecializationConstant> specializationConstants) {
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
   if (facts.shaderInfo) {
@@ -204,7 +211,62 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
   }
   return PipelineBuildDesc::compute(
       key, shaderVariantKeyFor(pass, facts), std::move(stages),
-      std::move(bindings));
+      std::move(bindings), std::move(specializationConstants));
+}
+
+[[nodiscard]] std::optional<std::string>
+featureNameFromGraphResource(StringID resource) {
+  if (resource.id == 0) {
+    return std::nullopt;
+  }
+  const std::string resourceName =
+      GlobalStringTable::get().toDebugString(resource);
+  constexpr std::string_view kPrefix = "feature.";
+  if (resourceName.rfind(kPrefix, 0) != 0) {
+    return std::nullopt;
+  }
+  return resourceName.substr(kPrefix.size());
+}
+
+[[nodiscard]] std::vector<ShaderSpecializationConstant>
+collectPassFeatureSpecializationConstants(
+    const FramePass &pass, const RenderWorkBuildContext &context) {
+  if (!context.hasRealtimeScene()) {
+    return {};
+  }
+
+  std::vector<ShaderSpecializationConstant> constants;
+  std::vector<std::string> resolvedFeatures;
+  const SceneResourceTable &resources = context.realtimeScene().resources();
+  for (const FrameGraphRead &read : pass.reads) {
+    const auto featureName = featureNameFromGraphResource(read.resource);
+    if (!featureName.has_value()) {
+      continue;
+    }
+    if (std::find(resolvedFeatures.begin(), resolvedFeatures.end(),
+                  *featureName) != resolvedFeatures.end()) {
+      continue;
+    }
+    const PassFeatureData *data =
+        resources.findPassFeatureDataByFeatureName(*featureName);
+    if (data == nullptr) {
+      continue;
+    }
+    if (data->shaderUri != pass.shaderUri) {
+      continue;
+    }
+    resolvedFeatures.emplace_back(*featureName);
+    for (const PassFeatureSpecializationValue &value :
+         data->specializationValues) {
+      constants.push_back(ShaderSpecializationConstant{
+          .constantId = value.constantId,
+          .stage = value.stage,
+          .type = value.type,
+          .valueU32 = value.valueU32,
+      });
+    }
+  }
+  return constants;
 }
 
 [[nodiscard]] DescriptorResourceList
@@ -377,8 +439,13 @@ void fillPreparedFacts(const FramePass &pass,
                        const RenderDrawInput &draw, RenderInputDesc &desc) {
   const DrawPreparationFacts facts =
       collectDrawPreparationFacts(pass, context, draw, desc);
-  desc.pipelineKey = makePipelineKey(pass, facts.pipelineVariantKey);
-  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts);
+  const std::vector<ShaderSpecializationConstant> specializationConstants =
+      collectPassFeatureSpecializationConstants(pass, context);
+  desc.pipelineKey =
+      makePipelineKey(pass, facts.pipelineVariantKey, specializationConstants);
+  desc.pipelineBuildDesc =
+      makePipelineBuildDesc(pass, desc.pipelineKey, facts,
+                            specializationConstants);
   desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
   desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
   desc.bindingPlan.descriptors = facts.descriptorResources;
@@ -403,8 +470,13 @@ void fillPreparedFacts(const FramePass &pass,
   (void)compute;
   const ComputePreparationFacts facts =
       collectComputePreparationFacts(pass, context, compute);
-  desc.pipelineKey = makePipelineKey(pass, facts.pipelineVariantKey);
-  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts);
+  const std::vector<ShaderSpecializationConstant> specializationConstants =
+      collectPassFeatureSpecializationConstants(pass, context);
+  desc.pipelineKey =
+      makePipelineKey(pass, facts.pipelineVariantKey, specializationConstants);
+  desc.pipelineBuildDesc =
+      makePipelineBuildDesc(pass, desc.pipelineKey, facts,
+                            specializationConstants);
   desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
   desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
   desc.bindingPlan.descriptors = facts.descriptorResources;

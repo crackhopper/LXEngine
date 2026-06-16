@@ -115,6 +115,20 @@ struct SceneResourceGraphExport final {
   }
 };
 
+struct PassFeatureSpecializationValue final {
+  std::string parameterName;
+  ShaderStage stage = ShaderStage::None;
+  u32 constantId = 0;
+  ShaderSpecializationValueType type = ShaderSpecializationValueType::Bool;
+  u32 valueU32 = 0;
+};
+
+struct PassFeatureData final {
+  std::string featureName;
+  ResourceUri shaderUri;
+  std::vector<PassFeatureSpecializationValue> specializationValues;
+};
+
 /*
 @source_analysis.section SceneResourceTable 统一持有场景渲染资源
 `SceneResourceTable` 是 bindless-ready 资源模型的入口。它给长期资源分配带
@@ -245,6 +259,8 @@ public:
   findTexture(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
   findRenderFeatureByFeatureName(std::string_view feature) const;
+  [[nodiscard]] const PassFeatureData *
+  findPassFeatureDataByFeatureName(std::string_view feature) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
   [[nodiscard]] GpuResourceRef
   buildRenderCameraUboResource(const CameraResource &camera) const;
@@ -394,6 +410,8 @@ private:
   hasLiveTypedResourceMetadata(ResourceIdentityHandle handle) const;
 
   void advanceUploadGeneration();
+  void registerPassFeatureSpecializationData(const RenderFeature &feature,
+                                             const IShader &shader);
 
   std::vector<Entry<GeometryStorage>> m_geometryStorage;
   std::vector<Entry<MeshBuffer>> m_meshes;
@@ -411,6 +429,7 @@ private:
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
   ToneMappingDataUniquePtr m_toneMappingUbo;
+  std::vector<PassFeatureData> m_passFeatureData;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
       std::make_unique<SceneLightsData>();

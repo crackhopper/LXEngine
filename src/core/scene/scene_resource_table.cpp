@@ -4,6 +4,7 @@
 #include "core/asset/mesh.hpp"
 #include "core/asset/skeleton.hpp"
 #include "core/asset/texture.hpp"
+#include "core/frame_graph/render_feature_shader_validation.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
@@ -253,6 +254,19 @@ parseToneMappingMode(const RenderFeatureParameter *parameter) {
     return fallback;
   }
   return parameter->value == "true" || parameter->value == "1";
+}
+
+[[nodiscard]] u32 parsePassFeatureBoolValue(
+    const RenderFeatureParameter &parameter, const std::string &parameterName) {
+  if (parameter.value == "true") {
+    return 1u;
+  }
+  if (parameter.value == "false") {
+    return 0u;
+  }
+  throw std::invalid_argument("pass-level RenderFeature parameter '" +
+                              parameterName +
+                              "' expected YAML bool value true or false");
 }
 
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
@@ -585,6 +599,79 @@ u32 SceneResourceTable::registerUploadTexture(TextureHandle texture) const {
 
 void SceneResourceTable::advanceUploadGeneration() {
   m_generation = nextGeneration(m_generation);
+}
+
+void SceneResourceTable::registerPassFeatureSpecializationData(
+    const RenderFeature &feature, const IShader &shader) {
+  if (feature.level != RenderFeatureLevel::Pass) {
+    return;
+  }
+  if (!feature.shader.has_value() || feature.shader->uri.empty()) {
+    throw std::invalid_argument("pass-level RenderFeature '" + feature.feature +
+                                "' has no shader URI for specialization ABI");
+  }
+
+  const auto diagnostics = validateRenderFeatureShaderAbi(feature, shader);
+  if (!diagnostics.empty()) {
+    std::string message = "pass-level RenderFeature '" + feature.feature +
+                          "' shader ABI validation failed";
+    for (const auto &diagnostic : diagnostics) {
+      message += "; " + diagnostic.parameter + ": " + diagnostic.message;
+    }
+    throw std::invalid_argument(message);
+  }
+
+  PassFeatureData data;
+  data.featureName = feature.feature;
+  data.shaderUri = feature.shader->uri;
+  data.specializationValues.reserve(feature.parameters.size());
+
+  const auto &constants = shader.getSpecializationConstants();
+  for (const auto &[name, parameter] : feature.parameters) {
+    const auto constant = std::find_if(
+        constants.begin(), constants.end(),
+        [&](const ShaderSpecializationConstantInfo &candidate) {
+          return candidate.name == name;
+        });
+    if (constant == constants.end()) {
+      throw std::invalid_argument(
+          "pass-level RenderFeature '" + feature.feature +
+          "' parameter '" + name +
+          "' has no reflected shader specialization constant");
+    }
+
+    if (constant->type != ShaderSpecializationValueType::Bool) {
+      throw std::invalid_argument(
+          "pass-level RenderFeature '" + feature.feature +
+          "' parameter '" + name +
+          "' is not a supported bool specialization constant");
+    }
+
+    data.specializationValues.push_back(PassFeatureSpecializationValue{
+        .parameterName = name,
+        .stage = constant->stage,
+        .constantId = constant->constantId,
+        .type = constant->type,
+        .valueU32 = parsePassFeatureBoolValue(parameter, name),
+    });
+  }
+
+  std::sort(data.specializationValues.begin(), data.specializationValues.end(),
+            [](const PassFeatureSpecializationValue &a,
+               const PassFeatureSpecializationValue &b) {
+              return a.parameterName < b.parameterName;
+            });
+
+  const auto existing = std::find_if(
+      m_passFeatureData.begin(), m_passFeatureData.end(),
+      [&](const PassFeatureData &candidate) {
+        return candidate.featureName == data.featureName;
+      });
+  if (existing != m_passFeatureData.end()) {
+    *existing = std::move(data);
+  } else {
+    m_passFeatureData.push_back(std::move(data));
+  }
 }
 
 ResourceIdentityHandle
@@ -1141,6 +1228,15 @@ SceneResourceTable::findRenderFeatureByFeatureName(
   return std::nullopt;
 }
 
+const PassFeatureData *
+SceneResourceTable::findPassFeatureDataByFeatureName(
+    std::string_view feature) const {
+  const auto it = std::find_if(
+      m_passFeatureData.begin(), m_passFeatureData.end(),
+      [&](const PassFeatureData &data) { return data.featureName == feature; });
+  return it == m_passFeatureData.end() ? nullptr : &*it;
+}
+
 LightHandle SceneResourceTable::registerLight(LightBaseUniquePtr light) {
   auto handle = add<LightBase, LightHandle>(m_lights, std::move(light));
   advanceUploadGeneration();
@@ -1439,6 +1535,35 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
           uri, "Shader", pass.shaderUri));
     }
     shaderHandles.push_back(shaderHandle);
+  }
+
+  for (const RenderFeatureHandle featureHandle : featureHandles) {
+    const auto resolvedFeature = resolve(featureHandle);
+    if (!resolvedFeature.has_value()) {
+      continue;
+    }
+    const RenderFeature &feature = resolvedFeature->get();
+    if (feature.level != RenderFeatureLevel::Pass) {
+      continue;
+    }
+    if (!feature.shader.has_value() || feature.shader->uri.empty()) {
+      throw std::invalid_argument("RenderPathGraph '" + uri.string() +
+                                  "' references pass-level RenderFeature '" +
+                                  feature.feature +
+                                  "' without a shader URI");
+    }
+    const ShaderHandle shaderHandle = findShaderHandleByUri(feature.shader->uri);
+    if (!shaderHandle.isValid()) {
+      throw std::invalid_argument(missingRenderPathGraphDependencyMessage(
+          uri, "Shader", feature.shader->uri));
+    }
+    const auto resolvedShader = resolve(shaderHandle);
+    if (!resolvedShader.has_value() || !resolvedShader->get().payload) {
+      throw std::invalid_argument(missingShaderPayloadMessage(
+          uri, feature.shader->uri));
+    }
+    registerPassFeatureSpecializationData(feature,
+                                          *resolvedShader->get().payload);
   }
 
   auto handle = add<RenderPathGraph, RenderPathGraphHandle>(

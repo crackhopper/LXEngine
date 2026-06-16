@@ -873,7 +873,7 @@ render-feature.yaml level: pass
 
 `forwardPass` is only the first pass-level feature using this path. Later pass-level features must reuse the same generic resolver.
 
-- [ ] **Step 1: Add RED RenderWorkCompiler test**
+- [x] **Step 1: Add RED RenderWorkCompiler test**
 
 Register a pass-level feature with mixed true/false values and assert the prepared pipeline desc contains the specialization constants declared by that feature asset and reflected from its shader URI.
 
@@ -889,7 +889,7 @@ The test must prove the compiler is not using a hardcoded Forward list:
 
 This can be a small test-only fixture shader if reusing `render_paths/Forward/pbr` would make the test too broad.
 
-- [ ] **Step 2: Store parsed pass-level specialization facts**
+- [x] **Step 2: Store parsed pass-level specialization facts**
 
 ```cpp
 struct PassFeatureSpecializationValue {
@@ -909,12 +909,12 @@ struct PassFeatureData {
 
 These facts come from parsed `RenderFeature` entries with `level: pass` after shader ABI validation succeeds.
 
-- [ ] **Step 3: Do not infer values in C++**
+- [x] **Step 3: Do not infer values in C++**
 
 The implementation parses booleans from YAML only. No target-format/environment-mode heuristics.
 Do not create a C++ struct with named fields like `renderSkybox` or `enableIbl`. That would reintroduce hardcoded pass semantics.
 
-- [ ] **Step 4: Fill pipeline specialization constants generically**
+- [x] **Step 4: Fill pipeline specialization constants generically**
 
 For every graph feature where `RenderFeature.level == Pass`:
 
@@ -930,7 +930,7 @@ Do not switch on `feature.forwardPass`.
 Do not switch on parameter names such as `render_skybox`.
 Do not manually reproduce the constant IDs in C++.
 
-- [ ] **Step 5: Run RenderWorkCompiler GREEN**
+- [x] **Step 5: Run RenderWorkCompiler GREEN**
 
 ```bash
 cmake --build build --target test_render_work_compiler && ./build/src/test/test_render_work_compiler

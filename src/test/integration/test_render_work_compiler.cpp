@@ -181,9 +181,12 @@ class FakeShader final : public IShader {
 public:
   FakeShader(std::vector<ShaderResourceBinding> bindings,
              std::vector<ShaderStageCode> stages,
-             std::vector<VertexInputAttribute> vertexInputs = {})
+             std::vector<VertexInputAttribute> vertexInputs = {},
+             std::vector<ShaderSpecializationConstantInfo>
+                 specializationConstants = {})
       : m_bindings(std::move(bindings)), m_stages(std::move(stages)),
-        m_vertexInputs(std::move(vertexInputs)) {}
+        m_vertexInputs(std::move(vertexInputs)),
+        m_specializationConstants(std::move(specializationConstants)) {}
 
   const std::vector<ShaderStageCode> &getAllStages() const override {
     return m_stages;
@@ -194,6 +197,10 @@ public:
   }
   const std::vector<VertexInputAttribute> &getVertexInputs() const override {
     return m_vertexInputs;
+  }
+  const std::vector<ShaderSpecializationConstantInfo> &
+  getSpecializationConstants() const override {
+    return m_specializationConstants;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   findBinding(u32, u32) const override {
@@ -210,6 +217,7 @@ private:
   std::vector<ShaderResourceBinding> m_bindings;
   std::vector<ShaderStageCode> m_stages;
   std::vector<VertexInputAttribute> m_vertexInputs;
+  std::vector<ShaderSpecializationConstantInfo> m_specializationConstants;
 };
 
 class ValidatedRenderable final : public IRenderable {
@@ -992,6 +1000,136 @@ void testPipelineKeyIncludesGenericPassSpecializationValue() {
          "pipeline key specialization signature should be order-stable");
 }
 
+RenderFeature makeCompilerPassFeature() {
+  RenderFeature feature;
+  feature.name = "CompilerPassFeature";
+  feature.feature = "compilerPassFeature";
+  feature.level = RenderFeatureLevel::Pass;
+  feature.shader = RenderFeatureShaderContract{
+      .uri = ResourceUri("memory://shaders/compiler_pass_specialization"),
+  };
+  feature.parameters["render_probe"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+  };
+  feature.parameters["enable_probe_debug"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "false",
+  };
+  return feature;
+}
+
+void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
+  const ResourceUri shaderUri("memory://shaders/compiler_pass_specialization");
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 51}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 52}},
+      },
+      std::vector<VertexInputAttribute>{
+          VertexInputAttribute{.name = "inPos", .location = 0,
+                               .type = DataType::Float3}},
+      std::vector<ShaderSpecializationConstantInfo>{
+          ShaderSpecializationConstantInfo{
+              .name = "render_probe",
+              .stage = ShaderStage::Fragment,
+              .constantId = 17,
+              .type = ShaderSpecializationValueType::Bool,
+          },
+          ShaderSpecializationConstantInfo{
+              .name = "enable_probe_debug",
+              .stage = ShaderStage::Vertex,
+              .constantId = 23,
+              .type = ShaderSpecializationValueType::Bool,
+          },
+      });
+
+  Scene scene("PassFeatureSpecializationCompilerScene");
+  [[maybe_unused]] const ShaderHandle shaderHandle =
+      scene.resources().registerShaderResource(
+          shaderUri, std::vector<ResourceUri>{shaderUri}, shader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/compiler_pass_feature"),
+          makeCompilerPassFeature());
+
+  RenderPathGraph graph;
+  graph.name = "CompilerPassFeatureGraph";
+  graph.features.push_back(RenderPathFeatureDependency{
+      .slot = "compilerPassFeature",
+      .uri = ResourceUri("memory://features/compiler_pass_feature"),
+  });
+  RenderPassNode node;
+  node.id = "CompilerPass";
+  node.shaderUri = shaderUri;
+  node.stage = RenderPassStage::Raster;
+  node.dispatch = RenderPassDispatch::Fullscreen;
+  node.input.kind = RenderPassInputKind::FullscreenTriangle;
+  node.sources = {"feature.compilerPassFeature"};
+  graph.passes.push_back(node);
+  [[maybe_unused]] const RenderPathGraphHandle graphHandle =
+      scene.resources().registerRenderPathGraph(
+          ResourceUri("memory://graphs/compiler_pass_feature"), graph);
+
+  FramePass pass;
+  pass.name = StringID("CompilerPass");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = shaderUri;
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("feature.compilerPassFeature"), StringID{}));
+
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("compiler.pass.feature.variant");
+  passFacts.shaderProgram.shaderName = shaderUri.string();
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "pass-level feature fullscreen pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+
+  const auto &constants = descs.front().pipelineBuildDesc.specializationConstants;
+  EXPECT(constants.size() == 2,
+         "pipeline desc should contain exactly reflected pass feature constants");
+  const auto hasConstant = [&](u32 constantId, ShaderStage stage, u32 value) {
+    return std::any_of(constants.begin(), constants.end(),
+                       [&](const ShaderSpecializationConstant &constant) {
+                         return constant.constantId == constantId &&
+                                constant.stage == stage &&
+                                constant.type ==
+                                    ShaderSpecializationValueType::Bool &&
+                                constant.valueU32 == value;
+                       });
+  };
+  EXPECT(hasConstant(17, ShaderStage::Fragment, 1),
+         "render_probe should use reflected constant id 17 and YAML true");
+  EXPECT(hasConstant(23, ShaderStage::Vertex, 0),
+         "enable_probe_debug should use reflected constant id 23 and YAML false");
+  EXPECT(std::none_of(constants.begin(), constants.end(),
+                      [](const ShaderSpecializationConstant &constant) {
+                        return constant.constantId < 10;
+                      }),
+         "compiler should not add unrelated hardcoded Forward constants");
+}
+
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
   auto renderable =
       std::make_shared<MateriallessRenderable>("materialless_node");
@@ -1582,6 +1720,7 @@ int main() {
   testSceneRenderableRejectsUnresolvedRequiredBinding();
   testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature();
   testPipelineKeyIncludesGenericPassSpecializationValue();
+  testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();
