@@ -256,8 +256,9 @@ void testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap() {
          "builtin white cube should register live SkyboxMap");
   EXPECT(hasBinding(StringID("EnvironmentLightingUBO")),
          "environment feature should register EnvironmentLightingUBO");
-  EXPECT(hasBinding(StringID("EnvironmentLightingFiniteBoxUBO")),
-         "environment feature should register configured finite box bounds");
+  EXPECT(!hasBinding(StringID("EnvironmentLightingFiniteBoxUBO")),
+         "environment feature should not register retired finite box bounds "
+         "UBO");
 }
 
 void testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap() {

@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 
 #ifndef LXE_SOURCE_DIR
@@ -79,7 +80,65 @@ void expectResolvedShaderDescriptor(
   }
   EXPECT(shaderHasCompiledPayload(shader),
          contextMessage +
-             " should retain live compiled shader payload and reflection data");
+      " should retain live compiled shader payload and reflection data");
+}
+
+void testRemovedLegacyFiniteBoxRuntimeTokensDoNotAppearInProductionRuntime() {
+  struct AuditCase {
+    std::filesystem::path path;
+    std::string token;
+    const char *description;
+  };
+
+  const std::filesystem::path sourceRoot =
+      std::filesystem::path(LXE_SOURCE_DIR);
+  const std::filesystem::path repoRoot =
+      sourceRoot.empty() ? std::filesystem::current_path() : sourceRoot;
+  const AuditCase cases[] = {
+      {"src/backend/vulkan/vulkan_realtime_renderer.cpp",
+       "ensureEnvironmentBoxRenderable",
+       "removed legacy runtime finite-box injection helper"},
+      {"src/backend/vulkan/vulkan_realtime_renderer.cpp",
+       "makeEnvironmentBoxMesh",
+       "removed legacy runtime finite-box mesh helper"},
+      {"src/backend/vulkan/vulkan_realtime_renderer.cpp",
+       "__environment_finite_box",
+       "removed legacy auto-added finite-box renderable"},
+      {"src/backend/vulkan/vulkan_realtime_renderer.cpp", "finiteBoxBounds",
+       "removed legacy runtime finite-box bounds lookup"},
+      {"src/backend/vulkan/vulkan_realtime_renderer.cpp",
+       "render_paths/Environment/environment_box",
+       "removed legacy runtime material shader path"},
+      {"src/core/frame_graph/render_work_compiler.cpp", "environment.box",
+       "removed legacy finite-box renderable special ordering"},
+      {"src/core/scene/scene_resource_table.cpp",
+       "EnvironmentLightingFiniteBox",
+       "removed legacy finite-box scene resource registration"},
+      {"src/core/scene/scene_resource_table.cpp", "finiteBoxBounds",
+       "removed legacy finite-box scene resource registration"},
+      {"src/core/scene/ibl_environment.hpp", "EnvironmentLightingFiniteBoxUBO",
+       "removed legacy finite-box UBO resource type"},
+      {"src/core/asset/shader_binding_ownership.hpp",
+       "EnvironmentLightingFiniteBoxUBO",
+       "removed legacy finite-box system-owned shader binding"},
+      {"assets/shaders/glsl/render_paths/Environment/environment_box.frag",
+       "EnvironmentLightingFiniteBoxUBO",
+       "removed legacy finite-box shader entry point"},
+      {"assets/shaders/glsl/render_paths/Environment/environment_box.frag",
+       "render_paths/Environment/environment_box",
+       "removed legacy finite-box runtime material shader"},
+  };
+
+  for (const AuditCase &auditCase : cases) {
+    const auto path = repoRoot / auditCase.path;
+    if (!std::filesystem::exists(path)) {
+      continue;
+    }
+    const std::string text = readTextFile(path.string());
+    EXPECT(text.find(auditCase.token) == std::string::npos,
+           std::string(auditCase.description) + " should not appear in " +
+               auditCase.path.generic_string());
+  }
 }
 
 void testRenderFeatureParsesPureEnvelope() {
@@ -1429,6 +1488,7 @@ int main() {
     std::filesystem::current_path(sourceRoot);
   }
 
+  testRemovedLegacyFiniteBoxRuntimeTokensDoNotAppearInProductionRuntime();
   testRenderFeatureParsesPureEnvelope();
   testRenderFeatureParsesBindingMemberRequiredSchema();
   testRenderFeatureParsesTextureCubeUriParameter();

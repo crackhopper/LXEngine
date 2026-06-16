@@ -1334,55 +1334,6 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   }
 }
 
-void testForwardPassOrdersEnvironmentBoxBeforeSurfaceDraws() {
-  auto surface = std::make_shared<MateriallessRenderable>("surface_node");
-  surface->setIndexedTriangle();
-  surface->setRenderType(StringID("surface.opaque"));
-  auto environmentBox =
-      std::make_shared<MateriallessRenderable>("environment_box_node");
-  environmentBox->setIndexedTriangle();
-  environmentBox->setRenderType(StringID("environment.box"));
-
-  Scene scene("CompilerScene");
-  scene.addRenderable(surface);
-  scene.addRenderable(environmentBox);
-
-  RenderWorkBuildContext::RealtimeOptions options;
-  options.visibleMask = VisibilityMask_All;
-
-  FramePass pass;
-  pass.name = Pass_Forward;
-  pass.stage = RenderPassStage::Raster;
-  pass.dispatch = RenderPassDispatch::Draw;
-  pass.input.kind = RenderPassInputKind::SceneRenderables;
-  pass.input.material.required = false;
-  pass.shaderUri = ResourceUri("render_paths/Forward/pbr");
-
-  RenderWorkCompiler compiler;
-  std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
-                       inputs);
-
-  EXPECT(inputs.size() == 2,
-         "Forward pass should build both environment and surface draw inputs");
-  if (inputs.size() != 2) {
-    return;
-  }
-
-  const auto *first = dynamic_cast<const RenderDrawInput *>(inputs[0].get());
-  const auto *second = dynamic_cast<const RenderDrawInput *>(inputs[1].get());
-  EXPECT(first != nullptr && second != nullptr,
-         "Forward pass inputs should be draw inputs");
-  if (first == nullptr || second == nullptr) {
-    return;
-  }
-  EXPECT(first->objectRenderType == StringID("environment.box"),
-         "environment box should be submitted before surface draws in Forward");
-  EXPECT(second->objectRenderType == StringID("surface.opaque"),
-         "surface draw should remain in the same Forward input list after the "
-         "environment box");
-}
-
 RenderFeature makeCompilerEnvironmentFeature(
     bool includeColor = true, std::string backgroundModeValue = "infinite") {
   RenderFeature feature;
@@ -1511,52 +1462,6 @@ void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
   }
 }
 
-void testRenderWorkCompilerRejectsFiniteBoxOnFullscreenSkyboxPass() {
-  Scene scene("EnvironmentCompilerScene");
-  [[maybe_unused]] const RenderFeatureHandle featureHandle =
-      scene.resources().registerRenderFeature(
-          ResourceUri("memory://features/environment_lighting"),
-          makeCompilerEnvironmentFeature(/*includeColor=*/true,
-                                         "finiteBox"));
-
-  auto shader = std::make_shared<FakeShader>(
-      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
-                                         makeEnvironmentLightingUboBinding()},
-      std::vector<ShaderStageCode>{
-          ShaderStageCode{ShaderStage::Vertex,
-                          std::vector<u32>{0x07230203, 45}},
-          ShaderStageCode{ShaderStage::Fragment,
-                          std::vector<u32>{0x07230203, 46}},
-      });
-  RenderWorkBuildContext::PassPreparationFacts passFacts;
-  passFacts.pass = Pass_SkyboxBackground;
-  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
-  passFacts.shaderProgram.shader = shader;
-  passFacts.shaderInfo = shader;
-  passFacts.renderState.depthWriteEnable = false;
-
-  RenderWorkBuildContext::RealtimeOptions options;
-  options.passPreparationFacts.push_back(passFacts);
-
-  RenderWorkCompiler compiler;
-  FramePass pass = makeSkyboxCompilerPass();
-  std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::realtime(scene, std::move(options));
-  compiler.buildInputs(pass, context, inputs);
-  const auto descs = compiler.prepare(pass, context, inputs);
-
-  EXPECT(descs.size() == 1,
-         "finiteBox fullscreen pass should still produce one rejected desc");
-  if (!descs.empty()) {
-    EXPECT(!descs.front().accepted(),
-           "finiteBox must not render through fullscreen SkyboxBackground");
-    EXPECT(hasDiagnosticCode(descs.front(),
-                             RenderInputDiagnosticCode::UnsupportedInputContract),
-           "finiteBox fullscreen rejection should report unsupported input");
-  }
-}
-
 void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
   Scene scene("EnvironmentCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
@@ -1627,9 +1532,7 @@ int main() {
   testPassNameDoesNotCreateDefaultVisibilityWithoutCamera();
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
-  testForwardPassOrdersEnvironmentBoxBeforeSurfaceDraws();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
-  testRenderWorkCompilerRejectsFiniteBoxOnFullscreenSkyboxPass();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   return g_failures == 0 ? 0 : 1;
 }

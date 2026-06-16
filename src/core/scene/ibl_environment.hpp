@@ -85,33 +85,6 @@ struct alignas(16) EnvironmentLightingData final : public IGpuResource {
 using EnvironmentLightingDataUniquePtr =
     std::unique_ptr<EnvironmentLightingData>;
 
-struct alignas(16) EnvironmentLightingFiniteBoxData final
-    : public IGpuResource {
-  struct Param {
-    Vec4f minBounds{0.0f, 0.0f, 0.0f, 0.0f};
-    Vec4f maxBounds{0.0f, 0.0f, 0.0f, 0.0f};
-  };
-
-  void set(Vec3f minBounds, Vec3f maxBounds) {
-    param.minBounds = Vec4f{minBounds.x, minBounds.y, minBounds.z, 0.0f};
-    param.maxBounds = Vec4f{maxBounds.x, maxBounds.y, maxBounds.z, 0.0f};
-    setDirty();
-  }
-
-  ResourceType getType() const override { return ResourceType::UniformBuffer; }
-  const void *getRawData() const override { return &param; }
-  u32 getByteSize() const override { return sizeof(Param); }
-  StringID getBindingName() const override {
-    static const StringID kName("EnvironmentLightingFiniteBoxUBO");
-    return kName;
-  }
-
-  Param param{};
-};
-
-using EnvironmentLightingFiniteBoxDataUniquePtr =
-    std::unique_ptr<EnvironmentLightingFiniteBoxData>;
-
 struct alignas(16) ToneMappingData final : public IGpuResource {
   struct Param {
     Vec4f params{1.0f, 1.0f, 0.0f, 2.2f};

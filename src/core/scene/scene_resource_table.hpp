@@ -410,7 +410,6 @@ private:
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
-  EnvironmentLightingFiniteBoxDataUniquePtr m_environmentLightingFiniteBoxUbo;
   ToneMappingDataUniquePtr m_toneMappingUbo;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =

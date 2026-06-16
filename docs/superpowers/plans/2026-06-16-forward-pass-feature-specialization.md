@@ -288,7 +288,7 @@ If the implementation needs temporary debug-only code to inspect the room render
 - Modify: `src/test/integration/test_render_work_compiler.cpp`
 - Modify: `src/test/integration/test_render_resource_parsers.cpp`
 
-- [ ] **Step 1: Add negative audit**
+- [x] **Step 1: Add negative audit**
 
 Add an audit/test proving production runtime no longer contains:
 
@@ -303,7 +303,7 @@ render_paths/Environment/environment_box as runtime material shader
 The audit should allow docs/history/tests only when they explicitly describe removed legacy behavior.
 Production code and default runtime/shader assets must have zero hits for these tokens after this task.
 
-- [ ] **Step 2: Hard-cut runtime finite box creation**
+- [x] **Step 2: Hard-cut runtime finite box creation**
 
 Remove from `vulkan_realtime_renderer.cpp`:
 
@@ -314,11 +314,11 @@ Remove from `vulkan_realtime_renderer.cpp`:
 
 Do not replace it with another runtime branch.
 
-- [ ] **Step 3: Hard-cut finite box scene resource path**
+- [x] **Step 3: Hard-cut finite box scene resource path**
 
 Delete runtime-only finite box UBO/resource registration and every production caller. Do not leave unused compatibility helpers behind.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 cmake --build build --target test_render_resource_parsers test_render_work_compiler

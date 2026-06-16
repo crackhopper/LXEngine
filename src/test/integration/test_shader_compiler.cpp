@@ -704,53 +704,6 @@ static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
 }
 
 static bool
-testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) {
-  std::cout << "\n========================================\n";
-  std::cout << "  Test: graph skybox background shader contract\n";
-  std::cout << "========================================\n";
-
-  const auto expectBinding =
-      [](const std::vector<ShaderResourceBinding> &bindings,
-         const std::string &name, ShaderPropertyType type, u32 set,
-         u32 binding) {
-        const auto it = std::find_if(
-            bindings.begin(), bindings.end(),
-            [&](const auto &candidate) { return candidate.name == name; });
-        return it != bindings.end() && it->type == type && it->set == set &&
-               it->binding == binding;
-      };
-
-  auto environmentBox = ShaderCompiler::compileProgram(
-      shaderDir / "render_paths" / "Environment" / "environment_box.vert",
-      shaderDir / "render_paths" / "Environment" / "environment_box.frag", {});
-  if (!environmentBox.success) {
-    std::cerr << "  COMPILE FAILED: " << environmentBox.errorMessage << "\n";
-    return false;
-  }
-  const auto boxBindings = ShaderReflector::reflect(environmentBox.stages);
-  if (!expectBinding(boxBindings, "CameraUBO",
-                     ShaderPropertyType::UniformBuffer, 0, 0) ||
-      !expectBinding(boxBindings, "SceneObjects",
-                     ShaderPropertyType::StorageBuffer, 0, 8) ||
-      !expectBinding(boxBindings, "SceneDraws",
-                     ShaderPropertyType::StorageBuffer, 0, 9) ||
-      !expectBinding(boxBindings, "SkyboxMap",
-                     ShaderPropertyType::TextureCube, 1, 0) ||
-      !expectBinding(boxBindings, "EnvironmentLightingUBO",
-                     ShaderPropertyType::UniformBuffer, 2, 0) ||
-      !expectBinding(boxBindings, "EnvironmentLightingFiniteBoxUBO",
-                     ShaderPropertyType::UniformBuffer, 3, 0) ||
-      !expectBinding(boxBindings, "ToneMappingUBO",
-                     ShaderPropertyType::UniformBuffer, 4, 0)) {
-    std::cerr << "  FAIL: environment box shader bindings mismatch\n";
-    return false;
-  }
-  std::cout
-      << "  PASS: environment box shader exposes scene-renderable ABI\n";
-  return true;
-}
-
-static bool
 testTextureCubeReflectionContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: TextureCube reflection contract\n";
@@ -1317,8 +1270,6 @@ int main(int argc, char *argv[]) {
   if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;
   if (!testIblBakeShaderContracts(shaderDir))
-    ++failures;
-  if (!testGraphSkyboxBackgroundShaderContract(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";
