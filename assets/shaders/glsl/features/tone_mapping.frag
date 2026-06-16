@@ -1,14 +1,11 @@
 #version 450
 
+#include "features/tone_mapping.glsl"
+
 layout(location = 0) out vec4 outColor;
 
-layout(set = 4, binding = 0) uniform ToneMappingUBO {
-    float exposure;
-    int mode;
-} toneMapping;
-
 void main() {
-    outColor = vec4(vec3(max(toneMapping.exposure, 0.0)) +
-                        vec3(float(toneMapping.mode) * 0.0),
+    outColor = vec4(lxApplyToneMappingCurve(vec3(1.0), toneMapping.exposure,
+                                            toneMapping.mode),
                     1.0);
 }

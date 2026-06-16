@@ -12,7 +12,10 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <optional>
+#include <regex>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -218,6 +221,163 @@ static std::string readTextFile(const std::filesystem::path &path) {
   std::stringstream buffer;
   buffer << ifs.rdbuf();
   return buffer.str();
+}
+
+static std::string trim(std::string value) {
+  const auto begin = value.find_first_not_of(" \t\r\n");
+  if (begin == std::string::npos) {
+    return {};
+  }
+  const auto end = value.find_last_not_of(" \t\r\n");
+  return value.substr(begin, end - begin + 1);
+}
+
+static bool startsWith(const std::string &value, const std::string &prefix) {
+  return value.rfind(prefix, 0) == 0;
+}
+
+static std::filesystem::path repoRootFromShaderDir(
+    const std::filesystem::path &shaderDir) {
+  return shaderDir.parent_path().parent_path().parent_path();
+}
+
+struct FeatureParameterProbe {
+  std::string kind;
+  std::string binding;
+  std::string member;
+};
+
+struct FeatureProbe {
+  std::string level;
+  std::string shaderUri;
+  std::map<std::string, FeatureParameterProbe> parameters;
+};
+
+static FeatureProbe parseFeatureProbe(const std::filesystem::path &path) {
+  FeatureProbe feature;
+  std::ifstream in(path);
+  std::string line;
+  std::string activeParameter;
+  bool inShader = false;
+  bool inParameters = false;
+  while (std::getline(in, line)) {
+    const std::size_t indent = line.find_first_not_of(' ');
+    const std::string stripped = trim(line);
+    if (stripped.empty() || startsWith(stripped, "#")) {
+      continue;
+    }
+    if (indent == 0) {
+      inShader = stripped == "shader:";
+      inParameters = stripped == "parameters:";
+      activeParameter.clear();
+      if (startsWith(stripped, "level:")) {
+        feature.level = trim(stripped.substr(std::string("level:").size()));
+      }
+      continue;
+    }
+    if (inShader && indent == 2 && startsWith(stripped, "uri:")) {
+      feature.shaderUri = trim(stripped.substr(std::string("uri:").size()));
+      continue;
+    }
+    if (inParameters && indent == 2 && stripped.back() == ':') {
+      activeParameter = stripped.substr(0, stripped.size() - 1);
+      feature.parameters[activeParameter] = FeatureParameterProbe{};
+      continue;
+    }
+    if (inParameters && indent == 4 && !activeParameter.empty()) {
+      const auto colon = stripped.find(':');
+      if (colon == std::string::npos) {
+        continue;
+      }
+      const std::string key = stripped.substr(0, colon);
+      const std::string value = trim(stripped.substr(colon + 1));
+      if (key == "kind") {
+        feature.parameters[activeParameter].kind = value;
+      } else if (key == "binding") {
+        feature.parameters[activeParameter].binding = value;
+      } else if (key == "member") {
+        feature.parameters[activeParameter].member = value;
+      }
+    }
+  }
+  return feature;
+}
+
+static std::vector<std::filesystem::path> parseForwardMainFeatureUris(
+    const std::filesystem::path &repoRoot) {
+  std::vector<std::filesystem::path> uris;
+  std::ifstream in(repoRoot / "assets" / "render_paths" /
+                   "forward_main.render-path.yaml");
+  std::string line;
+  bool inFeatures = false;
+  while (std::getline(in, line)) {
+    const std::size_t indent = line.find_first_not_of(' ');
+    const std::string stripped = trim(line);
+    if (stripped.empty()) {
+      continue;
+    }
+    if (indent == 0) {
+      inFeatures = stripped == "features:";
+      continue;
+    }
+    if (inFeatures && indent == 4 && startsWith(stripped, "uri:")) {
+      uris.emplace_back(trim(stripped.substr(std::string("uri:").size())));
+    }
+  }
+  return uris;
+}
+
+static std::filesystem::path shaderPathForUri(
+    const std::filesystem::path &shaderDir, const std::string &shaderUri) {
+  const auto base = shaderDir / shaderUri;
+  if (std::filesystem::exists(base)) {
+    return base;
+  }
+  for (const auto *extension : {".frag", ".vert", ".comp", ".glsl"}) {
+    auto candidate = base;
+    candidate += extension;
+    if (std::filesystem::exists(candidate)) {
+      return candidate;
+    }
+  }
+  return base;
+}
+
+static bool featureParameterKindMatchesBinding(const std::string &kind,
+                                               ShaderPropertyType type) {
+  if (kind == "textureCube") {
+    return type == ShaderPropertyType::TextureCube;
+  }
+  if (kind == "texture2D" || kind == "texture") {
+    return type == ShaderPropertyType::Texture2D;
+  }
+  if (kind == "float") {
+    return type == ShaderPropertyType::Float;
+  }
+  if (kind == "vec3") {
+    return type == ShaderPropertyType::Vec3;
+  }
+  if (kind == "enum" || kind == "integer") {
+    return type == ShaderPropertyType::Int;
+  }
+  return true;
+}
+
+static bool featureParameterKindMatchesSpecialization(
+    const std::string &kind, ShaderSpecializationValueType type) {
+  if (kind == "bool") {
+    return type == ShaderSpecializationValueType::Bool;
+  }
+  if (kind == "float") {
+    return type == ShaderSpecializationValueType::Float;
+  }
+  if (kind == "enum" || kind == "integer") {
+    return type == ShaderSpecializationValueType::Int;
+  }
+  if (kind == "u32" || kind == "uint") {
+    return type == ShaderSpecializationValueType::UInt;
+  }
+  return false;
 }
 
 static std::string joinedToken(const char *head, const char *tail) {
@@ -799,6 +959,261 @@ testSpecializationConstantReflectionContract(const std::filesystem::path &shader
   return true;
 }
 
+static bool testForwardMainFeatureShaderAbi(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: ForwardMain feature shader ABI\n";
+  std::cout << "========================================\n";
+
+  const auto repoRoot = repoRootFromShaderDir(shaderDir);
+  const auto featureUris = parseForwardMainFeatureUris(repoRoot);
+  if (featureUris.empty()) {
+    std::cerr << "  FAIL: forward_main.render-path.yaml has no feature URIs\n";
+    return false;
+  }
+
+  for (const auto &featureUri : featureUris) {
+    const auto featurePath = repoRoot / "assets" / featureUri;
+    const FeatureProbe feature = parseFeatureProbe(featurePath);
+    if (feature.level.empty() || feature.shaderUri.empty()) {
+      std::cerr << "  FAIL: feature " << featurePath
+                << " should declare level and shader.uri\n";
+      return false;
+    }
+
+    const auto shaderPath = shaderPathForUri(shaderDir, feature.shaderUri);
+    auto compileResult = feature.level == "pass"
+                             ? ShaderCompiler::compileProgram(
+                                   shaderDir / "render_paths" / "Forward" /
+                                       "pbr.vert",
+                                   shaderPath, withMaterialContractSource())
+                             : ShaderCompiler::compileFile(shaderPath, {});
+    if (!compileResult.success) {
+      std::cerr << "  FAIL: feature shader compile failed for "
+                << feature.shaderUri << ": " << compileResult.errorMessage
+                << "\n";
+      return false;
+    }
+
+    if (feature.level == "pass") {
+      const auto constants =
+          ShaderReflector::reflectSpecializationConstants(compileResult.stages);
+      for (const auto &[name, parameter] : feature.parameters) {
+        const auto constant = std::find_if(
+            constants.begin(), constants.end(), [&](const auto &candidate) {
+              return candidate.name == name;
+            });
+        if (constant == constants.end()) {
+          std::cerr << "  FAIL: pass feature " << featureUri
+                    << " parameter " << name
+                    << " was not reflected as a specialization constant\n";
+          return false;
+        }
+        if (!featureParameterKindMatchesSpecialization(parameter.kind,
+                                                       constant->type)) {
+          std::cerr << "  FAIL: pass feature " << featureUri
+                    << " parameter " << name
+                    << " specialization type mismatch\n";
+          return false;
+        }
+      }
+      continue;
+    }
+
+    if (feature.level != "shader") {
+      std::cerr << "  FAIL: unsupported feature level '" << feature.level
+                << "' in " << featurePath << "\n";
+      return false;
+    }
+
+    const auto bindings = ShaderReflector::reflect(compileResult.stages);
+    for (const auto &[name, parameter] : feature.parameters) {
+      if (parameter.binding.empty()) {
+        continue;
+      }
+      const auto binding = std::find_if(
+          bindings.begin(), bindings.end(), [&](const auto &candidate) {
+            return candidate.name == parameter.binding;
+          });
+      if (binding == bindings.end()) {
+        std::cerr << "  FAIL: shader feature " << featureUri << " parameter "
+                  << name << " binding " << parameter.binding
+                  << " was not reflected\n";
+        return false;
+      }
+      if (parameter.kind == "textureCube" || parameter.kind == "texture2D" ||
+          parameter.kind == "texture") {
+        if (!featureParameterKindMatchesBinding(parameter.kind, binding->type)) {
+          std::cerr << "  FAIL: shader feature " << featureUri
+                    << " parameter " << name << " binding texture mismatch\n";
+          return false;
+        }
+        continue;
+      }
+      if (!parameter.member.empty()) {
+        if (binding->type != ShaderPropertyType::UniformBuffer) {
+          std::cerr << "  FAIL: shader feature " << featureUri
+                    << " parameter " << name
+                    << " expects a UniformBuffer member\n";
+          return false;
+        }
+        const StructMemberInfo *member = findMember(*binding, parameter.member);
+        if (member == nullptr) {
+          std::cerr << "  FAIL: shader feature " << featureUri
+                    << " parameter " << name << " member "
+                    << parameter.member << " was not reflected\n";
+          return false;
+        }
+        if (!featureParameterKindMatchesBinding(parameter.kind, member->type)) {
+          std::cerr << "  FAIL: shader feature " << featureUri
+                    << " parameter " << name << " member type mismatch\n";
+          return false;
+        }
+      }
+    }
+  }
+
+  std::cout << "  PASS: ForwardMain features validate against reflected shader "
+               "ABI from shader.uri\n";
+  return true;
+}
+
+static std::string contractMetadataValue(const std::string &source,
+                                         const std::string &key) {
+  std::istringstream stream(source);
+  std::string line;
+  const std::string prefix = "// " + key + ":";
+  while (std::getline(stream, line)) {
+    const std::string stripped = trim(line);
+    if (startsWith(stripped, prefix)) {
+      return trim(stripped.substr(prefix.size()));
+    }
+  }
+  return {};
+}
+
+static std::size_t countRegexMatches(const std::string &source,
+                                     const std::regex &pattern) {
+  return static_cast<std::size_t>(
+      std::distance(std::sregex_iterator(source.begin(), source.end(), pattern),
+                    std::sregex_iterator()));
+}
+
+static bool testForwardMaterialTypeAbi(const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: Forward material type ABI\n";
+  std::cout << "========================================\n";
+
+  const auto materialSurface =
+      readTextFile(shaderDir / "common" / "material_surface.glsl");
+  if (materialSurface.find("LX_MATERIAL_TYPE_LIT") == std::string::npos ||
+      materialSurface.find("LX_MATERIAL_TYPE_UNLIT") == std::string::npos) {
+    std::cerr << "  FAIL: material_surface.glsl should define lit/unlit "
+                 "material type ABI constants\n";
+    return false;
+  }
+
+  const auto forwardSource =
+      readTextFile(shaderDir / "render_paths" / "Forward" / "pbr.frag");
+  const auto loadPos = forwardSource.find("lxLoadMaterialSurface");
+  const auto typePos = forwardSource.find("lxGetMaterialType");
+  const auto unlitPos = forwardSource.find("LX_MATERIAL_TYPE_UNLIT");
+  const auto directPos = forwardSource.find("lxEvaluateBsdf");
+  const auto iblPos = forwardSource.find("texture(IrradianceMap");
+  const auto tonePos = forwardSource.find("if (LxForwardEnableTonemapping)");
+  const auto gammaPos = forwardSource.find("if (LxForwardEnableGamma)");
+  if (loadPos == std::string::npos || typePos == std::string::npos ||
+      unlitPos == std::string::npos || directPos == std::string::npos ||
+      tonePos == std::string::npos || gammaPos == std::string::npos) {
+    std::cerr << "  FAIL: Forward shader should load material, branch on "
+                 "material type, and use reflected tone/gamma flow constants\n";
+    return false;
+  }
+  if (!(loadPos < typePos && typePos < unlitPos && unlitPos < directPos &&
+        unlitPos < tonePos && gammaPos > unlitPos)) {
+    std::cerr << "  FAIL: Forward unlit material branch should happen after "
+                 "surface load and before direct lighting/tone mapping, with "
+                 "one shared final gamma branch\n";
+    return false;
+  }
+  if (iblPos != std::string::npos && !(unlitPos < iblPos)) {
+    std::cerr << "  FAIL: Forward unlit material branch should precede IBL\n";
+    return false;
+  }
+
+  bool sawSupported = false;
+  bool sawUnlitTexture = false;
+  for (const auto &entry :
+       std::filesystem::directory_iterator(shaderDir / "common" / "materials")) {
+    if (!entry.is_regular_file() ||
+        entry.path().filename().string().find(".contract.glsl") ==
+            std::string::npos) {
+      continue;
+    }
+    const std::string source = readTextFile(entry.path());
+    if (contractMetadataValue(source, "status") != "supported") {
+      continue;
+    }
+    sawSupported = true;
+    const std::string type = contractMetadataValue(source, "type");
+    const std::size_t materialTypeFunctions = countRegexMatches(
+        source, std::regex(R"(\buint\s+lxGetMaterialType\s*\()"));
+    if (materialTypeFunctions != 1) {
+      std::cerr << "  FAIL: supported material contract " << entry.path()
+                << " should define exactly one lxGetMaterialType()\n";
+      return false;
+    }
+    const bool isUnlit = type == "unlit-texture";
+    if (isUnlit) {
+      sawUnlitTexture = true;
+      if (source.find("LX_MATERIAL_TYPE_UNLIT") == std::string::npos) {
+        std::cerr << "  FAIL: unlit_texture contract should return "
+                     "LX_MATERIAL_TYPE_UNLIT\n";
+        return false;
+      }
+      if (source.find("parameter: baseColorTexture required texture") ==
+              std::string::npos ||
+          source.find("storageField: baseColorTexture textureSlot parameter "
+                      "baseColorTexture texture") == std::string::npos ||
+          source.find("lxSampleSceneTexture(material.baseColorTexture, uv)") ==
+              std::string::npos) {
+        std::cerr << "  FAIL: unlit_texture contract should declare and sample "
+                     "required baseColorTexture storage\n";
+        return false;
+      }
+    } else if (source.find("LX_MATERIAL_TYPE_LIT") == std::string::npos) {
+      std::cerr << "  FAIL: lit material contract " << entry.path()
+                << " should return LX_MATERIAL_TYPE_LIT\n";
+      return false;
+    }
+
+    ShaderVariant variant{
+        .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+        .enabled = true,
+        .macroValue = "\"common/materials/" + entry.path().filename().string() +
+                      "\"",
+    };
+    auto compileResult = ShaderCompiler::compileProgram(
+        shaderDir / "render_paths" / "Forward" / "pbr.vert",
+        shaderDir / "render_paths" / "Forward" / "pbr.frag", {variant});
+    if (!compileResult.success) {
+      std::cerr << "  FAIL: Forward should compile with supported material "
+                << type << ": " << compileResult.errorMessage << "\n";
+      return false;
+    }
+  }
+
+  if (!sawSupported || !sawUnlitTexture) {
+    std::cerr << "  FAIL: supported material contracts should include "
+                 "unlit-texture\n";
+    return false;
+  }
+
+  std::cout << "  PASS: Forward material contracts expose lit/unlit ABI and "
+               "compile through Forward\n";
+  return true;
+}
+
 static bool testPbrIblContract(const std::filesystem::path &shaderDir,
                                const std::filesystem::path &vertPath,
                                const std::filesystem::path &fragPath) {
@@ -1331,6 +1746,10 @@ int main(int argc, char *argv[]) {
   if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;
   if (!testSpecializationConstantReflectionContract(shaderDir))
+    ++failures;
+  if (!testForwardMainFeatureShaderAbi(shaderDir))
+    ++failures;
+  if (!testForwardMaterialTypeAbi(shaderDir))
     ++failures;
   if (!testIblBakeShaderContracts(shaderDir))
     ++failures;

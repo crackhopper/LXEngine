@@ -78,6 +78,10 @@ vec4 lxSampleSceneTexture(uint textureSlot, vec2 uv) {
   return texture(SceneTextures[nonuniformEXT(textureSlot)], uv);
 }
 
+uint lxGetMaterialType() {
+  return LX_MATERIAL_TYPE_LIT;
+}
+
 vec3 lxLoadStandardPbrNormal(uint textureSlot, vec2 uv, vec3 geometricNormal,
                              mat3 tangentFrame) {
   vec3 tangentNormal = lxSampleSceneTexture(textureSlot, uv).xyz * 2.0 - 1.0;

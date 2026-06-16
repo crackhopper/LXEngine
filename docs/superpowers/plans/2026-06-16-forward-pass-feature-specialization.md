@@ -986,7 +986,7 @@ Expected: PASS.
 - Delete: `assets/shaders/glsl/render_paths/Environment/environment_box.frag`
 - Modify: `src/test/integration/test_shader_compiler.cpp`
 
-- [ ] **Step 1: Add RED shader checks**
+- [x] **Step 1: Add RED shader checks**
 
 Generic feature reflection check:
 
@@ -1012,7 +1012,7 @@ unlit_texture.contract.glsl returns LX_MATERIAL_TYPE_UNLIT
 Forward shader contains the unlit early return before direct/IBL/tone-mapping flow
 ```
 
-- [ ] **Step 2: Add unlit texture material contract**
+- [x] **Step 2: Add unlit texture material contract**
 
 First extend the material-library ABI in `assets/shaders/glsl/common/material_surface.glsl`:
 
@@ -1076,7 +1076,7 @@ bsdf:
       uri: textures/test_neutral_room_srgb.png
 ```
 
-- [ ] **Step 3: Make Forward accept unlit texture materials**
+- [x] **Step 3: Make Forward accept unlit texture materials**
 
 Update `assets/render_paths/forward_main.render-path.yaml` so the Forward surface pass accepts `unlit-texture` in `input.material.type`.
 
@@ -1103,23 +1103,23 @@ vec4 lxApplyGammaAdjust(vec4 linearColor);
 
 This helper performs only gamma/sRGB adjustment. It must not read pass features, decide whether gamma is enabled, apply exposure, or apply tone mapping. Forward owns the `LxForwardEnableGamma` branch and calls this helper only when that reflected pass-level specialization constant is true.
 
-- [ ] **Step 4: Tone mapping owns tone-curve behavior only**
+- [x] **Step 4: Tone mapping owns tone-curve behavior only**
 
 `features/tone_mapping.glsl` declares `ToneMappingUBO`, reads tone mapping params `exposure` and `mode`, and provides helper functions for exposure/tone-curve calculation only. It must not read enable flags, read gamma, apply gamma, or perform final output encoding. Forward decides whether to call it through `LxForwardEnableTonemapping`.
 
-- [ ] **Step 5: Skybox helper owns infinite visible background behavior**
+- [x] **Step 5: Skybox helper owns infinite visible background behavior**
 
 `features/skybox.glsl` declares skybox resources/UBO and helper functions for directly visible infinite skybox. Forward only calls the helper when the reflected pass-level `render_skybox` specialization constant is true.
 
-- [ ] **Step 6: Bloom pass owns bloom math and UBO ABI**
+- [x] **Step 6: Bloom pass owns bloom math and UBO ABI**
 
 `features/bloom.glsl` declares/uses `BloomUBO` and helper functions called from `render_paths/Bloom/blit.frag`. Bloom is not called from Forward. The default graph runs the Bloom blit pass after Forward; this slice verifies the split/wiring and does not require a visual bloom-quality assertion.
 
-- [ ] **Step 7: Hard-cut environment box shader path**
+- [x] **Step 7: Hard-cut environment box shader path**
 
 Delete `render_paths/Environment/environment_box.frag` and all production references to it. Do not replace it with a new runtime environment-box helper. Finite rooms are generated ordinary mesh/material assets and render through the normal renderable/material path.
 
-- [ ] **Step 8: Forward shader uses flow constants**
+- [x] **Step 8: Forward shader uses flow constants**
 
 Forward has two draw categories inside the same pass/render context:
 
@@ -1156,7 +1156,7 @@ outColor = finalColor;
 Do not special-case finite room renderables.
 Both unlit and lit/material paths must use the same final gamma-adjust branch shape. The difference is only that unlit skips lighting and tone mapping. Bloom is not part of this shader; it is a later graph blit pass.
 
-- [ ] **Step 9: Compile shader tests**
+- [x] **Step 9: Compile shader tests**
 
 ```bash
 cmake --build build --target CompileShaders test_shader_compiler && ./build/src/test/test_shader_compiler

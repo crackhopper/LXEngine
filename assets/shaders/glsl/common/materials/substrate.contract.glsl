@@ -29,6 +29,10 @@
 #include "../material_surface.glsl"
 #include "../material_bsdf.glsl"
 
+uint lxGetMaterialType() {
+  return LX_MATERIAL_TYPE_LIT;
+}
+
 LxMaterialSurface lxLoadMaterialSurface(uint materialIndex, vec2 uv, vec3 geometricNormal, mat3 tangentFrame) {
   LxMaterialSurface surface;
   surface.baseColor = vec3(1.0);
