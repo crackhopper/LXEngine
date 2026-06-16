@@ -112,6 +112,35 @@ struct alignas(16) EnvironmentLightingFiniteBoxData final
 using EnvironmentLightingFiniteBoxDataUniquePtr =
     std::unique_ptr<EnvironmentLightingFiniteBoxData>;
 
+struct alignas(16) ToneMappingData final : public IGpuResource {
+  struct Param {
+    Vec4f params{1.0f, 1.0f, 0.0f, 2.2f};
+  };
+
+  enum class Mode : u32 {
+    Aces = 0,
+    Reinhard = 1,
+  };
+
+  void set(bool enabled, float exposure, Mode mode, float gamma) {
+    param.params = Vec4f{enabled ? 1.0f : 0.0f, exposure,
+                         static_cast<float>(mode), gamma};
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return sizeof(Param); }
+  StringID getBindingName() const override {
+    static const StringID kName("ToneMappingUBO");
+    return kName;
+  }
+
+  Param param{};
+};
+
+using ToneMappingDataUniquePtr = std::unique_ptr<ToneMappingData>;
+
 struct IblEnvironmentResources {
   bool skyboxEnabled = true;
   CombinedTextureSamplerSharedPtr skyboxCubemap;

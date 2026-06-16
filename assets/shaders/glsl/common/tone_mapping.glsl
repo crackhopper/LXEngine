@@ -27,4 +27,21 @@ vec3 lxToneMapLinearToSrgb(vec3 color, float exposure, float gamma) {
   return lxLinearToSrgbGamma(lxToneMapAces(color, exposure), gamma);
 }
 
+struct LxToneMappingParams {
+  float enabled;
+  float exposure;
+  float mode;
+  float gamma;
+};
+
+vec3 lxApplyToneMapping(vec3 hdr, LxToneMappingParams params) {
+  if (params.enabled < 0.5) {
+    return hdr;
+  }
+  vec3 mapped = abs(params.mode - 1.0) < 0.5
+                    ? lxToneMapReinhard(hdr, params.exposure)
+                    : lxToneMapAces(hdr, params.exposure);
+  return lxLinearToSrgbGamma(mapped, params.gamma);
+}
+
 #endif

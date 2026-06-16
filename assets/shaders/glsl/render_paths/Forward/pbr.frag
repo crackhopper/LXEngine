@@ -4,6 +4,7 @@
 #include "common/material_surface.glsl"
 #include "common/material_bsdf.glsl"
 #include "common/pbr.glsl"
+#include "common/tone_mapping.glsl"
 #if defined(LX_MATERIAL_CONTRACT_SOURCE)
 #include LX_MATERIAL_CONTRACT_SOURCE
 #else
@@ -38,6 +39,10 @@ layout(set = 3, binding = 3) uniform EnvironmentUBO {
     vec4 params; // x: IBL intensity, y: prefiltered mip count
     vec4 ambientColorIntensity; // rgb: constant environment color, a: intensity
 } environment;
+
+layout(set = 4, binding = 0) uniform ToneMappingUBO {
+    vec4 params; // x: enabled, y: exposure, z: mode, w: gamma
+} toneMapping;
 
 #ifdef HAS_IBL
 layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
@@ -129,5 +134,10 @@ void main() {
     vec3 color = ambient + Lo;
     color += lxPbrEmissive(pbrInput);
 
-    outColor = vec4(color, albedo.a);
+    LxToneMappingParams toneParams;
+    toneParams.enabled = toneMapping.params.x;
+    toneParams.exposure = toneMapping.params.y;
+    toneParams.mode = toneMapping.params.z;
+    toneParams.gamma = toneMapping.params.w;
+    outColor = vec4(lxApplyToneMapping(color, toneParams), albedo.a);
 }

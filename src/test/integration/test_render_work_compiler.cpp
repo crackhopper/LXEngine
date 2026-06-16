@@ -1334,6 +1334,55 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   }
 }
 
+void testForwardPassOrdersEnvironmentBoxBeforeSurfaceDraws() {
+  auto surface = std::make_shared<MateriallessRenderable>("surface_node");
+  surface->setIndexedTriangle();
+  surface->setRenderType(StringID("surface.opaque"));
+  auto environmentBox =
+      std::make_shared<MateriallessRenderable>("environment_box_node");
+  environmentBox->setIndexedTriangle();
+  environmentBox->setRenderType(StringID("environment.box"));
+
+  Scene scene("CompilerScene");
+  scene.addRenderable(surface);
+  scene.addRenderable(environmentBox);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.visibleMask = VisibilityMask_All;
+
+  FramePass pass;
+  pass.name = Pass_Forward;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Draw;
+  pass.input.kind = RenderPassInputKind::SceneRenderables;
+  pass.input.material.required = false;
+  pass.shaderUri = ResourceUri("render_paths/Forward/pbr");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  compiler.buildInputs(pass, RenderWorkBuildContext::realtime(scene, options),
+                       inputs);
+
+  EXPECT(inputs.size() == 2,
+         "Forward pass should build both environment and surface draw inputs");
+  if (inputs.size() != 2) {
+    return;
+  }
+
+  const auto *first = dynamic_cast<const RenderDrawInput *>(inputs[0].get());
+  const auto *second = dynamic_cast<const RenderDrawInput *>(inputs[1].get());
+  EXPECT(first != nullptr && second != nullptr,
+         "Forward pass inputs should be draw inputs");
+  if (first == nullptr || second == nullptr) {
+    return;
+  }
+  EXPECT(first->objectRenderType == StringID("environment.box"),
+         "environment box should be submitted before surface draws in Forward");
+  EXPECT(second->objectRenderType == StringID("surface.opaque"),
+         "surface draw should remain in the same Forward input list after the "
+         "environment box");
+}
+
 RenderFeature makeCompilerEnvironmentFeature(
     bool includeColor = true, std::string backgroundModeValue = "infinite") {
   RenderFeature feature;
@@ -1578,6 +1627,7 @@ int main() {
   testPassNameDoesNotCreateDefaultVisibilityWithoutCamera();
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
+  testForwardPassOrdersEnvironmentBoxBeforeSurfaceDraws();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
   testRenderWorkCompilerRejectsFiniteBoxOnFullscreenSkyboxPass();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();

@@ -101,8 +101,8 @@ passes:
     rendering:
       mode: dynamic
       attachments:
-        - target: hdr.color
-          format: RGBA16Float
+        - target: swapchain.color
+          format: BGRA8
           samples: 1
           layers: 1
     sources:
@@ -110,96 +110,7 @@ passes:
       - gbuffer.normalRoughness
       - gbuffer.material
       - depth.main
-    targets: [hdr.color]
-    renderState:
-      cullMode: None
-      depthTest: false
-      depthWrite: false
-      depthOp: Always
-      blendEnable: false
-
-  - id: EnvironmentBox
-    stage: raster
-    dispatch: draw
-    shader: render_paths/Environment/environment_box
-    input:
-      kind: scene-renderables
-      object:
-        renderClass: [environment.box]
-      material:
-        type: [environment-box]
-        required: true
-      geometry:
-        vertex: position-only
-        topology: triangle-list
-    rendering:
-      mode: dynamic
-      attachments:
-        - target: hdr.color
-          format: RGBA16Float
-          samples: 1
-          layers: 1
-          attachmentUsage: color-attachment-write
-        - target: depth.main
-          format: D32Float
-          samples: 1
-          layers: 1
-          depth: true
-          attachmentUsage: depth-attachment-read-only
-    sources: [geometry.vertex, geometry.index, scene.camera, feature.environmentLighting, depth.main]
-    targets: [hdr.color]
-    writeMode: append
-    renderState:
-      cullMode: Front
-      depthTest: true
-      depthWrite: false
-      depthOp: LessEqual
-      blendEnable: false
-
-  - id: SkyboxBackground
-    stage: raster
-    dispatch: fullscreen
-    shader: render_paths/Skybox/skybox_background
-    input:
-      kind: fullscreen-triangle
-    rendering:
-      mode: dynamic
-      attachments:
-        - target: hdr.color
-          format: RGBA16Float
-          samples: 1
-          layers: 1
-          attachmentUsage: color-attachment-write
-        - target: depth.main
-          format: D32Float
-          samples: 1
-          layers: 1
-          depth: true
-          attachmentUsage: depth-attachment-read-only
-    sources: [feature.environmentLighting, depth.main]
-    targets: [hdr.color]
-    writeMode: append
-    renderState:
-      cullMode: None
-      depthTest: true
-      depthWrite: false
-      depthOp: LessEqual
-      blendEnable: false
-
-  - id: PostProcess
-    stage: raster
-    dispatch: fullscreen
-    shader: render_paths/Post/post_process
-    input:
-      kind: fullscreen-triangle
-    rendering:
-      mode: dynamic
-      attachments:
-        - target: swapchain.color
-          format: BGRA8
-          samples: 1
-          layers: 1
-    sources: [hdr.color, feature.toneMapping]
+      - feature.toneMapping
     targets: [swapchain.color]
     renderState:
       cullMode: None

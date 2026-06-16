@@ -262,6 +262,25 @@ parseEnvironmentBackgroundMode(const RenderFeatureParameter &parameter) {
   return std::nullopt;
 }
 
+[[nodiscard]] ToneMappingData::Mode
+parseToneMappingMode(const RenderFeatureParameter *parameter) {
+  if (parameter == nullptr || parameter->value == "aces") {
+    return ToneMappingData::Mode::Aces;
+  }
+  if (parameter->value == "reinhard") {
+    return ToneMappingData::Mode::Reinhard;
+  }
+  return ToneMappingData::Mode::Aces;
+}
+
+[[nodiscard]] bool parseFeatureBool(const RenderFeatureParameter *parameter,
+                                    bool fallback) {
+  if (parameter == nullptr || parameter->value.empty()) {
+    return fallback;
+  }
+  return parameter->value == "true" || parameter->value == "1";
+}
+
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
   switch (type) {
   case SceneResourceType::Mesh:
@@ -1197,6 +1216,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         metadata->type == SceneResourceType::RenderFeature &&
         metadata->uri == uri) {
       registerEnvironmentLightingResources(*entry.resource);
+      registerToneMappingResources(*entry.resource);
       return RenderFeatureHandle{i, entry.generation};
     }
   }
@@ -1207,6 +1227,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
     m_renderFeatures[handle.index].metadataHandle =
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
     registerEnvironmentLightingResources(*m_renderFeatures[handle.index].resource);
+    registerToneMappingResources(*m_renderFeatures[handle.index].resource);
   }
   advanceUploadGeneration();
   return handle;
@@ -1976,6 +1997,33 @@ SceneResourceTable::getEnvironmentLightingResources() const {
   }
   if (m_environmentLightingFiniteBoxUbo) {
     out.emplace_back(*m_environmentLightingFiniteBoxUbo);
+  }
+  return out;
+}
+
+void SceneResourceTable::registerToneMappingResources(
+    const RenderFeature &feature) {
+  if (feature.feature != "toneMapping") {
+    return;
+  }
+
+  auto ubo = std::make_unique<ToneMappingData>();
+  const auto *enabled = findFeatureParameter(feature, "enabled");
+  const auto *exposure = findFeatureParameter(feature, "exposure");
+  const auto *mode = findFeatureParameter(feature, "mode");
+  const auto *gamma = findFeatureParameter(feature, "gamma");
+  ubo->set(parseFeatureBool(enabled, true),
+           exposure != nullptr ? parseFeatureFloat(*exposure, 1.0f) : 1.0f,
+           parseToneMappingMode(mode),
+           gamma != nullptr ? parseFeatureFloat(*gamma, 2.2f) : 2.2f);
+  m_toneMappingUbo = std::move(ubo);
+  advanceUploadGeneration();
+}
+
+std::vector<GpuResourceRef> SceneResourceTable::getToneMappingResources() const {
+  std::vector<GpuResourceRef> out;
+  if (m_toneMappingUbo) {
+    out.emplace_back(*m_toneMappingUbo);
   }
   return out;
 }

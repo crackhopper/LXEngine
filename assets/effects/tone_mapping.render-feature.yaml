@@ -2,9 +2,28 @@ schema: lxe.render-feature.v1
 name: ToneMapping
 feature: toneMapping
 parameters:
+  enabled:
+    kind: bool
+    value: true
+    binding: ToneMappingUBO
+    member: enabled
+    required: true
   exposure:
     kind: float
     value: 1.0
+    binding: ToneMappingUBO
+    member: exposure
+    required: true
+  mode:
+    kind: enum
+    value: aces
+    binding: ToneMappingUBO
+    member: mode
+    required: true
+    allowedValues: [aces, reinhard]
   gamma:
     kind: float
     value: 2.2
+    binding: ToneMappingUBO
+    member: gamma
+    required: true

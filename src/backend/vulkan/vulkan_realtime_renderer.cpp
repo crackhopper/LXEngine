@@ -313,15 +313,15 @@ makeEnvironmentBoxMesh(const std::array<float, 6> &bounds) {
 LX_core::MaterialInstance::SharedPtr createEnvironmentBoxMaterial() {
   auto tmpl = LX_core::MaterialTemplate::create("environment-box");
   LX_core::MaterialPassDefinition pass;
-  pass.renderState.cullMode = LX_core::CullMode::Front;
+  pass.renderState.cullMode = LX_core::CullMode::None;
   pass.renderState.depthTestEnable = true;
-  pass.renderState.depthWriteEnable = false;
+  pass.renderState.depthWriteEnable = true;
   pass.renderState.depthOp = LX_core::CompareOp::LessEqual;
   pass.renderState.blendEnable = false;
   pass.shaderProgram.shaderName = "render_paths/Environment/environment_box";
   pass.shaderProgram.shader = loadRuntimeGraphicsShaderPayload(
       LX_core::ResourceUri("render_paths/Environment/environment_box"));
-  tmpl->setPassDefinition(LX_core::Pass_EnvironmentBox, std::move(pass));
+  tmpl->setPassDefinition(LX_core::Pass_Forward, std::move(pass));
   tmpl->rebuildMaterialInterface();
 
   auto material = LX_core::MaterialInstance::create(std::move(tmpl));
@@ -1730,15 +1730,13 @@ public:
             }
           };
       if (pass.name == LX_core::Pass_Forward) {
-        pass.target = forwardHdrDesc;
+        pass.target = swapchainDesc;
+        syncSwapchainAttachmentFormats(pass);
       } else if (pass.name == LX_core::Pass_Deferred) {
         pass.target = gbufferDesc;
       } else if (pass.name == LX_core::Pass_DeferredLighting) {
-        pass.target = deferredLightingDesc;
-      } else if (pass.name == LX_core::Pass_EnvironmentBox) {
-        pass.target = forwardHdrDesc;
-      } else if (pass.name == LX_core::Pass_SkyboxBackground) {
-        pass.target = forwardHdrDesc;
+        pass.target = swapchainDesc;
+        syncSwapchainAttachmentFormats(pass);
       } else if (pass.name == LX_core::Pass_BloomThreshold ||
                  pass.name == LX_core::Pass_BloomBlurH ||
                  pass.name == LX_core::Pass_BloomBlurV) {
@@ -1797,18 +1795,10 @@ public:
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Deferred,
                                                LX_core::Pass_DeferredLighting,
-                                               LX_core::Pass_EnvironmentBox,
-                                               LX_core::Pass_SkyboxBackground,
-                                               LX_core::Pass_BloomThreshold,
-                                               LX_core::Pass_BloomBlurH,
-                                               LX_core::Pass_BloomBlurV,
-                                               LX_core::Pass_PostProcess,
                                                LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Deferred,
                     LX_core::Pass_DeferredLighting,
-                    LX_core::Pass_EnvironmentBox,
-                    LX_core::Pass_SkyboxBackground, LX_core::Pass_PostProcess,
                     LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
                                               deferredPasses, deferredPasses);
@@ -1839,18 +1829,10 @@ public:
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Forward,
-                                               LX_core::Pass_EnvironmentBox,
-                                               LX_core::Pass_SkyboxBackground,
-                                               LX_core::Pass_BloomThreshold,
-                                               LX_core::Pass_BloomBlurH,
-                                               LX_core::Pass_BloomBlurV,
-                                               LX_core::Pass_PostProcess,
                                                LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Forward,
-                    LX_core::Pass_EnvironmentBox,
-                    LX_core::Pass_SkyboxBackground,
-                    LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
+                    LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
                                               forwardPasses, forwardPasses);
       resolveMaterialSourceVariantsOrThrow(
@@ -1865,8 +1847,9 @@ public:
       }
     }
     // RenderPathGraph coverage audit:
-    // - Forward, Deferred/DeferredLighting, Bloom, PostProcess, Shadow, and
-    //   DebugOverlay are graph asset managed.
+    // - Forward, Deferred/DeferredLighting, Shadow, and DebugOverlay are graph
+    //   asset managed. Tone mapping is feature-gated inside the default
+    //   Forward/DeferredLighting shaders through common shader functions.
     // - Shadow keeps a temporary named dynamic expansion from the
     // graph-declared
     //   Shadow pass to per-cascade runtime instances until RenderPathGraph can
@@ -1875,19 +1858,6 @@ public:
     if (deferredMode) {
       addDeferredLightingItem(deferredLightingDesc);
     }
-    for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
-      if (pass.name == LX_core::Pass_SkyboxBackground) {
-        addGraphFullscreenShaderItem(pass);
-      }
-    }
-    if (m_postProcessSettings.bloomEnabled) {
-      addBloomThresholdItem();
-      addBloomBlurItem(LX_core::Pass_BloomBlurH, kBloomBlurHShaderName,
-                       "BloomBlurHFullscreenTriangle");
-      addBloomBlurItem(LX_core::Pass_BloomBlurV, kBloomBlurVShaderName,
-                       "BloomBlurVFullscreenTriangle");
-    }
-    addStandardPostProcessItem(swapchainDesc);
     rebuildShadowCascadeUboSnapshots();
 
     m_compiledFrameGraph = m_frameGraph.compile();
@@ -2398,14 +2368,25 @@ public:
     };
     initScene(m_scene);
 
-    LX_core::RenderTargetDesc profileSwapchainTarget =
-        LX_core::RenderTargetDesc::offscreenColor(
-            makeSwapchainTarget().colorFormat);
+    const LX_core::RenderTarget swapchainLikeTarget = makeSwapchainTarget();
+    const auto makeProfileTargetForPass =
+        [&](const LX_core::FramePass &pass) {
+          const bool usesDepth = std::any_of(
+              pass.attachments.begin(), pass.attachments.end(),
+              [](const LX_core::RenderPathAttachmentContract &attachment) {
+                return attachment.depth;
+              });
+          return LX_core::RenderTargetDesc::offscreenColors(
+              {swapchainLikeTarget.colorFormat},
+              usesDepth ? std::optional<LX_core::ImageFormat>{
+                              swapchainLikeTarget.depthFormat}
+                        : std::nullopt);
+        };
     for (LX_core::FramePass &pass : m_frameGraph.getPasses()) {
       if (pass.target.role != LX_core::RenderTargetRole::Swapchain) {
         continue;
       }
-      pass.target = profileSwapchainTarget;
+      pass.target = makeProfileTargetForPass(pass);
       LX_core::syncFramePassAttachmentContractsWithTarget(pass);
     }
     m_compiledFrameGraph = m_frameGraph.compile();
@@ -2440,7 +2421,7 @@ public:
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
         LX_core::StringID("swapchain.color"));
     const VkFormat colorFormat =
-        toVkFormat(*profileSwapchainTarget.colorFormat);
+        toVkFormat(swapchainLikeTarget.colorFormat);
     const VkDeviceSize byteSize =
         dumpByteSize(colorFormat, output.width, output.height);
     auto readback = VulkanBuffer::create(

@@ -1,6 +1,7 @@
 #version 450
 
 #include "common/environment_lighting.glsl"
+#include "common/tone_mapping.glsl"
 
 layout(location = 0) in vec3 vWorldPos;
 layout(location = 0) out vec4 outColor;
@@ -27,6 +28,10 @@ layout(set = 3, binding = 0) uniform EnvironmentLightingFiniteBoxUBO {
     float _pad1;
 } finiteBox;
 
+layout(set = 4, binding = 0) uniform ToneMappingUBO {
+    vec4 params; // x: enabled, y: exposure, z: mode, w: gamma
+} toneMapping;
+
 mat3 lxeYawRotation(float radians) {
     float c = cos(radians);
     float s = sin(radians);
@@ -40,9 +45,11 @@ void main() {
     if (abs(environmentLighting.backgroundMode - LxeBackgroundModeFiniteBox) > 0.5) {
         discard;
     }
-    if (any(lessThan(camera.eyePos, finiteBox.minBounds)) ||
-        any(greaterThan(camera.eyePos, finiteBox.maxBounds))) {
-        discard;
+    bool cameraInsideBox = !any(lessThan(camera.eyePos, finiteBox.minBounds)) &&
+                           !any(greaterThan(camera.eyePos, finiteBox.maxBounds));
+    if (!cameraInsideBox) {
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
     }
 
     vec3 center = 0.5 * (finiteBox.minBounds + finiteBox.maxBounds);
@@ -57,5 +64,10 @@ void main() {
 
     vec3 hdr = lxeApplyEnvironmentRadiance(texture(SkyboxMap, sampleDir).rgb,
                                            params);
-    outColor = vec4(hdr, 1.0);
+    LxToneMappingParams toneParams;
+    toneParams.enabled = toneMapping.params.x;
+    toneParams.exposure = toneMapping.params.y;
+    toneParams.mode = toneMapping.params.z;
+    toneParams.gamma = toneMapping.params.w;
+    outColor = vec4(lxApplyToneMapping(hdr, toneParams), 1.0);
 }

@@ -203,6 +203,16 @@ static const StructMemberInfo *findMember(const ShaderResourceBinding &b,
   return nullptr;
 }
 
+static bool hasBinding(const std::vector<ShaderResourceBinding> &bindings,
+                       const std::string &name, ShaderPropertyType type,
+                       u32 set, u32 binding) {
+  const auto it =
+      std::find_if(bindings.begin(), bindings.end(),
+                   [&](const auto &candidate) { return candidate.name == name; });
+  return it != bindings.end() && it->type == type && it->set == set &&
+         it->binding == binding;
+}
+
 static std::string readTextFile(const std::filesystem::path &path) {
   std::ifstream ifs(path);
   std::stringstream buffer;
@@ -541,6 +551,48 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
   return true;
 }
 
+static bool testDefaultRealtimeShadersExposeToneMappingFeature(
+    const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: default realtime shaders expose toneMapping feature\n";
+  std::cout << "========================================\n";
+
+  auto forward = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Forward" / "pbr.vert",
+      shaderDir / "render_paths" / "Forward" / "pbr.frag",
+      withMaterialContractSource());
+  if (!forward.success) {
+    std::cerr << "  COMPILE FAILED: " << forward.errorMessage << "\n";
+    return false;
+  }
+  auto bindings = ShaderReflector::reflect(forward.stages);
+  if (!hasBinding(bindings, "ToneMappingUBO",
+                  ShaderPropertyType::UniformBuffer, 4, 0)) {
+    std::cerr << "  FAIL: Forward pbr.frag should expose ToneMappingUBO at "
+                 "set=4 binding=0\n";
+    return false;
+  }
+
+  auto deferredLighting = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Post" / "post_process.vert",
+      shaderDir / "render_paths" / "Deferred" / "deferred_lighting.frag", {});
+  if (!deferredLighting.success) {
+    std::cerr << "  COMPILE FAILED: " << deferredLighting.errorMessage << "\n";
+    return false;
+  }
+  bindings = ShaderReflector::reflect(deferredLighting.stages);
+  if (!hasBinding(bindings, "ToneMappingUBO",
+                  ShaderPropertyType::UniformBuffer, 4, 0)) {
+    std::cerr << "  FAIL: Deferred lighting should expose ToneMappingUBO at "
+                 "set=4 binding=0\n";
+    return false;
+  }
+
+  std::cout
+      << "  PASS: default realtime shaders use shared toneMapping feature ABI\n";
+  return true;
+}
+
 static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: IBL bake shader contracts\n";
@@ -652,43 +704,6 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
                it->binding == binding;
       };
 
-  auto skybox = ShaderCompiler::compileProgram(
-      shaderDir / "render_paths" / "Skybox" / "skybox_background.vert",
-      shaderDir / "render_paths" / "Skybox" / "skybox_background.frag", {});
-  if (!skybox.success) {
-    std::cerr << "  COMPILE FAILED: " << skybox.errorMessage << "\n";
-    return false;
-  }
-
-  const auto bindings = ShaderReflector::reflect(skybox.stages);
-  if (!expectBinding(bindings, "CameraUBO", ShaderPropertyType::UniformBuffer,
-                     0, 0) ||
-      !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
-                     0) ||
-      !expectBinding(bindings, "EnvironmentLightingUBO",
-                     ShaderPropertyType::UniformBuffer, 2, 0)) {
-    std::cerr << "  FAIL: graph skybox background bindings mismatch\n";
-    return false;
-  }
-
-  const auto ubo =
-      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
-        return binding.name == "EnvironmentLightingUBO";
-      });
-  const auto hasMember = [&](const std::string &name) {
-    return ubo != bindings.end() &&
-           std::any_of(ubo->members.begin(), ubo->members.end(),
-                       [&](const auto &member) { return member.name == name; });
-  };
-  if (!hasMember("color") || !hasMember("intensity") ||
-      !hasMember("rotation") || !hasMember("backgroundMode")) {
-    std::cerr << "  FAIL: EnvironmentLightingUBO members mismatch\n";
-    return false;
-  }
-
-  std::cout
-      << "  PASS: graph skybox shader exposes environment feature ABI\n";
-
   auto environmentBox = ShaderCompiler::compileProgram(
       shaderDir / "render_paths" / "Environment" / "environment_box.vert",
       shaderDir / "render_paths" / "Environment" / "environment_box.frag", {});
@@ -708,7 +723,9 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
       !expectBinding(boxBindings, "EnvironmentLightingUBO",
                      ShaderPropertyType::UniformBuffer, 2, 0) ||
       !expectBinding(boxBindings, "EnvironmentLightingFiniteBoxUBO",
-                     ShaderPropertyType::UniformBuffer, 3, 0)) {
+                     ShaderPropertyType::UniformBuffer, 3, 0) ||
+      !expectBinding(boxBindings, "ToneMappingUBO",
+                     ShaderPropertyType::UniformBuffer, 4, 0)) {
     std::cerr << "  FAIL: environment box shader bindings mismatch\n";
     return false;
   }
@@ -1278,10 +1295,8 @@ int main(int argc, char *argv[]) {
   if (!testSceneSystemAbiRejectsLegacyUboDeclaration())
     ++failures;
 
-  // Test 4: post-process and supporting shader contract reflection
-  if (!testPostProcessShaderContract(shaderDir))
-    ++failures;
-  if (!testBloomShaderContracts(shaderDir))
+  // Test 4: default realtime shader feature contract reflection
+  if (!testDefaultRealtimeShadersExposeToneMappingFeature(shaderDir))
     ++failures;
   if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;

@@ -8,6 +8,7 @@
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -853,6 +854,7 @@ void buildSceneRenderableInputs(
   const VisibilityLayerMask visibleMask =
       resolveVisibleMask(scene, pass, context.realtimeOptions());
 
+  const usize firstPassInput = out.size();
   const auto &renderables = scene.getRenderables();
   for (usize renderableIndex = 0; renderableIndex < renderables.size();
        ++renderableIndex) {
@@ -891,6 +893,23 @@ void buildSceneRenderableInputs(
     }
 
     out.push_back(std::move(draw));
+  }
+
+  const StringID environmentBoxClass("environment.box");
+  std::stable_sort(
+      out.begin() + static_cast<std::ptrdiff_t>(firstPassInput), out.end(),
+      [environmentBoxClass](const auto &lhs, const auto &rhs) {
+        const auto *left = dynamic_cast<const RenderDrawInput *>(lhs.get());
+        const auto *right = dynamic_cast<const RenderDrawInput *>(rhs.get());
+        const bool leftBackground =
+            left != nullptr && left->objectRenderType == environmentBoxClass;
+        const bool rightBackground =
+            right != nullptr && right->objectRenderType == environmentBoxClass;
+        return leftBackground && !rightBackground;
+      });
+  for (usize inputIndex = firstPassInput; inputIndex < out.size();
+       ++inputIndex) {
+    out[inputIndex]->inputIndex = inputIndex;
   }
 }
 

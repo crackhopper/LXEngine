@@ -1,6 +1,7 @@
 #version 450
 
 #include "common/pbr.glsl"
+#include "common/tone_mapping.glsl"
 
 layout(location = 0) in vec2 vUV;
 layout(location = 0) out vec4 outColor;
@@ -25,6 +26,10 @@ layout(set = 3, binding = 3) uniform EnvironmentUBO {
     vec4 params;
     vec4 ambientColorIntensity;
 } environment;
+
+layout(set = 4, binding = 0) uniform ToneMappingUBO {
+    vec4 params; // x: enabled, y: exposure, z: mode, w: gamma
+} toneMapping;
 
 #ifdef HAS_IBL
 layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
@@ -103,5 +108,10 @@ void main() {
     }
 #endif
 
-    outColor = vec4(color, albedoAlpha.a);
+    LxToneMappingParams toneParams;
+    toneParams.enabled = toneMapping.params.x;
+    toneParams.exposure = toneMapping.params.y;
+    toneParams.mode = toneMapping.params.z;
+    toneParams.gamma = toneMapping.params.w;
+    outColor = vec4(lxApplyToneMapping(color, toneParams), albedoAlpha.a);
 }
