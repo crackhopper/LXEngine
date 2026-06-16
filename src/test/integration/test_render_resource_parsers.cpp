@@ -1,5 +1,6 @@
 #include "core/frame_graph/frame_graph_build_plan.hpp"
 #include "core/frame_graph/graph_resource_registry.hpp"
+#include "core/frame_graph/render_path_feature_validation.hpp"
 #include "core/frame_graph/render_feature_shader_validation.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
@@ -1173,6 +1174,149 @@ parameters:
          "diagnostic should name parameters.environmentMap.uri");
 }
 
+void testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget() {
+  LX_core::RenderPathGraph graph;
+  graph.name = "InvalidForwardSrgbGamma";
+  graph.renderPath = LX_core::RenderPath::Forward;
+
+  LX_core::RenderPassNode forwardPass;
+  forwardPass.id = "Forward";
+  forwardPass.shaderUri = LX_core::ResourceUri("render_paths/Forward/pbr");
+  forwardPass.input.kind = LX_core::RenderPassInputKind::SceneRenderables;
+  forwardPass.input.geometry = LX_core::RenderPathGeometryContract{
+      .vertex = LX_core::RenderPathGeometryVertexContract::PositionOnly,
+      .topology = LX_core::PrimitiveTopology::TriangleList,
+  };
+  forwardPass.attachments.push_back(LX_core::RenderPathAttachmentContract{
+      .target = "swapchain.color",
+      .format = LX_core::ImageFormat::BGRA8Srgb,
+      .samples = 1,
+      .layers = 1,
+      .depth = false,
+      .attachmentUsage =
+          LX_core::RenderPathAttachmentUsage::ColorAttachmentWrite,
+  });
+  forwardPass.sources = {"scene.camera", "feature.forwardPass"};
+  forwardPass.targets = {"swapchain.color"};
+  graph.passes.push_back(std::move(forwardPass));
+
+  LX_core::FrameGraph frameGraph;
+  LX_core::FramePass compiledForward;
+  compiledForward.name = LX_core::StringID("Forward");
+  compiledForward.writes.push_back(LX_core::FrameGraphWrite{
+      LX_core::FrameGraphResourceRef::colorAttachment(
+          LX_core::StringID("swapchain.color")),
+      std::nullopt,
+  });
+  frameGraph.addPass(std::move(compiledForward));
+
+  LX_core::SceneResourceTable resources;
+  LX_core::RenderFeature forwardFeature;
+  forwardFeature.name = "ForwardPass";
+  forwardFeature.feature = "forwardPass";
+  forwardFeature.level = LX_core::RenderFeatureLevel::Pass;
+  forwardFeature.parameters["enable_gamma"] =
+      LX_core::RenderFeatureParameter{
+          .kind = "bool",
+          .value = "true",
+          .required = true,
+      };
+  const LX_core::RenderFeatureHandle featureHandle =
+      resources.registerRenderFeature(
+          LX_core::ResourceUri(
+              "memory://effects/forward_pass.render-feature.yaml"),
+          std::move(forwardFeature));
+  EXPECT(featureHandle.isValid(),
+         "test forwardPass feature should register before validation");
+
+  const auto diagnostics = LX_core::validateRenderPathFeatureCombination(
+      graph, frameGraph, resources);
+
+  EXPECT(!diagnostics.empty(),
+         "manual gamma on sRGB Forward target should emit diagnostics");
+  const auto fatal = std::find_if(
+      diagnostics.begin(), diagnostics.end(),
+      [](const LX_core::RenderPathFeatureValidationDiagnostic &diagnostic) {
+        return diagnostic.fatal &&
+               diagnostic.message.find(
+                   "FATAL: sRGB target must not use manual gamma") !=
+                   std::string::npos;
+      });
+  EXPECT(fatal != diagnostics.end(),
+         "diagnostic should reject sRGB target plus manual gamma");
+}
+
+void testParserAdapterRejectsManualGammaOnSrgbForwardTarget() {
+  const LX_core::ResourceUri featureUri = writeTempRenderPathGraph(
+      "lxe_invalid_forward_pass.render-feature.yaml", R"(
+schema: lxe.render-feature.v1
+name: ForwardPass
+feature: forwardPass
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enable_gamma:
+    kind: bool
+    value: true
+    required: true
+)");
+  const std::filesystem::path featurePath =
+      std::filesystem::path(featureUri.string().substr(
+          std::string("file://").size()));
+
+  const LX_core::ResourceUri graphUri = writeTempRenderPathGraph(
+      "lxe_invalid_forward_srgb_gamma.render-path.yaml",
+      "schema: lxe.render-path-graph.v1\n"
+      "name: InvalidForwardSrgbGamma\n"
+      "renderPath: Forward\n"
+      "features:\n"
+      "  forwardPass:\n"
+      "    uri: " +
+          featurePath.filename().generic_string() +
+          "\n"
+          "passes:\n"
+          "  - id: Forward\n"
+          "    stage: raster\n"
+          "    dispatch: draw\n"
+          "    shader: render_paths/Debug/debug_overlay\n"
+          "    input:\n"
+          "      kind: scene-renderables\n"
+          "      geometry:\n"
+          "        vertex: position-only\n"
+          "        topology: triangle-list\n"
+          "    rendering:\n"
+          "      mode: dynamic\n"
+          "      attachments:\n"
+          "        - target: swapchain.color\n"
+          "          format: BGRA8Srgb\n"
+          "          samples: 1\n"
+          "          layers: 1\n"
+          "    sources: [scene.camera, feature.forwardPass]\n"
+          "    targets: [swapchain.color]\n"
+          "    renderState:\n"
+          "      cullMode: Back\n"
+          "      depthTest: true\n"
+          "      depthWrite: true\n"
+          "      depthOp: LessEqual\n");
+
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  LX_core::SceneResourceTable table;
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{});
+
+  EXPECT(!parsed.identity.isValid() ||
+             parsed.metadata.state == LX_core::ResourceState::Failed,
+         "invalid feature/target combination should fail graph load");
+  EXPECT(hasDiagnosticContaining(
+             parsed, "FATAL: sRGB target must not use manual gamma"),
+         "graph load diagnostic should include fatal feature validation");
+  EXPECT(table.renderPathGraphCount() == 0,
+         "fatal feature validation must not register a half-loaded graph");
+}
+
 void testRenderPathGraphRejectsEmptyPassContracts() {
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse("memory://bad-render-path", R"(
@@ -1846,6 +1990,8 @@ int main() {
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
+  testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget();
+  testParserAdapterRejectsManualGammaOnSrgbForwardTarget();
   testRenderFeatureRejectsRenderFlowFields();
   testRenderFeatureResourcesAreExplicitlyNotImplemented();
   testRenderFeatureRejectsUnknownParameterFields();

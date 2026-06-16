@@ -1,5 +1,7 @@
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 
+#include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/render_path_feature_validation.hpp"
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_shader_resolver.hpp"
@@ -12,6 +14,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -26,6 +29,35 @@ namespace {
 constexpr const char *kRenderFeatureParserName = "RenderFeatureResourceParser";
 constexpr const char *kRenderPathGraphParserName =
     "RenderPathGraphResourceParser";
+
+[[nodiscard]] LX_core::FrameGraph
+makeFeatureValidationFrameGraph(const LX_core::RenderPathGraph &graph) {
+  LX_core::FrameGraph frameGraph;
+  for (const LX_core::RenderPassNode &node : graph.passes) {
+    LX_core::FramePass pass;
+    pass.name = LX_core::StringID(node.id);
+    pass.attachments = node.attachments;
+    for (const std::string &target : node.targets) {
+      const auto attachment = std::find_if(
+          node.attachments.begin(), node.attachments.end(),
+          [&](const LX_core::RenderPathAttachmentContract &candidate) {
+            return candidate.target == target;
+          });
+      const bool isDepthTarget =
+          attachment != node.attachments.end() && attachment->depth;
+      pass.writes.push_back(LX_core::FrameGraphWrite{
+          isDepthTarget
+              ? LX_core::FrameGraphResourceRef::depthAttachment(
+                    LX_core::StringID(target))
+              : LX_core::FrameGraphResourceRef::colorAttachment(
+                    LX_core::StringID(target)),
+          node.writeMode,
+      });
+    }
+    frameGraph.addPass(std::move(pass));
+  }
+  return frameGraph;
+}
 
 [[nodiscard]] std::filesystem::path
 pathFromUri(const LX_core::ResourceUri &uri) {
@@ -423,6 +455,30 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
              canonicalUri.string() + "'"});
       }
     }
+  }
+
+  try {
+    const LX_core::FrameGraph frameGraph = makeFeatureValidationFrameGraph(graph);
+    const auto diagnostics = LX_core::validateRenderPathFeatureCombination(
+        graph, frameGraph, table);
+    std::vector<std::string> fatalDiagnostics;
+    for (const auto &diagnostic : diagnostics) {
+      if (!diagnostic.fatal) {
+        continue;
+      }
+      std::cerr << diagnostic.message << '\n';
+      fatalDiagnostics.push_back(diagnostic.message);
+    }
+    if (!fatalDiagnostics.empty()) {
+      return makeFailedParse(
+          table, LX_core::SceneResourceType::RenderPathGraph, context.ownerUri,
+          canonicalUri, kRenderPathGraphParserName,
+          std::move(fatalDiagnostics));
+    }
+  } catch (const std::exception &error) {
+    return makeFailedParse(table, LX_core::SceneResourceType::RenderPathGraph,
+                           context.ownerUri, canonicalUri,
+                           kRenderPathGraphParserName, {error.what()});
   }
 
   LX_core::RenderPathGraphHandle handle;

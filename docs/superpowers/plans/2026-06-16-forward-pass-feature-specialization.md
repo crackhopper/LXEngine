@@ -739,7 +739,7 @@ Expected: PASS.
 
 This task is for cross-feature and target-format rules. Shader ABI validation already belongs to Task 3 and must run before runtime graph execution.
 
-- [ ] **Step 1: Write RED validation test**
+- [x] **Step 1: Write RED validation test**
 
 Create an invalid graph/feature combination:
 
@@ -754,7 +754,7 @@ Expected diagnostic:
 FATAL: sRGB target must not use manual gamma
 ```
 
-- [ ] **Step 2: Add validation API**
+- [x] **Step 2: Add validation API**
 
 ```cpp
 struct RenderPathFeatureValidationDiagnostic {
@@ -768,11 +768,11 @@ validateRenderPathFeatureCombination(const RenderPathGraph &graph,
                                      const SceneResourceTable &resources);
 ```
 
-- [ ] **Step 3: Implement first rule**
+- [x] **Step 3: Implement first rule**
 
 If Forward writes sRGB and `forwardPass.enable_gamma=true`, reject. Do not rewrite the value.
 
-- [ ] **Step 4: Stop scene loading on fatal validation errors**
+- [x] **Step 4: Stop scene loading on fatal validation errors**
 
 Run validation after graph/features are loaded and before pipeline preparation.
 
@@ -789,7 +789,7 @@ Behavior on fatal validation error:
 
 This is a project principle: C++ may validate and fail fast, but it must not repair bad schema-derived configuration at runtime.
 
-- [ ] **Step 5: Run validation tests**
+- [x] **Step 5: Run validation tests**
 
 ```bash
 cmake --build build --target test_render_resource_parsers test_render_work_compiler

@@ -6,6 +6,7 @@
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_upload_plan.hpp"
 #include "core/frame_graph/render_validation_contract.hpp"
+#include "core/frame_graph/render_path_feature_validation.hpp"
 #include "core/frame_graph/render_work_build_context.hpp"
 #include "core/frame_graph/render_work_compiler.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
@@ -1649,6 +1650,42 @@ public:
       }
       m_frameGraph.addPass(std::move(pass));
     };
+    const auto assignRuntimeTargetsForValidation =
+        [&](LX_core::FrameGraph graph) {
+          for (LX_core::FramePass &pass : graph.getPasses()) {
+            assignGraphTarget(pass);
+          }
+          return graph;
+        };
+    const auto validateRenderPathFeaturesOrThrow =
+        [&](const LX_core::RenderPathGraph &graph,
+            const LX_core::FrameGraph &frameGraph) {
+          const auto diagnostics =
+              LX_core::validateRenderPathFeatureCombination(
+                  graph, frameGraph, m_scene->resources());
+          std::vector<std::string> fatalDiagnostics;
+          for (const auto &diagnostic : diagnostics) {
+            if (!diagnostic.fatal) {
+              continue;
+            }
+            std::cerr << diagnostic.message << '\n';
+            fatalDiagnostics.push_back(diagnostic.message);
+          }
+          if (fatalDiagnostics.empty()) {
+            return;
+          }
+
+          m_frameGraph = LX_core::FrameGraph{};
+          m_compiledFrameGraph = LX_core::CompiledFrameGraph{};
+          m_compiledPassDescriptorResources.clear();
+
+          std::string message = "RenderPathFeature validation failed";
+          for (const std::string &diagnostic : fatalDiagnostics) {
+            message += "\n  ";
+            message += diagnostic;
+          }
+          throw std::runtime_error(message);
+        };
     if (deferredMode) {
       const char *deferredGraphAsset =
           m_postProcessSettings.bloomEnabled
@@ -1680,6 +1717,9 @@ public:
           LX_core::buildFrameGraphFromRenderPathGraph(
               deferredRenderPathGraph,
               LX_core::GraphResourceRegistry::makeDefault());
+      deferredGraph = assignRuntimeTargetsForValidation(std::move(deferredGraph));
+      validateRenderPathFeaturesOrThrow(deferredRenderPathGraph,
+                                        deferredGraph);
       for (auto pass : deferredGraph.getPasses()) {
         addGraphDeclaredPass(std::move(pass));
       }
@@ -1712,6 +1752,8 @@ public:
           LX_core::buildFrameGraphFromRenderPathGraph(
               forwardRenderPathGraph,
               LX_core::GraphResourceRegistry::makeDefault());
+      forwardGraph = assignRuntimeTargetsForValidation(std::move(forwardGraph));
+      validateRenderPathFeaturesOrThrow(forwardRenderPathGraph, forwardGraph);
       for (auto pass : forwardGraph.getPasses()) {
         addGraphDeclaredPass(std::move(pass));
       }
