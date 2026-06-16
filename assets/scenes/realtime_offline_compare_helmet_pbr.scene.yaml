@@ -77,7 +77,7 @@ root:
         kind: Directional
         direction: [-0.35, -0.85, -0.4]
         color: [1.0, 1.0, 1.0]
-        intensity: 3.0
+        intensity: 4.0
         shadowStrength: 0.0
         shadowDistance: 80.0
         shadowCascadeCount: 1
