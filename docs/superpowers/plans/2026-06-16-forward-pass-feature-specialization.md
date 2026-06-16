@@ -810,11 +810,11 @@ Expected: PASS.
 - Modify: `src/core/pipeline/pipeline_key.cpp`
 - Modify: `src/test/integration/test_render_work_compiler.cpp`
 
-- [ ] **Step 1: Write RED pipeline key test**
+- [x] **Step 1: Write RED pipeline key test**
 
 Two otherwise identical pipeline descs with different reflected specialization values must have different pipeline keys. Use a generic constant id from a pass-level feature fixture, not a hardcoded Forward field name.
 
-- [ ] **Step 2: Add specialization structs**
+- [x] **Step 2: Add specialization structs**
 
 ```cpp
 enum class ShaderSpecializationValueType : u8 {
@@ -839,11 +839,11 @@ Add to `PipelineBuildDesc`:
 std::vector<ShaderSpecializationConstant> specializationConstants;
 ```
 
-- [ ] **Step 3: Include specialization constants in PipelineKey**
+- [x] **Step 3: Include specialization constants in PipelineKey**
 
 Compose a stable specialization signature from sorted `(stage, constantId)` entries.
 
-- [ ] **Step 4: Run key test**
+- [x] **Step 4: Run key test**
 
 ```bash
 cmake --build build --target test_render_work_compiler && ./build/src/test/test_render_work_compiler

@@ -934,6 +934,64 @@ void testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature() {
          "material type signature matches");
 }
 
+void testPipelineKeyIncludesGenericPassSpecializationValue() {
+  const StringID materialVariant("validated.pass.feature.variant");
+  const StringID renderPathNode("validated.pass.feature.node");
+  constexpr u32 kPassFeatureConstantId = 17;
+
+  auto makeDesc = [&](std::vector<ShaderSpecializationConstant> constants) {
+    const PipelineKey key =
+        PipelineKey::build(materialVariant, renderPathNode, constants);
+    return PipelineBuildDesc::graphics(
+        key, materialVariant, RenderTargetDesc{}, {}, {}, VertexLayout{},
+        RenderState{}, PrimitiveTopology::TriangleList, std::nullopt, {},
+        std::move(constants));
+  };
+
+  std::vector<ShaderSpecializationConstant> disabledConstants = {
+      ShaderSpecializationConstant{
+          .constantId = kPassFeatureConstantId,
+          .stage = ShaderStage::Fragment,
+          .type = ShaderSpecializationValueType::Bool,
+          .valueU32 = 0,
+      },
+  };
+  std::vector<ShaderSpecializationConstant> enabledConstants =
+      disabledConstants;
+  enabledConstants.front().valueU32 = 1;
+
+  PipelineBuildDesc disabledDesc = makeDesc(disabledConstants);
+  PipelineBuildDesc enabledDesc = makeDesc(enabledConstants);
+
+  EXPECT(disabledDesc.specializationConstants == disabledConstants,
+         "pipeline desc should carry pass specialization facts");
+  EXPECT(enabledDesc.specializationConstants == enabledConstants,
+         "pipeline desc should carry changed pass specialization facts");
+  EXPECT(disabledDesc.key != enabledDesc.key,
+         "pipeline key must include reflected pass specialization values");
+
+  std::vector<ShaderSpecializationConstant> sortedConstants = {
+      ShaderSpecializationConstant{
+          .constantId = 11,
+          .stage = ShaderStage::Vertex,
+          .type = ShaderSpecializationValueType::UInt,
+          .valueU32 = 7,
+      },
+      ShaderSpecializationConstant{
+          .constantId = 23,
+          .stage = ShaderStage::Fragment,
+          .type = ShaderSpecializationValueType::Bool,
+          .valueU32 = 1,
+      },
+  };
+  std::vector<ShaderSpecializationConstant> reversedConstants = {
+      sortedConstants[1], sortedConstants[0]};
+  EXPECT(PipelineKey::build(materialVariant, renderPathNode, sortedConstants) ==
+             PipelineKey::build(materialVariant, renderPathNode,
+                                reversedConstants),
+         "pipeline key specialization signature should be order-stable");
+}
+
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
   auto renderable =
       std::make_shared<MateriallessRenderable>("materialless_node");
@@ -1523,6 +1581,7 @@ int main() {
   testSceneRenderableIncludesCameraSceneResourceBinding();
   testSceneRenderableRejectsUnresolvedRequiredBinding();
   testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature();
+  testPipelineKeyIncludesGenericPassSpecializationValue();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();

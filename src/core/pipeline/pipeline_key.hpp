@@ -1,8 +1,19 @@
 #pragma once
 
+#include "core/asset/shader.hpp"
 #include "core/utils/string_table.hpp"
+#include <vector>
 
 namespace LX_core {
+
+struct ShaderSpecializationConstant {
+  u32 constantId = 0;
+  ShaderStage stage = ShaderStage::None;
+  ShaderSpecializationValueType type = ShaderSpecializationValueType::Bool;
+  u32 valueU32 = 0;
+
+  bool operator==(const ShaderSpecializationConstant &rhs) const = default;
+};
 
 /*
 @source_analysis.section PipelineKey：pipeline 身份的最终句柄
@@ -31,6 +42,10 @@ struct PipelineKey {
 
   static PipelineKey build(StringID materialTypeVariant,
                            StringID renderPathNodeSignature);
+
+  static PipelineKey
+  build(StringID materialTypeVariant, StringID renderPathNodeSignature,
+        const std::vector<ShaderSpecializationConstant> &specializations);
 };
 
 } // namespace LX_core

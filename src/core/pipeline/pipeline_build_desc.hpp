@@ -54,6 +54,7 @@ struct PipelineBuildDesc {
   std::vector<RenderPathAttachmentContract> attachments;
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
+  std::vector<ShaderSpecializationConstant> specializationConstants;
   VertexLayout vertexLayout;
   RenderState renderState;
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
@@ -66,12 +67,16 @@ struct PipelineBuildDesc {
            VertexLayout vertexLayout, RenderState renderState,
            PrimitiveTopology topology,
            std::optional<RenderPathNodeRenderingMode> renderingMode,
-           std::vector<RenderPathAttachmentContract> attachments);
+           std::vector<RenderPathAttachmentContract> attachments,
+           std::vector<ShaderSpecializationConstant> specializationConstants =
+               {});
 
   static PipelineBuildDesc
   compute(PipelineKey key, StringID shaderVariantKey,
           std::vector<ShaderStageCode> stages,
-          std::vector<ShaderResourceBinding> bindings);
+          std::vector<ShaderResourceBinding> bindings,
+          std::vector<ShaderSpecializationConstant> specializationConstants =
+              {});
 };
 
 } // namespace LX_core

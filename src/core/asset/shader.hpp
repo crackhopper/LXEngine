@@ -135,7 +135,7 @@ struct VertexInputAttribute {
   }
 };
 
-enum class ShaderSpecializationValueType {
+enum class ShaderSpecializationValueType : u8 {
   Bool,
   Int,
   UInt,

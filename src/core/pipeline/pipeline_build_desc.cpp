@@ -10,7 +10,8 @@ PipelineBuildDesc PipelineBuildDesc::graphics(
     std::vector<ShaderResourceBinding> bindings, VertexLayout vertexLayout,
     RenderState renderState, PrimitiveTopology topology,
     std::optional<RenderPathNodeRenderingMode> renderingMode,
-    std::vector<RenderPathAttachmentContract> attachments) {
+    std::vector<RenderPathAttachmentContract> attachments,
+    std::vector<ShaderSpecializationConstant> specializationConstants) {
   PipelineBuildDesc desc;
   desc.type = PipelineBuildType::Graphics;
   desc.key = key;
@@ -23,6 +24,7 @@ PipelineBuildDesc PipelineBuildDesc::graphics(
   desc.topology = topology;
   desc.renderingMode = renderingMode;
   desc.attachments = std::move(attachments);
+  desc.specializationConstants = std::move(specializationConstants);
   desc.pushConstant = PushConstantRange{};
   return desc;
 }
@@ -30,13 +32,15 @@ PipelineBuildDesc PipelineBuildDesc::graphics(
 PipelineBuildDesc PipelineBuildDesc::compute(
     PipelineKey key, StringID shaderVariantKey,
     std::vector<ShaderStageCode> stages,
-    std::vector<ShaderResourceBinding> bindings) {
+    std::vector<ShaderResourceBinding> bindings,
+    std::vector<ShaderSpecializationConstant> specializationConstants) {
   PipelineBuildDesc desc;
   desc.type = PipelineBuildType::Compute;
   desc.key = key;
   desc.shaderVariantKey = shaderVariantKey;
   desc.stages = std::move(stages);
   desc.bindings = std::move(bindings);
+  desc.specializationConstants = std::move(specializationConstants);
   desc.pushConstant = PushConstantRange{};
   desc.pushConstant.size = 0;
   desc.pushConstant.stageFlagsMask =
