@@ -1,9 +1,9 @@
 schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
+name: Skybox
+feature: skybox
 level: shader
 shader:
-  uri: features/environment_lighting
+  uri: features/skybox
 parameters:
   environmentMap:
     kind: textureCube
@@ -14,18 +14,18 @@ parameters:
   color:
     kind: vec3
     value: [1.0, 1.0, 1.0]
-    binding: EnvironmentLightingUBO
+    binding: SkyboxUBO
     member: color
     required: true
   intensity:
     kind: float
     value: 1.0
-    binding: EnvironmentLightingUBO
+    binding: SkyboxUBO
     member: intensity
     required: true
   rotation:
     kind: float
     value: 0.0
-    binding: EnvironmentLightingUBO
+    binding: SkyboxUBO
     member: rotation
     required: true

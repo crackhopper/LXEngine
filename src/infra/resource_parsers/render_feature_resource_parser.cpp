@@ -3,7 +3,6 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
-#include <array>
 #include <optional>
 #include <string>
 #include <utility>
@@ -82,38 +81,6 @@ bool containsValue(const std::vector<std::string> &values,
   return std::find(values.begin(), values.end(), value) != values.end();
 }
 
-std::optional<std::array<float, 6>>
-parseVec6Value(ParsedRenderFeatureResource &result,
-               const LX_core::ResourceUri &uri,
-               const LX_core::RenderFeatureParameter &parameter,
-               const std::string &field) {
-  YAML::Node valueNode;
-  try {
-    valueNode = YAML::Load(parameter.value);
-  } catch (const YAML::Exception &e) {
-    addDiagnostic(result, uri, field, e.what());
-    return std::nullopt;
-  }
-  if (!valueNode || !valueNode.IsSequence() || valueNode.size() != 6) {
-    addDiagnostic(result, uri, field, "must be a six-number sequence");
-    return std::nullopt;
-  }
-  std::array<float, 6> out{};
-  for (usize i = 0; i < out.size(); ++i) {
-    if (!valueNode[i].IsScalar()) {
-      addDiagnostic(result, uri, field, "all entries must be numeric scalars");
-      return std::nullopt;
-    }
-    try {
-      out[i] = valueNode[i].as<float>();
-    } catch (const YAML::Exception &e) {
-      addDiagnostic(result, uri, field, e.what());
-      return std::nullopt;
-    }
-  }
-  return out;
-}
-
 void rejectRenderFeatureFlowFields(ParsedRenderFeatureResource &result,
                                    const LX_core::ResourceUri &uri,
                                    const YAML::Node &root) {
@@ -124,19 +91,18 @@ void rejectRenderFeatureFlowFields(ParsedRenderFeatureResource &result,
     }
     const std::string key = it->first.as<std::string>();
     if (key == "schema" || key == "name" || key == "feature" ||
-        key == "parameters") {
+        key == "level" || key == "shader" || key == "parameters") {
       continue;
     }
     if (key == "resources") {
       addDiagnostic(result, uri, key,
                     "resources not implemented; RenderFeature resources need "
                     "an explicit model field before they can be accepted");
-    } else if (key == "shader" || key == "pass" || key == "passes" ||
-               key == "phase" || key == "renderState" ||
-               key == "techniques") {
+    } else if (key == "pass" || key == "passes" || key == "phase" ||
+               key == "renderState" || key == "techniques") {
       addDiagnostic(result, uri, key,
-                    "RenderFeature is a pure envelope; render-flow fields "
-                    "belong in RenderPathGraph");
+                    "RenderFeature shader is ABI metadata only; render-flow "
+                    "fields belong in RenderPathGraph");
     } else {
       addDiagnostic(result, uri, key, "unsupported render feature field");
     }
@@ -262,90 +228,87 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
   }
 }
 
-void validateEnvironmentLightingFeature(ParsedRenderFeatureResource &result,
-                                        const LX_core::ResourceUri &uri,
-                                        const LX_core::RenderFeature &feature) {
-  if (feature.feature != "environmentLighting") {
-    return;
+std::optional<LX_core::RenderFeatureLevel>
+parseRenderFeatureLevel(ParsedRenderFeatureResource &result,
+                        const LX_core::ResourceUri &uri,
+                        const YAML::Node &level) {
+  if (!level || !level.IsScalar()) {
+    addDiagnostic(result, uri, "level", "missing required field");
+    return std::nullopt;
   }
-  const auto environmentMap = feature.parameters.find("environmentMap");
-  if (environmentMap == feature.parameters.end()) {
-    addDiagnostic(result, uri, "parameters.environmentMap",
-                  "missing required parameter");
-    return;
+  const std::string value = level.as<std::string>();
+  if (value == "shader") {
+    return LX_core::RenderFeatureLevel::Shader;
   }
-  if (environmentMap->second.uri.empty()) {
-    addDiagnostic(result, uri, "parameters.environmentMap.uri",
-                  "missing required field");
+  if (value == "pass") {
+    return LX_core::RenderFeatureLevel::Pass;
   }
+  addDiagnostic(result, uri, "level", "expected shader or pass");
+  return std::nullopt;
+}
 
-  if (feature.parameters.find("visibleInBackground") !=
-      feature.parameters.end()) {
-    addDiagnostic(result, uri, "parameters.visibleInBackground",
-                  "removed; use parameters.backgroundMode");
+std::optional<LX_core::RenderFeatureShaderContract>
+parseRenderFeatureShaderContract(ParsedRenderFeatureResource &result,
+                                 const LX_core::ResourceUri &uri,
+                                 const YAML::Node &shader) {
+  if (!shader) {
+    return std::nullopt;
   }
-
-  const auto backgroundMode = feature.parameters.find("backgroundMode");
-  if (backgroundMode == feature.parameters.end()) {
-    addDiagnostic(result, uri, "parameters.backgroundMode",
-                  "missing required parameter");
-    return;
+  if (!shader.IsMap()) {
+    addDiagnostic(result, uri, "shader", "must be a map");
+    return std::nullopt;
   }
-  if (backgroundMode->second.kind != "enum") {
-    addDiagnostic(result, uri, "parameters.backgroundMode.kind",
-                  "expected enum");
-  }
-  if (backgroundMode->second.value.empty()) {
-    addDiagnostic(result, uri, "parameters.backgroundMode.value",
-                  "missing required field");
-  }
-  if (!backgroundMode->second.allowedValues.empty() &&
-      !containsValue(backgroundMode->second.allowedValues,
-                     backgroundMode->second.value)) {
-    addDiagnostic(result, uri, "parameters.backgroundMode.value",
-                  "unsupported value");
-  }
-  if (backgroundMode->second.allowedValues.empty()) {
-    addDiagnostic(result, uri, "parameters.backgroundMode.allowedValues",
-                  "missing required field");
-  }
-  for (const std::string &requiredValue : {"none", "infinite", "finiteBox"}) {
-    if (!containsValue(backgroundMode->second.allowedValues, requiredValue)) {
-      addDiagnostic(result, uri, "parameters.backgroundMode.allowedValues",
-                    "must include none, infinite, and finiteBox");
-      break;
+  for (auto field = shader.begin(); field != shader.end(); ++field) {
+    if (!field->first.IsScalar()) {
+      addDiagnostic(result, uri, "shader",
+                    "shader field names must be scalar strings");
+      continue;
+    }
+    const std::string key = field->first.as<std::string>();
+    if (key != "uri") {
+      addDiagnostic(result, uri, "shader." + key,
+                    "unsupported shader contract field");
     }
   }
+  if (!shader["uri"] || !shader["uri"].IsScalar()) {
+    addDiagnostic(result, uri, "shader.uri", "missing required field");
+    return std::nullopt;
+  }
+  return LX_core::RenderFeatureShaderContract{
+      LX_core::ResourceUri(shader["uri"].as<std::string>())};
+}
 
-  const auto finiteBoxBounds = feature.parameters.find("finiteBoxBounds");
-  if (backgroundMode->second.value == "finiteBox" &&
-      finiteBoxBounds == feature.parameters.end()) {
-    addDiagnostic(result, uri, "parameters.finiteBoxBounds",
-                  "required when backgroundMode is finiteBox");
-    return;
-  }
-  if (finiteBoxBounds == feature.parameters.end()) {
-    return;
-  }
-  if (finiteBoxBounds->second.kind != "vec6") {
-    addDiagnostic(result, uri, "parameters.finiteBoxBounds.kind",
-                  "expected vec6");
-  }
-  if (finiteBoxBounds->second.requiredWhenParameter != "backgroundMode" ||
-      finiteBoxBounds->second.requiredWhenEquals != "finiteBox") {
-    addDiagnostic(result, uri, "parameters.finiteBoxBounds.requiredWhen",
-                  "expected parameter=backgroundMode equals=finiteBox");
-  }
-  const auto bounds =
-      parseVec6Value(result, uri, finiteBoxBounds->second,
-                     "parameters.finiteBoxBounds.value");
-  if (!bounds.has_value()) {
-    return;
-  }
-  if ((*bounds)[0] >= (*bounds)[1] || (*bounds)[2] >= (*bounds)[3] ||
-      (*bounds)[4] >= (*bounds)[5]) {
-    addDiagnostic(result, uri, "parameters.finiteBoxBounds.value",
-                  "expected xmin<xmax, ymin<ymax, zmin<zmax");
+void validateRenderFeatureSchema(ParsedRenderFeatureResource &result,
+                                 const LX_core::ResourceUri &uri,
+                                 const LX_core::RenderFeature &feature) {
+  const bool hasShaderUri = feature.shader.has_value() &&
+                            !feature.shader->uri.empty();
+  for (const auto &[name, parameter] : feature.parameters) {
+    const std::string field = "parameters." + name;
+    if (parameter.kind == "textureCube" || parameter.kind == "texture2D" ||
+        parameter.kind == "texture3D") {
+      if (parameter.required && parameter.uri.empty()) {
+        addDiagnostic(result, uri, field + ".uri", "missing required field");
+      }
+    }
+    if (!parameter.binding.empty() || !parameter.member.empty()) {
+      if (!hasShaderUri) {
+        addDiagnostic(result, uri, "shader.uri",
+                      "required for binding/member ABI parameters");
+      }
+      if (feature.level == LX_core::RenderFeatureLevel::Pass) {
+        if (!parameter.binding.empty()) {
+          addDiagnostic(result, uri, field + ".binding",
+                        "pass-level parameters must use shader reflection "
+                        "specialization constants, not bindings");
+        }
+        if (!parameter.member.empty()) {
+          addDiagnostic(result, uri, field + ".member",
+                        "pass-level parameters must use shader reflection "
+                        "specialization constants, not UBO members");
+        }
+      }
+    }
   }
 }
 
@@ -357,6 +320,9 @@ void parseRenderFeature(ParsedRenderFeatureResource &result,
   bool requiredFields = true;
   requiredFields &= requireField(result, uri, root["name"], "name");
   requiredFields &= requireField(result, uri, root["feature"], "feature");
+  const auto level = parseRenderFeatureLevel(result, uri, root["level"]);
+  const auto shader =
+      parseRenderFeatureShaderContract(result, uri, root["shader"]);
   if (!requiredFields) {
     return;
   }
@@ -364,8 +330,14 @@ void parseRenderFeature(ParsedRenderFeatureResource &result,
   LX_core::RenderFeature feature;
   feature.name = root["name"].as<std::string>();
   feature.feature = root["feature"].as<std::string>();
+  if (level.has_value()) {
+    feature.level = *level;
+  }
+  if (shader.has_value()) {
+    feature.shader = *shader;
+  }
   parseRenderFeatureParameters(result, uri, root["parameters"], feature);
-  validateEnvironmentLightingFeature(result, uri, feature);
+  validateRenderFeatureSchema(result, uri, feature);
 
   if (!result.diagnostics.empty()) {
     return;

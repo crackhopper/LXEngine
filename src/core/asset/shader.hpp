@@ -135,6 +135,20 @@ struct VertexInputAttribute {
   }
 };
 
+enum class ShaderSpecializationValueType {
+  Bool,
+  Int,
+  UInt,
+  Float,
+};
+
+struct ShaderSpecializationConstantInfo {
+  std::string name;
+  ShaderStage stage = ShaderStage::None;
+  u32 constantId = 0;
+  ShaderSpecializationValueType type = ShaderSpecializationValueType::Bool;
+};
+
 /*
 @source_analysis.section IShader：把编译产物和反射视图一起交给上层
 对材质系统来说，`IShader` 重要的不只是字节码，还包括
@@ -156,6 +170,12 @@ public:
 
   virtual const std::vector<VertexInputAttribute> &getVertexInputs() const {
     static const std::vector<VertexInputAttribute> kEmpty;
+    return kEmpty;
+  }
+
+  virtual const std::vector<ShaderSpecializationConstantInfo> &
+  getSpecializationConstants() const {
+    static const std::vector<ShaderSpecializationConstantInfo> kEmpty;
     return kEmpty;
   }
 

@@ -109,9 +109,11 @@ loadRuntimeGraphicsShaderPayload(const LX_core::ResourceUri &shaderUri) {
   };
   auto bindings = LX_infra::ShaderReflector::reflect(stages);
   auto vertexInputs = LX_infra::ShaderReflector::reflectVertexInputs(stages);
+  auto specializationConstants =
+      LX_infra::ShaderReflector::reflectSpecializationConstants(stages);
   return std::make_shared<LX_infra::CompiledShader>(
       std::move(stages), std::move(bindings), std::move(vertexInputs),
-      shaderName);
+      std::move(specializationConstants), shaderName);
 }
 
 LX_core::RenderPathGraph

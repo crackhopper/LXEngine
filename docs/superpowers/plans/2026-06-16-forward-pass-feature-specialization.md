@@ -347,7 +347,7 @@ Expected: PASS.
 - Modify: `src/test/integration/test_render_resource_parsers.cpp`
 - Modify: `src/test/integration/test_shader_compiler.cpp`
 
-- [ ] **Step 1: Write RED parser assertions**
+- [x] **Step 1: Write RED parser assertions**
 
 Default Forward graph must reference:
 
@@ -415,7 +415,7 @@ level: shader  -> parameters bind shader resources / UBO members
 
 Do not infer pass-level behavior from the feature name. `forwardPass` is pass-level because the YAML says `level: pass`.
 
-- [ ] **Step 2: Add render-feature shader URI model**
+- [x] **Step 2: Add render-feature shader URI model**
 
 Extend `RenderFeature` with explicit feature level and shader ABI metadata, for example:
 
@@ -469,7 +469,7 @@ Parser behavior:
 
 Important: this is not a pass declaration. The shader URI is only the ABI owner used for reflection validation.
 
-- [ ] **Step 3: Add specialization constant reflection if missing**
+- [x] **Step 3: Add specialization constant reflection if missing**
 
 Audit `ShaderReflector` and `ShaderResourceBinding`/shader metadata types. If specialization constants are not exposed today, add a reflected specialization metadata type, for example:
 
@@ -511,7 +511,7 @@ name=test_feature_b stage=fragment constantId=23 type=Bool
 
 This must use SPIR-V reflection through the existing reflector path. Do not implement this by scanning GLSL source text.
 
-- [ ] **Step 4: Add feature-to-shader reflection validation**
+- [x] **Step 4: Add feature-to-shader reflection validation**
 
 Add a validation helper that runs after feature assets are parsed and their referenced shader is loaded/compiled:
 
@@ -536,7 +536,7 @@ Hard rules:
 - no production `render-feature.yaml` with `binding` or `member` may skip shader resource ABI validation
 - no production `level: pass` feature may skip specialization constant ABI validation
 
-- [ ] **Step 5: Create Forward feature**
+- [x] **Step 5: Create Forward feature**
 
 ```yaml
 schema: lxe.render-feature.v1
@@ -570,7 +570,7 @@ enable_gamma
 
 C++ must not hardcode these names, ids, stages, or types. The feature file plus shader reflection are the source of truth.
 
-- [ ] **Step 6: Create Skybox feature**
+- [x] **Step 6: Create Skybox feature**
 
 ```yaml
 schema: lxe.render-feature.v1
@@ -606,7 +606,7 @@ parameters:
     required: true
 ```
 
-- [ ] **Step 7: Clean environmentLighting**
+- [x] **Step 7: Clean environmentLighting**
 
 Keep only IBL/indirect lighting fields. Do not leave direct visible skybox/background mode fields in the new runtime path.
 
@@ -620,7 +620,7 @@ shader:
 
 Its UBO/texture fields must be validated against `features/environment_lighting` reflection. It must not validate or own directly visible skybox fields.
 
-- [ ] **Step 8: Update ToneMapping feature**
+- [x] **Step 8: Update ToneMapping feature**
 
 `assets/effects/tone_mapping.render-feature.yaml` must include:
 
@@ -649,7 +649,7 @@ parameters:
 
 `ToneMappingUBO` must not contain `enabled`, gamma, or output-encoding parameters. Tone mapping helper functions should apply only exposure and the selected tone curve. Whether Forward calls tone mapping is controlled by `forwardPass.enable_tonemapping`; final gamma/output encoding is controlled by `forwardPass.enable_gamma`.
 
-- [ ] **Step 9: Create Bloom feature**
+- [x] **Step 9: Create Bloom feature**
 
 ```yaml
 schema: lxe.render-feature.v1
@@ -681,7 +681,7 @@ parameters:
 
 Bloom is a separate graph blit pass that runs after Forward has produced the full image. `features/bloom` declares `BloomUBO` and helper functions used by `render_paths/Bloom/blit.frag`. This slice only verifies the pass is split and wired; it does not require visual bloom quality testing.
 
-- [ ] **Step 10: Wire the single Forward graph asset**
+- [x] **Step 10: Wire the single Forward graph asset**
 
 In `forward_main.render-path.yaml` add graph features:
 
@@ -711,13 +711,13 @@ Add a separate Bloom blit pass after Forward. It reads Forward's color output an
 - feature.bloom
 ```
 
-- [ ] **Step 11: Hard-cut forward_bloom render path**
+- [x] **Step 11: Hard-cut forward_bloom render path**
 
 Delete `assets/render_paths/forward_bloom.render-path.yaml`.
 
 Update tests so default asset audits expect one default render path graph, not a `forward_bloom` variant. Bloom is represented by a Bloom blit pass plus `feature.bloom`, not by selecting a second Forward render-path file.
 
-- [ ] **Step 12: Run parser and shader ABI validation GREEN**
+- [x] **Step 12: Run parser and shader ABI validation GREEN**
 
 ```bash
 cmake --build build --target test_render_resource_parsers test_shader_compiler

@@ -1,0 +1,19 @@
+schema: lxe.render-feature.v1
+name: ForwardPass
+feature: forwardPass
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  render_skybox:
+    kind: bool
+    value: true
+    required: true
+  enable_tonemapping:
+    kind: bool
+    value: true
+    required: true
+  enable_gamma:
+    kind: bool
+    value: false
+    required: true

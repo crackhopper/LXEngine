@@ -1,0 +1,25 @@
+schema: lxe.render-feature.v1
+name: Bloom
+feature: bloom
+level: shader
+shader:
+  uri: features/bloom
+parameters:
+  threshold:
+    kind: float
+    value: 1.0
+    binding: BloomUBO
+    member: threshold
+    required: true
+  intensity:
+    kind: float
+    value: 0.0
+    binding: BloomUBO
+    member: intensity
+    required: true
+  radius:
+    kind: float
+    value: 1.0
+    binding: BloomUBO
+    member: radius
+    required: true

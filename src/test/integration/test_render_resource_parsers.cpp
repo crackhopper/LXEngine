@@ -1,11 +1,15 @@
 #include "core/frame_graph/frame_graph_build_plan.hpp"
 #include "core/frame_graph/graph_resource_registry.hpp"
+#include "core/frame_graph/render_feature_shader_validation.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_compiler.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 #include "infra/resource_parsers/texture_resource_parser.hpp"
 
 #include <cstddef>
@@ -32,6 +36,56 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
+class FakeShader final : public LX_core::IShader {
+public:
+  std::vector<LX_core::ShaderStageCode> stages;
+  std::vector<LX_core::ShaderResourceBinding> bindings;
+  std::vector<LX_core::ShaderSpecializationConstantInfo>
+      specializationConstants;
+
+  const std::vector<LX_core::ShaderStageCode> &getAllStages() const override {
+    return stages;
+  }
+
+  const std::vector<LX_core::ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return bindings;
+  }
+
+  const std::vector<LX_core::ShaderSpecializationConstantInfo> &
+  getSpecializationConstants() const override {
+    return specializationConstants;
+  }
+
+  std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
+  findBinding(u32 set, u32 binding) const override {
+    const auto it = std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const LX_core::ShaderResourceBinding &candidate) {
+          return candidate.set == set && candidate.binding == binding;
+        });
+    if (it == bindings.end()) {
+      return std::nullopt;
+    }
+    return std::cref(*it);
+  }
+
+  std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
+  findBinding(const std::string &name) const override {
+    const auto it = std::find_if(
+        bindings.begin(), bindings.end(),
+        [&](const LX_core::ShaderResourceBinding &candidate) {
+          return candidate.name == name;
+        });
+    if (it == bindings.end()) {
+      return std::nullopt;
+    }
+    return std::cref(*it);
+  }
+
+  usize getProgramHash() const override { return 0; }
+};
+
 template <typename ParsedResource>
 bool hasDiagnosticContaining(const ParsedResource &parsed,
                              const std::string &needle) {
@@ -48,6 +102,50 @@ std::string readTextFile(const std::string &path) {
   std::ostringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
+}
+
+LX_core::ShaderVariant parserTestMaterialContractSourceVariant() {
+  return LX_core::ShaderVariant{
+      .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+      .enabled = true,
+      .macroValue = "\"common/materials/standard_pbr.contract.glsl\"",
+  };
+}
+
+std::optional<LX_core::IShaderSharedPtr>
+compileShaderForFeatureValidation(const LX_core::RenderFeature &feature,
+                                  std::vector<std::string> &diagnostics) {
+  if (!feature.shader.has_value()) {
+    diagnostics.push_back("feature has no shader URI");
+    return std::nullopt;
+  }
+
+  LX_infra::CompileResult compiled;
+  const std::string shaderUri = feature.shader->uri.string();
+  if (feature.level == LX_core::RenderFeatureLevel::Pass &&
+      shaderUri == "render_paths/Forward/pbr") {
+    compiled = LX_infra::ShaderCompiler::compileProgram(
+        "assets/shaders/glsl/render_paths/Forward/pbr.vert",
+        "assets/shaders/glsl/render_paths/Forward/pbr.frag",
+        {parserTestMaterialContractSourceVariant()});
+  } else {
+    compiled = LX_infra::ShaderCompiler::compileFile(
+        std::filesystem::path("assets/shaders/glsl") / (shaderUri + ".frag"));
+  }
+
+  if (!compiled.success) {
+    diagnostics.push_back("compile failed for " + shaderUri + ": " +
+                          compiled.errorMessage);
+    return std::nullopt;
+  }
+
+  auto bindings = LX_infra::ShaderReflector::reflect(compiled.stages);
+  auto vertexInputs = LX_infra::ShaderReflector::reflectVertexInputs(compiled.stages);
+  auto specializationConstants =
+      LX_infra::ShaderReflector::reflectSpecializationConstants(compiled.stages);
+  return std::make_shared<LX_infra::CompiledShader>(
+      std::move(compiled.stages), std::move(bindings), std::move(vertexInputs),
+      std::move(specializationConstants), shaderUri);
 }
 
 LX_core::ResourceUri writeTempRenderPathGraph(const std::string &fileName,
@@ -147,6 +245,9 @@ void testRenderFeatureParsesPureEnvelope() {
 schema: lxe.render-feature.v1
 name: MainShadow
 feature: shadowmap
+level: pass
+shader:
+  uri: render_paths/Forward/shadow_depth_only
 parameters:
   resolution:
     kind: integer
@@ -166,6 +267,12 @@ parameters:
   const auto &feature = *parsed.renderFeature;
   EXPECT(feature.name == "MainShadow", "feature name should be retained");
   EXPECT(feature.feature == "shadowmap", "feature kind should be retained");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Pass,
+         "feature level should be retained");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri ==
+                 LX_core::ResourceUri("render_paths/Forward/shadow_depth_only"),
+         "shader ABI owner URI should be retained");
   EXPECT(feature.parameters.size() == 2, "parameters should be retained");
   EXPECT(feature.parameters.at("resolution").kind == "integer",
          "integer envelope kind should be retained");
@@ -181,6 +288,9 @@ void testRenderFeatureParsesBindingMemberRequiredSchema() {
 schema: lxe.render-feature.v1
 name: EnvironmentLighting
 feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
 parameters:
   environmentMap:
     kind: textureCube
@@ -237,6 +347,9 @@ void testRenderFeatureParsesTextureCubeUriParameter() {
 schema: lxe.render-feature.v1
 name: EnvironmentLighting
 feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
 parameters:
   environmentMap:
     kind: textureCube
@@ -288,8 +401,21 @@ void testDefaultRenderFeatureAssetParses() {
          "default tone mapping feature should retain name");
   EXPECT(feature.feature == "toneMapping",
          "default tone mapping feature should retain feature kind");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Shader,
+         "default tone mapping feature should be shader-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri == LX_core::ResourceUri("features/tone_mapping"),
+         "default tone mapping feature should declare shader ABI owner");
   EXPECT(feature.parameters.find("exposure") != feature.parameters.end(),
          "default tone mapping feature should declare exposure");
+  EXPECT(feature.parameters.find("mode") != feature.parameters.end(),
+         "default tone mapping feature should declare mode");
+  EXPECT(feature.parameters.size() == 2,
+         "default tone mapping feature should only declare exposure and mode");
+  EXPECT(feature.parameters.find("enabled") == feature.parameters.end(),
+         "tone mapping feature must not own enable_tonemapping");
+  EXPECT(feature.parameters.find("gamma") == feature.parameters.end(),
+         "tone mapping feature must not expose a gamma parameter");
 }
 
 void testEnvironmentLightingRenderFeatureAssetParses() {
@@ -309,31 +435,25 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
   const auto &feature = *parsed.renderFeature;
   EXPECT(feature.feature == "environmentLighting",
          "environment lighting feature kind should be retained");
-  EXPECT(feature.parameters.size() == 6,
-         "environment lighting feature should declare exactly six "
-         "parameters");
-  for (const char *name : {"environmentMap", "color", "intensity", "rotation",
-                           "backgroundMode", "finiteBoxBounds"}) {
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Shader,
+         "environment lighting feature should be shader-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri ==
+                 LX_core::ResourceUri("features/environment_lighting"),
+         "environment lighting feature should declare shader ABI owner");
+  EXPECT(feature.parameters.size() == 4,
+         "environment lighting feature should only declare IBL parameters");
+  for (const char *name : {"environmentMap", "color", "intensity",
+                           "rotation"}) {
     EXPECT(feature.parameters.find(name) != feature.parameters.end(),
            std::string("environment lighting feature should declare ") + name);
   }
-  EXPECT(feature.parameters.find("visibleInBackground") ==
-             feature.parameters.end(),
+  EXPECT(feature.parameters.find("visibleInBackground") == feature.parameters.end(),
          "environment lighting feature must hard-cut visibleInBackground");
-  const auto backgroundMode = feature.parameters.find("backgroundMode");
-  EXPECT(backgroundMode != feature.parameters.end() &&
-             backgroundMode->second.value == "finiteBox",
-         "environment lighting asset should select finiteBox background mode "
-         "for box-scene validation");
-  const auto finiteBoxBounds = feature.parameters.find("finiteBoxBounds");
-  EXPECT(finiteBoxBounds != feature.parameters.end() &&
-             finiteBoxBounds->second.kind == "vec6" &&
-             !finiteBoxBounds->second.value.empty(),
-         "finiteBox environment lighting asset should declare explicit bounds");
-  EXPECT(finiteBoxBounds != feature.parameters.end() &&
-             finiteBoxBounds->second.value ==
-                 "[-20.0, 20.0, -8.0, 12.0, -20.0, 20.0]",
-         "finiteBox environment lighting asset should use room-sized bounds");
+  EXPECT(feature.parameters.find("backgroundMode") == feature.parameters.end(),
+         "environment lighting feature must not own visible background mode");
+  EXPECT(feature.parameters.find("finiteBoxBounds") == feature.parameters.end(),
+         "environment lighting feature must not own finite box bounds");
   EXPECT(feature.parameters.find("skyboxEnabled") == feature.parameters.end(),
          "environment lighting feature must not declare skyboxEnabled");
   EXPECT(feature.parameters.find("ambientColor") == feature.parameters.end(),
@@ -343,179 +463,358 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
          "environment lighting feature must not declare ambientIntensity");
 }
 
-void testEnvironmentLightingFeatureParsesBackgroundModeAndFiniteBoxBounds() {
+void testForwardPassRenderFeatureAssetParses() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed = parser.parse("memory://environment-background-mode", R"(
-schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
-parameters:
-  environmentMap:
-    kind: textureCube
-    uri: builtin:env/white_cube
-    valueType: linear-radiance
-    binding: SkyboxMap
-    required: true
-  backgroundMode:
-    kind: enum
-    value: finiteBox
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
-  finiteBoxBounds:
-    kind: vec6
-    value: [-5.0, 5.0, -2.0, 3.0, -4.0, 4.0]
-    requiredWhen:
-      parameter: backgroundMode
-      equals: finiteBox
-)");
+  const auto parsed = parser.parse(
+      "assets/effects/forward_pass.render-feature.yaml",
+      readTextFile("assets/effects/forward_pass.render-feature.yaml"));
 
   EXPECT(parsed.renderFeature.has_value(),
-         "environmentLighting backgroundMode/finiteBoxBounds should parse");
+         "forwardPass feature asset should parse");
   EXPECT(parsed.diagnostics.empty(),
-         "environmentLighting backgroundMode/finiteBoxBounds should not emit "
-         "diagnostics");
+         "forwardPass feature asset should not emit diagnostics");
   if (!parsed.renderFeature.has_value()) {
     return;
   }
-  const auto &backgroundMode =
-      parsed.renderFeature->parameters.at("backgroundMode");
-  EXPECT(backgroundMode.kind == "enum", "backgroundMode kind should be enum");
-  EXPECT(backgroundMode.value == "finiteBox",
-         "backgroundMode value should be retained");
-  EXPECT(backgroundMode.binding == "EnvironmentLightingUBO",
-         "backgroundMode UBO binding should be retained");
-  EXPECT(backgroundMode.member == "backgroundMode",
-         "backgroundMode UBO member should be retained");
-  EXPECT(backgroundMode.required,
-         "backgroundMode required flag should be retained");
-  EXPECT(backgroundMode.allowedValues.size() == 3,
-         "backgroundMode allowed values should be retained");
-
-  const auto &bounds = parsed.renderFeature->parameters.at("finiteBoxBounds");
-  EXPECT(bounds.kind == "vec6", "finiteBoxBounds kind should be vec6");
-  EXPECT(bounds.requiredWhenParameter == "backgroundMode",
-         "finiteBoxBounds requiredWhen parameter should be retained");
-  EXPECT(bounds.requiredWhenEquals == "finiteBox",
-         "finiteBoxBounds requiredWhen equals should be retained");
+  const auto &feature = *parsed.renderFeature;
+  EXPECT(feature.feature == "forwardPass",
+         "forwardPass feature kind should be retained");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Pass,
+         "forwardPass should be pass-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri ==
+                 LX_core::ResourceUri("render_paths/Forward/pbr"),
+         "forwardPass should declare Forward pbr shader ABI owner");
+  EXPECT(feature.parameters.size() == 3,
+         "forwardPass should only declare flow switches");
+  for (const char *name :
+       {"render_skybox", "enable_tonemapping", "enable_gamma"}) {
+    EXPECT(feature.parameters.find(name) != feature.parameters.end(),
+           std::string("forwardPass should declare ") + name);
+    if (feature.parameters.find(name) != feature.parameters.end()) {
+      EXPECT(feature.parameters.at(name).binding.empty(),
+             std::string("pass parameter must not declare binding: ") + name);
+      EXPECT(feature.parameters.at(name).member.empty(),
+             std::string("pass parameter must not declare member: ") + name);
+    }
+  }
 }
 
-void testEnvironmentLightingFeatureRejectsVisibleInBackground() {
+void testSkyboxRenderFeatureAssetParses() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed = parser.parse("memory://environment-visible-legacy", R"(
+  const auto parsed = parser.parse(
+      "assets/effects/skybox.render-feature.yaml",
+      readTextFile("assets/effects/skybox.render-feature.yaml"));
+
+  EXPECT(parsed.renderFeature.has_value(), "skybox feature asset should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "skybox feature asset should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+  const auto &feature = *parsed.renderFeature;
+  EXPECT(feature.feature == "skybox",
+         "skybox feature kind should be retained");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Shader,
+         "skybox should be shader-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri == LX_core::ResourceUri("features/skybox"),
+         "skybox should declare shader ABI owner");
+  for (const char *name : {"environmentMap", "color", "intensity",
+                           "rotation"}) {
+    EXPECT(feature.parameters.find(name) != feature.parameters.end(),
+           std::string("skybox should declare ") + name);
+  }
+  EXPECT(feature.parameters.find("finiteBoxBounds") == feature.parameters.end(),
+         "skybox feature must not declare finite box bounds");
+  EXPECT(feature.parameters.find("backgroundMode") == feature.parameters.end(),
+         "skybox feature must not declare background mode");
+}
+
+void testBloomRenderFeatureAssetParses() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse(
+      "assets/effects/bloom.render-feature.yaml",
+      readTextFile("assets/effects/bloom.render-feature.yaml"));
+
+  EXPECT(parsed.renderFeature.has_value(), "bloom feature asset should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "bloom feature asset should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+  const auto &feature = *parsed.renderFeature;
+  EXPECT(feature.feature == "bloom", "bloom feature kind should be retained");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Shader,
+         "bloom should be shader-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri == LX_core::ResourceUri("features/bloom"),
+         "bloom should declare shader ABI owner");
+  EXPECT(feature.parameters.size() == 3,
+         "bloom should only declare threshold, intensity, and radius");
+  for (const char *name : {"threshold", "intensity", "radius"}) {
+    EXPECT(feature.parameters.find(name) != feature.parameters.end(),
+           std::string("bloom should declare ") + name);
+  }
+}
+
+void testRenderFeatureShaderAbiValidationAcceptsShaderBindingsAndMembers() {
+  LX_core::RenderFeature feature;
+  feature.name = "Skybox";
+  feature.feature = "skybox";
+  feature.level = LX_core::RenderFeatureLevel::Shader;
+  feature.shader = LX_core::RenderFeatureShaderContract{
+      LX_core::ResourceUri("features/skybox")};
+  feature.parameters["environmentMap"] = LX_core::RenderFeatureParameter{
+      .kind = "textureCube",
+      .uri = LX_core::ResourceUri("builtin:env/white_cube"),
+      .binding = "SkyboxMap",
+      .required = true,
+  };
+  feature.parameters["color"] = LX_core::RenderFeatureParameter{
+      .kind = "vec3",
+      .value = "[1.0, 1.0, 1.0]",
+      .binding = "SkyboxUBO",
+      .member = "color",
+      .required = true,
+  };
+
+  FakeShader shader;
+  shader.bindings = {
+      LX_core::ShaderResourceBinding{
+          .name = "SkyboxMap",
+          .set = 1,
+          .binding = 0,
+          .type = LX_core::ShaderPropertyType::TextureCube,
+      },
+      LX_core::ShaderResourceBinding{
+          .name = "SkyboxUBO",
+          .set = 1,
+          .binding = 1,
+          .type = LX_core::ShaderPropertyType::UniformBuffer,
+          .members = {LX_core::StructMemberInfo{
+              "color", LX_core::ShaderPropertyType::Vec3, 0, 12}},
+      },
+  };
+
+  const auto diagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(diagnostics.empty(),
+         "shader-level feature should validate reflected texture and UBO "
+         "member ABI");
+
+  shader.bindings[0].type = LX_core::ShaderPropertyType::Texture2D;
+  const auto textureDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(!textureDiagnostics.empty(),
+         "textureCube parameter should reject reflected Texture2D binding");
+}
+
+void testRenderFeatureShaderAbiValidationAcceptsPassSpecializationConstants() {
+  LX_core::RenderFeature feature;
+  feature.name = "ForwardPass";
+  feature.feature = "forwardPass";
+  feature.level = LX_core::RenderFeatureLevel::Pass;
+  feature.shader = LX_core::RenderFeatureShaderContract{
+      LX_core::ResourceUri("render_paths/Forward/pbr")};
+  feature.parameters["render_skybox"] = LX_core::RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+      .required = true,
+  };
+
+  FakeShader shader;
+  shader.specializationConstants = {
+      LX_core::ShaderSpecializationConstantInfo{
+          .name = "render_skybox",
+          .stage = LX_core::ShaderStage::Fragment,
+          .constantId = 17,
+          .type = LX_core::ShaderSpecializationValueType::Bool,
+      },
+  };
+
+  const auto diagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(diagnostics.empty(),
+         "pass-level feature should validate reflected specialization "
+         "constant by name and type");
+
+  feature.parameters["render_skybox"].kind = "float";
+  const auto typeDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(!typeDiagnostics.empty(),
+         "pass-level feature should reject specialization type mismatch");
+}
+
+void testProductionRenderFeatureAssetsValidateShaderAbi() {
+  const char *assets[] = {
+      "assets/effects/forward_pass.render-feature.yaml",
+      "assets/effects/skybox.render-feature.yaml",
+      "assets/effects/environment_lighting.render-feature.yaml",
+      "assets/effects/tone_mapping.render-feature.yaml",
+      "assets/effects/bloom.render-feature.yaml",
+  };
+
+  LX_infra::RenderFeatureResourceParser parser;
+  for (const char *asset : assets) {
+    const auto parsed = parser.parse(asset, readTextFile(asset));
+    if (!parsed.diagnostics.empty()) {
+      for (const std::string &diagnostic : parsed.diagnostics) {
+        std::cerr << "[diag] " << diagnostic << '\n';
+      }
+    }
+    EXPECT(parsed.renderFeature.has_value(),
+           std::string(asset) + " should parse before ABI validation");
+    EXPECT(parsed.diagnostics.empty(),
+           std::string(asset) + " should parse without diagnostics");
+    if (!parsed.renderFeature.has_value()) {
+      continue;
+    }
+
+    std::vector<std::string> compileDiagnostics;
+    const auto shader =
+        compileShaderForFeatureValidation(*parsed.renderFeature,
+                                          compileDiagnostics);
+    if (!compileDiagnostics.empty()) {
+      for (const std::string &diagnostic : compileDiagnostics) {
+        std::cerr << "[diag] " << asset << ": " << diagnostic << '\n';
+      }
+    }
+    EXPECT(shader.has_value(),
+           std::string(asset) + " shader ABI owner should compile");
+    if (!shader.has_value()) {
+      continue;
+    }
+
+    const auto abiDiagnostics =
+        LX_core::validateRenderFeatureShaderAbi(*parsed.renderFeature,
+                                                **shader);
+    if (!abiDiagnostics.empty()) {
+      for (const auto &diagnostic : abiDiagnostics) {
+        std::cerr << "[diag] " << asset << ": " << diagnostic.parameter
+                  << ": " << diagnostic.message << '\n';
+      }
+    }
+    EXPECT(abiDiagnostics.empty(),
+           std::string(asset) +
+               " should validate against reflected shader ABI");
+  }
+}
+
+void testRenderFeatureRejectsMissingLevel() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-missing-level", R"(
 schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
+name: MissingLevel
+feature: missingLevel
+shader:
+  uri: features/test
 parameters:
-  environmentMap:
-    kind: textureCube
-    uri: builtin:env/white_cube
-    binding: SkyboxMap
-    required: true
-  backgroundMode:
-    kind: enum
-    value: infinite
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
-  visibleInBackground:
+  enabled:
     kind: bool
     value: true
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "environmentLighting should hard-cut visibleInBackground");
-  EXPECT(hasDiagnosticContaining(parsed, "visibleInBackground"),
-         "diagnostic should name visibleInBackground");
+         "render feature without level should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "level"),
+         "diagnostic should name missing level");
 }
 
-void testEnvironmentLightingFeatureRejectsInvalidBackgroundMode() {
+void testRenderFeatureRejectsInvalidLevel() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed = parser.parse("memory://environment-bad-mode", R"(
+  const auto parsed = parser.parse("memory://feature-invalid-level", R"(
 schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
+name: InvalidLevel
+feature: invalidLevel
+level: technique
+shader:
+  uri: features/test
 parameters:
-  environmentMap:
-    kind: textureCube
-    uri: builtin:env/white_cube
-    binding: SkyboxMap
-    required: true
-  backgroundMode:
-    kind: enum
-    value: room
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
+  enabled:
+    kind: bool
+    value: true
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "environmentLighting should reject unsupported backgroundMode");
-  EXPECT(hasDiagnosticContaining(parsed, "parameters.backgroundMode.value"),
-         "diagnostic should name backgroundMode value");
+         "render feature with invalid level should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "level"),
+         "diagnostic should name invalid level");
 }
 
-void testEnvironmentLightingFeatureRejectsFiniteBoxWithoutBounds() {
+void testRenderFeatureRejectsMalformedShader() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed = parser.parse("memory://environment-finite-no-bounds", R"(
+  const auto parsed = parser.parse("memory://feature-malformed-shader", R"(
 schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
+name: MalformedShader
+feature: malformedShader
+level: shader
+shader: features/not-a-map
 parameters:
-  environmentMap:
-    kind: textureCube
-    uri: builtin:env/white_cube
-    binding: SkyboxMap
-    required: true
-  backgroundMode:
-    kind: enum
-    value: finiteBox
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: FeatureUBO
+    member: color
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "finiteBox backgroundMode should require finiteBoxBounds");
-  EXPECT(hasDiagnosticContaining(parsed, "parameters.finiteBoxBounds"),
-         "diagnostic should name finiteBoxBounds");
+         "render feature with malformed shader should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "shader"),
+         "diagnostic should name malformed shader");
 }
 
-void testEnvironmentLightingFeatureRejectsInvalidFiniteBoxBounds() {
+void testRenderFeatureRejectsAbiParameterWithoutShaderUri() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed = parser.parse("memory://environment-finite-bad-bounds", R"(
+  const auto parsed = parser.parse("memory://feature-abi-no-shader", R"(
 schema: lxe.render-feature.v1
-name: EnvironmentLighting
-feature: environmentLighting
+name: AbiNoShader
+feature: abiNoShader
+level: shader
 parameters:
-  environmentMap:
-    kind: textureCube
-    uri: builtin:env/white_cube
-    binding: SkyboxMap
-    required: true
-  backgroundMode:
-    kind: enum
-    value: finiteBox
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
-  finiteBoxBounds:
-    kind: vec6
-    value: [5.0, -5.0, -2.0, 3.0, -4.0, 4.0]
-    requiredWhen:
-      parameter: backgroundMode
-      equals: finiteBox
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: FeatureUBO
+    member: color
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "finiteBoxBounds should reject non-increasing x bounds");
-  EXPECT(hasDiagnosticContaining(parsed, "parameters.finiteBoxBounds.value"),
-         "diagnostic should name finiteBoxBounds value");
+         "ABI-owning parameter without shader URI should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "shader.uri"),
+         "diagnostic should name missing shader URI");
+}
+
+void testRenderFeatureRejectsPassBindingMemberAndSpecialization() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-pass-binding", R"(
+schema: lxe.render-feature.v1
+name: PassFeature
+feature: passFeature
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enabled:
+    kind: bool
+    value: true
+    binding: FeatureUBO
+    member: enabled
+  other:
+    kind: bool
+    value: false
+    specialization:
+      constantId: 5
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "pass-level feature binding/member/specialization should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.enabled.binding"),
+         "diagnostic should reject pass-level binding");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.enabled.member"),
+         "diagnostic should reject pass-level member");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.other.specialization"),
+         "diagnostic should reject parameter-level specialization");
 }
 
 void testTextureResourceParserUsesDeclaredContentFormat() {
@@ -620,29 +919,58 @@ void testDefaultRenderPathGraphAssetParses() {
          "default forward graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
          "default forward graph should use Forward render path");
-  EXPECT(graph.features.size() == 2,
-         "default forward graph should reference tone mapping and environment "
-         "features");
-  EXPECT(graph.passes.size() == 3,
-         "default forward graph should declare one shared Forward pass plus "
-         "shadow and debug overlay");
-  if (graph.passes.size() == 3) {
+  EXPECT(graph.features.size() == 5,
+         "default forward graph should reference all forward feature assets");
+  for (const char *slot : {"forwardPass", "skybox", "environmentLighting",
+                           "toneMapping", "bloom"}) {
+    const auto it = std::find_if(
+        graph.features.begin(), graph.features.end(),
+        [&](const LX_core::RenderPathFeatureDependency &dependency) {
+          return dependency.slot == slot;
+        });
+    EXPECT(it != graph.features.end(),
+           std::string("default forward graph should reference feature.") +
+               slot);
+  }
+  EXPECT(graph.passes.size() == 4,
+         "default forward graph should declare Shadow, Forward, Bloom, and "
+         "DebugOverlay passes");
+  if (graph.passes.size() == 4) {
     EXPECT(graph.passes[1].id == "Forward",
            "default forward graph should keep background and opaque draws in "
            "the Forward pass");
     EXPECT(std::find(graph.passes[1].input.material.types.begin(),
                      graph.passes[1].input.material.types.end(),
-                     "environment-box") !=
+                     "unlit-texture") !=
                graph.passes[1].input.material.types.end(),
-           "default Forward pass should accept environment-box material draws");
-    EXPECT(std::find(graph.passes[1].sources.begin(),
-                     graph.passes[1].sources.end(), "feature.toneMapping") !=
-               graph.passes[1].sources.end(),
-           "default Forward pass should consume toneMapping feature directly");
+           "default Forward pass should accept generated unlit texture room "
+           "draws");
+    for (const char *source : {"feature.forwardPass", "feature.skybox",
+                               "feature.environmentLighting",
+                               "feature.toneMapping"}) {
+      EXPECT(std::find(graph.passes[1].sources.begin(),
+                       graph.passes[1].sources.end(), source) !=
+                 graph.passes[1].sources.end(),
+             std::string("default Forward pass should consume ") + source);
+    }
     EXPECT(std::find(graph.passes[1].targets.begin(),
-                     graph.passes[1].targets.end(), "swapchain.color") !=
+                     graph.passes[1].targets.end(), "hdr.color") !=
                graph.passes[1].targets.end(),
-           "default Forward pass should write final swapchain color");
+           "default Forward pass should write HDR color for post passes");
+    EXPECT(graph.passes[2].id == "Bloom",
+           "default forward graph should include Bloom pass after Forward");
+    EXPECT(std::find(graph.passes[2].sources.begin(),
+                     graph.passes[2].sources.end(), "hdr.color") !=
+               graph.passes[2].sources.end(),
+           "Bloom pass should read Forward color output");
+    EXPECT(std::find(graph.passes[2].sources.begin(),
+                     graph.passes[2].sources.end(), "feature.bloom") !=
+               graph.passes[2].sources.end(),
+           "Bloom pass should consume feature.bloom");
+    EXPECT(std::find(graph.passes[2].targets.begin(),
+                     graph.passes[2].targets.end(), "swapchain.color") !=
+               graph.passes[2].targets.end(),
+           "Bloom pass should write final swapchain color");
   }
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
@@ -651,12 +979,14 @@ void testDefaultRenderPathGraphAssetParses() {
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),
          "default forward graph asset should compile into a FrameGraph plan");
-  if (compiled.getPasses().size() == 3) {
+  if (compiled.getPasses().size() == 4) {
     EXPECT(compiled.getPasses()[0].name == LX_core::StringID("Shadow"),
            "default forward graph should run shadow pass first");
     EXPECT(compiled.getPasses()[1].name == LX_core::StringID("Forward"),
            "default forward graph should run all scene draws after shadow");
-    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("DebugOverlay"),
+    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("Bloom"),
+           "default forward graph should run Bloom after Forward");
+    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("DebugOverlay"),
            "default forward graph should run debug overlay last");
   }
 }
@@ -720,14 +1050,16 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
   }
 }
 
-void testRenderFeatureRejectsPassAndShaderFields() {
+void testRenderFeatureRejectsRenderFlowFields() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse("memory://bad-feature", R"(
 schema: lxe.render-feature.v1
 name: BadFeature
 feature: toneMapping
+level: shader
+shader:
+  uri: features/tone_mapping
 pass: ToneMap
-shader: render_paths/Forward/tone_map
 passes:
   - id: ToneMap
 renderState:
@@ -740,8 +1072,6 @@ parameters:
 
   EXPECT(!parsed.renderFeature.has_value(),
          "render feature with render-flow fields should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "shader"),
-         "diagnostic should reject shader");
   EXPECT(hasDiagnosticContaining(parsed, "pass"),
          "diagnostic should reject legacy singular pass");
   EXPECT(hasDiagnosticContaining(parsed, "passes"),
@@ -756,6 +1086,9 @@ void testRenderFeatureResourcesAreExplicitlyNotImplemented() {
 schema: lxe.render-feature.v1
 name: FeatureWithResources
 feature: toneMapping
+level: shader
+shader:
+  uri: features/tone_mapping
 resources:
   exposureLut:
     uri: textures/exposure_lut.ktx
@@ -779,6 +1112,9 @@ void testRenderFeatureRejectsUnknownParameterFields() {
 schema: lxe.render-feature.v1
 name: FeatureWithParameterExtra
 feature: toneMapping
+level: shader
+shader:
+  uri: features/tone_mapping
 parameters:
   exposure:
     kind: float
@@ -798,6 +1134,9 @@ void testRenderFeatureRejectsUnknownParameterField() {
 schema: lxe.render-feature.v1
 name: FeatureWithParameterExtra
 feature: toneMapping
+level: shader
+shader:
+  uri: features/tone_mapping
 parameters:
   exposure:
     kind: float
@@ -818,6 +1157,9 @@ void testEnvironmentLightingFeatureRejectsMissingEnvironmentMapUri() {
 schema: lxe.render-feature.v1
 name: EnvironmentLighting
 feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
 parameters:
   environmentMap:
     kind: textureCube
@@ -1370,6 +1712,9 @@ void testParserAdapterLoadsEnvironmentFeatureTextureDependency() {
 schema: lxe.render-feature.v1
 name: EnvironmentLighting
 feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
 parameters:
   environmentMap:
     kind: textureCube
@@ -1395,13 +1740,6 @@ parameters:
     binding: EnvironmentLightingUBO
     member: rotation
     required: true
-  backgroundMode:
-    kind: enum
-    value: infinite
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
 )");
 
   const auto parsed =
@@ -1439,8 +1777,7 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
     std::size_t shaderCount;
   };
   const ExpectedAsset assets[] = {
-      {"assets/render_paths/forward_main.render-path.yaml", 3},
-      {"assets/render_paths/forward_bloom.render-path.yaml", 3},
+      {"assets/render_paths/forward_main.render-path.yaml", 4},
       {"assets/render_paths/deferred_main.render-path.yaml", 4},
       {"assets/render_paths/deferred_bloom.render-path.yaml", 4},
   };
@@ -1494,16 +1831,22 @@ int main() {
   testRenderFeatureParsesTextureCubeUriParameter();
   testDefaultRenderFeatureAssetParses();
   testEnvironmentLightingRenderFeatureAssetParses();
-  testEnvironmentLightingFeatureParsesBackgroundModeAndFiniteBoxBounds();
-  testEnvironmentLightingFeatureRejectsVisibleInBackground();
-  testEnvironmentLightingFeatureRejectsInvalidBackgroundMode();
-  testEnvironmentLightingFeatureRejectsFiniteBoxWithoutBounds();
-  testEnvironmentLightingFeatureRejectsInvalidFiniteBoxBounds();
+  testForwardPassRenderFeatureAssetParses();
+  testSkyboxRenderFeatureAssetParses();
+  testBloomRenderFeatureAssetParses();
+  testRenderFeatureShaderAbiValidationAcceptsShaderBindingsAndMembers();
+  testRenderFeatureShaderAbiValidationAcceptsPassSpecializationConstants();
+  testProductionRenderFeatureAssetsValidateShaderAbi();
+  testRenderFeatureRejectsMissingLevel();
+  testRenderFeatureRejectsInvalidLevel();
+  testRenderFeatureRejectsMalformedShader();
+  testRenderFeatureRejectsAbiParameterWithoutShaderUri();
+  testRenderFeatureRejectsPassBindingMemberAndSpecialization();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
-  testRenderFeatureRejectsPassAndShaderFields();
+  testRenderFeatureRejectsRenderFlowFields();
   testRenderFeatureResourcesAreExplicitlyNotImplemented();
   testRenderFeatureRejectsUnknownParameterFields();
   testRenderFeatureRejectsUnknownParameterField();

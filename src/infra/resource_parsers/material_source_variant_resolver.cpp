@@ -189,9 +189,13 @@ struct TypeSourceFacts final {
 
   std::vector<LX_core::ShaderResourceBinding> bindings;
   std::vector<LX_core::VertexInputAttribute> vertexInputs;
+  std::vector<LX_core::ShaderSpecializationConstantInfo>
+      specializationConstants;
   try {
     bindings = ShaderReflector::reflect(stages);
     vertexInputs = ShaderReflector::reflectVertexInputs(stages);
+    specializationConstants =
+        ShaderReflector::reflectSpecializationConstants(stages);
   } catch (const std::exception &error) {
     diagnostics.push_back("MaterialSourceVariantResolver graph=" +
                           graphUri.string() + " pass=" + pass.id +
@@ -214,7 +218,7 @@ struct TypeSourceFacts final {
   program.variants = variants;
   program.shader = std::make_shared<CompiledShader>(
       std::move(stages), std::move(bindings), std::move(vertexInputs),
-      pass.shaderUri.string());
+      std::move(specializationConstants), pass.shaderUri.string());
   return program;
 }
 

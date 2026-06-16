@@ -117,9 +117,21 @@ struct RenderFeatureParameter final {
   std::string requiredWhenEquals;
 };
 
+enum class RenderFeatureLevel {
+  Unknown,
+  Shader,
+  Pass,
+};
+
+struct RenderFeatureShaderContract final {
+  ResourceUri uri;
+};
+
 struct RenderFeature final {
   std::string name;
   std::string feature;
+  RenderFeatureLevel level = RenderFeatureLevel::Unknown;
+  std::optional<RenderFeatureShaderContract> shader;
   std::unordered_map<std::string, RenderFeatureParameter> parameters;
 };
 

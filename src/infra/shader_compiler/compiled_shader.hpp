@@ -9,6 +9,8 @@ public:
   CompiledShader(std::vector<LX_core::ShaderStageCode> stages,
                  std::vector<LX_core::ShaderResourceBinding> bindings,
                  std::vector<LX_core::VertexInputAttribute> vertexInputs = {},
+                 std::vector<LX_core::ShaderSpecializationConstantInfo>
+                     specializationConstants = {},
                  std::string logicalName = {});
 
   // --- IShader interface ---
@@ -19,6 +21,9 @@ public:
 
   const std::vector<LX_core::VertexInputAttribute> &
   getVertexInputs() const override;
+
+  const std::vector<LX_core::ShaderSpecializationConstantInfo> &
+  getSpecializationConstants() const override;
 
   std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>
   findBinding(u32 set, u32 binding) const override;
@@ -40,6 +45,8 @@ private:
   std::vector<LX_core::ShaderStageCode> m_stages;
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
   std::vector<LX_core::VertexInputAttribute> m_vertexInputs;
+  std::vector<LX_core::ShaderSpecializationConstantInfo>
+      m_specializationConstants;
 
   // Fast lookup: packed (set << 16 | binding) -> index in m_bindings
   std::unordered_map<u32, usize> m_setBindingIndex;

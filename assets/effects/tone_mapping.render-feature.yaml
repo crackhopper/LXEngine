@@ -1,13 +1,10 @@
 schema: lxe.render-feature.v1
 name: ToneMapping
 feature: toneMapping
+level: shader
+shader:
+  uri: features/tone_mapping
 parameters:
-  enabled:
-    kind: bool
-    value: true
-    binding: ToneMappingUBO
-    member: enabled
-    required: true
   exposure:
     kind: float
     value: 1.0
@@ -21,9 +18,3 @@ parameters:
     member: mode
     required: true
     allowedValues: [aces, reinhard]
-  gamma:
-    kind: float
-    value: 2.2
-    binding: ToneMappingUBO
-    member: gamma
-    required: true

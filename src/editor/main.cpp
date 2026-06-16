@@ -83,9 +83,13 @@ namespace {
       throw std::runtime_error("failed to compile DebugOverlay shader: " +
                                compiled.errorMessage);
     }
+    auto specializationConstants =
+        LX_infra::ShaderReflector::reflectSpecializationConstants(
+            compiled.stages);
     return std::make_shared<LX_infra::CompiledShader>(
         compiled.stages, LX_infra::ShaderReflector::reflect(compiled.stages),
         LX_infra::ShaderReflector::reflectVertexInputs(compiled.stages),
+        std::move(specializationConstants),
         "render_paths/Debug/debug_overlay");
   }();
   return shader;

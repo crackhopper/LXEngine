@@ -15,6 +15,10 @@ public:
   static std::vector<LX_core::VertexInputAttribute>
   reflectVertexInputs(const std::vector<LX_core::ShaderStageCode> &stages);
 
+  static std::vector<LX_core::ShaderSpecializationConstantInfo>
+  reflectSpecializationConstants(
+      const std::vector<LX_core::ShaderStageCode> &stages);
+
 private:
   /// Reflect a single stage's SPIR-V bytecode.
   static std::vector<LX_core::ShaderResourceBinding>
@@ -22,6 +26,10 @@ private:
 
   static std::vector<LX_core::VertexInputAttribute>
   reflectSingleStageInputs(const LX_core::ShaderStageCode &stage);
+
+  static std::vector<LX_core::ShaderSpecializationConstantInfo>
+  reflectSingleStageSpecializationConstants(
+      const LX_core::ShaderStageCode &stage);
 };
 
 } // namespace LX_infra

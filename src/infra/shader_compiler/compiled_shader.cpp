@@ -6,9 +6,12 @@ namespace LX_infra {
 CompiledShader::CompiledShader(std::vector<LX_core::ShaderStageCode> stages,
                                std::vector<LX_core::ShaderResourceBinding> bindings,
                                std::vector<LX_core::VertexInputAttribute> vertexInputs,
+                               std::vector<LX_core::ShaderSpecializationConstantInfo>
+                                   specializationConstants,
                                std::string logicalName)
     : m_stages(std::move(stages)), m_bindings(std::move(bindings)),
       m_vertexInputs(std::move(vertexInputs)),
+      m_specializationConstants(std::move(specializationConstants)),
       m_logicalName(std::move(logicalName)) {
   buildIndices();
   computeHash();
@@ -27,6 +30,11 @@ CompiledShader::getReflectionBindings() const {
 const std::vector<LX_core::VertexInputAttribute> &
 CompiledShader::getVertexInputs() const {
   return m_vertexInputs;
+}
+
+const std::vector<LX_core::ShaderSpecializationConstantInfo> &
+CompiledShader::getSpecializationConstants() const {
+  return m_specializationConstants;
 }
 
 std::optional<std::reference_wrapper<const LX_core::ShaderResourceBinding>>

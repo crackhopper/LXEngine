@@ -738,6 +738,67 @@ testTextureCubeReflectionContract(const std::filesystem::path &shaderDir) {
   return true;
 }
 
+static bool
+testSpecializationConstantReflectionContract(const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: specialization constant reflection contract\n";
+  std::cout << "========================================\n";
+
+  const auto vertPath = shaderDir / "specialization_constant_probe.vert";
+  const auto fragPath = shaderDir / "specialization_constant_probe.frag";
+  auto compileResult = ShaderCompiler::compileProgram(vertPath, fragPath, {});
+  if (!compileResult.success) {
+    std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
+    return false;
+  }
+
+  const auto constants =
+      ShaderReflector::reflectSpecializationConstants(compileResult.stages);
+  const auto findConstant = [&](const std::string &name) {
+    return std::find_if(constants.begin(), constants.end(),
+                        [&](const auto &constant) {
+                          return constant.name == name;
+                        });
+  };
+
+  const auto featureA = findConstant("test_feature_a");
+  if (featureA == constants.end()) {
+    std::cerr << "  FAIL: test_feature_a specialization constant missing\n";
+    return false;
+  }
+  if (featureA->stage != ShaderStage::Vertex || featureA->constantId != 17 ||
+      featureA->type != ShaderSpecializationValueType::Bool) {
+    std::cerr << "  FAIL: test_feature_a reflection mismatch\n";
+    return false;
+  }
+
+  const auto featureB = findConstant("test_feature_b");
+  if (featureB == constants.end()) {
+    std::cerr << "  FAIL: test_feature_b specialization constant missing\n";
+    return false;
+  }
+  if (featureB->stage != ShaderStage::Fragment || featureB->constantId != 23 ||
+      featureB->type != ShaderSpecializationValueType::Bool) {
+    std::cerr << "  FAIL: test_feature_b reflection mismatch\n";
+    return false;
+  }
+
+  auto bindings = ShaderReflector::reflect(compileResult.stages);
+  auto vertexInputs = ShaderReflector::reflectVertexInputs(compileResult.stages);
+  auto shader = std::make_shared<CompiledShader>(
+      std::move(compileResult.stages), std::move(bindings),
+      std::move(vertexInputs), constants);
+  if (shader->getSpecializationConstants().size() != 2) {
+    std::cerr << "  FAIL: CompiledShader should retain reflected "
+                 "specialization constants\n";
+    return false;
+  }
+
+  std::cout << "  PASS: specialization constants reflect by name, stage, id, "
+               "and type\n";
+  return true;
+}
+
 static bool testPbrIblContract(const std::filesystem::path &shaderDir,
                                const std::filesystem::path &vertPath,
                                const std::filesystem::path &fragPath) {
@@ -1268,6 +1329,8 @@ int main(int argc, char *argv[]) {
   if (!testDefaultRealtimeShadersExposeToneMappingFeature(shaderDir))
     ++failures;
   if (!testTextureCubeReflectionContract(shaderDir))
+    ++failures;
+  if (!testSpecializationConstantReflectionContract(shaderDir))
     ++failures;
   if (!testIblBakeShaderContracts(shaderDir))
     ++failures;

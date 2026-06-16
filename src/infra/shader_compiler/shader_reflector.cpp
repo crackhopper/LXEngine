@@ -1,6 +1,7 @@
 #include "shader_reflector.hpp"
 #include <cassert>
 #include <iostream>
+#include <iterator>
 #include <spirv_cross.hpp>
 #include <unordered_map>
 
@@ -35,6 +36,21 @@ mapMemberType(const spirv_cross::SPIRType &type) {
     }
   }
   return LX_core::ShaderPropertyType::Float;
+}
+
+static LX_core::ShaderSpecializationValueType
+mapSpecializationValueType(const spirv_cross::SPIRType &type) {
+  using BT = spirv_cross::SPIRType::BaseType;
+  if (type.basetype == BT::Boolean) {
+    return LX_core::ShaderSpecializationValueType::Bool;
+  }
+  if (type.basetype == BT::Int) {
+    return LX_core::ShaderSpecializationValueType::Int;
+  }
+  if (type.basetype == BT::UInt) {
+    return LX_core::ShaderSpecializationValueType::UInt;
+  }
+  return LX_core::ShaderSpecializationValueType::Float;
 }
 
 static LX_core::DataType mapVertexInputType(const spirv_cross::SPIRType &type) {
@@ -238,6 +254,41 @@ ShaderReflector::reflectSingleStageInputs(const LX_core::ShaderStageCode &stage)
   return inputs;
 }
 
+std::vector<LX_core::ShaderSpecializationConstantInfo>
+ShaderReflector::reflectSingleStageSpecializationConstants(
+    const LX_core::ShaderStageCode &stage) {
+  std::vector<LX_core::ShaderSpecializationConstantInfo> constants;
+  spirv_cross::Compiler compiler(stage.bytecode);
+  const auto specializationConstants = compiler.get_specialization_constants();
+  constants.reserve(specializationConstants.size());
+
+  for (const auto &constant : specializationConstants) {
+    LX_core::ShaderSpecializationConstantInfo info;
+    info.name = compiler.get_name(constant.id);
+    if (info.name.empty()) {
+      info.name = "_spec_constant_" + std::to_string(constant.constant_id);
+    }
+    info.stage = stage.stage;
+    info.constantId = constant.constant_id;
+    info.type = mapSpecializationValueType(
+        compiler.get_type(compiler.get_constant(constant.id).constant_type));
+    constants.push_back(std::move(info));
+  }
+
+  std::sort(constants.begin(), constants.end(),
+            [](const LX_core::ShaderSpecializationConstantInfo &a,
+               const LX_core::ShaderSpecializationConstantInfo &b) {
+              if (a.stage != b.stage) {
+                return static_cast<u32>(a.stage) < static_cast<u32>(b.stage);
+              }
+              if (a.name != b.name) {
+                return a.name < b.name;
+              }
+              return a.constantId < b.constantId;
+            });
+  return constants;
+}
+
 std::vector<LX_core::ShaderResourceBinding>
 ShaderReflector::reflect(const std::vector<LX_core::ShaderStageCode> &stages) {
   std::unordered_map<SetBindingKey, LX_core::ShaderResourceBinding,
@@ -302,6 +353,29 @@ ShaderReflector::reflectVertexInputs(
     }
   }
   return {};
+}
+
+std::vector<LX_core::ShaderSpecializationConstantInfo>
+ShaderReflector::reflectSpecializationConstants(
+    const std::vector<LX_core::ShaderStageCode> &stages) {
+  std::vector<LX_core::ShaderSpecializationConstantInfo> constants;
+  for (const auto &stage : stages) {
+    auto stageConstants = reflectSingleStageSpecializationConstants(stage);
+    constants.insert(constants.end(), std::make_move_iterator(stageConstants.begin()),
+                     std::make_move_iterator(stageConstants.end()));
+  }
+  std::sort(constants.begin(), constants.end(),
+            [](const LX_core::ShaderSpecializationConstantInfo &a,
+               const LX_core::ShaderSpecializationConstantInfo &b) {
+              if (a.stage != b.stage) {
+                return static_cast<u32>(a.stage) < static_cast<u32>(b.stage);
+              }
+              if (a.name != b.name) {
+                return a.name < b.name;
+              }
+              return a.constantId < b.constantId;
+            });
+  return constants;
 }
 
 } // namespace LX_infra

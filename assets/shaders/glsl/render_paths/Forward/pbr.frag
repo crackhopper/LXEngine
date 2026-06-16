@@ -22,6 +22,10 @@ layout(location = 6) flat in uint vMaterialRefIndex;
 
 layout(location = 0) out vec4 outColor;
 
+layout(constant_id = 0) const bool render_skybox = true;
+layout(constant_id = 1) const bool enable_tonemapping = true;
+layout(constant_id = 2) const bool enable_gamma = false;
+
 // Camera
 layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;

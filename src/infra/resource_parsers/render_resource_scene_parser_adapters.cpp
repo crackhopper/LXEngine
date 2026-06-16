@@ -98,9 +98,13 @@ readTextFile(const LX_core::ResourceUri &uri, std::string &diagnostic) {
 
   std::vector<LX_core::ShaderResourceBinding> bindings;
   std::vector<LX_core::VertexInputAttribute> vertexInputs;
+  std::vector<LX_core::ShaderSpecializationConstantInfo>
+      specializationConstants;
   try {
     bindings = LX_infra::ShaderReflector::reflect(stages);
     vertexInputs = LX_infra::ShaderReflector::reflectVertexInputs(stages);
+    specializationConstants =
+        LX_infra::ShaderReflector::reflectSpecializationConstants(stages);
   } catch (const std::exception &error) {
     diagnostics.push_back(
         "RenderPathGraph '" + graphUri.string() + "' failed to reflect "
@@ -116,7 +120,7 @@ readTextFile(const LX_core::ResourceUri &uri, std::string &diagnostic) {
 
   return std::make_shared<LX_infra::CompiledShader>(
       std::move(stages), std::move(bindings), std::move(vertexInputs),
-      shaderUri.string());
+      std::move(specializationConstants), shaderUri.string());
 }
 
 [[nodiscard]] std::optional<bool> shaderRequiresMaterialSourceVariant(
