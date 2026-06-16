@@ -115,7 +115,7 @@
 - Modify: `assets/scenes/generated/helmet_standard_pbr.scene.yaml`
 - Test: add script smoke in CMake/CTest or existing Python integration location
 
-- [ ] **Step 1: Write RED tool smoke**
+- [x] **Step 1: Write RED tool smoke**
 
 Add a test command that runs:
 
@@ -140,7 +140,7 @@ build/test_generated/finite_room/textures/test_neutral_room_srgb.png
 
 The RED test fails because the script does not exist yet.
 
-- [ ] **Step 2: Implement CLI and validation**
+- [x] **Step 2: Implement CLI and validation**
 
 `generate_finite_skybox_room.py` must accept:
 
@@ -165,7 +165,7 @@ KTX2 cubemap input can be decoded
 
 Invalid input exits nonzero with a clear message.
 
-- [ ] **Step 3: Generate ordinary scene assets**
+- [x] **Step 3: Generate ordinary scene assets**
 
 The script writes:
 
@@ -188,7 +188,7 @@ Important: these assets are ordinary model/scene content. They must not depend o
 
 Current repo fact: `src/infra/mesh_loader/obj_mesh_loader.cpp` uses tinyobj to read geometry/UVs, but the engine material path is `.material` loaded through `MaterialResourceParser`. `.mtl` is the Wavefront material-library sidecar format; do not make it the source of truth for LXEngine materials in this plan.
 
-- [ ] **Step 4: Generate sRGB LDR textures**
+- [x] **Step 4: Generate sRGB LDR textures**
 
 Convert environment input into one sRGB PNG atlas used by the OBJ UVs. The tool must support the repository neutral KTX2 environment:
 
@@ -217,7 +217,7 @@ then fixed sRGB encode
 
 This is offline asset generation, not runtime tone mapping.
 
-- [ ] **Step 5: Run tool smoke GREEN**
+- [x] **Step 5: Run tool smoke GREEN**
 
 ```bash
 python3 scripts/assets/generate_finite_skybox_room.py --input assets/env/khronos/neutral/ggx/specular.ktx2 --bounds -12 12 -8 10 -12 12 --output-dir build/test_generated/finite_room --name test_neutral_room --tone-map aces --exposure 1.0
@@ -234,7 +234,7 @@ test_neutral_room_unlit.material references textures/test_neutral_room_srgb.png
 scene snippet references test_neutral_room.obj and test_neutral_room_unlit.material
 ```
 
-- [ ] **Step 6: Generate committed finite room assets**
+- [x] **Step 6: Generate committed finite room assets**
 
 Run the same tool for the committed helmet-scene assets:
 
@@ -253,7 +253,7 @@ assets/scenes/generated/finite_room/textures/test_neutral_room_srgb.png
 
 These generated assets are part of this change and should be staged/committed with the code.
 
-- [ ] **Step 7: Add generated room to helmet test scene**
+- [x] **Step 7: Add generated room to helmet test scene**
 
 Append the generated finite room as an ordinary child node in `assets/scenes/generated/helmet_standard_pbr.scene.yaml`:
 
@@ -273,7 +273,7 @@ Append the generated finite room as an ordinary child node in `assets/scenes/gen
 
 The room is just another renderable in the helmet scene. It must not be injected by C++ runtime code.
 
-- [ ] **Step 8: Add quick helmet room smoke**
+- [x] **Step 8: Add quick helmet room smoke**
 
 Add a fast smoke that loads `assets/scenes/generated/helmet_standard_pbr.scene.yaml` and verifies the finite room OBJ/material resources resolve.
 

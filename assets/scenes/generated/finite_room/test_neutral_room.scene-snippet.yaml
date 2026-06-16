@@ -1,0 +1,11 @@
+- nodeName: finite_neutral_room
+  name: finite_neutral_room
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  mesh:
+    uri: test_neutral_room.obj
+  material:
+    uri: test_neutral_room_unlit.material

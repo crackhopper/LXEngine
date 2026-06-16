@@ -76,6 +76,19 @@ if(TARGET lxe_editor)
   )
 endif()
 
+add_test(
+  NAME test_generate_finite_skybox_room
+  COMMAND
+    ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_generate_finite_skybox_room.py
+    --source-dir ${CMAKE_SOURCE_DIR}
+    --binary-dir ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(test_generate_finite_skybox_room PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  LABELS "auto;headless_ok"
+)
+
 # Shader compiler coverage stays standalone so it can validate shaderc and
 # SPIRV-Cross without linking the full infra/backend libraries.
 add_executable(test_shader_compiler

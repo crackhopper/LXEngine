@@ -67,6 +67,17 @@ root:
         shadowStrength: 0.0
         shadowDistance: 80.0
         shadowCascadeCount: 1
+    - nodeName: finite_neutral_room
+      name: finite_neutral_room
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      mesh:
+        uri: assets/scenes/generated/finite_room/test_neutral_room.obj
+      material:
+        uri: assets/scenes/generated/finite_room/test_neutral_room_unlit.material
 editor:
   editorCamera:
     position: [4.4693, 0.706849, 1.23665]
