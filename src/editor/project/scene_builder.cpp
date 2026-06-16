@@ -37,6 +37,7 @@ using LX_core::MeshSharedPtr;
 using LX_core::SceneNode;
 using LX_core::StringID;
 using LX_core::Texture;
+using LX_core::TextureContent;
 using LX_core::TextureDesc;
 using LX_core::TextureFormat;
 using LX_core::Vec2f;
@@ -47,7 +48,8 @@ using LX_core::VertexBuffer;
 using LX_core::VertexPosNormalUvBone;
 
 // Load an image file and wrap it in a CombinedTextureSampler the material
-// system understands. Uses RGBA8 (stb_image always delivers 4 channels via
+// system understands. Uses sRGB RGBA8 for authored color textures; stb_image
+// always delivers 4 channels via
 // STBI_rgb_alpha, which is what TextureLoader requests internally).
 CombinedTextureSamplerSharedPtr
 loadCombinedTexture(const std::filesystem::path &path) {
@@ -64,7 +66,7 @@ loadCombinedTexture(const std::filesystem::path &path) {
   std::vector<u8> pixels(loader.getData(), loader.getData() + byteCount);
 
   TextureDesc desc{static_cast<u32>(w), static_cast<u32>(h),
-                   TextureFormat::RGBA8};
+                   TextureFormat::RGBA8Srgb, TextureContent::Color};
   auto tex = std::make_shared<Texture>(desc, std::move(pixels));
   return std::make_shared<CombinedTextureSampler>(std::move(tex));
 }

@@ -1,10 +1,12 @@
 #include "core/frame_graph/frame_graph_build_plan.hpp"
 #include "core/frame_graph/graph_resource_registry.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/material_loader/material_resource_parser.hpp"
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
+#include "infra/resource_parsers/texture_resource_parser.hpp"
 
 #include <cstddef>
 #include <exception>
@@ -135,6 +137,87 @@ void testDefaultRenderFeatureAssetParses() {
          "default tone mapping feature should retain feature kind");
   EXPECT(feature.parameters.find("exposure") != feature.parameters.end(),
          "default tone mapping feature should declare exposure");
+}
+
+void testTextureResourceParserUsesDeclaredContentFormat() {
+  LX_infra::TextureResourceParser parser;
+  LX_core::SceneResourceTable colorTable;
+  const LX_core::ResourceUri colorUri(
+      "assets://models/damaged_helmet/Default_albedo.jpg");
+  const auto parsedColor = parser.parse(
+      colorTable, colorUri,
+      LX_infra::SceneResourceParseContext{
+          .textureContent = LX_core::TextureContent::Color,
+      });
+  EXPECT(parsedColor.diagnostics.empty(),
+         "color texture parse should not emit diagnostics");
+  const auto colorHandle = colorTable.findTexture(colorUri);
+  EXPECT(colorHandle.has_value(), "color texture should register");
+  if (colorHandle.has_value()) {
+    const auto colorTexture = colorTable.resolve(*colorHandle);
+    EXPECT(colorTexture.has_value(), "color texture handle should resolve");
+    if (colorTexture.has_value()) {
+      EXPECT(colorTexture->get().texture()->desc().format ==
+                 LX_core::TextureFormat::RGBA8Srgb,
+             "declared color texture should upload as sRGB");
+    }
+  }
+
+  LX_core::SceneResourceTable normalTable;
+  const LX_core::ResourceUri normalUri(
+      "assets://models/damaged_helmet/Default_normal.jpg");
+  const auto parsedNormal = parser.parse(
+      normalTable, normalUri,
+      LX_infra::SceneResourceParseContext{
+          .textureContent = LX_core::TextureContent::Normal,
+      });
+  EXPECT(parsedNormal.diagnostics.empty(),
+         "normal texture parse should not emit diagnostics");
+  const auto normalHandle = normalTable.findTexture(normalUri);
+  EXPECT(normalHandle.has_value(), "normal texture should register");
+  if (normalHandle.has_value()) {
+    const auto normalTexture = normalTable.resolve(*normalHandle);
+    EXPECT(normalTexture.has_value(), "normal texture handle should resolve");
+    if (normalTexture.has_value()) {
+      EXPECT(normalTexture->get().texture()->desc().format ==
+                 LX_core::TextureFormat::RGBA8,
+             "declared normal texture should remain linear RGBA8");
+    }
+  }
+}
+
+void testMaterialParserAnnotatesTextureDependencyContent() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const LX_core::ResourceUri materialUri(
+      "assets/scenes/generated/materials/damaged_helmet_standard_pbr.material");
+  const auto parsed = parser.parse(table, materialUri,
+                                   readTextFile(materialUri.string()));
+  EXPECT(parsed.diagnostics.empty(),
+         "helmet standard-pbr material should parse cleanly");
+  EXPECT(!parsed.dependencies.empty(),
+         "helmet material should declare texture dependencies");
+
+  auto contentFor = [&](const std::string &parameterName) {
+    for (const auto &dependency : parsed.dependencies) {
+      if (dependency.parameterName == parameterName) {
+        return dependency.textureContent;
+      }
+    }
+    return LX_core::TextureContent::Unknown;
+  };
+
+  EXPECT(contentFor("baseColorTexture") == LX_core::TextureContent::Color,
+         "baseColorTexture dependency should be color/sRGB");
+  EXPECT(contentFor("emissiveTexture") == LX_core::TextureContent::Color,
+         "emissiveTexture dependency should be color/sRGB");
+  EXPECT(contentFor("metallicRoughnessTexture") ==
+             LX_core::TextureContent::MetallicRoughness,
+         "metallicRoughnessTexture dependency should be linear data");
+  EXPECT(contentFor("normalTexture") == LX_core::TextureContent::Normal,
+         "normalTexture dependency should be normal data");
+  EXPECT(contentFor("occlusionTexture") == LX_core::TextureContent::Occlusion,
+         "occlusionTexture dependency should be occlusion data");
 }
 
 // REQ-073-e2 Task 2 keeps the default render-path assets as positive coverage
@@ -885,6 +968,8 @@ int main() {
 
   testRenderFeatureParsesPureEnvelope();
   testDefaultRenderFeatureAssetParses();
+  testTextureResourceParserUsesDeclaredContentFormat();
+  testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
   testRenderFeatureRejectsPassAndShaderFields();

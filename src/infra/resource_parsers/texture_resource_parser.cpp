@@ -37,14 +37,19 @@ namespace {
 }
 
 [[nodiscard]] LX_core::CombinedTextureSamplerUniquePtr
-loadTextureSampler(const LX_core::ResourceUri &uri) {
+loadTextureSampler(const LX_core::ResourceUri &uri,
+                   LX_core::TextureContent content) {
   infra::TextureLoader loader;
   loader.load(pathFromUri(uri).string());
 
   LX_core::TextureDesc desc;
   desc.width = static_cast<u32>(loader.getWidth());
   desc.height = static_cast<u32>(loader.getHeight());
-  desc.format = LX_core::TextureFormat::RGBA8;
+  desc.content = content;
+  desc.format = (content == LX_core::TextureContent::Color ||
+                 content == LX_core::TextureContent::Emissive)
+                    ? LX_core::TextureFormat::RGBA8Srgb
+                    : LX_core::TextureFormat::RGBA8;
 
   const usize byteCount = LX_core::expectedTextureByteCount(desc);
   std::vector<u8> pixels(byteCount);
@@ -96,7 +101,7 @@ ParsedSceneResource TextureResourceParser::parse(
     sampler = makeWhiteSampler();
   } else {
     try {
-      sampler = loadTextureSampler(canonicalUri);
+      sampler = loadTextureSampler(canonicalUri, context.textureContent);
     } catch (const std::exception &error) {
       return makeFailedTextureParse(table, canonicalUri, context.ownerUri,
                                     error.what());

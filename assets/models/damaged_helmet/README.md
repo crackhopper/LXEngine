@@ -4,7 +4,8 @@ PBR 主测试模型，用于验证 metallic-roughness 工作流、法线贴图�
 
 ## 来源
 
-- **URL**: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet/glTF
+- **glTF URL**: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet/glTF
+- **glTF-Binary URL**: https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet/glTF-Binary
 - **License**: Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)
 - **原始作者**: theblueturtle_ (Sketchfab), glTF conversion by ctxwing
 
@@ -24,9 +25,10 @@ PBR 主测试模型，用于验证 metallic-roughness 工作流、法线贴图�
 | Default_emissive.jpg | 95 KB |
 | Default_metalRoughness.jpg | 1.3 MB |
 | Default_normal.jpg | 506 KB |
+| glTF-Binary/DamagedHelmet.glb | 3.6 MB |
 | reference/khronos_screenshot.png | 28 KB |
 
-**总计**: ~3.7 MB
+**总计**: ~7.3 MB
 
 ## 几何信息
 

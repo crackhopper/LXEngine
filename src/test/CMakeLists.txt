@@ -10,6 +10,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_render_path_graph_pass_contract
   test_render_resource_parsers
   test_render_work_compiler
+  test_vulkan_post_process_builder
   test_scene_resource_upload_view_v2
   test_vulkan_offline_renderer
 )

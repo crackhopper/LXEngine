@@ -1,10 +1,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "texture_loader.hpp"
 #include "infra/image/rgba_image_io.hpp"
-#include <stb/stb_image.h>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <stb/stb_image.h>
 
 namespace infra {
 
@@ -12,7 +12,7 @@ struct TextureLoader::Impl {
   int width = 0;
   int height = 0;
   int channels = 0;
-  unsigned char* data = nullptr;
+  unsigned char *data = nullptr;
 
   ~Impl() {
     if (data) {
@@ -25,12 +25,13 @@ TextureLoader::TextureLoader() : pImpl(std::make_unique<Impl>()) {}
 
 TextureLoader::~TextureLoader() = default;
 
-void TextureLoader::load(const std::string& filename) {
+void TextureLoader::load(const std::string &filename) {
   int width, height, channels;
   // glTF and the renderer sample LDR texture data with v=0 at the first image
   // row. Flipping here misaligns all material maps before shader sampling.
   stbi_set_flip_vertically_on_load(false);
-  unsigned char* imageData = stbi_load(filename.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+  unsigned char *imageData =
+      stbi_load(filename.c_str(), &width, &height, &channels, STBI_rgb_alpha);
 
   if (!imageData) {
     throw std::runtime_error("Failed to load texture: " + filename);
@@ -42,21 +43,13 @@ void TextureLoader::load(const std::string& filename) {
   pImpl->data = imageData;
 }
 
-int TextureLoader::getWidth() const {
-  return pImpl->width;
-}
+int TextureLoader::getWidth() const { return pImpl->width; }
 
-int TextureLoader::getHeight() const {
-  return pImpl->height;
-}
+int TextureLoader::getHeight() const { return pImpl->height; }
 
-int TextureLoader::getChannels() const {
-  return pImpl->channels;
-}
+int TextureLoader::getChannels() const { return pImpl->channels; }
 
-const unsigned char* TextureLoader::getData() const {
-  return pImpl->data;
-}
+const unsigned char *TextureLoader::getData() const { return pImpl->data; }
 
 LX_core::TextureSharedPtr
 TextureLoader::loadHdrTexture(const std::filesystem::path &filename) {
@@ -66,6 +59,7 @@ TextureLoader::loadHdrTexture(const std::filesystem::path &filename) {
     desc.width = image.width;
     desc.height = image.height;
     desc.format = LX_core::TextureFormat::RGBA32Float;
+    desc.content = LX_core::TextureContent::Environment;
     const usize byteCount = LX_core::expectedTextureByteCount(desc);
     std::vector<u8> pixels(byteCount);
     std::memcpy(pixels.data(), image.rgba.data(), byteCount);
@@ -89,6 +83,7 @@ TextureLoader::loadHdrTexture(const std::filesystem::path &filename) {
   desc.width = static_cast<u32>(width);
   desc.height = static_cast<u32>(height);
   desc.format = LX_core::TextureFormat::RGBA32Float;
+  desc.content = LX_core::TextureContent::Environment;
 
   const usize byteCount = LX_core::expectedTextureByteCount(desc);
   std::vector<u8> pixels(byteCount);

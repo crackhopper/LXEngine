@@ -27,6 +27,7 @@ struct MaterialResourceDependency final {
   ResourceUri uri;
   ResourceIdentityHandle resourceHandle;
   std::string parameterName;
+  TextureContent textureContent = TextureContent::Unknown;
 };
 
 enum class MaterialParameterValueType {

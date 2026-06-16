@@ -1,5 +1,5 @@
-#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/mesh_loader/gltf_mesh_loader.hpp"
+#include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/scene_io/scene_document.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
@@ -32,6 +32,17 @@ bool hasTexture(const LX_core::MaterialInstanceSharedPtr &material,
          material->getTexture(LX_core::StringID(binding)) != nullptr;
 }
 
+void expectTextureDesc(const LX_core::MaterialInstanceSharedPtr &material,
+                       const char *binding, LX_core::TextureFormat format,
+                       LX_core::TextureContent content) {
+  const auto sampler = material->getTexture(LX_core::StringID(binding));
+  expect(sampler != nullptr, "expected texture sampler binding");
+  expect(sampler->texture() != nullptr, "expected sampler texture");
+  const auto &desc = sampler->texture()->desc();
+  expect(desc.format == format, "texture format mismatch");
+  expect(desc.content == content, "texture content mismatch");
+}
+
 void expectNear(float actual, float expected, const char *message) {
   if (std::abs(actual - expected) > 1.0e-5f) {
     std::cerr << "[FAIL] " << message << " actual=" << actual
@@ -54,10 +65,10 @@ std::filesystem::path writeFullPbrFixture() {
   std::filesystem::create_directories(dir);
 
   std::vector<unsigned char> bytes;
-  const float positions[] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                             0.0f, 1.0f, 0.0f};
-  const float normals[] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,
-                           0.0f, 0.0f, 1.0f};
+  const float positions[] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                             0.0f, 0.0f, 1.0f, 0.0f};
+  const float normals[] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                           1.0f, 0.0f, 0.0f, 1.0f};
   const float uvs[] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
   const std::uint16_t indices[] = {0, 1, 2};
   for (const float value : positions) {
@@ -83,13 +94,11 @@ std::filesystem::path writeFullPbrFixture() {
             static_cast<std::streamsize>(bytes.size()));
 
   const std::filesystem::path gltfPath = dir / "full_pbr.gltf";
-  writeTextFile(
-      gltfPath,
-      std::string(R"json({
+  writeTextFile(gltfPath, std::string(R"json({
   "asset": { "version": "2.0" },
   "buffers": [
     { "uri": "fixture.bin", "byteLength": )json") +
-          std::to_string(bytes.size()) + R"json( }
+                              std::to_string(bytes.size()) + R"json( }
   ],
   "bufferViews": [
     { "buffer": 0, "byteOffset": 0, "byteLength": 36 },
@@ -180,8 +189,7 @@ void expectFloatEnvelope(const LX_core::MaterialInstanceSharedPtr &material,
 }
 
 void expectStringEnvelope(const LX_core::MaterialInstanceSharedPtr &material,
-                          const char *parameterName,
-                          const std::string &value) {
+                          const char *parameterName, const std::string &value) {
   const auto envelope = requireEnvelope(material, parameterName);
   expect(envelope.kind == LX_core::MaterialEnvelopeKind::String,
          "expected string envelope kind");
@@ -190,8 +198,7 @@ void expectStringEnvelope(const LX_core::MaterialInstanceSharedPtr &material,
 }
 
 void expectTextureEnvelope(const LX_core::MaterialInstanceSharedPtr &material,
-                           const char *parameterName,
-                           const std::string &uri) {
+                           const char *parameterName, const std::string &uri) {
   const auto envelope = requireEnvelope(material, parameterName);
   expect(envelope.kind == LX_core::MaterialEnvelopeKind::Texture,
          "expected texture envelope kind");
@@ -242,7 +249,8 @@ void testDamagedHelmetMetallicRoughnessTextureHasVariation() {
 
   const ChannelStats roughness = channelStats(rgba, pixelCount, 1);
   const ChannelStats metallic = channelStats(rgba, pixelCount, 2);
-  expect(roughness.min < 32, "roughness green channel should include low values");
+  expect(roughness.min < 32,
+         "roughness green channel should include low values");
   expect(roughness.max > 220,
          "roughness green channel should include high values");
   expect(roughness.lowCount > pixelCount / 5,
@@ -270,13 +278,10 @@ void testGltfLoaderExtractsMetallicRoughnessFactorsAndTextures() {
              "glTF baseColorFactor b should be extracted");
   expectNear(pbr.baseColor.w, 0.5f,
              "glTF baseColorFactor a should be extracted");
-  expectNear(pbr.metallic, 0.6f,
-             "glTF metallicFactor should be extracted");
-  expectNear(pbr.roughness, 0.7f,
-             "glTF roughnessFactor should be extracted");
+  expectNear(pbr.metallic, 0.6f, "glTF metallicFactor should be extracted");
+  expectNear(pbr.roughness, 0.7f, "glTF roughnessFactor should be extracted");
   expect(pbr.alphaMode == "MASK", "glTF alphaMode should be extracted");
-  expectNear(pbr.alphaCutoff, 0.35f,
-             "glTF alphaCutoff should be extracted");
+  expectNear(pbr.alphaCutoff, 0.35f, "glTF alphaCutoff should be extracted");
   expect(pbr.baseColorTexture == "albedo.png",
          "glTF base color texture URI should be preserved");
   expect(pbr.metallicRoughnessTexture == "metal_rough.png",
@@ -342,6 +347,21 @@ void testDamagedHelmetLoadsStandardPbrCleanPath() {
          "standard-pbr loader should bind occlusion texture");
   expect(hasTexture(result.material, "emissiveTexture"),
          "standard-pbr loader should bind emissive texture");
+  expectTextureDesc(result.material, "baseColorTexture",
+                    LX_core::TextureFormat::RGBA8Srgb,
+                    LX_core::TextureContent::Color);
+  expectTextureDesc(result.material, "metallicRoughnessTexture",
+                    LX_core::TextureFormat::RGBA8,
+                    LX_core::TextureContent::MetallicRoughness);
+  expectTextureDesc(result.material, "normalTexture",
+                    LX_core::TextureFormat::RGBA8,
+                    LX_core::TextureContent::Normal);
+  expectTextureDesc(result.material, "occlusionTexture",
+                    LX_core::TextureFormat::RGBA8,
+                    LX_core::TextureContent::Occlusion);
+  expectTextureDesc(result.material, "emissiveTexture",
+                    LX_core::TextureFormat::RGBA8Srgb,
+                    LX_core::TextureContent::Emissive);
   expect(!hasTexture(result.material, "Kd"),
          "standard-pbr loader should not populate PBRT Kd texture");
   expect(!hasTexture(result.material, "normalmap"),
@@ -369,6 +389,10 @@ void testDamagedHelmetSharedAssetLoadsFullPbrWithoutParameterBuffers() {
   expect(hasTexture(result.material, "normalmap"),
          "shared loader should bind normal map as material v2 normalmap "
          "texture");
+  expectTextureDesc(result.material, "Kd", LX_core::TextureFormat::RGBA8Srgb,
+                    LX_core::TextureContent::Color);
+  expectTextureDesc(result.material, "normalmap", LX_core::TextureFormat::RGBA8,
+                    LX_core::TextureContent::Normal);
   expect(!hasTexture(result.material, "albedoMap"),
          "material v2 should not bind legacy albedoMap");
   expect(!hasTexture(result.material, "normalMap"),
@@ -410,9 +434,7 @@ void testGltfTextureContractCheckUsesInstanceReflection() {
       {LX_core::MaterialContractParameterKind::Rgb,
        LX_core::MaterialContractParameterKind::Texture}});
   contract.parameters.push_back(LX_core::MaterialContractParameter{
-      "roughness",
-      false,
-      {LX_core::MaterialContractParameterKind::Float}});
+      "roughness", false, {LX_core::MaterialContractParameterKind::Float}});
   material->setMaterialContractReflection(std::move(contract));
 
   expect(LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(*material,
@@ -422,8 +444,8 @@ void testGltfTextureContractCheckUsesInstanceReflection() {
              *material, "roughness"),
          "glTF texture contract check should reject non-texture parameter "
          "from instance reflection");
-  expect(!LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(
-             *material, "missing"),
+  expect(!LX_infra::scene_asset::gltfMaterialAllowsTextureParameter(*material,
+                                                                    "missing"),
          "glTF texture contract check should reject missing parameter from "
          "instance reflection");
 }
@@ -473,9 +495,8 @@ bool loadSceneThrowsFor(const std::string &yamlText,
 
 LX_infra::scene_io::SceneDocument
 loadSceneDocumentFromText(const std::string &yamlText) {
-  const std::filesystem::path path =
-      std::filesystem::temp_directory_path() /
-      "lxe_environment_ambient_scene.scene.yaml";
+  const std::filesystem::path path = std::filesystem::temp_directory_path() /
+                                     "lxe_environment_ambient_scene.scene.yaml";
   writeTextFile(path, yamlText);
   try {
     auto document = LX_infra::scene_io::loadSceneDocument(path);

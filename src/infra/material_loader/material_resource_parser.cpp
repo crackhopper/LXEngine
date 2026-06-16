@@ -109,6 +109,24 @@ void addDiagnostic(ParsedMaterialResource &result,
          name == "tags" || name == "metadata";
 }
 
+[[nodiscard]] LX_core::TextureContent
+textureContentForMaterialParameter(std::string_view parameterName) {
+  if (parameterName == "baseColorTexture" || parameterName == "emissiveTexture" ||
+      parameterName == "Kd") {
+    return LX_core::TextureContent::Color;
+  }
+  if (parameterName == "normalTexture" || parameterName == "normalmap") {
+    return LX_core::TextureContent::Normal;
+  }
+  if (parameterName == "metallicRoughnessTexture") {
+    return LX_core::TextureContent::MetallicRoughness;
+  }
+  if (parameterName == "occlusionTexture") {
+    return LX_core::TextureContent::Occlusion;
+  }
+  return LX_core::TextureContent::Unknown;
+}
+
 [[nodiscard]] bool validateRootFields(const YAML::Node &root,
                                       const LX_core::ResourceUri &uri,
                                       ParsedMaterialResource &result) {
@@ -597,6 +615,10 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
       dependency.uri = canonicalUri;
       dependency.resourceHandle = dependencyHandle;
       dependency.parameterName = parameter.name;
+      if (dependency.kind == MaterialEnvelopeKind::Texture) {
+        dependency.textureContent =
+            textureContentForMaterialParameter(parameter.name);
+      }
       result.dependencies.push_back(dependency);
       instance->addMaterialDependency(dependency);
       envelope->uri = canonicalUri.string();

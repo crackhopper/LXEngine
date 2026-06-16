@@ -157,8 +157,8 @@ std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
           sizeof(LX_core::EnvironmentData::Param),
           0,
           LX_core::ShaderStage::Fragment,
-          {LX_core::StructMemberInfo{
-               "params", LX_core::ShaderPropertyType::Vec4, 0, 16},
+          {LX_core::StructMemberInfo{"params",
+                                     LX_core::ShaderPropertyType::Vec4, 0, 16},
            LX_core::StructMemberInfo{"ambientColorIntensity",
                                      LX_core::ShaderPropertyType::Vec4, 16,
                                      16}}},
@@ -283,8 +283,8 @@ std::vector<LX_core::ShaderResourceBinding> deferredLightingBindings() {
           sizeof(LX_core::EnvironmentData::Param),
           0,
           LX_core::ShaderStage::Fragment,
-          {LX_core::StructMemberInfo{
-               "params", LX_core::ShaderPropertyType::Vec4, 0, 16},
+          {LX_core::StructMemberInfo{"params",
+                                     LX_core::ShaderPropertyType::Vec4, 0, 16},
            LX_core::StructMemberInfo{"ambientColorIntensity",
                                      LX_core::ShaderPropertyType::Vec4, 16,
                                      16}}},
@@ -349,7 +349,8 @@ VulkanPostProcessBuilder::createStandardPostProcessMaterial(
 
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
-                                        LX_core::StringID("exposure"), 1.0f);
+                                        LX_core::StringID("exposure"),
+                                        m_settings.exposure);
   material->writeShaderBindingParameter(LX_core::StringID("PostProcessUBO"),
                                         LX_core::StringID("toneMappingMode"),
                                         0);

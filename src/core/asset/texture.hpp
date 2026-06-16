@@ -11,10 +11,23 @@ namespace LX_core {
 
 enum class TextureFormat {
   RGBA8,
+  RGBA8Srgb,
   RGB8,
+  RGB8Srgb,
   R8,
   RGBA16Float,
   RGBA32Float,
+};
+
+enum class TextureContent {
+  Unknown,
+  Color,
+  Data,
+  Normal,
+  MetallicRoughness,
+  Occlusion,
+  Emissive,
+  Environment,
 };
 
 enum class TextureDimension {
@@ -26,10 +39,16 @@ struct TextureDesc {
   u32 width = 0;
   u32 height = 0;
   TextureFormat format = TextureFormat::RGBA8;
+  TextureContent content = TextureContent::Unknown;
   TextureDimension dimension = TextureDimension::Texture2D;
   u32 mipLevels = 1;
   u32 arrayLayers = 1;
 };
+
+[[nodiscard]] constexpr bool isSrgbTextureFormat(TextureFormat format) {
+  return format == TextureFormat::RGBA8Srgb ||
+         format == TextureFormat::RGB8Srgb;
+}
 
 inline u32 maxTextureMipLevels(u32 width, u32 height) {
   if (width == 0 || height == 0) {
@@ -47,8 +66,10 @@ inline u32 maxTextureMipLevels(u32 width, u32 height) {
 inline usize textureBytesPerPixel(TextureFormat format) {
   switch (format) {
   case TextureFormat::RGBA8:
+  case TextureFormat::RGBA8Srgb:
     return 4;
   case TextureFormat::RGB8:
+  case TextureFormat::RGB8Srgb:
     return 3;
   case TextureFormat::R8:
     return 1;
@@ -154,7 +175,7 @@ using TextureSharedPtr = std::shared_ptr<Texture>; // 共享使用
 */
 static TextureSharedPtr createWhiteTexture(u32 width = 1, u32 height = 1) {
   return std::make_shared<Texture>(
-      TextureDesc{width, height, TextureFormat::RGBA8},
+      TextureDesc{width, height, TextureFormat::RGBA8, TextureContent::Color},
       std::vector<u8>(width * height * 4, 255));
 }
 
@@ -194,7 +215,8 @@ public:
 
   /// The scene descriptor resolver fills this with the binding name resolved
   /// from shader reflection before handing the texture off to the backend
-  /// descriptor path. Empty until the descriptor resolver/compiler path assigns it.
+  /// descriptor path. Empty until the descriptor resolver/compiler path assigns
+  /// it.
   void setBindingName(StringID name) { m_bindingName = name; }
 
   ResourceType getType() const override {

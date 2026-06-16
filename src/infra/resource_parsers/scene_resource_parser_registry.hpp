@@ -12,6 +12,7 @@ namespace LX_infra {
 
 struct SceneResourceParseContext final {
   LX_core::ResourceUri ownerUri;
+  LX_core::TextureContent textureContent = LX_core::TextureContent::Unknown;
 };
 
 struct ParsedSceneResource final {

@@ -35,8 +35,12 @@ VkFormat toVkFormat(TextureFormat format) {
   switch (format) {
   case TextureFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
+  case TextureFormat::RGBA8Srgb:
+    return VK_FORMAT_R8G8B8A8_SRGB;
   case TextureFormat::RGB8:
     return VK_FORMAT_R8G8B8_UNORM;
+  case TextureFormat::RGB8Srgb:
+    return VK_FORMAT_R8G8B8_SRGB;
   case TextureFormat::R8:
     return VK_FORMAT_R8_UNORM;
   case TextureFormat::RGBA16Float:

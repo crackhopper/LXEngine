@@ -15,10 +15,10 @@
 #include "infra/scene_asset/scene_mesh_loader.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 #include "editor/project/builtin_asset_catalog.hpp"
-#include "editor/runtime/editor_camera_state.hpp"
 #include "editor/project/project_document.hpp"
 #include "editor/project/scene_builder.hpp"
 #include "editor/project/scene_document.hpp"
+#include "editor/runtime/editor_camera_state.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -162,12 +162,13 @@ void resolveMaterialTextureDependencies(
 
     const auto parsed = parser.parse(
         resourceTable, dependency.uri,
-        LX_infra::SceneResourceParseContext{});
+        LX_infra::SceneResourceParseContext{
+            .textureContent = dependency.textureContent,
+        });
     if (!parsed.diagnostics.empty() ||
         parsed.metadata.state == LX_core::ResourceState::Failed) {
-      std::string message =
-          "failed to load material texture dependency '" +
-          dependency.uri.string() + "'";
+      std::string message = "failed to load material texture dependency '" +
+                            dependency.uri.string() + "'";
       for (const std::string &diagnostic : parsed.diagnostics) {
         message += "\n  ";
         message += diagnostic;
@@ -350,6 +351,7 @@ makeHdrAverageCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
   desc.width = 1;
   desc.height = 1;
   desc.format = LX_core::TextureFormat::RGBA32Float;
+  desc.content = LX_core::TextureContent::Environment;
   desc.dimension = LX_core::TextureDimension::TextureCube;
   desc.arrayLayers = 6;
 
@@ -448,6 +450,7 @@ makeHdrEquirectCubeSampler(const LX_core::TextureSharedPtr &hdrTexture,
   desc.width = baseSize;
   desc.height = baseSize;
   desc.format = LX_core::TextureFormat::RGBA32Float;
+  desc.content = LX_core::TextureContent::Environment;
   desc.dimension = LX_core::TextureDimension::TextureCube;
   desc.mipLevels = mipLevels;
   desc.arrayLayers = 6;
@@ -490,6 +493,7 @@ makeNeutralBrdfLutSampler() {
   desc.width = 1;
   desc.height = 1;
   desc.format = LX_core::TextureFormat::RGBA16Float;
+  desc.content = LX_core::TextureContent::Data;
   auto sampler = std::make_shared<LX_core::CombinedTextureSampler>(
       std::make_shared<LX_core::Texture>(
           desc, std::vector<u8>(LX_core::expectedTextureByteCount(desc), 0)));
@@ -952,7 +956,7 @@ loadMaterialForSceneNode(const std::vector<std::filesystem::path> &assetRoots,
           [&assetRoots](const std::string &assetUri) {
             return resolveProjectAssetPath(assetRoots, assetUri)
                 .value_or(std::filesystem::path(assetUri));
-      },
+          },
       .loadGenericMaterial =
           [&resourceTable](const std::filesystem::path &path) {
             return loadCachedGenericMaterial(path, resourceTable);
@@ -976,8 +980,8 @@ loadEffectiveMaterialForSceneNode(
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
   return loadMaterialForSceneNode(assetRoots, resourceTable, uri,
-                                  materialOverrides,
-                                  nodeOverrides, proceduralMaterial);
+                                  materialOverrides, nodeOverrides,
+                                  proceduralMaterial);
 }
 
 void applyEffectiveMaterialStateToExisting(
@@ -996,8 +1000,8 @@ loadEffectiveMaterialForSceneNode(
     const SceneNodeDocument &nodeDocument, const std::string &uri) {
   return loadEffectiveMaterialForSceneNode(
       assetRoots, resourceTable, nodeDocument, uri,
-      nodeDocument.materialOverrides,
-      nodeDocument.nodeMaterialOverrides, nodeDocument.proceduralMaterial);
+      nodeDocument.materialOverrides, nodeDocument.nodeMaterialOverrides,
+      nodeDocument.proceduralMaterial);
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr
@@ -1014,15 +1018,14 @@ loadEffectiveMaterialForSceneNode(
 
   return loadEffectiveMaterialForSceneNode(
       assetRoots, resourceTable, nodeDocument,
-      normalizeMaterialUri(nodeDocument),
-      nodeDocument.materialOverrides, nodeOverrides,
-      nodeDocument.proceduralMaterial);
+      normalizeMaterialUri(nodeDocument), nodeDocument.materialOverrides,
+      nodeOverrides, nodeDocument.proceduralMaterial);
 }
 
 [[nodiscard]] LX_core::MaterialInstanceSharedPtr loadModelMaterialForSceneNode(
     const std::vector<std::filesystem::path> &assetRoots,
-    LX_core::SceneResourceTable &resourceTable,
-    const std::string &uri, const std::string &albedoTextureUri,
+    LX_core::SceneResourceTable &resourceTable, const std::string &uri,
+    const std::string &albedoTextureUri,
     const MaterialOverrideState &materialOverrides,
     const MaterialOverrideState &nodeOverrides,
     const ProceduralMaterialState &proceduralMaterial =
@@ -1222,9 +1225,8 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
-        auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
-                                              nodeDocument, uri);
+        auto material = loadEffectiveMaterialForSceneNode(
+            assetRoots, resourceTable, nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1237,11 +1239,10 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     if (nodeDocument.materialUri.has_value()) {
       auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
-      return makeRenderableNode(nodeDocument.nodeName,
-                                std::move(meshAsset.mesh),
-                                loadEffectiveMaterialForSceneNode(
-                                    assetRoots, resourceTable, nodeDocument,
-                                    materialUri));
+      return makeRenderableNode(
+          nodeDocument.nodeName, std::move(meshAsset.mesh),
+          loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
+                                            nodeDocument, materialUri));
     }
 
     throw std::runtime_error("glTF scene node requires explicit material uri");
@@ -1258,9 +1259,8 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
-        auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
-                                              nodeDocument, uri);
+        auto material = loadEffectiveMaterialForSceneNode(
+            assetRoots, resourceTable, nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1278,9 +1278,8 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
-        auto material =
-            loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
-                                              nodeDocument, uri);
+        auto material = loadEffectiveMaterialForSceneNode(
+            assetRoots, resourceTable, nodeDocument, uri);
         materialComponent->get().setMaterialInstance(std::move(material));
       }
     }
@@ -1303,12 +1302,12 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
         materialComponent->get().setMaterialInstance(
-            loadModelMaterialForSceneNode(assetRoots, resourceTable, materialUri,
-                                          asset ? asset->albedoTextureUri
-                                                : std::string{},
-                                          nodeDocument.materialOverrides,
-                                          nodeDocument.nodeMaterialOverrides,
-                                          nodeDocument.proceduralMaterial));
+            loadModelMaterialForSceneNode(
+                assetRoots, resourceTable, materialUri,
+                asset ? asset->albedoTextureUri : std::string{},
+                nodeDocument.materialOverrides,
+                nodeDocument.nodeMaterialOverrides,
+                nodeDocument.proceduralMaterial));
       }
     }
     return node;
@@ -1321,10 +1320,10 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     auto mesh = loadTimedSceneMeshAsset(meshPath);
     if (nodeDocument.materialUri.has_value()) {
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
-      return makeRenderableNode(nodeDocument.nodeName, std::move(mesh),
-                                loadEffectiveMaterialForSceneNode(
-                                    assetRoots, resourceTable, nodeDocument,
-                                    materialUri));
+      return makeRenderableNode(
+          nodeDocument.nodeName, std::move(mesh),
+          loadEffectiveMaterialForSceneNode(assetRoots, resourceTable,
+                                            nodeDocument, materialUri));
     }
     throw std::runtime_error(
         "scene mesh node requires explicit material uri: " +
@@ -1483,7 +1482,8 @@ buildRuntimeFromDocument(const SceneDocument &document,
   LX_core::SceneRealtimeRenderSettings effectiveRealtimeSettings =
       document.realtimeRenderSettings();
   const bool hasEnvironment = document.hasEnvironment();
-  const bool environmentEnabled = hasEnvironment && document.environment().enabled;
+  const bool environmentEnabled =
+      hasEnvironment && document.environment().enabled;
   effectiveRealtimeSettings.ibl =
       effectiveRealtimeSettings.ibl && environmentEnabled;
   ScopedSceneRealtimeRenderSettings realtimeSettingsScope(

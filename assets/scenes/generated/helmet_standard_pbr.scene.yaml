@@ -5,7 +5,7 @@ scene:
     enabled: false
     intensity: 0.0
     ambientColor: [0.08, 0.08, 0.1]
-    ambientIntensity: 0.7
+    ambientIntensity: 0.0
     skyboxEnabled: false
   rendering:
     shadows: false
