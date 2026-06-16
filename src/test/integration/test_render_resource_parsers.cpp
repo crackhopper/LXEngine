@@ -560,9 +560,9 @@ void testDefaultRenderPathGraphAssetParses() {
   EXPECT(graph.features.size() == 2,
          "default forward graph should reference tone mapping and environment "
          "features");
-  EXPECT(graph.passes.size() == 5,
-         "default forward graph should declare shadow, opaque, skybox, "
-         "tone-map, and debug overlay passes");
+  EXPECT(graph.passes.size() == 6,
+         "default forward graph should declare shadow, opaque, environment "
+         "box, skybox, tone-map, and debug overlay passes");
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
@@ -570,16 +570,19 @@ void testDefaultRenderPathGraphAssetParses() {
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),
          "default forward graph asset should compile into a FrameGraph plan");
-  if (compiled.getPasses().size() == 5) {
+  if (compiled.getPasses().size() == 6) {
     EXPECT(compiled.getPasses()[0].name == LX_core::StringID("Shadow"),
            "default forward graph should run shadow pass first");
     EXPECT(compiled.getPasses()[1].name == LX_core::StringID("Forward"),
            "default forward graph should run HDR producer after shadow");
-    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("SkyboxBackground"),
+    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("EnvironmentBox"),
+           "default forward graph should run finite environment box before "
+           "skybox");
+    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("SkyboxBackground"),
            "default forward graph should run skybox before tone map");
-    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("PostProcess"),
+    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("PostProcess"),
            "default forward graph should run tone map after HDR producer");
-    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("DebugOverlay"),
+    EXPECT(compiled.getPasses()[5].name == LX_core::StringID("DebugOverlay"),
            "default forward graph should run debug overlay last");
   }
 }
@@ -603,9 +606,9 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
          "default deferred graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Deferred,
          "default deferred graph should use Deferred render path");
-  EXPECT(graph.passes.size() == 6,
+  EXPECT(graph.passes.size() == 7,
          "default deferred graph should declare shadow, GBuffer, lighting, "
-         "skybox, post-process, and debug overlay passes");
+         "environment box, skybox, post-process, and debug overlay passes");
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
@@ -613,7 +616,7 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),
          "default deferred graph asset should compile into a FrameGraph plan");
-  if (compiled.getPasses().size() == 6) {
+  if (compiled.getPasses().size() == 7) {
     EXPECT(compiled.getPasses()[0].name == LX_core::StringID("Shadow"),
            "default deferred graph should run shadow pass first");
     EXPECT(compiled.getPasses()[1].name == LX_core::StringID("Deferred"),
@@ -621,11 +624,14 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
     EXPECT(compiled.getPasses()[2].name ==
                LX_core::StringID("DeferredLighting"),
            "default deferred graph should run lighting after GBuffer");
-    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("SkyboxBackground"),
+    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("EnvironmentBox"),
+           "default deferred graph should run finite environment box after "
+           "lighting");
+    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("SkyboxBackground"),
            "default deferred graph should run skybox before post process");
-    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("PostProcess"),
+    EXPECT(compiled.getPasses()[5].name == LX_core::StringID("PostProcess"),
            "default deferred graph should run post process after lighting");
-    EXPECT(compiled.getPasses()[5].name == LX_core::StringID("DebugOverlay"),
+    EXPECT(compiled.getPasses()[6].name == LX_core::StringID("DebugOverlay"),
            "default deferred graph should run debug overlay last");
   }
 }
@@ -1349,10 +1355,10 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
     std::size_t shaderCount;
   };
   const ExpectedAsset assets[] = {
-      {"assets/render_paths/forward_main.render-path.yaml", 5},
-      {"assets/render_paths/forward_bloom.render-path.yaml", 8},
-      {"assets/render_paths/deferred_main.render-path.yaml", 6},
-      {"assets/render_paths/deferred_bloom.render-path.yaml", 9},
+      {"assets/render_paths/forward_main.render-path.yaml", 6},
+      {"assets/render_paths/forward_bloom.render-path.yaml", 9},
+      {"assets/render_paths/deferred_main.render-path.yaml", 7},
+      {"assets/render_paths/deferred_bloom.render-path.yaml", 10},
   };
 
   for (const ExpectedAsset &asset : assets) {

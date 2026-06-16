@@ -17,6 +17,8 @@
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/camera_component.hpp"
+#include "core/scene/components/material_component.hpp"
+#include "core/scene/components/mesh_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/utils/env.hpp"
 #include "core/utils/filesystem_tools.hpp"
@@ -48,6 +50,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -56,6 +59,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -229,6 +233,131 @@ void registerRenderFeatureDependenciesFromGraphAsset(
       throw std::runtime_error(message);
     }
   }
+}
+
+std::optional<std::array<float, 6>>
+parseFiniteBoxBounds(const LX_core::RenderFeatureParameter &parameter) {
+  if (parameter.kind != "vec6" || parameter.value.empty()) {
+    return std::nullopt;
+  }
+  std::string text = parameter.value;
+  for (char &ch : text) {
+    if (ch == '[' || ch == ']' || ch == ',') {
+      ch = ' ';
+    }
+  }
+  std::istringstream in(text);
+  std::array<float, 6> values{};
+  for (float &value : values) {
+    if (!(in >> value)) {
+      return std::nullopt;
+    }
+  }
+  if (values[0] >= values[1] || values[2] >= values[3] ||
+      values[4] >= values[5]) {
+    return std::nullopt;
+  }
+  return values;
+}
+
+bool featureUsesFiniteBoxBackground(const LX_core::RenderFeature &feature) {
+  const auto mode = feature.parameters.find("backgroundMode");
+  return mode != feature.parameters.end() && mode->second.kind == "enum" &&
+         mode->second.value == "finiteBox";
+}
+
+std::optional<std::array<float, 6>>
+environmentFiniteBoxBounds(const LX_core::RenderFeature &feature) {
+  if (!featureUsesFiniteBoxBackground(feature)) {
+    return std::nullopt;
+  }
+  const auto bounds = feature.parameters.find("finiteBoxBounds");
+  if (bounds == feature.parameters.end()) {
+    return std::nullopt;
+  }
+  return parseFiniteBoxBounds(bounds->second);
+}
+
+LX_core::MeshSharedPtr
+makeEnvironmentBoxMesh(const std::array<float, 6> &bounds) {
+  const float xmin = bounds[0];
+  const float xmax = bounds[1];
+  const float ymin = bounds[2];
+  const float ymax = bounds[3];
+  const float zmin = bounds[4];
+  const float zmax = bounds[5];
+
+  std::vector<LX_core::VertexPos> vertices{
+      {{xmin, ymin, zmax}}, {{xmax, ymin, zmax}}, {{xmax, ymax, zmax}},
+      {{xmin, ymax, zmax}}, {{xmax, ymin, zmin}}, {{xmin, ymin, zmin}},
+      {{xmin, ymax, zmin}}, {{xmax, ymax, zmin}}, {{xmax, ymin, zmax}},
+      {{xmax, ymin, zmin}}, {{xmax, ymax, zmin}}, {{xmax, ymax, zmax}},
+      {{xmin, ymin, zmin}}, {{xmin, ymin, zmax}}, {{xmin, ymax, zmax}},
+      {{xmin, ymax, zmin}}, {{xmin, ymax, zmax}}, {{xmax, ymax, zmax}},
+      {{xmax, ymax, zmin}}, {{xmin, ymax, zmin}}, {{xmin, ymin, zmin}},
+      {{xmax, ymin, zmin}}, {{xmax, ymin, zmax}}, {{xmin, ymin, zmax}},
+  };
+  std::vector<u32> indices;
+  indices.reserve(36);
+  for (u32 base = 0; base < 24; base += 4) {
+    indices.insert(indices.end(),
+                   {base, base + 1, base + 2, base, base + 2, base + 3});
+  }
+
+  return LX_core::Mesh::create(
+      LX_core::VertexBuffer<LX_core::VertexPos>::create(std::move(vertices)),
+      LX_core::IndexBuffer::create(std::move(indices)),
+      LX_core::BoundingBox{{xmin, ymin, zmin}, {xmax, ymax, zmax}});
+}
+
+LX_core::MaterialInstance::SharedPtr createEnvironmentBoxMaterial() {
+  auto tmpl = LX_core::MaterialTemplate::create("environment-box");
+  LX_core::MaterialPassDefinition pass;
+  pass.renderState.cullMode = LX_core::CullMode::None;
+  pass.renderState.depthTestEnable = true;
+  pass.renderState.depthWriteEnable = false;
+  pass.renderState.depthOp = LX_core::CompareOp::LessEqual;
+  pass.renderState.blendEnable = false;
+  pass.shaderProgram.shaderName = "render_paths/Environment/environment_box";
+  pass.shaderProgram.shader = loadRuntimeGraphicsShaderPayload(
+      LX_core::ResourceUri("render_paths/Environment/environment_box"));
+  tmpl->setPassDefinition(LX_core::Pass_EnvironmentBox, std::move(pass));
+  tmpl->rebuildMaterialInterface();
+
+  auto material = LX_core::MaterialInstance::create(std::move(tmpl));
+  material->setBsdfType("environment-box");
+  material->setRenderClass("environment.box");
+  return material;
+}
+
+void ensureEnvironmentBoxRenderable(LX_core::Scene &scene) {
+  static constexpr const char *kNodeName = "__environment_finite_box";
+  for (const auto &renderable : scene.getRenderables()) {
+    if (renderable && renderable->getNodeName() == kNodeName) {
+      return;
+    }
+  }
+
+  const auto handle =
+      scene.resources().findRenderFeatureByFeatureName("environmentLighting");
+  if (!handle.has_value()) {
+    return;
+  }
+  const auto feature = scene.resources().resolve(*handle);
+  if (!feature.has_value()) {
+    return;
+  }
+  const auto bounds = environmentFiniteBoxBounds(feature->get());
+  if (!bounds.has_value()) {
+    return;
+  }
+
+  auto node = LX_core::SceneNode::create(kNodeName);
+  node->setRenderType(LX_core::StringID("environment.box"));
+  node->addComponent<LX_core::MeshComponent>(makeEnvironmentBoxMesh(*bounds));
+  node->addComponent<LX_core::MaterialComponent>(
+      createEnvironmentBoxMaterial());
+  scene.addRuntimeRenderable(std::move(node));
 }
 
 void resolveMaterialSourceVariantsOrThrow(
@@ -1606,6 +1735,8 @@ public:
         pass.target = gbufferDesc;
       } else if (pass.name == LX_core::Pass_DeferredLighting) {
         pass.target = deferredLightingDesc;
+      } else if (pass.name == LX_core::Pass_EnvironmentBox) {
+        pass.target = forwardHdrDesc;
       } else if (pass.name == LX_core::Pass_SkyboxBackground) {
         pass.target = forwardHdrDesc;
       } else if (pass.name == LX_core::Pass_BloomThreshold ||
@@ -1660,11 +1791,13 @@ public:
           deferredGraphAsset, deferredRenderPathGraph, m_postProcessSettings);
       registerRenderFeatureDependenciesFromGraphAsset(
           *m_scene, deferredGraphAsset, deferredRenderPathGraph);
+      ensureEnvironmentBoxRenderable(*m_scene);
       const std::vector<LX_core::StringID> deferredPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Deferred,
                                                LX_core::Pass_DeferredLighting,
+                                               LX_core::Pass_EnvironmentBox,
                                                LX_core::Pass_SkyboxBackground,
                                                LX_core::Pass_BloomThreshold,
                                                LX_core::Pass_BloomBlurH,
@@ -1674,6 +1807,7 @@ public:
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Deferred,
                     LX_core::Pass_DeferredLighting,
+                    LX_core::Pass_EnvironmentBox,
                     LX_core::Pass_SkyboxBackground, LX_core::Pass_PostProcess,
                     LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
@@ -1700,10 +1834,12 @@ public:
           forwardGraphAsset, forwardRenderPathGraph, m_postProcessSettings);
       registerRenderFeatureDependenciesFromGraphAsset(
           *m_scene, forwardGraphAsset, forwardRenderPathGraph);
+      ensureEnvironmentBoxRenderable(*m_scene);
       const std::vector<LX_core::StringID> forwardPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Forward,
+                                               LX_core::Pass_EnvironmentBox,
                                                LX_core::Pass_SkyboxBackground,
                                                LX_core::Pass_BloomThreshold,
                                                LX_core::Pass_BloomBlurH,
@@ -1712,6 +1848,7 @@ public:
                                                LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Forward,
+                    LX_core::Pass_EnvironmentBox,
                     LX_core::Pass_SkyboxBackground,
                     LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,

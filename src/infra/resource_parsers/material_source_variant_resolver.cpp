@@ -76,6 +76,24 @@ struct TypeSourceFacts final {
          pass.sources.end();
 }
 
+[[nodiscard]] bool graphMaterialBsdfPassAllowsType(
+    const LX_core::RenderPathGraph &graph, std::string_view type) {
+  for (const LX_core::RenderPassNode &pass : graph.passes) {
+    if (!passRequiresMaterialBsdf(pass)) {
+      continue;
+    }
+    if (pass.input.material.types.empty()) {
+      return true;
+    }
+    if (std::find(pass.input.material.types.begin(),
+                  pass.input.material.types.end(),
+                  std::string(type)) != pass.input.material.types.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<bool> shaderRequiresMaterialSourceVariant(
     const LX_core::ResourceUri &graphUri, const LX_core::RenderPassNode &pass,
     const std::vector<LX_core::ResourceUri> &sourceUris,
@@ -212,6 +230,9 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
       [&](LX_core::MaterialHandle handle, LX_core::MaterialInstance &material,
           const LX_core::ResourceUri &materialUri) {
         if (material.getBsdfType().empty()) {
+          return;
+        }
+        if (!graphMaterialBsdfPassAllowsType(graph, material.getBsdfType())) {
           return;
         }
 

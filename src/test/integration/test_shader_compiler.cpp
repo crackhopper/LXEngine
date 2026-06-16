@@ -666,9 +666,7 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
       !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
                      0) ||
       !expectBinding(bindings, "EnvironmentLightingUBO",
-                     ShaderPropertyType::UniformBuffer, 2, 0) ||
-      !expectBinding(bindings, "EnvironmentLightingFiniteBoxUBO",
-                     ShaderPropertyType::UniformBuffer, 3, 0)) {
+                     ShaderPropertyType::UniformBuffer, 2, 0)) {
     std::cerr << "  FAIL: graph skybox background bindings mismatch\n";
     return false;
   }
@@ -690,6 +688,32 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
 
   std::cout
       << "  PASS: graph skybox shader exposes environment feature ABI\n";
+
+  auto environmentBox = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Environment" / "environment_box.vert",
+      shaderDir / "render_paths" / "Environment" / "environment_box.frag", {});
+  if (!environmentBox.success) {
+    std::cerr << "  COMPILE FAILED: " << environmentBox.errorMessage << "\n";
+    return false;
+  }
+  const auto boxBindings = ShaderReflector::reflect(environmentBox.stages);
+  if (!expectBinding(boxBindings, "CameraUBO",
+                     ShaderPropertyType::UniformBuffer, 0, 0) ||
+      !expectBinding(boxBindings, "SceneObjects",
+                     ShaderPropertyType::StorageBuffer, 0, 8) ||
+      !expectBinding(boxBindings, "SceneDraws",
+                     ShaderPropertyType::StorageBuffer, 0, 9) ||
+      !expectBinding(boxBindings, "SkyboxMap",
+                     ShaderPropertyType::TextureCube, 1, 0) ||
+      !expectBinding(boxBindings, "EnvironmentLightingUBO",
+                     ShaderPropertyType::UniformBuffer, 2, 0) ||
+      !expectBinding(boxBindings, "EnvironmentLightingFiniteBoxUBO",
+                     ShaderPropertyType::UniformBuffer, 3, 0)) {
+    std::cerr << "  FAIL: environment box shader bindings mismatch\n";
+    return false;
+  }
+  std::cout
+      << "  PASS: environment box shader exposes scene-renderable ABI\n";
   return true;
 }
 

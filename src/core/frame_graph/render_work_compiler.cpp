@@ -565,6 +565,16 @@ findParameterForBindingMember(const RenderFeature &feature,
   return true;
 }
 
+[[nodiscard]] std::optional<std::string>
+environmentBackgroundMode(const RenderFeature &feature) {
+  const auto it = feature.parameters.find("backgroundMode");
+  if (it == feature.parameters.end() || it->second.kind != "enum" ||
+      it->second.value.empty()) {
+    return std::nullopt;
+  }
+  return it->second.value;
+}
+
 void validateEnvironmentLightingFeatureBindings(
     const FramePass &pass, const RenderWorkBuildContext &context,
     RenderInputDesc &desc) {
@@ -593,6 +603,14 @@ void validateEnvironmentLightingFeatureBindings(
     return;
   }
   const RenderFeature &feature = resolvedFeature->get();
+
+  const auto backgroundMode = environmentBackgroundMode(feature);
+  if (pass.name == Pass_SkyboxBackground && backgroundMode == "finiteBox") {
+    reject(desc, RenderInputDiagnosticCode::UnsupportedInputContract,
+           "feature.environmentLighting finiteBox must render as a scene "
+           "renderable EnvironmentBox, not fullscreen SkyboxBackground");
+    return;
+  }
 
   const ShaderResourceBinding *skyboxMap =
       findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");

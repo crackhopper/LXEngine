@@ -1334,7 +1334,8 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   }
 }
 
-RenderFeature makeCompilerEnvironmentFeature(bool includeColor = true) {
+RenderFeature makeCompilerEnvironmentFeature(
+    bool includeColor = true, std::string backgroundModeValue = "infinite") {
   RenderFeature feature;
   feature.name = "EnvironmentLighting";
   feature.feature = "environmentLighting";
@@ -1370,7 +1371,7 @@ RenderFeature makeCompilerEnvironmentFeature(bool includeColor = true) {
   };
   feature.parameters["backgroundMode"] = RenderFeatureParameter{
       .kind = "enum",
-      .value = "infinite",
+      .value = std::move(backgroundModeValue),
       .binding = "EnvironmentLightingUBO",
       .member = "backgroundMode",
       .required = true,
@@ -1461,6 +1462,52 @@ void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
   }
 }
 
+void testRenderWorkCompilerRejectsFiniteBoxOnFullscreenSkyboxPass() {
+  Scene scene("EnvironmentCompilerScene");
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/environment_lighting"),
+          makeCompilerEnvironmentFeature(/*includeColor=*/true,
+                                         "finiteBox"));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 45}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 46}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.renderState.depthWriteEnable = false;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "finiteBox fullscreen pass should still produce one rejected desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "finiteBox must not render through fullscreen SkyboxBackground");
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::UnsupportedInputContract),
+           "finiteBox fullscreen rejection should report unsupported input");
+  }
+}
+
 void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
   Scene scene("EnvironmentCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
@@ -1532,6 +1579,7 @@ int main() {
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
+  testRenderWorkCompilerRejectsFiniteBoxOnFullscreenSkyboxPass();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   return g_failures == 0 ? 0 : 1;
 }
