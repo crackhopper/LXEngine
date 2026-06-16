@@ -588,6 +588,22 @@ static bool testDefaultRealtimeShadersExposeToneMappingFeature(
     return false;
   }
 
+  const std::string toneMappingSource =
+      readTextFile(shaderDir / "common" / "tone_mapping.glsl");
+  const auto applyStart = toneMappingSource.find("vec3 lxApplyToneMapping");
+  const auto applyEnd = toneMappingSource.find("#endif", applyStart);
+  if (applyStart == std::string::npos || applyEnd == std::string::npos) {
+    std::cerr << "  FAIL: shared tone mapping function not found\n";
+    return false;
+  }
+  const std::string applyBody =
+      toneMappingSource.substr(applyStart, applyEnd - applyStart);
+  if (applyBody.find("lxLinearToSrgbGamma") != std::string::npos) {
+    std::cerr << "  FAIL: default realtime tone mapping should output linear "
+                 "LDR for sRGB attachments, not manual sRGB gamma\n";
+    return false;
+  }
+
   std::cout
       << "  PASS: default realtime shaders use shared toneMapping feature ABI\n";
   return true;
