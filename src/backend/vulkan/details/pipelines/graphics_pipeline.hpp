@@ -70,6 +70,8 @@ public:
   }
 
 protected:
+  void buildSpecializationInfos();
+
   VulkanDevice &m_device;
   VkDevice m_deviceHandle = VK_NULL_HANDLE;
   VkPipeline m_pipeline = VK_NULL_HANDLE;
@@ -78,6 +80,7 @@ protected:
   // Data pulled from PipelineBuildDesc in the constructor.
   std::vector<LX_core::ShaderStageCode> m_stages;
   std::vector<LX_core::ShaderResourceBinding> m_bindings;
+  std::vector<LX_core::ShaderSpecializationConstant> m_specializationConstants;
   VertexLayout m_vertexLayout;
   RenderTargetDesc m_target;
   std::optional<RenderPathNodeRenderingMode> m_renderingMode;
@@ -99,6 +102,14 @@ protected:
                                                 VK_DYNAMIC_STATE_SCISSOR};
 
   VkSampleCountFlagBits m_msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+  std::vector<VkSpecializationMapEntry> m_vertexSpecializationMapEntries;
+  std::vector<u8> m_vertexSpecializationData;
+  VkSpecializationInfo m_vertexSpecializationInfo{};
+
+  std::vector<VkSpecializationMapEntry> m_fragmentSpecializationMapEntries;
+  std::vector<u8> m_fragmentSpecializationData;
+  VkSpecializationInfo m_fragmentSpecializationInfo{};
 
   std::vector<VkVertexInputBindingDescription> m_viBindingDescriptions;
   std::vector<VkVertexInputAttributeDescription> m_viAttrDescriptions;

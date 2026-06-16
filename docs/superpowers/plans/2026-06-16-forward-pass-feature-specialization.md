@@ -946,15 +946,15 @@ Expected: PASS.
 - Modify: `src/backend/vulkan/details/pipelines/graphics_pipeline.hpp`
 - Modify: `src/backend/vulkan/details/pipelines/graphics_pipeline.cpp`
 
-- [ ] **Step 1: Store specialization constants**
+- [x] **Step 1: Store specialization constants**
 
 Keep `PipelineBuildDesc::specializationConstants` in `VulkanGraphicsPipeline`.
 
-- [ ] **Step 2: Attach Vertex and Fragment `VkSpecializationInfo`**
+- [x] **Step 2: Attach Vertex and Fragment `VkSpecializationInfo`**
 
 Build `VkSpecializationMapEntry` and data arrays for both Vertex and Fragment constants. Group reflected specialization constants by `ShaderStage` and attach the matching `VkSpecializationInfo` to the corresponding shader stage create info. This slice only needs Vertex and Fragment support; unsupported stages should produce a fatal diagnostic instead of being ignored.
 
-- [ ] **Step 3: Build editor**
+- [x] **Step 3: Build editor**
 
 ```bash
 cmake --build build --target lxe_editor

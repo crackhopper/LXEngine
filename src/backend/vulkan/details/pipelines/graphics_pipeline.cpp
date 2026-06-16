@@ -160,6 +160,26 @@ VkShaderStageFlags pushConstantStageMaskToVk(ShaderStageMask32 mask) {
   return shaderStageMaskToVk(static_cast<ShaderStage>(mask));
 }
 
+const char *shaderStageName(ShaderStage stage) {
+  switch (stage) {
+  case ShaderStage::None:
+    return "None";
+  case ShaderStage::Vertex:
+    return "Vertex";
+  case ShaderStage::Fragment:
+    return "Fragment";
+  case ShaderStage::Compute:
+    return "Compute";
+  case ShaderStage::Geometry:
+    return "Geometry";
+  case ShaderStage::TessControl:
+    return "TessControl";
+  case ShaderStage::TessEval:
+    return "TessEval";
+  }
+  return "Unknown";
+}
+
 } // namespace
 
 // Publicly-visible helpers reused by the descriptor manager and command buffer
@@ -188,11 +208,14 @@ VulkanGraphicsPipeline::VulkanGraphicsPipeline(
     Token, VulkanDevice &device, const PipelineBuildDesc &buildInfo)
     : m_device(device), m_deviceHandle(device.getLogicalDevice()),
       m_stages(buildInfo.stages), m_bindings(buildInfo.bindings),
+      m_specializationConstants(buildInfo.specializationConstants),
       m_vertexLayout(buildInfo.vertexLayout), m_target(buildInfo.target),
       m_renderingMode(buildInfo.renderingMode),
       m_attachments(buildInfo.attachments),
       m_renderState(buildInfo.renderState), m_topology(buildInfo.topology),
       m_pushConstant(buildInfo.pushConstant) {
+  buildSpecializationInfos();
+
   if (!m_attachments.empty()) {
     const u32 expectedSamples = m_attachments.front().samples;
     const u32 expectedLayers = m_attachments.front().layers;
@@ -241,6 +264,9 @@ VulkanGraphicsPipeline::getVertexShaderStageCreateInfo() {
   vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
   vertShaderStageInfo.module = m_vertShader;
   vertShaderStageInfo.pName = "main";
+  if (!m_vertexSpecializationMapEntries.empty()) {
+    vertShaderStageInfo.pSpecializationInfo = &m_vertexSpecializationInfo;
+  }
   return vertShaderStageInfo;
 }
 
@@ -252,6 +278,9 @@ VulkanGraphicsPipeline::getFragmentShaderStageCreateInfo() {
   fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
   fragShaderStageInfo.module = m_fragShader;
   fragShaderStageInfo.pName = "main";
+  if (!m_fragmentSpecializationMapEntries.empty()) {
+    fragShaderStageInfo.pSpecializationInfo = &m_fragmentSpecializationInfo;
+  }
   return fragShaderStageInfo;
 }
 
@@ -404,6 +433,62 @@ VulkanGraphicsPipeline::getVertexInputStateCreateInfo() {
       static_cast<u32>(m_viAttrDescriptions.size());
   vertexInputInfo.pVertexAttributeDescriptions = m_viAttrDescriptions.data();
   return vertexInputInfo;
+}
+
+void VulkanGraphicsPipeline::buildSpecializationInfos() {
+  auto appendConstant =
+      [](const ShaderSpecializationConstant &constant,
+         std::vector<VkSpecializationMapEntry> &entries,
+         std::vector<u8> &data) {
+        VkSpecializationMapEntry entry{};
+        entry.constantID = constant.constantId;
+        entry.offset = static_cast<u32>(data.size());
+        entry.size = sizeof(u32);
+        entries.push_back(entry);
+
+        const u32 value = constant.valueU32;
+        const auto *bytes = reinterpret_cast<const u8 *>(&value);
+        data.insert(data.end(), bytes, bytes + sizeof(value));
+      };
+
+  for (const ShaderSpecializationConstant &constant :
+       m_specializationConstants) {
+    switch (constant.stage) {
+    case ShaderStage::Vertex:
+      appendConstant(constant, m_vertexSpecializationMapEntries,
+                     m_vertexSpecializationData);
+      break;
+    case ShaderStage::Fragment:
+      appendConstant(constant, m_fragmentSpecializationMapEntries,
+                     m_fragmentSpecializationData);
+      break;
+    default:
+      throw std::runtime_error(
+          "Vulkan graphics pipeline only supports Vertex and Fragment "
+          "specialization constants; constant " +
+          std::to_string(constant.constantId) + " requested " +
+          shaderStageName(constant.stage));
+    }
+  }
+
+  if (!m_vertexSpecializationMapEntries.empty()) {
+    m_vertexSpecializationInfo.mapEntryCount =
+        static_cast<u32>(m_vertexSpecializationMapEntries.size());
+    m_vertexSpecializationInfo.pMapEntries =
+        m_vertexSpecializationMapEntries.data();
+    m_vertexSpecializationInfo.dataSize = m_vertexSpecializationData.size();
+    m_vertexSpecializationInfo.pData = m_vertexSpecializationData.data();
+  }
+
+  if (!m_fragmentSpecializationMapEntries.empty()) {
+    m_fragmentSpecializationInfo.mapEntryCount =
+        static_cast<u32>(m_fragmentSpecializationMapEntries.size());
+    m_fragmentSpecializationInfo.pMapEntries =
+        m_fragmentSpecializationMapEntries.data();
+    m_fragmentSpecializationInfo.dataSize =
+        m_fragmentSpecializationData.size();
+    m_fragmentSpecializationInfo.pData = m_fragmentSpecializationData.data();
+  }
 }
 
 VkPipeline VulkanGraphicsPipeline::buildGraphicsPpl(VkRenderPass renderPass) {
