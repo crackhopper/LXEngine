@@ -26,9 +26,16 @@ parameters:
     binding: EnvironmentLightingUBO
     member: rotation
     required: true
-  visibleInBackground:
-    kind: bool
-    value: true
+  backgroundMode:
+    kind: enum
+    value: infinite
     binding: EnvironmentLightingUBO
-    member: visibleInBackground
+    member: backgroundMode
     required: true
+    allowedValues: [none, infinite, finiteBox]
+  finiteBoxBounds:
+    kind: vec6
+    value: [-5.0, 5.0, -2.0, 3.0, -5.0, 5.0]
+    requiredWhen:
+      parameter: backgroundMode
+      equals: finiteBox

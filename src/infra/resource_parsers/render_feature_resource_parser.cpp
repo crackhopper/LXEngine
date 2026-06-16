@@ -2,8 +2,12 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <array>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace LX_infra {
 namespace {
@@ -52,6 +56,62 @@ bool parseBoolScalar(ParsedRenderFeatureResource &result,
 bool kindAllowsUri(const std::string &kind) {
   return kind == "textureCube" || kind == "texture2D" ||
          kind == "texture3D" || kind == "buffer";
+}
+
+std::vector<std::string> parseScalarStringSequence(
+    ParsedRenderFeatureResource &result, const LX_core::ResourceUri &uri,
+    const YAML::Node &node, const std::string &field) {
+  std::vector<std::string> values;
+  if (!node || !node.IsSequence()) {
+    addDiagnostic(result, uri, field, "must be a sequence");
+    return values;
+  }
+  for (usize i = 0; i < node.size(); ++i) {
+    if (!node[i].IsScalar()) {
+      addDiagnostic(result, uri, field,
+                    "all entries must be scalar strings");
+      return {};
+    }
+    values.push_back(node[i].as<std::string>());
+  }
+  return values;
+}
+
+bool containsValue(const std::vector<std::string> &values,
+                   const std::string &value) {
+  return std::find(values.begin(), values.end(), value) != values.end();
+}
+
+std::optional<std::array<float, 6>>
+parseVec6Value(ParsedRenderFeatureResource &result,
+               const LX_core::ResourceUri &uri,
+               const LX_core::RenderFeatureParameter &parameter,
+               const std::string &field) {
+  YAML::Node valueNode;
+  try {
+    valueNode = YAML::Load(parameter.value);
+  } catch (const YAML::Exception &e) {
+    addDiagnostic(result, uri, field, e.what());
+    return std::nullopt;
+  }
+  if (!valueNode || !valueNode.IsSequence() || valueNode.size() != 6) {
+    addDiagnostic(result, uri, field, "must be a six-number sequence");
+    return std::nullopt;
+  }
+  std::array<float, 6> out{};
+  for (usize i = 0; i < out.size(); ++i) {
+    if (!valueNode[i].IsScalar()) {
+      addDiagnostic(result, uri, field, "all entries must be numeric scalars");
+      return std::nullopt;
+    }
+    try {
+      out[i] = valueNode[i].as<float>();
+    } catch (const YAML::Exception &e) {
+      addDiagnostic(result, uri, field, e.what());
+      return std::nullopt;
+    }
+  }
+  return out;
 }
 
 void rejectRenderFeatureFlowFields(ParsedRenderFeatureResource &result,
@@ -112,7 +172,8 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       const std::string key = parameterField->first.as<std::string>();
       if (key == "kind" || key == "value" || key == "uri" ||
           key == "valueType" || key == "binding" || key == "member" ||
-          key == "required") {
+          key == "required" || key == "allowedValues" ||
+          key == "requiredWhen") {
         continue;
       }
       addDiagnostic(result, uri, field + "." + key,
@@ -152,6 +213,51 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
         continue;
       }
     }
+    if (parameterNode["allowedValues"]) {
+      parameter.allowedValues =
+          parseScalarStringSequence(result, uri, parameterNode["allowedValues"],
+                                    field + ".allowedValues");
+      if (!result.diagnostics.empty()) {
+        continue;
+      }
+    }
+    if (parameterNode["requiredWhen"]) {
+      const YAML::Node requiredWhen = parameterNode["requiredWhen"];
+      if (!requiredWhen.IsMap()) {
+        addDiagnostic(result, uri, field + ".requiredWhen",
+                      "must be a map");
+        continue;
+      }
+      for (auto requiredWhenField = requiredWhen.begin();
+           requiredWhenField != requiredWhen.end(); ++requiredWhenField) {
+        if (!requiredWhenField->first.IsScalar()) {
+          addDiagnostic(result, uri, field + ".requiredWhen",
+                        "field names must be scalar strings");
+          continue;
+        }
+        const std::string key = requiredWhenField->first.as<std::string>();
+        if (key != "parameter" && key != "equals") {
+          addDiagnostic(result, uri, field + ".requiredWhen." + key,
+                        "unsupported requiredWhen field");
+        }
+      }
+      if (!requiredWhen["parameter"] || !requiredWhen["parameter"].IsScalar()) {
+        addDiagnostic(result, uri, field + ".requiredWhen.parameter",
+                      "missing required field");
+        continue;
+      }
+      if (!requiredWhen["equals"] || !requiredWhen["equals"].IsScalar()) {
+        addDiagnostic(result, uri, field + ".requiredWhen.equals",
+                      "missing required field");
+        continue;
+      }
+      parameter.requiredWhenParameter =
+          requiredWhen["parameter"].as<std::string>();
+      parameter.requiredWhenEquals = requiredWhen["equals"].as<std::string>();
+      if (!result.diagnostics.empty()) {
+        continue;
+      }
+    }
     feature.parameters.emplace(name, std::move(parameter));
   }
 }
@@ -171,6 +277,75 @@ void validateEnvironmentLightingFeature(ParsedRenderFeatureResource &result,
   if (environmentMap->second.uri.empty()) {
     addDiagnostic(result, uri, "parameters.environmentMap.uri",
                   "missing required field");
+  }
+
+  if (feature.parameters.find("visibleInBackground") !=
+      feature.parameters.end()) {
+    addDiagnostic(result, uri, "parameters.visibleInBackground",
+                  "removed; use parameters.backgroundMode");
+  }
+
+  const auto backgroundMode = feature.parameters.find("backgroundMode");
+  if (backgroundMode == feature.parameters.end()) {
+    addDiagnostic(result, uri, "parameters.backgroundMode",
+                  "missing required parameter");
+    return;
+  }
+  if (backgroundMode->second.kind != "enum") {
+    addDiagnostic(result, uri, "parameters.backgroundMode.kind",
+                  "expected enum");
+  }
+  if (backgroundMode->second.value.empty()) {
+    addDiagnostic(result, uri, "parameters.backgroundMode.value",
+                  "missing required field");
+  }
+  if (!backgroundMode->second.allowedValues.empty() &&
+      !containsValue(backgroundMode->second.allowedValues,
+                     backgroundMode->second.value)) {
+    addDiagnostic(result, uri, "parameters.backgroundMode.value",
+                  "unsupported value");
+  }
+  if (backgroundMode->second.allowedValues.empty()) {
+    addDiagnostic(result, uri, "parameters.backgroundMode.allowedValues",
+                  "missing required field");
+  }
+  for (const std::string &requiredValue : {"none", "infinite", "finiteBox"}) {
+    if (!containsValue(backgroundMode->second.allowedValues, requiredValue)) {
+      addDiagnostic(result, uri, "parameters.backgroundMode.allowedValues",
+                    "must include none, infinite, and finiteBox");
+      break;
+    }
+  }
+
+  const auto finiteBoxBounds = feature.parameters.find("finiteBoxBounds");
+  if (backgroundMode->second.value == "finiteBox" &&
+      finiteBoxBounds == feature.parameters.end()) {
+    addDiagnostic(result, uri, "parameters.finiteBoxBounds",
+                  "required when backgroundMode is finiteBox");
+    return;
+  }
+  if (finiteBoxBounds == feature.parameters.end()) {
+    return;
+  }
+  if (finiteBoxBounds->second.kind != "vec6") {
+    addDiagnostic(result, uri, "parameters.finiteBoxBounds.kind",
+                  "expected vec6");
+  }
+  if (finiteBoxBounds->second.requiredWhenParameter != "backgroundMode" ||
+      finiteBoxBounds->second.requiredWhenEquals != "finiteBox") {
+    addDiagnostic(result, uri, "parameters.finiteBoxBounds.requiredWhen",
+                  "expected parameter=backgroundMode equals=finiteBox");
+  }
+  const auto bounds =
+      parseVec6Value(result, uri, finiteBoxBounds->second,
+                     "parameters.finiteBoxBounds.value");
+  if (!bounds.has_value()) {
+    return;
+  }
+  if ((*bounds)[0] >= (*bounds)[1] || (*bounds)[2] >= (*bounds)[3] ||
+      (*bounds)[4] >= (*bounds)[5]) {
+    addDiagnostic(result, uri, "parameters.finiteBoxBounds.value",
+                  "expected xmin<xmax, ymin<ymax, zmin<zmax");
   }
 }
 

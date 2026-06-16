@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <array>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <sstream>
 #include <string_view>
@@ -194,17 +196,6 @@ makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a,
   return std::stof(parameter.value);
 }
 
-[[nodiscard]] bool parseFeatureBool(const RenderFeatureParameter &parameter,
-                                    bool fallback = false) {
-  if (parameter.value == "true") {
-    return true;
-  }
-  if (parameter.value == "false") {
-    return false;
-  }
-  return fallback;
-}
-
 [[nodiscard]] Vec3f parseFeatureVec3(const RenderFeatureParameter &parameter,
                                      Vec3f fallback = Vec3f{1.0f, 1.0f,
                                                             1.0f}) {
@@ -223,10 +214,52 @@ makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a,
   return value;
 }
 
+[[nodiscard]] std::optional<std::array<float, 6>>
+parseFeatureVec6(const RenderFeatureParameter &parameter) {
+  if (parameter.kind != "vec6" || parameter.value.empty()) {
+    return std::nullopt;
+  }
+  std::string text = parameter.value;
+  for (char &ch : text) {
+    if (ch == '[' || ch == ']' || ch == ',') {
+      ch = ' ';
+    }
+  }
+  std::istringstream in(text);
+  std::array<float, 6> values{};
+  for (float &value : values) {
+    if (!(in >> value)) {
+      return std::nullopt;
+    }
+  }
+  if (values[0] >= values[1] || values[2] >= values[3] ||
+      values[4] >= values[5]) {
+    return std::nullopt;
+  }
+  return values;
+}
+
 [[nodiscard]] const RenderFeatureParameter *
 findFeatureParameter(const RenderFeature &feature, const char *name) {
   const auto it = feature.parameters.find(name);
   return it == feature.parameters.end() ? nullptr : &it->second;
+}
+
+[[nodiscard]] std::optional<EnvironmentLightingData::BackgroundMode>
+parseEnvironmentBackgroundMode(const RenderFeatureParameter &parameter) {
+  if (parameter.kind != "enum") {
+    return std::nullopt;
+  }
+  if (parameter.value == "none") {
+    return EnvironmentLightingData::BackgroundMode::None;
+  }
+  if (parameter.value == "infinite") {
+    return EnvironmentLightingData::BackgroundMode::Infinite;
+  }
+  if (parameter.value == "finiteBox") {
+    return EnvironmentLightingData::BackgroundMode::FiniteBox;
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
@@ -1873,6 +1906,7 @@ void SceneResourceTable::registerEnvironmentLightingResources(
     m_builtinEnvironmentLightingSkyboxMap.reset();
     m_environmentLightingTexture.reset();
     m_environmentLightingUbo.reset();
+    m_environmentLightingFiniteBoxUbo.reset();
     advanceUploadGeneration();
     return;
   }
@@ -1893,13 +1927,36 @@ void SceneResourceTable::registerEnvironmentLightingResources(
   const auto *color = findFeatureParameter(feature, "color");
   const auto *intensity = findFeatureParameter(feature, "intensity");
   const auto *rotation = findFeatureParameter(feature, "rotation");
-  const auto *visible = findFeatureParameter(feature, "visibleInBackground");
+  const auto *backgroundMode =
+      findFeatureParameter(feature, "backgroundMode");
+  const auto parsedBackgroundMode =
+      backgroundMode != nullptr
+          ? parseEnvironmentBackgroundMode(*backgroundMode)
+          : std::optional<EnvironmentLightingData::BackgroundMode>{};
+  if (!parsedBackgroundMode.has_value()) {
+    m_environmentLightingUbo.reset();
+    m_environmentLightingFiniteBoxUbo.reset();
+    advanceUploadGeneration();
+    return;
+  }
   ubo->set(color != nullptr ? parseFeatureVec3(*color)
                             : Vec3f{1.0f, 1.0f, 1.0f},
            intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
            rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f,
-           visible != nullptr ? parseFeatureBool(*visible, true) : true);
+           *parsedBackgroundMode);
   m_environmentLightingUbo = std::move(ubo);
+
+  m_environmentLightingFiniteBoxUbo.reset();
+  if (const auto *bounds = findFeatureParameter(feature, "finiteBoxBounds")) {
+    const auto parsedBounds = parseFeatureVec6(*bounds);
+    if (parsedBounds.has_value()) {
+      auto finiteBox = std::make_unique<EnvironmentLightingFiniteBoxData>();
+      finiteBox->set(
+          Vec3f{(*parsedBounds)[0], (*parsedBounds)[2], (*parsedBounds)[4]},
+          Vec3f{(*parsedBounds)[1], (*parsedBounds)[3], (*parsedBounds)[5]});
+      m_environmentLightingFiniteBoxUbo = std::move(finiteBox);
+    }
+  }
   advanceUploadGeneration();
 }
 
@@ -1916,6 +1973,9 @@ SceneResourceTable::getEnvironmentLightingResources() const {
   }
   if (m_environmentLightingUbo) {
     out.emplace_back(*m_environmentLightingUbo);
+  }
+  if (m_environmentLightingFiniteBoxUbo) {
+    out.emplace_back(*m_environmentLightingFiniteBoxUbo);
   }
   return out;
 }

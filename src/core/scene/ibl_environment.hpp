@@ -54,14 +54,20 @@ using EnvironmentDataUniquePtr = std::unique_ptr<EnvironmentData>;
 struct alignas(16) EnvironmentLightingData final : public IGpuResource {
   struct Param {
     Vec4f colorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
-    Vec4f rotationVisible{0.0f, 1.0f, 0.0f, 0.0f};
+    Vec4f rotationBackgroundMode{0.0f, 1.0f, 0.0f, 0.0f};
+  };
+
+  enum class BackgroundMode : u32 {
+    None = 0,
+    Infinite = 1,
+    FiniteBox = 2,
   };
 
   void set(Vec3f color, float intensity, float rotation,
-           bool visibleInBackground) {
+           BackgroundMode backgroundMode) {
     param.colorIntensity = Vec4f{color.x, color.y, color.z, intensity};
-    param.rotationVisible =
-        Vec4f{rotation, visibleInBackground ? 1.0f : 0.0f, 0.0f, 0.0f};
+    param.rotationBackgroundMode =
+        Vec4f{rotation, static_cast<float>(backgroundMode), 0.0f, 0.0f};
     setDirty();
   }
 
@@ -78,6 +84,33 @@ struct alignas(16) EnvironmentLightingData final : public IGpuResource {
 
 using EnvironmentLightingDataUniquePtr =
     std::unique_ptr<EnvironmentLightingData>;
+
+struct alignas(16) EnvironmentLightingFiniteBoxData final
+    : public IGpuResource {
+  struct Param {
+    Vec4f minBounds{0.0f, 0.0f, 0.0f, 0.0f};
+    Vec4f maxBounds{0.0f, 0.0f, 0.0f, 0.0f};
+  };
+
+  void set(Vec3f minBounds, Vec3f maxBounds) {
+    param.minBounds = Vec4f{minBounds.x, minBounds.y, minBounds.z, 0.0f};
+    param.maxBounds = Vec4f{maxBounds.x, maxBounds.y, maxBounds.z, 0.0f};
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return sizeof(Param); }
+  StringID getBindingName() const override {
+    static const StringID kName("EnvironmentLightingFiniteBoxUBO");
+    return kName;
+  }
+
+  Param param{};
+};
+
+using EnvironmentLightingFiniteBoxDataUniquePtr =
+    std::unique_ptr<EnvironmentLightingFiniteBoxData>;
 
 struct IblEnvironmentResources {
   bool skyboxEnabled = true;

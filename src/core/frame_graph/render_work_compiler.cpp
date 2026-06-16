@@ -559,8 +559,8 @@ findParameterForBindingMember(const RenderFeature &feature,
   if (memberName == "intensity" || memberName == "rotation") {
     return kind == "float";
   }
-  if (memberName == "visibleInBackground") {
-    return kind == "bool";
+  if (memberName == "backgroundMode") {
+    return kind == "enum";
   }
   return true;
 }

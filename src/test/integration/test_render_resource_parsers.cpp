@@ -129,6 +129,13 @@ parameters:
     valueType: linear-radiance
     binding: SkyboxMap
     required: true
+  backgroundMode:
+    kind: enum
+    value: infinite
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
   color:
     kind: vec3
     value: [0.08, 0.08, 0.10]
@@ -178,6 +185,13 @@ parameters:
     valueType: linear-radiance
     binding: SkyboxMap
     required: true
+  backgroundMode:
+    kind: enum
+    value: infinite
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
 )");
 
   EXPECT(parsed.renderFeature.has_value(),
@@ -236,14 +250,17 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
   const auto &feature = *parsed.renderFeature;
   EXPECT(feature.feature == "environmentLighting",
          "environment lighting feature kind should be retained");
-  EXPECT(feature.parameters.size() == 5,
-         "environment lighting feature should declare exactly five "
+  EXPECT(feature.parameters.size() == 6,
+         "environment lighting feature should declare exactly six "
          "parameters");
   for (const char *name : {"environmentMap", "color", "intensity", "rotation",
-                           "visibleInBackground"}) {
+                           "backgroundMode", "finiteBoxBounds"}) {
     EXPECT(feature.parameters.find(name) != feature.parameters.end(),
            std::string("environment lighting feature should declare ") + name);
   }
+  EXPECT(feature.parameters.find("visibleInBackground") ==
+             feature.parameters.end(),
+         "environment lighting feature must hard-cut visibleInBackground");
   EXPECT(feature.parameters.find("skyboxEnabled") == feature.parameters.end(),
          "environment lighting feature must not declare skyboxEnabled");
   EXPECT(feature.parameters.find("ambientColor") == feature.parameters.end(),
@@ -251,6 +268,181 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
   EXPECT(feature.parameters.find("ambientIntensity") ==
              feature.parameters.end(),
          "environment lighting feature must not declare ambientIntensity");
+}
+
+void testEnvironmentLightingFeatureParsesBackgroundModeAndFiniteBoxBounds() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-background-mode", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  backgroundMode:
+    kind: enum
+    value: finiteBox
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
+  finiteBoxBounds:
+    kind: vec6
+    value: [-5.0, 5.0, -2.0, 3.0, -4.0, 4.0]
+    requiredWhen:
+      parameter: backgroundMode
+      equals: finiteBox
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "environmentLighting backgroundMode/finiteBoxBounds should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "environmentLighting backgroundMode/finiteBoxBounds should not emit "
+         "diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+  const auto &backgroundMode =
+      parsed.renderFeature->parameters.at("backgroundMode");
+  EXPECT(backgroundMode.kind == "enum", "backgroundMode kind should be enum");
+  EXPECT(backgroundMode.value == "finiteBox",
+         "backgroundMode value should be retained");
+  EXPECT(backgroundMode.binding == "EnvironmentLightingUBO",
+         "backgroundMode UBO binding should be retained");
+  EXPECT(backgroundMode.member == "backgroundMode",
+         "backgroundMode UBO member should be retained");
+  EXPECT(backgroundMode.required,
+         "backgroundMode required flag should be retained");
+  EXPECT(backgroundMode.allowedValues.size() == 3,
+         "backgroundMode allowed values should be retained");
+
+  const auto &bounds = parsed.renderFeature->parameters.at("finiteBoxBounds");
+  EXPECT(bounds.kind == "vec6", "finiteBoxBounds kind should be vec6");
+  EXPECT(bounds.requiredWhenParameter == "backgroundMode",
+         "finiteBoxBounds requiredWhen parameter should be retained");
+  EXPECT(bounds.requiredWhenEquals == "finiteBox",
+         "finiteBoxBounds requiredWhen equals should be retained");
+}
+
+void testEnvironmentLightingFeatureRejectsVisibleInBackground() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-visible-legacy", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    binding: SkyboxMap
+    required: true
+  backgroundMode:
+    kind: enum
+    value: infinite
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
+  visibleInBackground:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "environmentLighting should hard-cut visibleInBackground");
+  EXPECT(hasDiagnosticContaining(parsed, "visibleInBackground"),
+         "diagnostic should name visibleInBackground");
+}
+
+void testEnvironmentLightingFeatureRejectsInvalidBackgroundMode() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-bad-mode", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    binding: SkyboxMap
+    required: true
+  backgroundMode:
+    kind: enum
+    value: room
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "environmentLighting should reject unsupported backgroundMode");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.backgroundMode.value"),
+         "diagnostic should name backgroundMode value");
+}
+
+void testEnvironmentLightingFeatureRejectsFiniteBoxWithoutBounds() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-finite-no-bounds", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    binding: SkyboxMap
+    required: true
+  backgroundMode:
+    kind: enum
+    value: finiteBox
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "finiteBox backgroundMode should require finiteBoxBounds");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.finiteBoxBounds"),
+         "diagnostic should name finiteBoxBounds");
+}
+
+void testEnvironmentLightingFeatureRejectsInvalidFiniteBoxBounds() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-finite-bad-bounds", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    binding: SkyboxMap
+    required: true
+  backgroundMode:
+    kind: enum
+    value: finiteBox
+    binding: EnvironmentLightingUBO
+    member: backgroundMode
+    required: true
+    allowedValues: [none, infinite, finiteBox]
+  finiteBoxBounds:
+    kind: vec6
+    value: [5.0, -5.0, -2.0, 3.0, -4.0, 4.0]
+    requiredWhen:
+      parameter: backgroundMode
+      equals: finiteBox
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "finiteBoxBounds should reject non-increasing x bounds");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.finiteBoxBounds.value"),
+         "diagnostic should name finiteBoxBounds value");
 }
 
 void testTextureResourceParserUsesDeclaredContentFormat() {
@@ -1103,12 +1295,13 @@ parameters:
     binding: EnvironmentLightingUBO
     member: rotation
     required: true
-  visibleInBackground:
-    kind: bool
-    value: true
+  backgroundMode:
+    kind: enum
+    value: infinite
     binding: EnvironmentLightingUBO
-    member: visibleInBackground
+    member: backgroundMode
     required: true
+    allowedValues: [none, infinite, finiteBox]
 )");
 
   const auto parsed =
@@ -1200,6 +1393,11 @@ int main() {
   testRenderFeatureParsesTextureCubeUriParameter();
   testDefaultRenderFeatureAssetParses();
   testEnvironmentLightingRenderFeatureAssetParses();
+  testEnvironmentLightingFeatureParsesBackgroundModeAndFiniteBoxBounds();
+  testEnvironmentLightingFeatureRejectsVisibleInBackground();
+  testEnvironmentLightingFeatureRejectsInvalidBackgroundMode();
+  testEnvironmentLightingFeatureRejectsFiniteBoxWithoutBounds();
+  testEnvironmentLightingFeatureRejectsInvalidFiniteBoxBounds();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();

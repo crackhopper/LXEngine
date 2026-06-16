@@ -220,12 +220,19 @@ RenderFeature makeEnvironmentLightingFeature(ResourceUri uri) {
       .member = "rotation",
       .required = true,
   };
-  feature.parameters["visibleInBackground"] = RenderFeatureParameter{
-      .kind = "bool",
-      .value = "true",
+  feature.parameters["backgroundMode"] = RenderFeatureParameter{
+      .kind = "enum",
+      .value = "infinite",
       .binding = "EnvironmentLightingUBO",
-      .member = "visibleInBackground",
+      .member = "backgroundMode",
       .required = true,
+      .allowedValues = {"none", "infinite", "finiteBox"},
+  };
+  feature.parameters["finiteBoxBounds"] = RenderFeatureParameter{
+      .kind = "vec6",
+      .value = "[-5.0, 5.0, -2.0, 3.0, -5.0, 5.0]",
+      .requiredWhenParameter = "backgroundMode",
+      .requiredWhenEquals = "finiteBox",
   };
   return feature;
 }
@@ -249,6 +256,8 @@ void testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap() {
          "builtin white cube should register live SkyboxMap");
   EXPECT(hasBinding(StringID("EnvironmentLightingUBO")),
          "environment feature should register EnvironmentLightingUBO");
+  EXPECT(hasBinding(StringID("EnvironmentLightingFiniteBoxUBO")),
+         "environment feature should register configured finite box bounds");
 }
 
 void testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap() {

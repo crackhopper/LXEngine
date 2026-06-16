@@ -1368,12 +1368,19 @@ RenderFeature makeCompilerEnvironmentFeature(bool includeColor = true) {
       .member = "rotation",
       .required = true,
   };
-  feature.parameters["visibleInBackground"] = RenderFeatureParameter{
-      .kind = "bool",
-      .value = "true",
+  feature.parameters["backgroundMode"] = RenderFeatureParameter{
+      .kind = "enum",
+      .value = "infinite",
       .binding = "EnvironmentLightingUBO",
-      .member = "visibleInBackground",
+      .member = "backgroundMode",
       .required = true,
+      .allowedValues = {"none", "infinite", "finiteBox"},
+  };
+  feature.parameters["finiteBoxBounds"] = RenderFeatureParameter{
+      .kind = "vec6",
+      .value = "[-5.0, 5.0, -2.0, 3.0, -5.0, 5.0]",
+      .requiredWhenParameter = "backgroundMode",
+      .requiredWhenEquals = "finiteBox",
   };
   return feature;
 }
@@ -1403,8 +1410,7 @@ ShaderResourceBinding makeEnvironmentLightingUboBinding() {
       {StructMemberInfo{"color", ShaderPropertyType::Vec3, 0, 12},
        StructMemberInfo{"intensity", ShaderPropertyType::Float, 12, 4},
        StructMemberInfo{"rotation", ShaderPropertyType::Float, 16, 4},
-       StructMemberInfo{"visibleInBackground", ShaderPropertyType::Float, 20,
-                        4}}};
+       StructMemberInfo{"backgroundMode", ShaderPropertyType::Float, 20, 4}}};
 }
 
 void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {

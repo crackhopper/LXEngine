@@ -666,7 +666,9 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
       !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
                      0) ||
       !expectBinding(bindings, "EnvironmentLightingUBO",
-                     ShaderPropertyType::UniformBuffer, 2, 0)) {
+                     ShaderPropertyType::UniformBuffer, 2, 0) ||
+      !expectBinding(bindings, "EnvironmentLightingFiniteBoxUBO",
+                     ShaderPropertyType::UniformBuffer, 3, 0)) {
     std::cerr << "  FAIL: graph skybox background bindings mismatch\n";
     return false;
   }
@@ -681,7 +683,7 @@ testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) 
                        [&](const auto &member) { return member.name == name; });
   };
   if (!hasMember("color") || !hasMember("intensity") ||
-      !hasMember("rotation") || !hasMember("visibleInBackground")) {
+      !hasMember("rotation") || !hasMember("backgroundMode")) {
     std::cerr << "  FAIL: EnvironmentLightingUBO members mismatch\n";
     return false;
   }
