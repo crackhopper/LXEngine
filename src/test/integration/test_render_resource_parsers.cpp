@@ -271,6 +271,10 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
              finiteBoxBounds->second.kind == "vec6" &&
              !finiteBoxBounds->second.value.empty(),
          "finiteBox environment lighting asset should declare explicit bounds");
+  EXPECT(finiteBoxBounds != feature.parameters.end() &&
+             finiteBoxBounds->second.value ==
+                 "[-20.0, 20.0, -8.0, 12.0, -20.0, 20.0]",
+         "finiteBox environment lighting asset should use room-sized bounds");
   EXPECT(feature.parameters.find("skyboxEnabled") == feature.parameters.end(),
          "environment lighting feature must not declare skyboxEnabled");
   EXPECT(feature.parameters.find("ambientColor") == feature.parameters.end(),
@@ -563,6 +567,11 @@ void testDefaultRenderPathGraphAssetParses() {
   EXPECT(graph.passes.size() == 6,
          "default forward graph should declare shadow, opaque, environment "
          "box, skybox, tone-map, and debug overlay passes");
+  if (graph.passes.size() == 6) {
+    EXPECT(graph.passes[2].renderState.cullMode == LX_core::CullMode::Front,
+           "default forward EnvironmentBox should cull front faces so only "
+           "the box interior renders");
+  }
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
@@ -609,6 +618,11 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
   EXPECT(graph.passes.size() == 7,
          "default deferred graph should declare shadow, GBuffer, lighting, "
          "environment box, skybox, post-process, and debug overlay passes");
+  if (graph.passes.size() == 7) {
+    EXPECT(graph.passes[3].renderState.cullMode == LX_core::CullMode::Front,
+           "default deferred EnvironmentBox should cull front faces so only "
+           "the box interior renders");
+  }
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());

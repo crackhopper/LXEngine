@@ -313,7 +313,7 @@ makeEnvironmentBoxMesh(const std::array<float, 6> &bounds) {
 LX_core::MaterialInstance::SharedPtr createEnvironmentBoxMaterial() {
   auto tmpl = LX_core::MaterialTemplate::create("environment-box");
   LX_core::MaterialPassDefinition pass;
-  pass.renderState.cullMode = LX_core::CullMode::None;
+  pass.renderState.cullMode = LX_core::CullMode::Front;
   pass.renderState.depthTestEnable = true;
   pass.renderState.depthWriteEnable = false;
   pass.renderState.depthOp = LX_core::CompareOp::LessEqual;

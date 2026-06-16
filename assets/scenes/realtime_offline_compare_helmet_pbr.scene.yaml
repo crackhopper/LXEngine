@@ -53,7 +53,7 @@ root:
         fovY: 40.0
         aspect: 1.0
         nearPlane: 0.1
-        farPlane: 20.0
+        farPlane: 200.0
         cullingMask: 4294967295
     - nodeName: damaged_helmet
       name: damaged_helmet

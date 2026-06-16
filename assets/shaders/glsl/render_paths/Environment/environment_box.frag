@@ -5,6 +5,12 @@
 layout(location = 0) in vec3 vWorldPos;
 layout(location = 0) out vec4 outColor;
 
+layout(set = 0, binding = 0) uniform CameraUBO {
+    mat4 view;
+    mat4 proj;
+    vec3 eyePos;
+} camera;
+
 layout(set = 1, binding = 0) uniform samplerCube SkyboxMap;
 
 layout(set = 2, binding = 0) uniform EnvironmentLightingUBO {
@@ -32,6 +38,10 @@ mat3 lxeYawRotation(float radians) {
 void main() {
     const float LxeBackgroundModeFiniteBox = 2.0;
     if (abs(environmentLighting.backgroundMode - LxeBackgroundModeFiniteBox) > 0.5) {
+        discard;
+    }
+    if (any(lessThan(camera.eyePos, finiteBox.minBounds)) ||
+        any(greaterThan(camera.eyePos, finiteBox.maxBounds))) {
         discard;
     }
 
