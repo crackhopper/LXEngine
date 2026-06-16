@@ -1,24 +1,24 @@
 #include "editor/app/editor_session.hpp"
 
-#include "editor/commands/command_bus.hpp"
-#include "editor/commands/builtin_commands.hpp"
-#include "editor/panels/console_panel.hpp"
-#include "editor/panels/inspector_panel.hpp"
-#include "editor/panels/scene_tree_panel.hpp"
-#include "editor/panels/viewport_overlay.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/scene_render_settings.hpp"
 #include "core/utils/filesystem_tools.hpp"
+#include "infra/build_info/build_info.hpp"
+#include "editor/commands/builtin_commands.hpp"
+#include "editor/commands/command_bus.hpp"
+#include "editor/commands/lxe_editor_commands.hpp"
+#include "editor/panels/console_panel.hpp"
+#include "editor/panels/inspector_panel.hpp"
+#include "editor/panels/scene_tree_panel.hpp"
+#include "editor/panels/viewport_overlay.hpp"
 #include "editor/project/builtin_asset_catalog.hpp"
 #include "editor/project/debug_render_export.hpp"
-#include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/project/project_catalog.hpp"
 #include "editor/project/scene_builder.hpp"
-#include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/render/editor_render_view.hpp"
-#include "infra/build_info/build_info.hpp"
+#include "editor/runtime/scene_interaction_controller.hpp"
 
 #include <chrono>
 #include <exception>
@@ -43,6 +43,8 @@ namespace LX_demo::lxe_editor {
 namespace {
 
 constexpr const char *kDefaultProjectId = "lxe_default";
+constexpr const char *kDefaultStartupScene =
+    "assets/scenes/generated/helmet_standard_pbr.scene.yaml";
 
 [[nodiscard]] std::string sanitizeDumpName(std::string_view name) {
   std::string out;
@@ -55,15 +57,15 @@ constexpr const char *kDefaultProjectId = "lxe_default";
   return out.empty() ? "target" : out;
 }
 
-[[nodiscard]] std::filesystem::path pairedScreenDumpPath(
-    const std::filesystem::path &targetPath) {
+[[nodiscard]] std::filesystem::path
+pairedScreenDumpPath(const std::filesystem::path &targetPath) {
   const auto parent = targetPath.parent_path();
   const std::string stem = targetPath.stem().generic_string();
   return parent / (stem + "-screen.png");
 }
 
-[[nodiscard]] std::filesystem::path defaultDumpPathForTarget(
-    std::string_view targetName) {
+[[nodiscard]] std::filesystem::path
+defaultDumpPathForTarget(std::string_view targetName) {
   const auto timestamp =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
@@ -98,8 +100,8 @@ constexpr const char *kDefaultProjectId = "lxe_default";
       if (c < 0x20u) {
         escapedControl.str({});
         escapedControl.clear();
-        escapedControl << "\\u" << std::hex << std::setw(4)
-                       << std::setfill('0') << static_cast<int>(c);
+        escapedControl << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                       << static_cast<int>(c);
         out += escapedControl.str();
       } else {
         out.push_back(static_cast<char>(c));
@@ -201,9 +203,8 @@ requireCameraComponent(const LX_core::SceneNodeSharedPtr &node,
 
 void removeDefaultProjectDirectory() {
   std::error_code ec;
-  std::filesystem::remove_all(resolveRuntimePath("data/projects") /
-                                  kDefaultProjectId,
-                              ec);
+  std::filesystem::remove_all(
+      resolveRuntimePath("data/projects") / kDefaultProjectId, ec);
 }
 
 } // namespace
@@ -226,39 +227,32 @@ void LxeEditorSession::registerRenderDebugCommand(
       "stats <target> | render debug live-stats | render debug export-path "
       "color-transfer [camera-path] [out-dir]",
       [&hooks](std::vector<std::string> args) {
-        if (args.size() == 2 && args[0] == "debug" &&
-            args[1] == "live-stats") {
+        if (args.size() == 2 && args[0] == "debug" && args[1] == "live-stats") {
           if (!hooks.liveRenderSubmissionStats) {
             return makeCommandError("render debug live-stats unavailable");
           }
           const auto stats = hooks.liveRenderSubmissionStats();
           std::ostringstream structured;
-          structured << "{"
-                     << "\"compilerInputCount\":" << stats.compilerInputCount
-                     << ",\"acceptedInputCount\":" << stats.acceptedInputCount
-                     << ",\"rejectedInputCount\":" << stats.rejectedInputCount
-                     << ",\"submittedDrawCount\":" << stats.submittedDrawCount
-                     << ",\"submittedDispatchCount\":"
-                     << stats.submittedDispatchCount
-                     << ",\"fallbackObservedCount\":"
-                     << stats.fallbackObservedCount
-                     << ",\"descPipelineLookupCount\":"
-                     << stats.descPipelineLookupCount
-                     << ",\"descBoundInputCount\":"
-                     << stats.descBoundInputCount
-                     << ",\"descExecutedInputCount\":"
-                     << stats.descExecutedInputCount
-                     << ",\"bindlessSceneDescriptorCount\":"
-                     << stats.bindlessSceneDescriptorCount
-                     << ",\"usedExplicitCamera\":"
-                     << (stats.usedExplicitCamera ? "true" : "false")
-                     << ",\"usedBindlessSceneDescriptors\":"
-                     << (stats.usedBindlessSceneDescriptors ? "true" : "false")
-                     << "}";
+          structured
+              << "{" << "\"compilerInputCount\":" << stats.compilerInputCount
+              << ",\"acceptedInputCount\":" << stats.acceptedInputCount
+              << ",\"rejectedInputCount\":" << stats.rejectedInputCount
+              << ",\"submittedDrawCount\":" << stats.submittedDrawCount
+              << ",\"submittedDispatchCount\":" << stats.submittedDispatchCount
+              << ",\"fallbackObservedCount\":" << stats.fallbackObservedCount
+              << ",\"descPipelineLookupCount\":"
+              << stats.descPipelineLookupCount
+              << ",\"descBoundInputCount\":" << stats.descBoundInputCount
+              << ",\"descExecutedInputCount\":" << stats.descExecutedInputCount
+              << ",\"bindlessSceneDescriptorCount\":"
+              << stats.bindlessSceneDescriptorCount
+              << ",\"usedExplicitCamera\":"
+              << (stats.usedExplicitCamera ? "true" : "false")
+              << ",\"usedBindlessSceneDescriptors\":"
+              << (stats.usedBindlessSceneDescriptors ? "true" : "false") << "}";
           return makeCommandOk("render debug live-stats", structured.str());
         }
-        if (args.size() == 3 && args[0] == "debug" &&
-            args[1] == "stats") {
+        if (args.size() == 3 && args[0] == "debug" && args[1] == "stats") {
           if (!hooks.statsRenderTarget) {
             return makeCommandError("render debug stats unavailable");
           }
@@ -300,10 +294,9 @@ void LxeEditorSession::registerRenderDebugCommand(
 
           try {
             const auto result = hooks.exportColorTransferPath(request);
-            return makeCommandOk(
-                "debug color transfer exported: " +
-                    result.manifestPath.generic_string(),
-                debugColorTransferExportResultJson(result));
+            return makeCommandOk("debug color transfer exported: " +
+                                     result.manifestPath.generic_string(),
+                                 debugColorTransferExportResultJson(result));
           } catch (const std::exception &e) {
             return makeCommandError(e.what());
           }
@@ -337,8 +330,8 @@ void LxeEditorSession::registerRenderDebugCommand(
           const RenderDebugDumpResult dump =
               hooks.dumpRenderTarget(args[2], outputPath, screenPath);
           std::ostringstream structured;
-          structured << "{\"path\":\""
-                     << jsonEscape(dump.path.generic_string()) << "\"";
+          structured << "{\"path\":\"" << jsonEscape(dump.path.generic_string())
+                     << "\"";
           if (!dump.screenPath.empty()) {
             structured << ",\"screenPath\":\""
                        << jsonEscape(dump.screenPath.generic_string()) << "\"";
@@ -350,9 +343,9 @@ void LxeEditorSession::registerRenderDebugCommand(
                      << ",\"max\":" << dump.maxValue
                      << ",\"mean\":" << dump.meanValue
                      << ",\"nonZeroRatio\":" << dump.nonZeroRatio << "}}";
-          return makeCommandOk(
-              "render target dumped: " + dump.path.generic_string(),
-              structured.str());
+          return makeCommandOk("render target dumped: " +
+                                   dump.path.generic_string(),
+                               structured.str());
         } catch (const std::exception &e) {
           return makeCommandError(e.what());
         }
@@ -393,8 +386,8 @@ void LxeEditorSession::initialize(
     }
     auto openedDefault = m_projectSession.openProject(kDefaultProjectId);
     if (!openedDefault.ok) {
-      openedDefault = m_projectSession.initProject(kDefaultProjectId,
-                                                   std::nullopt);
+      openedDefault =
+          m_projectSession.initProject(kDefaultProjectId, std::nullopt);
     }
     if (openedDefault.ok) {
       if (const auto activePath = m_projectSession.activeScenePath();
@@ -429,7 +422,15 @@ void LxeEditorSession::initialize(
       m_editorData.lastProject = m_projectSession.projectRoot();
       (void)m_editorDataState.save(m_editorData);
     } else {
-      m_runtime.createEmptyScene();
+      try {
+        const std::filesystem::path defaultScenePath =
+            resolveRuntimePath(kDefaultStartupScene);
+        m_runtime.loadFromDocumentPath(defaultScenePath);
+        editorSceneState = loadEditorSceneStateIfPresent(defaultScenePath);
+        loadedRuntime = true;
+      } catch (const std::exception &) {
+        m_runtime.createEmptyScene();
+      }
     }
   }
   rebuildBindings(std::move(editorSceneState));
@@ -506,9 +507,8 @@ LxeEditorSession::buildLiveRenderView() const {
     return std::nullopt;
   }
 
-  const auto editorView =
-      LX_editor::buildEditorRenderView(m_editorState, *m_runtime.scene(),
-                                      m_windowSize);
+  const auto editorView = LX_editor::buildEditorRenderView(
+      m_editorState, *m_runtime.scene(), m_windowSize);
   if (!editorView.has_value()) {
     return std::nullopt;
   }
@@ -529,8 +529,7 @@ std::optional<std::string> LxeEditorSession::currentProjectId() const {
   return project->id;
 }
 
-std::optional<std::string>
-LxeEditorSession::currentProjectDisplayName() const {
+std::optional<std::string> LxeEditorSession::currentProjectDisplayName() const {
   const auto &project = m_projectSession.currentProject();
   if (!project.has_value()) {
     return std::nullopt;
@@ -538,8 +537,7 @@ LxeEditorSession::currentProjectDisplayName() const {
   return project->displayName;
 }
 
-std::optional<std::string>
-LxeEditorSession::currentProjectActiveScene() const {
+std::optional<std::string> LxeEditorSession::currentProjectActiveScene() const {
   const auto &project = m_projectSession.currentProject();
   if (!project.has_value()) {
     return std::nullopt;
@@ -612,9 +610,8 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
     return makeCommandError("project has no active scene");
   }
   const auto runtimePath = m_runtime.documentPath();
-  if (!runtimePath.has_value() ||
-      normalizedAbsolutePath(*runtimePath) !=
-          normalizedAbsolutePath(*activePath)) {
+  if (!runtimePath.has_value() || normalizedAbsolutePath(*runtimePath) !=
+                                      normalizedAbsolutePath(*activePath)) {
     return makeCommandError(
         "active project scene is not loaded; wait for scene open to finish");
   }
@@ -754,6 +751,29 @@ LX_core::CommandResult LxeEditorSession::queueActiveSceneOpen() {
   }
 }
 
+LX_core::CommandResult
+LxeEditorSession::queueScenePathOpen(const std::string &scenePath) {
+  try {
+    const std::filesystem::path resolvedPath =
+        resolveRuntimePath(std::filesystem::path(scenePath));
+    if (!std::filesystem::exists(resolvedPath) ||
+        !std::filesystem::is_regular_file(resolvedPath)) {
+      return makeCommandError("scene file not found: " +
+                              resolvedPath.generic_string());
+    }
+    m_pendingRuntime.reset();
+    m_pendingScenePath = resolvedPath;
+    m_pendingEditorSceneState = loadEditorSceneStateIfPresent(resolvedPath);
+    return makeCommandOk(
+        "queued scene open for next update tick: " +
+            resolvedPath.generic_string(),
+        "{\"path\":\"" + jsonEscape(resolvedPath.generic_string()) +
+            "\",\"status\":\"queued\",\"deferredUntil\":\"next_update_tick\"}");
+  } catch (const std::exception &e) {
+    return makeCommandError(e.what());
+  }
+}
+
 LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
   if (!m_projectSession.hasProject()) {
     return makeCommandError("no project is open; use project init first");
@@ -767,9 +787,8 @@ LX_core::CommandResult LxeEditorSession::saveActiveProjectScene() {
         "active scene open is pending; wait for the next update tick");
   }
   const auto runtimePath = m_runtime.documentPath();
-  if (!runtimePath.has_value() ||
-      normalizedAbsolutePath(*runtimePath) !=
-          normalizedAbsolutePath(*activePath)) {
+  if (!runtimePath.has_value() || normalizedAbsolutePath(*runtimePath) !=
+                                      normalizedAbsolutePath(*activePath)) {
     return makeCommandError(
         "active project scene is not loaded; wait for scene open to finish");
   }
@@ -840,8 +859,8 @@ LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
         "active scene open is pending; wait for the next update tick");
   }
   const auto runtimePath = m_runtime.documentPath();
-  if (!runtimePath.has_value() ||
-      normalizedAbsolutePath(*runtimePath) != normalizedAbsolutePath(*activePath)) {
+  if (!runtimePath.has_value() || normalizedAbsolutePath(*runtimePath) !=
+                                      normalizedAbsolutePath(*activePath)) {
     return makeCommandError(
         "active project scene is not loaded; wait for scene open to finish");
   }
@@ -854,10 +873,9 @@ LxeEditorSession::runRealtimeRenderProfile(std::string_view profileName) {
             : LX_core::offline::makeDefaultRenderProfileDocument();
     const LX_core::offline::ResolvedRenderProfile resolved =
         LX_core::offline::resolveRenderProfileDocument(
-            profiles,
-            LX_core::offline::RenderProfileCliOverrides{
-                .profileName = std::string(profileName),
-            });
+            profiles, LX_core::offline::RenderProfileCliOverrides{
+                          .profileName = std::string(profileName),
+                      });
     RealtimeProfileOutputRequest request{
         .scenePath = m_runtime.documentPath().value_or(std::filesystem::path{}),
         .sceneName = document.sceneName(),
@@ -1031,9 +1049,12 @@ LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
     if (args.size() != 2) {
       return makeCommandError("usage: scene open <scene-id-or-path>");
     }
+    if (!m_projectSession.hasProject()) {
+      return queueScenePathOpen(args[1]);
+    }
     const auto opened = m_projectSession.openScene(args[1]);
     if (!opened.ok) {
-      return makeCommandError(opened.message);
+      return queueScenePathOpen(args[1]);
     }
     const auto queued = queueActiveSceneOpen();
     if (!queued.ok) {
@@ -1070,8 +1091,11 @@ LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
     return makeCommandOk(duplicated.message, duplicated.structuredJson);
   }
   if (args[0] == "import") {
-    if (args.size() != 3) {
-      return makeCommandError("usage: scene import <source-path> <scene-id>");
+    if (args.size() != 2 && args.size() != 3) {
+      return makeCommandError("usage: scene import <source-path> [scene-id]");
+    }
+    if (args.size() == 2 || !m_projectSession.hasProject()) {
+      return queueScenePathOpen(args[1]);
     }
     const auto imported = m_projectSession.importScene(args[1], args[2]);
     if (!imported.ok) {
@@ -1096,7 +1120,7 @@ LxeEditorSession::handleSceneCommand(const std::vector<std::string> &args) {
   return makeCommandError(
       "usage: scene list | scene open <scene-id-or-path> | scene save | "
       "scene new <scene-id> | scene duplicate <source-id> <new-id> | "
-      "scene import <source-path> <scene-id> | scene remove <scene-id> | "
+      "scene import <source-path> [scene-id] | scene remove <scene-id> | "
       "scene status");
 }
 
@@ -1109,11 +1133,11 @@ std::string LxeEditorSession::projectSummaryJson() const {
   const auto activePath = m_projectSession.activeScenePath();
   const auto runtimePath = m_runtime.documentPath();
   const bool sceneOpenPending = hasPendingSceneOpen();
-  const bool activeSceneLoaded =
-      activePath.has_value() && runtimePath.has_value() &&
-      normalizedAbsolutePath(*runtimePath) ==
-          normalizedAbsolutePath(*activePath) &&
-      !sceneOpenPending;
+  const bool activeSceneLoaded = activePath.has_value() &&
+                                 runtimePath.has_value() &&
+                                 normalizedAbsolutePath(*runtimePath) ==
+                                     normalizedAbsolutePath(*activePath) &&
+                                 !sceneOpenPending;
   std::ostringstream oss;
   oss << "{\"id\":\"" << jsonEscape(project->id) << "\",\"displayName\":\""
       << jsonEscape(project->displayName) << "\",\"path\":\""
@@ -1124,10 +1148,9 @@ std::string LxeEditorSession::projectSummaryJson() const {
       << ",\"loadedScene\":\""
       << jsonEscape(runtimePath.has_value() ? runtimePath->string()
                                             : std::string{})
-      << "\",\"activeSceneLoaded\":"
-      << (activeSceneLoaded ? "true" : "false")
-      << ",\"sceneOpenPending\":"
-      << (sceneOpenPending ? "true" : "false") << "}";
+      << "\",\"activeSceneLoaded\":" << (activeSceneLoaded ? "true" : "false")
+      << ",\"sceneOpenPending\":" << (sceneOpenPending ? "true" : "false")
+      << "}";
   return oss.str();
 }
 

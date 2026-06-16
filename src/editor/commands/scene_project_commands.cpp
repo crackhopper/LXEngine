@@ -30,13 +30,13 @@ void registerSceneProjectCommands(LX_core::CommandBus &bus,
 
   bus.registerHandler(
       "scene",
-      "scene open <name-or-path> | scene import <source-path> <scene-id> | "
+      "scene open <name-or-path> | scene import <source-path> [scene-id] | "
       "scene save [args]",
       [sceneCommand](std::vector<std::string> args) {
         if (args.empty()) {
           return makeEditorCommandError(
               "usage: scene open <name-or-path> | scene import <source-path> "
-              "<scene-id> | scene save [args]");
+              "[scene-id] | scene save [args]");
         }
         if (args[0] == "load") {
           return makeEditorCommandError(

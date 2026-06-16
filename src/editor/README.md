@@ -1,8 +1,8 @@
 # lxe_editor
 
-The default playground demo. Starts with an empty scene, lets you initialize or
-open a project, renders the active project scene through the project's Vulkan
-backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
+The default playground demo. Starts with a directly loaded scene, can still
+open deprecated project sessions when needed, renders the active scene through
+the Vulkan backend, and adds an ImGui editor MVP overlay with scene tree / inspector /
 console plus a floating toolbar for Selection editor mode, Orbit / FreeFly
 camera controls, and Preview.
 
@@ -106,11 +106,14 @@ when the editor saves configuration, that launched display becomes the saved
 - Current scene documents persist the authored scene name, gameplay camera
   path, node list, transform hierarchy, built-in mesh/material references,
   directional lights, and editor-camera metadata.
-- `scene open <scene-id-or-path>` queues a project scene and applies it on the
-  next update tick rather than swapping the active runtime scene immediately
-  from the console call.
-- `scene save` writes the currently loaded runtime scene back to the active
-  project scene and saves the project metadata.
+- `scene open <scene-id-or-path>` queues a scene path directly when no project is
+  open. If a deprecated project session is open, it first resolves registered
+  scene ids and then falls back to direct scene paths.
+- `scene import <source-path>` is a direct scene-load alias. The older
+  `scene import <source-path> <scene-id>` project-copy form remains available
+  only when a project is open.
+- `scene save` still writes the loaded runtime scene back to the active project
+  scene and saves project metadata.
 - Closing a dirty scene prompts for `Save`, `Discard`, or `Cancel`. `Save`
   follows the same `scene save` rules.
 
@@ -118,15 +121,16 @@ when the editor saves configuration, that launched display becomes the saved
 
 | Command | Effect |
 |---------|--------|
-| `project templates [list]` | List available read-only project templates |
-| `project list` | List initialized projects under `data/projects/` |
-| `project init <template-id> [project-name]` | Create a writable project from a template and queue its active scene |
-| `project open <project-id-or-path>` | Open an existing project and queue its active scene |
-| `project save` | Save the active project scene and `project.yaml` |
-| `project status` | Return the current project summary |
-| `project close` | Close the project, cancel pending scene opens, and return to an empty scene |
+| `project templates [list]` | Deprecated: list available read-only project templates |
+| `project list` | Deprecated: list initialized projects under `data/projects/` |
+| `project init <template-id> [project-name]` | Deprecated: create a writable project from a template and queue its active scene |
+| `project open <project-id-or-path>` | Deprecated: open an existing project and queue its active scene |
+| `project save` | Deprecated: save the active project scene and `project.yaml` |
+| `project status` | Deprecated: return the current project summary |
+| `project close` | Deprecated: close the project, cancel pending scene opens, and return to an empty scene |
 | `scene list` | List scenes registered in the current project |
-| `scene open <scene-id-or-path>` | Queue a project-scoped scene open for the next update tick |
+| `scene open <scene-id-or-path>` | Queue a direct scene path, or a project scene id when a project is open |
+| `scene import <source-path> [scene-id]` | Queue a direct scene path; with a project and scene id, copy then queue it |
 | `scene save` | Save the loaded runtime scene to the active project scene |
 | `scene new <scene-id>` | Create a new project scene and queue it |
 | `scene duplicate <source-id> <new-id>` | Copy a project scene and queue the duplicate |

@@ -1,19 +1,19 @@
 #pragma once
 
 #include "backend/vulkan/vulkan_renderer_types.hpp"
-#include "editor/commands/command_bus.hpp"
-#include "editor/app/editor_state.hpp"
 #include "core/gpu/engine_loop.hpp"
 #include "core/platform/types.hpp"
-#include "editor/runtime/camera_rig.hpp"
+#include "core/rhi/live_render_view.hpp"
 #include "editor/app/editor_config_state.hpp"
 #include "editor/app/editor_data_state.hpp"
 #include "editor/app/editor_scene_state.hpp"
+#include "editor/app/editor_state.hpp"
+#include "editor/commands/command_bus.hpp"
 #include "editor/project/project_session.hpp"
-#include "editor/runtime/recording_controller.hpp"
 #include "editor/project/realtime_render_profile.hpp"
+#include "editor/runtime/camera_rig.hpp"
+#include "editor/runtime/recording_controller.hpp"
 #include "editor/runtime/scene_runtime.hpp"
-#include "core/rhi/live_render_view.hpp"
 #include "editor/ui/ui_overlay.hpp"
 
 #include <filesystem>
@@ -61,9 +61,9 @@ public:
   };
 
   struct RenderDebugCommandHooks final {
-    std::function<RenderDebugDumpResult(
-        std::string_view, const std::filesystem::path &,
-        const std::filesystem::path &)>
+    std::function<RenderDebugDumpResult(std::string_view,
+                                        const std::filesystem::path &,
+                                        const std::filesystem::path &)>
         dumpRenderTarget;
     std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;
     std::function<LX_core::gpu::LiveRenderSubmissionStats()>
@@ -104,8 +104,7 @@ public:
   [[nodiscard]] bool debugEnabled() const;
   [[nodiscard]] RecordingController &recording();
   [[nodiscard]] const RecordingController &recording() const;
-  [[nodiscard]] std::optional<std::filesystem::path>
-  runtimeScenePath() const;
+  [[nodiscard]] std::optional<std::filesystem::path> runtimeScenePath() const;
   [[nodiscard]] SceneRuntime &runtime();
   [[nodiscard]] const SceneRuntime &runtime() const;
   [[nodiscard]] std::optional<LX_core::gpu::LiveRenderView>
@@ -129,6 +128,8 @@ private:
   handleSceneCommand(const std::vector<std::string> &args);
   [[nodiscard]] bool hasPendingSceneOpen() const;
   [[nodiscard]] LX_core::CommandResult queueActiveSceneOpen();
+  [[nodiscard]] LX_core::CommandResult
+  queueScenePathOpen(const std::string &scenePath);
   [[nodiscard]] LX_core::CommandResult saveActiveProjectScene();
   [[nodiscard]] std::string realtimeRenderProfilesJson() const;
   [[nodiscard]] LX_core::CommandResult
