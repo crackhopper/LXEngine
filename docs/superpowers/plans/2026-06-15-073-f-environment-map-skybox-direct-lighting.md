@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> Required rendering guardrail: use current repo facts only and apply `render-agent-guardrails`. This plan executes `REQ-073-f`; do not implement `REQ-073-h` surface lighting or `REQ-073-i` full PostProcess hard cut in this slice.
+> Required rendering guardrail: use current repo facts only and apply `render-agent-guardrails`. This plan executes `REQ-073-f`; do not implement `REQ-073-g` surface lighting or `REQ-073-i` full PostProcess hard cut in this slice.
 
 **Goal:** Move visible EnvMap skybox/background rendering onto RenderPathGraph + RenderFeature + SceneResourceTable, with constant-color and texture environments using one feature-owned `SkyboxMap` resource path.
 
@@ -854,7 +854,7 @@ git commit -m "refactor: remove manual skybox material path"
 
 **Required negative test:**
 - `visibleInBackground: false` removes visible background contribution.
-- Disabling visible background does not delete or rename the `environmentMap` feature resource; 073-h can still consume the same feature later.
+- Disabling visible background does not delete or rename the `environmentMap` feature resource; 073-g consumes the same feature for surface lighting.
 
 - [ ] **Step 1: Add smoke fixtures**
 
@@ -897,18 +897,18 @@ git commit -m "test: add skybox background smoke"
 
 ## Task 12: Final Cross-Path Audit And Documentation Handoff
 
-**Purpose:** Close 073-f without silently implementing 073-h or leaving old positive paths.
+**Purpose:** Close 073-f without silently implementing 073-g or leaving old positive paths.
 
 **Files:**
 - Modify: `notes/requirements/073-f-environment-map-skybox-direct-lighting.md`
 - Modify: `docs/superpowers/specs/2026-06-15-073-f-environment-map-skybox-direct-lighting-design.md`
 - Modify: `docs/superpowers/plans/2026-06-15-073-f-environment-map-skybox-direct-lighting.md`
-- Check: `notes/requirements/073-h-ibl-lighting-post-effect.md`
+- Check: `notes/requirements/073-g-environment-hdr-async-ibl-bake-and-runtime-lighting.md`
 
 **Required audit:**
 - old tokens are absent from default positive paths;
 - remaining mentions are docs, migration notes, or negative tests;
-- Forward/Deferred surface lighting remains assigned to `REQ-073-h`.
+- Forward/Deferred surface lighting remains assigned to `REQ-073-g`.
 
 - [x] **Step 1: Run full verification**
 
@@ -927,7 +927,7 @@ rg -n "createSkyboxBackgroundMaterial|shader: skybox|scene\\.environment|ambient
 Classify every remaining hit as one of:
 - negative test;
 - historical/requirement documentation;
-- `REQ-073-h` or `REQ-073-i` owner;
+- `REQ-073-g` or `REQ-073-i` owner;
 - code that must be fixed before finishing 073-f.
 
 - [x] **Step 3: Update implementation status**
@@ -935,7 +935,7 @@ Classify every remaining hit as one of:
 In `notes/requirements/073-f-environment-map-skybox-direct-lighting.md`, update `实施状态` with:
 - implemented files;
 - verification commands and results;
-- remaining work explicitly owned by `REQ-073-h`, `REQ-073-i`, or `REQ-073-g`.
+- remaining work explicitly owned by `REQ-073-g`, `REQ-073-h`, or `REQ-073-i`.
 
 - [ ] **Step 4: Commit checkpoint**
 
@@ -966,4 +966,4 @@ Expected final state:
 - `visibleInBackground` controls only visible background rendering.
 - `scene.environment`, `ambientColor`, `ambientIntensity`, and `skyboxEnabled` do not satisfy positive rendering paths.
 - No default path calls manual skybox material injection.
-- Surface environment lighting remains deferred to `REQ-073-h`.
+- Surface environment lighting remains deferred to `REQ-073-g`.

@@ -38,8 +38,8 @@ GGX 预过滤 specular cubemap，不是普通 equirect HDR。当前只要求
 
 ## 非目标
 
-- 不实现 reflection probe capture / bake；由 `REQ-073-g` 处理。
-- 不实现 Forward / Deferred surface lighting 对 constantColor、HDR、KTX2 或 probe EnvMap 的采样贡献；由 `REQ-073-h` 处理。
+- 不实现 reflection probe capture / bake；由 `REQ-073-h` 处理。
+- 不实现 Forward / Deferred surface lighting 对 constantColor、HDR、KTX2 或 probe EnvMap 的采样贡献；由 `REQ-073-g` 处理。
 - 不解决所有 RenderFeature 参数架构遗留；由 `REQ-073-i` 做 hard cut。
 - 不做 post-process gamma / tone mapping 架构清理；由 `REQ-073-i` 统一处理。
 
@@ -58,7 +58,7 @@ Forward / Deferred graph SHALL 显式声明 skybox/background pass 或等价 ful
 - pass order 由 graph 决定，backend 不得按 pass name 临时插入 skybox draw。
 - skybox/background pass 是 graph-authored background effect pass，不是 material object；本 REQ 不通过新增 skybox scene object / material category 来少建一个 pass。
 - background pass 只填充没有几何覆盖的 HDR 背景像素；它不计算物体表面的 environment lighting。
-- Forward / Deferred surface lighting 将在 `REQ-073-h` 读取同一个 EnvMap / feature 合同；本 REQ 只保证资源与参数合同已经可被后续 lighting pass 复用。
+- Forward / Deferred surface lighting 将在 `REQ-073-g` 读取同一个 EnvMap / feature 合同；本 REQ 只保证资源与参数合同已经可被后续 lighting pass 复用。
 - background pass 需要读取 `depth.main` 作为 read-only depth attachment 时，必须由 RenderPathGraph schema 明确表达；不得由 backend 按 pass name 或 shader name 临时绑定 depth image。
 - schema 应在 rendering attachment / target contract 上支持显式 `attachmentUsage`，例如 `color-attachment-write`、`depth-attachment-read-only`、`depth-attachment-write`、`depth-attachment-read-write`；`depth.main` 可以出现在 `sources` 和 rendering attachment contract 中，但只有 writable usage 才进入 `targets` depth write。
 - FrameGraph / backend 必须从该 schema 事实生成 `LOAD` + `depthWrite=false` 的 depth attachment 绑定，并避免把 read-only depth 误判为重复写 `depth.main`。
@@ -85,7 +85,7 @@ Forward / Deferred graph SHALL 显式声明 skybox/background pass 或等价 ful
 - 由 feature-owned UBO 或等价 descriptor 进入 shader。
 - `environmentMap.uri` 必须被资源解析流程注册为 live `SkyboxMap` payload；它是 feature resource parameter，不是 scene 字段。
 - 由依赖该 feature 的 pass shader 通过 shared `common/environment_lighting.glsl` 或等价 common shader lib 消费；feature YAML 的 binding/member 必须和反射结果一致。
-- `color` / `intensity` 定义 EnvMap 源 radiance；`REQ-073-h` 在 surface lighting 阶段复用同一组值，再用 `feature.iblLighting` 的 diffuse/specular multiplier 控制 contribution 强度。
+- `color` / `intensity` 定义 EnvMap 源 radiance；`REQ-073-g` 在 Forward surface lighting 阶段复用同一组值，再用 `feature.surfaceLighting` 的 IBL 开关与 diffuse/specular multiplier 控制 contribution 强度。
 
 不得在 `scene.environment`、`VulkanPostProcessBuilder`、`VulkanRealtimeRenderer` 或 scene runtime 中用 hardcoded values 代替。
 
@@ -132,7 +132,7 @@ skybox shader 的 binding 与 graph/source/feature 必须一致。
 - RenderFeature 缺少 required parameter 时 fail-fast。
 - backend descriptor plan 缺少 live `SkyboxMap` 时 fail-fast，而不是渲染黑色并当作成功。
 - scene 文件继续声明 `ambientColor` / `ambientIntensity` / `environment.uri` 等 environment 输入时不能满足正向路径；strict profile 应 fail-fast，证明单色环境源不再走 scene 字段双轨。
-- 现有 Forward/Deferred 临时 constantColor lighting 代码不是本 REQ 的验收条件；实现时可以删除，也可以保持零贡献路径，最终 surface lighting 规则由 `REQ-073-h` 收口。
+- 现有 Forward/Deferred 临时 constantColor lighting 代码不是本 REQ 的验收条件；实现时可以删除，也可以保持零贡献路径，最终 surface lighting 规则由 `REQ-073-g` 收口。
 
 ### R6: Remove Manual Skybox Material Injection
 
@@ -151,7 +151,7 @@ skybox shader 的 binding 与 graph/source/feature 必须一致。
 - RenderWorkCompiler 测试：skybox fullscreen input 生成 typed input 和 accepted `RenderInputDesc`。
 - RenderFeature resource loader 测试：`environmentMap.uri: builtin:env/white_cube` 注册 live `SkyboxMap`；缺 URI 不隐式创建；scene-side environment 字段被拒绝或不能满足该依赖。
 - Vulkan smoke：启用 `builtin:env/white_cube` + feature color/intensity 后输出非黑 skybox；关闭 `visibleInBackground` 后背景贡献消失。
-- rg audit：`createSkyboxBackgroundMaterial`、root `skybox` shader URI、manual skybox material injection 不出现在 default positive path；scene-side `ambientColor` / `ambientIntensity` 只允许出现在 migration / negative-test / 073-h handoff 文档中。
+- rg audit：`createSkyboxBackgroundMaterial`、root `skybox` shader URI、manual skybox material injection 不出现在 default positive path；scene-side `ambientColor` / `ambientIntensity` 只允许出现在 migration / negative-test / 073-g handoff 文档中。
 
 ## 修改范围
 
@@ -170,7 +170,7 @@ skybox shader 的 binding 与 graph/source/feature 必须一致。
 - pass/feature 级参数必须走 RenderFeature，不允许 C++ 硬编码。
 - 073-f 正向路径不使用 `scene.environment`；EnvMap URI 与 shader 参数同属 `feature.environmentLighting`。
 - 单色环境、HDR panorama、KTX2 cubemap 都是 EnvMap source variant，不能维护 ambient-only 双轨。
-- 本 REQ 的 “directly visible” 指可见背景，不指物体表面 environment lighting；surface lighting 由 `REQ-073-h` 统一处理。
+- 本 REQ 的 “directly visible” 指可见背景，不指物体表面 environment lighting；surface lighting 由 `REQ-073-g` 统一处理。
 - backend 不能手动创建 material instance 来绕过 shader binding reflection。
 - 不引入第二套 public graph / effect system。
 
@@ -181,8 +181,8 @@ skybox shader 的 binding 与 graph/source/feature 必须一致。
 
 ## 后续工作
 
-- `REQ-073-g`: reflection probe and baked render path。
-- `REQ-073-h`: IBL lighting post effect / indirect lighting consumption。
+- `REQ-073-g`: environment HDR async IBL bake and runtime lighting。
+- `REQ-073-h`: reflection probe IBL extension。
 - `REQ-073-i`: RenderFeature parameter architecture hard cut。
 
 ## 实施状态
@@ -244,9 +244,9 @@ skybox shader 的 binding 与 graph/source/feature 必须一致。
 
 剩余边界：
 
-- Surface environment lighting / IBL contribution 仍由 `REQ-073-h` 负责；073-f
+- Surface environment lighting / IBL contribution 由 `REQ-073-g` 负责；073-f
   只实现可见背景和共享 EnvMap feature/resource 合同。
-- Reflection probe bake 仍由 `REQ-073-g` 负责。
+- Reflection probe bake 仍由 `REQ-073-h` 负责。
 - RenderFeature 参数架构 hard cut、post-process 参数彻底收口仍由
   `REQ-073-i` 负责。
 - live dump / `render debug dump` 是 legacy 诊断路径，短期只用于交叉验证；

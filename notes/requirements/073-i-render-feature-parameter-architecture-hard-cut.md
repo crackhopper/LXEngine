@@ -6,7 +6,7 @@
 
 当前 `assets/effects/tone_mapping.render-feature.yaml` 已定义 tone mapping 参数；`PostProcess` shader 也声明 `PostProcessUBO.gamma` 等字段。但 realtime builder 仍会在 `VulkanPostProcessBuilder::createStandardPostProcessMaterial()` 中手动创建 fullscreen material，并由 C++ 直接写入 `PostProcessUBO`。这让 shader binding completeness 可以通过，却没有证明 RenderFeature 参数被消费。
 
-同类风险也会出现在 skybox、reflection probe bake、IBL lighting 等 effect：如果参数在 shader 中存在，但 graph/feature schema 没有作为唯一事实源进入 binding plan，反射校验就只能校验“有 descriptor”，不能校验“descriptor 来自正确的 RenderFeature”。
+同类风险也会出现在 skybox、environment IBL bake、reflection probe 等 effect：如果参数在 shader 中存在，但 graph/feature schema 没有作为唯一事实源进入 binding plan，反射校验就只能校验“有 descriptor”，不能校验“descriptor 来自正确的 RenderFeature”。
 
 `REQ-073-f` 已确认 environment 边界：EnvMap resource URI 和 shader-visible
 environment 参数都属于 `feature.environmentLighting`。单色环境光也必须作为
@@ -107,7 +107,7 @@ Environment lighting SHALL follow the same RenderFeature hard cut as postprocess
 - constant-color environment 通过显式 `environmentMap.uri: builtin:env/white_cube` 或等价内置 URI 表达，不能在缺 URI 时隐式创建默认 cubemap。
 - 内置白 cubemap 是 live `SkyboxMap` payload，不是 placeholder；descriptor plan 缺少 live payload 时必须 rejected。
 - `feature.environmentLighting.render-feature.yaml` 声明 `environmentMap` resource parameter 以及 color / intensity / rotation / skybox visibility 等 shader-visible 参数，并保存 resource binding 与 UBO binding/member schema。
-- Forward、DeferredLighting、SkyboxBackground 以及后续 IBL pass 依赖 environment feature 时，必须使用同一个 feature payload 和 common shader ABI，不得各自手写 UBO。
+- Forward、DeferredLighting、SkyboxBackground 以及 073g 的 IBL helper 依赖 environment feature 时，必须使用同一个 feature payload 和 common shader ABI，不得各自手写 UBO。
 
 ### R7: Cross-Path Audit
 
@@ -154,8 +154,8 @@ Environment lighting SHALL follow the same RenderFeature hard cut as postprocess
 ## 依赖
 
 - `REQ-073-f`: environment map skybox direct lighting。
-- `REQ-073-g`: reflection probe and bake render path。
-- `REQ-073-h`: IBL lighting post effect。
+- `REQ-073-g`: environment HDR async IBL bake and runtime lighting。
+- `REQ-073-h`: reflection probe IBL extension。
 
 ## 后续工作
 

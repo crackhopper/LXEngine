@@ -1,6 +1,6 @@
 # REQ-074-g: Post-package Hard Cut And Cleanup
 
-> 2026-06-15 顺延：本 REQ 原为 `REQ-073-g`，因 reflection probe / bake path 插入到 `REQ-073-g`，现顺延为 `REQ-074-g`。本 REQ 只清理 package / GPU cache 实现期间新增或保留的临时 bridge；transparent/BMW realtime hard cut 和 OfflineRT 默认入口 hard cut 分别由 `REQ-073-j`、`REQ-074-h`、`REQ-074-i` 处理。
+> 2026-06-16 校准：本 REQ 原为 `REQ-073-g`，因 `REQ-073` 渲染闭环继续插入 environment IBL bake、reflection probe 和 Forward 收敛工作，现保留在 `REQ-074-g`。本 REQ 只清理 package / GPU cache 实现期间新增或保留的临时 bridge；transparent/BMW realtime hard cut 和 OfflineRT 默认入口 hard cut 分别由 `REQ-073-j`、`REQ-074-h`、`REQ-074-i` 处理。
 
 ## 背景
 

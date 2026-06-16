@@ -86,7 +86,7 @@ reflection sees the same ABI that the feature YAML declares.
 
 - feature/schema/reflection mismatch rejects the input;
 - PostProcess has separate `gamma` and `outputEncodingMode`;
-- skybox and IBL feature parameters use the same validation path;
+- skybox, environment IBL, and probe feature parameters use the same validation path;
 - scene-side environment fields are rejected or proved unable to satisfy the
   positive realtime graph;
 - `builtin:env/white_cube` and HDR/KTX2 environments expose the same

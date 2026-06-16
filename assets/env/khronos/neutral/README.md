@@ -29,4 +29,4 @@ Current support is intentionally narrow:
 - BasisU, supercompressed KTX2, texture arrays, 3D textures, and generic KTX2
   material textures are not supported by this path.
 - The asset is prepared for `REQ-073-f` skybox/environment work and later
-  `REQ-073-h` IBL lighting. It is not yet wired into scene loading by default.
+  `REQ-073-g` IBL lighting. It is not yet wired into scene loading by default.

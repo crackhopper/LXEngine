@@ -108,14 +108,14 @@ and prepare validation prove the feature YAML resource binding and UBO
 binding/member declarations match shader reflection.
 
 `color` and `intensity` define the EnvMap source radiance. The visible
-background pass uses them directly, and `REQ-073-h` reuses the same values for
-Forward/Deferred surface lighting before applying `feature.iblLighting`
+background pass uses them directly, and `REQ-073-g` reuses the same values for
+Forward/Deferred surface lighting before applying `feature.surfaceLighting`
 diffuse/specular contribution multipliers.
 
 `SkyboxBackground` writes visible environment color to `hdr.color` only where
 geometry has not covered the pixel. Surface lighting is deliberately outside
 this slice. Forward and DeferredLighting will consume the same EnvMap resource
-and feature ABI in `REQ-073-h`; this design only prepares the resource and
+and feature ABI in `REQ-073-g`; this design only prepares the resource and
 feature contract they will reuse.
 
 Depth participation is graph-authored. `Skybox` needs `depth.main` as a
@@ -178,6 +178,6 @@ same-name source/target pairs as an automatic error.
   builtin:env/white_cube` creates a live `SkyboxMap` and missing URI does not.
 - Vulkan smoke proves constant-color skybox appears when enabled and disappears
   when disabled.
-- Forward/Deferred surface lighting is documented as `REQ-073-h` ownership, not
+- Forward/Deferred surface lighting is documented as `REQ-073-g` ownership, not
   a 073-f acceptance condition.
 - rg audit has no default positive-path hit for manual skybox material injection.

@@ -47,8 +47,8 @@
 | `REQ-053-b` | Assets Downloader 外部资源下载与导入工具 | 外部/内置资产下载、导入、转换、路径管理 |
 | `REQ-073-e` | Indirect Material Batching And Diagnostics | indirect batching；`REQ-073-e2` hard cut 已完成，保留需求背景 |
 | `REQ-073-f` | Environment Map Skybox Direct Lighting | environment / skybox 直接光照 graph 化 |
-| `REQ-073-g` | Reflection Probe And Bake Render Path | reflection probe、probe bake cache、graph bake path |
-| `REQ-073-h` | IBL Lighting Post Effect | Forward / Deferred IBL lighting effect 消费 |
+| `REQ-073-g` | Environment HDR Async IBL Bake And Runtime Lighting | 环境 HDR 异步 IBL bake、热激活、Forward IBL lighting |
+| `REQ-073-h` | Reflection Probe IBL Extension | probe capture、probe bake cache、local IBL 扩展 |
 | `REQ-073-i` | RenderFeature Parameter Architecture Hard Cut | RenderFeature 参数配置化、反射校验、拒绝 C++ 硬编码 |
 | `REQ-073-j` | Transparent BMW Material Path And Smoke | transparent / BMW realtime clean gate |
 | `REQ-074-a` | Texture Compression Pipeline With BC7 | BC7 压缩；本轮未处理 |
@@ -82,7 +82,6 @@
 
 | 计划 | 主题 | 后置原因 |
 |---|---|---|
-| `bake-reflection-probe-plan.md` | Reflection Probe Bake | 依赖 ground truth renderer 稳定，本轮只记录计划 |
 | `bake-irradiance-probe-sh-plan.md` | Irradiance Probe / SH Bake | diffuse probe/SH 与 reflection probe 分开规划 |
 | `bake-lightmap-plan.md` | Lightmap Bake | UV2、atlas、texel visibility 复杂度高，单独后置 |
 
@@ -115,7 +114,8 @@
 - 2026-06-14：继续整理 active 顺序。`REQ-054-a` 归档，offline graph/default path 后续承接到 `REQ-074-h`，old config bridge 删除承接到 `REQ-074-i`，renderer 大文件拆分承接到 `REQ-076-a`。旧 `REQ-057-a`、`REQ-058-a`、`REQ-059-a` 重排到当前 `REQ-075-c`、`REQ-075-d`、`REQ-076-c`，其中 `REQ-076-c` 改写为支持 3DGS 等非 mesh 渲染结构的 RenderPathGraph/material/effect 架构扩展。`REQ-067-a`、`REQ-068-a`、`REQ-071-b`、`REQ-071-c` 归档，剩余事项由当前 `REQ-073-*` 到 `REQ-076-*` 阶段承接。
 - 2026-06-14：新增 `REQ-078-a`，把 FrameGraph barrier plan、split barrier、timeline semaphore、multi-queue scheduling、async compute 和 secondary command buffer parallel recording 集中后置到 realtime / OfflineRT / 3DGS 可用闭环之后，避免打断 `REQ-073-*` 短期渲染目标。
 - 2026-06-14：继续整理 active 顺序。旧 `REQ-069-a/b/c` 合并为 `REQ-076-a`，并放入 `REQ-076` 治理阶段；3DGS active 链从旧 `REQ-061-a` 到 `REQ-065-a` 重排为 `REQ-077-a` 到 `REQ-077-e`，并按当前代码事实修正为“只有 assets-downloader cache 表面，尚无 loader/runtime/render/editor 闭环”。
-- 2026-06-15：按 Helmet/reference 渲染问题后的 IBL 路线重排当前渲染需求。`REQ-073-f` 改为 environment map / skybox 直接光照；`REQ-073-g` 改为 reflection probe 与 bake render path；`REQ-073-h` 改为 IBL lighting post effect；`REQ-073-i` 新增 RenderFeature 参数架构 hard cut，要求 feature/effect 参数配置化、反射校验，并拒绝 C++ hardcoded / 手动 `MaterialInstance` 正向路径。原 transparent、OfflineRT、PBRT、equivalence、path tracing、editor offline、non-mesh 和大文件拆分需求顺延到 `REQ-073-j` 到 `REQ-076-a`。
+- 2026-06-16：继续收束 IBL 路线。`REQ-073-g` 改为 environment HDR async IBL bake and runtime lighting：异步 bake job、环境配套 SH / prefiltered cubemap、`standard-pbr` 材质配套 BRDF LUT、热激活和 Forward inline IBL lighting。旧 `REQ-073-h` 的 IBL lighting 内容并入 `REQ-073-g`，新的 `REQ-073-h` 改为 reflection probe IBL extension。Forward 不再新增临时 IBL additive pass，也不再保留单独的 `REQ-073-k` 合并需求。
+- 2026-06-15：按 Helmet/reference 渲染问题后的 IBL 路线重排当前渲染需求。`REQ-073-f` 改为 environment map / skybox 直接光照；`REQ-073-g` 当时改为 reflection probe 与 bake render path；`REQ-073-h` 当时改为 IBL lighting post effect；`REQ-073-i` 新增 RenderFeature 参数架构 hard cut，要求 feature/effect 参数配置化、反射校验，并拒绝 C++ hardcoded / 手动 `MaterialInstance` 正向路径。原 transparent、OfflineRT、PBRT、equivalence、path tracing、editor offline、non-mesh 和大文件拆分需求顺延到 `REQ-073-j` 到 `REQ-076-a`。
 - 2026-06-14：按当前代码复核 `REQ-072` 之前的 active 需求。已完成或已由当前架构取代的 `REQ-045-a/b/c`、`REQ-046-a` 到 `REQ-052-a`、`REQ-053-a`、`REQ-054-b`、`REQ-055-a`、`REQ-056-a`、`REQ-060-a`、`REQ-063-a`、`REQ-066-a`、`REQ-067-b`、`REQ-070-a`、`REQ-071-a/d/e/f/g` 归档到 `finished/`；仍未完成的 `REQ-053-b`、`REQ-054-a`、`REQ-057-a` 到 `REQ-059-a`、`REQ-061-a`、`REQ-062-a`、`REQ-063-b` 到 `REQ-065-a`、`REQ-067-a` 到 `REQ-069-c`、`REQ-071-b/c` 当时保留在 active，并同步实施状态到当前代码事实。后续同日整理又把其中一部分继续归档或重排。
 - 2026-06-10：新增 `REQ-071-a` 到 `REQ-071-f`，把 SurfaceMaterial pure envelope、RenderPathGraph/RenderFeature、SceneResourceTable parser/resource ownership、GPUResourceTable/pipeline cache/upload task、scene package 和 helmet/BMW offline-realtime 渲染等价验证收敛为一个连续需求族。该族承接 `REQ-067-a/b` 的 SceneResourceTable 资源模型和 `REQ-070-a` 的 BMW M6 转换输入，目标是先把材质/渲染合同说清楚，再实现加载性能和对齐验收。
 - 2026-06-01：新增 `REQ-052-a` 到 `REQ-059-a`，建立 Offline Rendering Lab 主线。路线优先级为 Ground Truth Image Renderer、Bake Asset Generator / PBR Reference、Editor Integrated Preview、Research Sandbox；第一版选择 Vulkan compute 离线 renderer，不以 CPU path tracer 或 Vulkan hardware RT pipeline 起步。随后将 `REQ-054` 拆成 `054-a` renderer foundation/realtime/offline 拆分与 `054-b` compute offline renderer MVP，避免继续扩大当前 2200+ 行 `VulkanRendererImpl`。补充 `REQ-053-b` `assets-downloader`，管理大型网络资产下载、导入、转换和 scene 路径引用，避免 git 仓库膨胀。Bake asset generator 暂不进入 active 实施队列，拆入 `planned/`，记录 reflection probe、irradiance/SH 和 lightmap 的原理与计划；未来执行时再重新取 active REQ 编号。
