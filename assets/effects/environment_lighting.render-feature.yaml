@@ -28,7 +28,7 @@ parameters:
     required: true
   backgroundMode:
     kind: enum
-    value: infinite
+    value: finiteBox
     binding: EnvironmentLightingUBO
     member: backgroundMode
     required: true

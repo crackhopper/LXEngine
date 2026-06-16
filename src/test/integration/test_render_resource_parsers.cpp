@@ -261,6 +261,16 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
   EXPECT(feature.parameters.find("visibleInBackground") ==
              feature.parameters.end(),
          "environment lighting feature must hard-cut visibleInBackground");
+  const auto backgroundMode = feature.parameters.find("backgroundMode");
+  EXPECT(backgroundMode != feature.parameters.end() &&
+             backgroundMode->second.value == "finiteBox",
+         "environment lighting asset should select finiteBox background mode "
+         "for box-scene validation");
+  const auto finiteBoxBounds = feature.parameters.find("finiteBoxBounds");
+  EXPECT(finiteBoxBounds != feature.parameters.end() &&
+             finiteBoxBounds->second.kind == "vec6" &&
+             !finiteBoxBounds->second.value.empty(),
+         "finiteBox environment lighting asset should declare explicit bounds");
   EXPECT(feature.parameters.find("skyboxEnabled") == feature.parameters.end(),
          "environment lighting feature must not declare skyboxEnabled");
   EXPECT(feature.parameters.find("ambientColor") == feature.parameters.end(),
