@@ -87,17 +87,17 @@ Corrupt package or cache mismatch is reported as correctness/fallback diagnostic
 
 - 不要求 fixed target speedup number until baseline is measured。
 - 不实现 editor loading UI。
-- 不 include offline/realtime image equivalence; `REQ-076-f` handles that。
+- 不 include offline/realtime image equivalence; `REQ-075-b` handles that。
 
 ## 依赖
 
 - `REQ-074-d`: CPU package restore。
 - `REQ-074-e`: GPU pipeline cache restore。
-- `REQ-076-d`: OfflineRT config hard cut and smoke。
+- `REQ-074-i`: OfflineRT config hard cut and smoke。
 
 ## 后续工作
 
-- `REQ-074-h`: post-package hard cut and cleanup。
+- `REQ-074-g`: post-package hard cut and cleanup。
 
 ## 实施状态
 

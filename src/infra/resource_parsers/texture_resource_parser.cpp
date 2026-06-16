@@ -3,6 +3,8 @@
 #include "core/asset/texture.hpp"
 #include "infra/texture_loader/texture_loader.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -39,8 +41,19 @@ namespace {
 [[nodiscard]] LX_core::CombinedTextureSamplerUniquePtr
 loadTextureSampler(const LX_core::ResourceUri &uri,
                    LX_core::TextureContent content) {
+  const std::filesystem::path path = pathFromUri(uri);
+  std::string extension = path.extension().string();
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](const unsigned char ch) {
+                   return static_cast<char>(std::tolower(ch));
+                 });
+  if (extension == ".ktx2") {
+    return std::make_unique<LX_core::CombinedTextureSampler>(
+        infra::TextureLoader::loadKtx2Cubemap(path));
+  }
+
   infra::TextureLoader loader;
-  loader.load(pathFromUri(uri).string());
+  loader.load(path.string());
 
   LX_core::TextureDesc desc;
   desc.width = static_cast<u32>(loader.getWidth());

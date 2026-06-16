@@ -76,7 +76,7 @@ Editor tree / inspector SHALL 能识别该节点类型，至少显示 URI、spla
 
 ## 依赖
 
-- `REQ-076-i`
+- `REQ-076-c`
 - `REQ-077-a`
 - `notes/roadmaps/research/3dgs-ply-rendering/03-LX当前状态对照.md`
 

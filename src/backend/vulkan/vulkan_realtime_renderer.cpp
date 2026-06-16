@@ -24,9 +24,13 @@
 #include "core/utils/string_table.hpp"
 #include "infra/gui/gui.hpp"
 #include "infra/image/rgba_image_io.hpp"
+#include "infra/shader_compiler/compiled_shader.hpp"
+#include "infra/shader_compiler/shader_reflector.hpp"
 #include "infra/resource_parsers/material_source_variant_resolver.hpp"
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
+#include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
+#include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/window/window.hpp"
 #include "details/commands/command_buffer_manager.hpp"
 #include "details/descriptors/descriptor_manager.hpp"
@@ -76,6 +80,39 @@ bool strictBindlessValidationEnabled() {
 
 bool isMigratedBindlessValidationPass(LX_core::StringID pass) {
   return pass == LX_core::Pass_Forward || pass == LX_core::Pass_Deferred;
+}
+
+LX_core::ShaderStageCode loadRuntimeShaderStage(const std::string &shaderName,
+                                                const char *suffix,
+                                                LX_core::ShaderStage stage) {
+  const auto bytes =
+      readFile((getRuntimeShaderBinaryDir() / (shaderName + "." + suffix))
+                   .string());
+  if ((bytes.size() % sizeof(uint32_t)) != 0) {
+    throw std::runtime_error("shader bytecode size is not 4-byte aligned: " +
+                             shaderName + "." + suffix);
+  }
+
+  LX_core::ShaderStageCode code;
+  code.stage = stage;
+  code.bytecode.resize(bytes.size() / sizeof(uint32_t));
+  std::memcpy(code.bytecode.data(), bytes.data(), bytes.size());
+  return code;
+}
+
+LX_core::IShaderSharedPtr
+loadRuntimeGraphicsShaderPayload(const LX_core::ResourceUri &shaderUri) {
+  const std::string shaderName = shaderUri.string();
+  std::vector<LX_core::ShaderStageCode> stages{
+      loadRuntimeShaderStage(shaderName, "vert.spv", LX_core::ShaderStage::Vertex),
+      loadRuntimeShaderStage(shaderName, "frag.spv",
+                             LX_core::ShaderStage::Fragment),
+  };
+  auto bindings = LX_infra::ShaderReflector::reflect(stages);
+  auto vertexInputs = LX_infra::ShaderReflector::reflectVertexInputs(stages);
+  return std::make_shared<LX_infra::CompiledShader>(
+      std::move(stages), std::move(bindings), std::move(vertexInputs),
+      shaderName);
 }
 
 LX_core::RenderPathGraph
@@ -153,6 +190,44 @@ void applyToneMappingFeatureSettingsFromGraphAsset(
       settings.exposure = std::stof(exposureIt->second.value);
     }
     return;
+  }
+}
+
+std::filesystem::path resolveGraphFeatureAssetPath(const char *graphAssetPath,
+                                                   const std::string &featureUri) {
+  const auto graphPath = resolveRuntimePath(graphAssetPath);
+  auto featurePath = graphPath.parent_path() / std::filesystem::path(featureUri);
+  if (!std::filesystem::exists(featurePath) &&
+      std::string_view(graphAssetPath).starts_with("assets/") &&
+      featureUri.find("://") == std::string::npos) {
+    featurePath = resolveRuntimePath(std::filesystem::path("assets") /
+                                     std::filesystem::path(featureUri));
+  }
+  return featurePath;
+}
+
+void registerRenderFeatureDependenciesFromGraphAsset(
+    LX_core::Scene &scene, const char *graphAssetPath,
+    const LX_core::RenderPathGraph &graph) {
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  for (const auto &featureDependency : graph.features) {
+    const std::filesystem::path featurePath = resolveGraphFeatureAssetPath(
+        graphAssetPath, featureDependency.uri.string());
+    const auto parsed = registry.parse(
+        scene.resources(), LX_core::SceneResourceType::RenderFeature,
+        LX_core::ResourceUri(featurePath.generic_string()),
+        LX_infra::SceneResourceParseContext{});
+    if (!parsed.identity.isValid() ||
+        parsed.metadata.state == LX_core::ResourceState::Failed) {
+      std::string message = "RenderFeature asset did not load: ";
+      message += featurePath.string();
+      for (const std::string &diagnostic : parsed.diagnostics) {
+        message += "\n  ";
+        message += diagnostic;
+      }
+      throw std::runtime_error(message);
+    }
   }
 }
 
@@ -493,6 +568,31 @@ makeRgba32fImageFromDump(VkFormat format, u32 width, u32 height,
                            vkFormatName(format));
 }
 
+std::vector<unsigned char> makeRgbaPixelsFromDump(VkFormat format, u32 width,
+                                                  u32 height,
+                                                  const void *mappedData) {
+  const usize pixelCount = static_cast<usize>(width) * height;
+  std::vector<unsigned char> rgba(pixelCount * 4u);
+  if (format != VK_FORMAT_R8G8B8A8_UNORM &&
+      format != VK_FORMAT_R8G8B8A8_SRGB &&
+      format != VK_FORMAT_B8G8R8A8_UNORM &&
+      format != VK_FORMAT_B8G8R8A8_SRGB) {
+    throw std::runtime_error("realtime final output does not support " +
+                             vkFormatName(format));
+  }
+  const auto *pixels = static_cast<const unsigned char *>(mappedData);
+  const bool sourceIsBgra =
+      format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB;
+  for (usize i = 0; i < pixelCount; ++i) {
+    const usize base = i * 4u;
+    rgba[base + 0u] = pixels[base + (sourceIsBgra ? 2u : 0u)];
+    rgba[base + 1u] = pixels[base + 1u];
+    rgba[base + 2u] = pixels[base + (sourceIsBgra ? 0u : 2u)];
+    rgba[base + 3u] = pixels[base + 3u];
+  }
+  return rgba;
+}
+
 struct ProjectedBoundsDebug final {
   std::string nodeName;
   std::string objectSignature;
@@ -604,6 +704,22 @@ void recordExecutedRenderInputStats(
   if (dynamic_cast<const LX_core::RenderComputeInput *>(&input) != nullptr) {
     ++stats.submittedDispatchCount;
   }
+}
+
+[[nodiscard]] LX_core::backend::VulkanRealtimeRenderInputStats
+toRealtimeProfileInputStats(
+    const LX_core::gpu::LiveRenderSubmissionStats &stats) {
+  return LX_core::backend::VulkanRealtimeRenderInputStats{
+      .compilerInputCount = stats.compilerInputCount,
+      .acceptedInputCount = stats.acceptedInputCount,
+      .rejectedInputCount = stats.rejectedInputCount,
+      .submittedDrawCount = stats.submittedDrawCount,
+      .submittedDispatchCount = stats.submittedDispatchCount,
+      .fallbackObservedCount = stats.fallbackObservedCount,
+      .descPipelineLookupCount = stats.descPipelineLookupCount,
+      .descBoundInputCount = stats.descBoundInputCount,
+      .descExecutedInputCount = stats.descExecutedInputCount,
+  };
 }
 
 [[nodiscard]] u32
@@ -1035,8 +1151,19 @@ findWritesForKind(const LX_core::CompiledFrameGraphPass &pass,
   return found;
 }
 
+bool hasReadOnlyDepthAttachment(const LX_core::FramePass &graphPass) {
+  return std::any_of(
+      graphPass.attachments.begin(), graphPass.attachments.end(),
+      [](const LX_core::RenderPathAttachmentContract &attachment) {
+        return attachment.depth &&
+               attachment.attachmentUsage ==
+                   LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly;
+      });
+}
+
 void validateOffscreenWritesMatchTarget(
-    const LX_core::CompiledFrameGraphPass &pass) {
+    const LX_core::CompiledFrameGraphPass &pass,
+    const LX_core::FramePass &graphPass) {
   const auto colorWrites =
       findWritesForKind(pass, LX_core::FrameGraphAttachmentKind::Color);
   const auto depthWrite =
@@ -1046,6 +1173,10 @@ void validateOffscreenWritesMatchTarget(
     throw std::runtime_error(
         "Frame graph offscreen pass color write does not match target: " +
         LX_core::GlobalStringTable::get().getName(pass.name.id));
+  }
+  if (pass.target.depthFormat.has_value() &&
+      !depthWrite.has_value() && hasReadOnlyDepthAttachment(graphPass)) {
+    return;
   }
   if (pass.target.depthFormat.has_value() != depthWrite.has_value()) {
     throw std::runtime_error(
@@ -1475,6 +1606,8 @@ public:
         pass.target = gbufferDesc;
       } else if (pass.name == LX_core::Pass_DeferredLighting) {
         pass.target = deferredLightingDesc;
+      } else if (pass.name == LX_core::Pass_SkyboxBackground) {
+        pass.target = forwardHdrDesc;
       } else if (pass.name == LX_core::Pass_BloomThreshold ||
                  pass.name == LX_core::Pass_BloomBlurH ||
                  pass.name == LX_core::Pass_BloomBlurV) {
@@ -1525,11 +1658,14 @@ public:
                                    LX_core::RenderPath::Deferred);
       applyToneMappingFeatureSettingsFromGraphAsset(
           deferredGraphAsset, deferredRenderPathGraph, m_postProcessSettings);
+      registerRenderFeatureDependenciesFromGraphAsset(
+          *m_scene, deferredGraphAsset, deferredRenderPathGraph);
       const std::vector<LX_core::StringID> deferredPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Deferred,
                                                LX_core::Pass_DeferredLighting,
+                                               LX_core::Pass_SkyboxBackground,
                                                LX_core::Pass_BloomThreshold,
                                                LX_core::Pass_BloomBlurH,
                                                LX_core::Pass_BloomBlurV,
@@ -1537,7 +1673,8 @@ public:
                                                LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Deferred,
-                    LX_core::Pass_DeferredLighting, LX_core::Pass_PostProcess,
+                    LX_core::Pass_DeferredLighting,
+                    LX_core::Pass_SkyboxBackground, LX_core::Pass_PostProcess,
                     LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
                                               deferredPasses, deferredPasses);
@@ -1561,10 +1698,13 @@ public:
                                    LX_core::RenderPath::Forward);
       applyToneMappingFeatureSettingsFromGraphAsset(
           forwardGraphAsset, forwardRenderPathGraph, m_postProcessSettings);
+      registerRenderFeatureDependenciesFromGraphAsset(
+          *m_scene, forwardGraphAsset, forwardRenderPathGraph);
       const std::vector<LX_core::StringID> forwardPasses =
           m_postProcessSettings.bloomEnabled
               ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
                                                LX_core::Pass_Forward,
+                                               LX_core::Pass_SkyboxBackground,
                                                LX_core::Pass_BloomThreshold,
                                                LX_core::Pass_BloomBlurH,
                                                LX_core::Pass_BloomBlurV,
@@ -1572,6 +1712,7 @@ public:
                                                LX_core::Pass_DebugOverlay}
               : std::vector<LX_core::StringID>{
                     LX_core::Pass_Shadow, LX_core::Pass_Forward,
+                    LX_core::Pass_SkyboxBackground,
                     LX_core::Pass_PostProcess, LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
                                               forwardPasses, forwardPasses);
@@ -1596,6 +1737,11 @@ public:
 
     if (deferredMode) {
       addDeferredLightingItem(deferredLightingDesc);
+    }
+    for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
+      if (pass.name == LX_core::Pass_SkyboxBackground) {
+        addGraphFullscreenShaderItem(pass);
+      }
     }
     if (m_postProcessSettings.bloomEnabled) {
       addBloomThresholdItem();
@@ -2017,15 +2163,51 @@ public:
           "realtime profile output extent must be positive");
     }
     const SceneSharedPtr previousScene = m_scene;
-    m_scene = std::move(scene);
-    struct RendererSceneRestore final {
+    struct RendererStateRestore final {
       Impl &renderer;
       SceneSharedPtr scene;
-      ~RendererSceneRestore() {
+      LX_core::FrameGraph frameGraph;
+      LX_core::CompiledFrameGraph compiledFrameGraph;
+      std::unordered_map<LX_core::StringID,
+                         LX_core::RenderWorkBuildContext::PassPreparationFacts,
+                         LX_core::StringID::Hash>
+          basePassPreparationFacts;
+      std::vector<LX_core::DescriptorResourceList>
+          compiledPassDescriptorResources;
+      std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
+          offscreenFramebuffers;
+      std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
+      LX_core::gpu::LiveRenderSubmissionStats currentLiveStats;
+      LX_core::gpu::LiveRenderSubmissionStats lastLiveStats;
+      ~RendererStateRestore() {
+        renderer.device().waitIdle();
         renderer.m_scene = std::move(scene);
+        renderer.m_frameGraph = std::move(frameGraph);
+        renderer.m_compiledFrameGraph = std::move(compiledFrameGraph);
+        renderer.m_basePassPreparationFacts =
+            std::move(basePassPreparationFacts);
+        renderer.m_compiledPassDescriptorResources =
+            std::move(compiledPassDescriptorResources);
+        renderer.m_offscreenFramebuffers = std::move(offscreenFramebuffers);
+        renderer.m_liveRenderView = std::move(liveRenderView);
+        renderer.m_currentLiveStats = currentLiveStats;
+        renderer.m_lastLiveStats = lastLiveStats;
+        renderer.resourceManager().clearFrameGraphAttachments();
         renderer.updateDirectionalLightCascades();
       }
-    } sceneRestore{.renderer = *this, .scene = previousScene};
+    } stateRestore{.renderer = *this,
+                   .scene = previousScene,
+                   .frameGraph = std::move(m_frameGraph),
+                   .compiledFrameGraph = std::move(m_compiledFrameGraph),
+                   .basePassPreparationFacts =
+                       std::move(m_basePassPreparationFacts),
+                   .compiledPassDescriptorResources =
+                       std::move(m_compiledPassDescriptorResources),
+                   .offscreenFramebuffers = std::move(m_offscreenFramebuffers),
+                   .liveRenderView = std::move(m_liveRenderView),
+                   .currentLiveStats = m_currentLiveStats,
+                   .lastLiveStats = m_lastLiveStats};
+    m_scene = std::move(scene);
 
     LX_core::SceneNode *cameraNode = m_scene->findByPath(output.cameraPath);
     if (!cameraNode) {
@@ -2061,11 +2243,6 @@ public:
     const auto outputCameraView = outputCameraResource.view;
     const auto outputCameraProj = outputCameraResource.proj;
 
-    LX_core::RenderTargetDesc targetDesc;
-    targetDesc.role = LX_core::RenderTargetRole::Offscreen;
-    targetDesc.colorFormat = LX_core::ImageFormat::RGBA16Float;
-    targetDesc.depthFormat = LX_core::ImageFormat::D32Float;
-
     auto sceneResources = m_scene->getSceneLevelResources(LX_core::Pass_Forward,
                                                           outputCameraResource);
     RealtimeProfileDebugInfo debugInfo;
@@ -2077,143 +2254,90 @@ public:
     debugInfo.lightResourceCount = countLightResources(sceneResources);
     debugInfo.lightDirection = findLightDirection(sceneResources);
 
-    const std::string attachmentPrefix =
-        "realtime.profile." + basePath.generic_string() + "." +
-        std::to_string(output.width) + "x" + std::to_string(output.height);
+    const VkExtent2D extent{output.width, output.height};
+    m_liveRenderView = LX_core::gpu::LiveRenderView{
+        .cameraResource = outputCameraResource,
+        .visibleMask = outputCullingMask & ~LX_core::Layer_EditorOverlay,
+    };
+    initScene(m_scene);
 
-    const char *forwardGraphAsset = kDefaultForwardRenderPathGraphAsset;
-    const LX_core::RenderPathGraph forwardRenderPathGraph =
-        loadRenderPathGraphAsset(forwardGraphAsset,
-                                 LX_core::RenderPath::Forward);
-    VulkanPostProcessSettings profilePostProcessSettings =
-        m_postProcessSettings;
-    applyToneMappingFeatureSettingsFromGraphAsset(
-        forwardGraphAsset, forwardRenderPathGraph, profilePostProcessSettings);
-    resolveMaterialSourceVariantsOrThrow(
-        *m_scene, forwardRenderPathGraph,
-        LX_core::ResourceUri(forwardGraphAsset));
-    LX_core::FrameGraph forwardGraph =
-        LX_core::buildFrameGraphFromRenderPathGraph(
-            forwardRenderPathGraph,
-            LX_core::GraphResourceRegistry::makeDefault());
-    const auto forwardPassIt = std::find_if(
-        forwardGraph.getPasses().begin(), forwardGraph.getPasses().end(),
-        [](const LX_core::FramePass &pass) {
-          return pass.name == LX_core::Pass_Forward;
-        });
-    if (forwardPassIt == forwardGraph.getPasses().end()) {
-      throw std::runtime_error(
-          "realtime profile output default graph has no Forward pass");
+    LX_core::RenderTargetDesc profileSwapchainTarget =
+        LX_core::RenderTargetDesc::offscreenColor(
+            makeSwapchainTarget().colorFormat);
+    for (LX_core::FramePass &pass : m_frameGraph.getPasses()) {
+      if (pass.target.role != LX_core::RenderTargetRole::Swapchain) {
+        continue;
+      }
+      pass.target = profileSwapchainTarget;
+      LX_core::syncFramePassAttachmentContractsWithTarget(pass);
     }
-    LX_core::FramePass forwardPass = *forwardPassIt;
-    forwardPass.target = targetDesc;
+    m_compiledFrameGraph = m_frameGraph.compile();
+    if (!m_compiledFrameGraph.isValid()) {
+      throw std::runtime_error(m_compiledFrameGraph.errorText());
+    }
+    attachFrameGraphSampledResources();
+    resetOffscreenFramebuffers();
+    resourceManager().clearFrameGraphAttachments();
+    syncCompiledFramePassUploadPlans();
 
-    const LX_core::RenderWorkBuildContext profileContext =
-        LX_core::RenderWorkBuildContext::realtime(
-            *m_scene, LX_core::RenderWorkBuildContext::RealtimeOptions{
-                          .cameraResource = outputCameraResource,
-                          .visibleMask =
-                              outputCullingMask & ~LX_core::Layer_EditorOverlay,
-                      });
-    PreparedRenderPassInputs prepared =
-        prepareRenderPassInputs(forwardPass, profileContext);
-    if (prepared.inputs.empty()) {
-      throw std::runtime_error(
-          "realtime profile output produced no draw inputs");
-    }
-    debugInfo.drawItemCount = static_cast<u32>(prepared.inputs.size());
-    VulkanRealtimeRenderInputStats renderInputStats;
-    renderInputStats.compilerInputCount = prepared.inputs.size();
-    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
-      if (desc.accepted()) {
-        ++renderInputStats.acceptedInputCount;
-        debugInfo.pipelineIdentity.push_back(
-            makePipelineIdentityDebug(forwardPass, desc));
-      } else {
-        ++renderInputStats.rejectedInputCount;
+    for (usize passIndex = 0;
+         passIndex < m_compiledFrameGraph.getPasses().size(); ++passIndex) {
+      const auto &compiledPass = m_compiledFrameGraph.getPasses()[passIndex];
+      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+        continue;
+      }
+      const LX_core::FramePass &pass =
+          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+      PreparedRenderPassInputs prepared = prepareRenderPassInputs(pass, context);
+      debugInfo.drawItemCount += static_cast<u32>(prepared.inputs.size());
+      for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+        if (desc.accepted()) {
+          debugInfo.pipelineIdentity.push_back(
+              makePipelineIdentityDebug(pass, desc));
+        }
       }
     }
-    if (renderInputStats.acceptedInputCount == 0) {
-      throw std::runtime_error(
-          "realtime profile output produced no accepted desc-backed inputs");
-    }
-    syncRenderUploadPlan(prepared.inputs, prepared.descs);
 
-    const VkExtent2D extent{output.width, output.height};
     const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID(attachmentPrefix + ".color"));
-    const auto depthRef = LX_core::FrameGraphResourceRef::depthAttachment(
-        LX_core::StringID(attachmentPrefix + ".depth"));
-    const VkFormat colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+        LX_core::StringID("swapchain.color"));
+    const VkFormat colorFormat =
+        toVkFormat(*profileSwapchainTarget.colorFormat);
     const VkDeviceSize byteSize =
         dumpByteSize(colorFormat, output.width, output.height);
     auto readback = VulkanBuffer::create(
         device(), byteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    const VkDeviceSize depthByteSize =
-        dumpByteSize(VK_FORMAT_D32_SFLOAT, output.width, output.height);
-    auto depthReadback = VulkanBuffer::create(
-        device(), depthByteSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     device().waitIdle();
+    m_currentLiveStats = {};
+    resourceManager().clearFrameGraphAttachments();
     auto cmd = commandBufferManager().beginSingleTimeCommands();
-    auto &colorAttachment = resourceManager().createOrGetFrameGraphAttachment(
-        colorRef.name, extent, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-            VK_IMAGE_USAGE_SAMPLED_BIT);
-    auto &depthAttachment = resourceManager().createOrGetFrameGraphAttachment(
-        depthRef.name, extent, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-
-    transitionFrameGraphAttachment(
-        colorRef, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, *cmd);
-    transitionFrameGraphAttachment(
-        depthRef, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, *cmd);
-
-    std::vector<VkImageView> attachments{
-        colorAttachment.texture->getImageView(),
-        depthAttachment.texture->getImageView(),
-    };
-    auto &renderPass = resourceManager().getRenderPass(targetDesc);
-    auto framebuffer = VulkanFrameBuffer::create(
-        device(), renderPass.getHandle(), attachments, extent);
     debugInfo.viewportExtent = extent;
-    auto clearValues = renderPass.getClearValues();
-    if (!clearValues.empty()) {
-      clearValues[0].color = {output.backgroundColor.x,
-                              output.backgroundColor.y,
-                              output.backgroundColor.z, 1.0f};
-    }
-    cmd->beginRenderPass(renderPass.getHandle(), framebuffer->getHandle(),
-                         extent, clearValues);
-    cmd->setViewport(extent.width, extent.height);
-    cmd->setScissor(extent.width, extent.height);
-    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
-      if (!desc.accepted()) {
-        recordDiagnostic(desc);
-        continue;
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+      prepareShadowCascadePass(passIndex);
+      const auto renderingMode = explicitRenderingModeFor(
+          compiledPasses[passIndex]);
+      if (renderingMode == LX_core::RenderPathNodeRenderingMode::Dynamic) {
+        recordDynamicPass(passIndex, 0u, extent, *cmd,
+                          /*beginGuiFrame=*/false,
+                          /*endGuiFrame=*/false);
+      } else {
+        recordTraditionalPass(passIndex, 0u, 0u, extent, *cmd,
+                              /*beginGuiFrame=*/false,
+                              /*endGuiFrame=*/false);
       }
-      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
-      auto pipeline = resourceManager().getOrCreatePipeline(desc);
-      ++renderInputStats.descPipelineLookupCount;
-      cmd->bindPipeline(pipeline);
-      cmd->bindResources(resourceManager(), pipeline, input, desc);
-      ++renderInputStats.descBoundInputCount;
-      cmd->executeRenderInput(input, desc);
-      ++renderInputStats.descExecutedInputCount;
-      recordExecutedRenderInputStats(renderInputStats, input);
     }
-    cmd->endRenderPass();
 
+    auto colorAttachment = resourceManager().getFrameGraphAttachment(
+        colorRef.name);
+    if (!colorAttachment.has_value() || !colorAttachment->get().texture) {
+      throw std::runtime_error(
+          "realtime profile output did not produce swapchain.color");
+    }
     transitionFrameGraphAttachment(
         colorRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
@@ -2228,32 +2352,16 @@ public:
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {extent.width, extent.height, 1};
     vkCmdCopyImageToBuffer(cmd->getHandle(),
-                           colorAttachment.texture->getHandle(),
+                           colorAttachment->get().texture->getHandle(),
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            readback->getHandle(), 1, &region);
-    transitionFrameGraphAttachment(
-        depthRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT, *cmd);
-    VkBufferImageCopy depthRegion{};
-    depthRegion.bufferOffset = 0;
-    depthRegion.bufferRowLength = 0;
-    depthRegion.bufferImageHeight = 0;
-    depthRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depthRegion.imageSubresource.mipLevel = 0;
-    depthRegion.imageSubresource.baseArrayLayer = 0;
-    depthRegion.imageSubresource.layerCount = 1;
-    depthRegion.imageOffset = {0, 0, 0};
-    depthRegion.imageExtent = {extent.width, extent.height, 1};
-    vkCmdCopyImageToBuffer(cmd->getHandle(),
-                           depthAttachment.texture->getHandle(),
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           depthReadback->getHandle(), 1, &depthRegion);
     commandBufferManager().endSingleTimeCommands(std::move(cmd),
                                                  device().getGraphicsQueue());
 
     const void *mapped = readback->map();
-    LX_core::offline::OfflineReadbackImage image = makeRgba32fImageFromDump(
-        colorFormat, output.width, output.height, mapped);
+    const std::vector<unsigned char> rgba =
+        makeRgbaPixelsFromDump(colorFormat, output.width, output.height,
+                               mapped);
     readback->unmap();
 
     const std::filesystem::path outputDir = basePath.parent_path();
@@ -2262,33 +2370,20 @@ public:
                                        ? std::string("render")
                                        : basePath.filename().generic_string();
     VulkanRealtimeProfileOutputResult result{
-        .linearExrPath = outputDir / (outputStem + "-linear.exr"),
-        .cpuSrgbPngPath = outputDir / (outputStem + "-cpu_srgb.png"),
-        .pipelineSrgbPngPath = {},
-        .depthDebugPath = outputDir / (outputStem + "-depth.bmp"),
+        .linearExrPath = {},
+        .cpuSrgbPngPath = outputDir / (outputStem + "-realtime.png"),
+        .pipelineSrgbPngPath = outputDir / (outputStem + "-realtime.png"),
+        .depthDebugPath = {},
         .metadataPath = outputDir / (outputStem + ".json"),
-        .renderInputStats = renderInputStats,
+        .renderInputStats = toRealtimeProfileInputStats(m_currentLiveStats),
         .width = output.width,
         .height = output.height,
     };
-    LX_infra::image::writeRgba32fExr(result.linearExrPath, image);
-    LX_infra::image::writeToneMappedPng(
-        result.cpuSrgbPngPath, image,
-        LX_core::image::ToneMappingSettings{
-            .exposure = profilePostProcessSettings.exposure,
-            .gamma = 2.2f,
-            .mode = LX_core::image::ToneMappingMode::Aces,
-        });
-    const void *mappedDepth = depthReadback->map();
-    std::vector<unsigned char> depthBgrPixels = makeBmpPixelsFromDump(
-        VK_FORMAT_D32_SFLOAT, output.width, output.height, mappedDepth);
-    depthReadback->unmap();
-    writeBmp24File(result.depthDebugPath, output.width, output.height,
-                   depthBgrPixels);
-    writeRealtimeProfileMetadata(result.metadataPath, result,
-                                 "unavailable: pipeline sRGB readback is not "
-                                 "implemented in this path",
-                                 debugInfo);
+    LX_infra::image::writeRawRgba8Png(result.cpuSrgbPngPath, output.width,
+                                      output.height, rgba);
+    writeRealtimeProfileMetadata(
+        result.metadataPath, result,
+        "available: direct offscreen swapchain-format readback", debugInfo);
     return result;
   }
 
@@ -2442,6 +2537,22 @@ private:
         LX_core::Pass_DeferredLighting, defaultCameraTarget);
     appendDescriptorResources(factsIt->second.descriptorResources,
                               sceneResources);
+  }
+
+  void addGraphFullscreenShaderItem(const LX_core::FramePass &pass) {
+    if (!m_scene ||
+        pass.input.kind != LX_core::RenderPassInputKind::FullscreenTriangle) {
+      return;
+    }
+    LX_core::RenderWorkBuildContext::PassPreparationFacts facts;
+    facts.pass = pass.name;
+    facts.shaderInfo = loadRuntimeGraphicsShaderPayload(pass.shaderUri);
+    facts.shaderProgram.shaderName = pass.shaderUri.string();
+    facts.shaderProgram.shader = facts.shaderInfo;
+    facts.pipelineVariantKey =
+        LX_core::StringID("graph-fullscreen:" + pass.shaderUri.string());
+    facts.renderState = pass.renderState;
+    m_basePassPreparationFacts[pass.name] = std::move(facts);
   }
 
   LX_core::DirectionalLight *mainDirectionalLight() const {
@@ -2690,6 +2801,11 @@ private:
                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
       srcAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     } else if (attachment.currentLayout ==
+               VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL) {
+      srcStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                 VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      srcAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    } else if (attachment.currentLayout ==
                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
       srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
       srcAccess = VK_ACCESS_TRANSFER_READ_BIT;
@@ -2723,7 +2839,8 @@ private:
       return fallbackExtent;
     }
 
-    validateOffscreenWritesMatchTarget(pass);
+    const LX_core::FramePass &graphPass = sourceGraphPassFor(pass);
+    validateOffscreenWritesMatchTarget(pass, graphPass);
 
     std::vector<VkImageView> attachments;
     attachments.reserve(pass.target.colorAttachmentCount() +
@@ -2755,7 +2872,35 @@ private:
     if (pass.target.depthFormat.has_value()) {
       const auto write =
           findWriteForKind(pass, LX_core::FrameGraphAttachmentKind::Depth);
-      appendAttachment(write->get(), *pass.target.depthFormat);
+      if (write.has_value()) {
+        appendAttachment(write->get(), *pass.target.depthFormat);
+      } else {
+        const auto depthAttachmentIt = std::find_if(
+            graphPass.attachments.begin(), graphPass.attachments.end(),
+            [](const LX_core::RenderPathAttachmentContract &attachment) {
+              return attachment.depth &&
+                     attachment.attachmentUsage ==
+                         LX_core::RenderPathAttachmentUsage::
+                             DepthAttachmentReadOnly;
+            });
+        if (depthAttachmentIt != graphPass.attachments.end()) {
+          auto attachment = resourceManager().getFrameGraphAttachment(
+              LX_core::StringID(depthAttachmentIt->target));
+          if (!attachment.has_value() || !attachment->get().texture) {
+            throw std::runtime_error(
+                "Dynamic offscreen pass missing read-only depth attachment: " +
+                depthAttachmentIt->target);
+          }
+          transitionFrameGraphAttachment(
+              LX_core::FrameGraphResourceRef::depthAttachment(
+                  LX_core::StringID(depthAttachmentIt->target)),
+              VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+              VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+              VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, cmd);
+          attachments.push_back(attachment->get().texture->getImageView());
+        }
+      }
     }
 
     if (createFramebuffer) {
@@ -2899,15 +3044,32 @@ private:
 
   VkRenderingAttachmentInfo
   makeDynamicDepthAttachmentInfo(VkImageView imageView,
-                                 const LX_core::FrameGraphWrite &write) const {
+                                 const LX_core::FrameGraphWrite *write,
+                                 LX_core::RenderPathAttachmentUsage usage) const {
     VkRenderingAttachmentInfo info{};
     info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     info.imageView = imageView;
-    info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    info.loadOp = dynamicLoadOpForWrite(write);
-    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    const bool readOnly =
+        usage == LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly;
+    info.imageLayout = readOnly
+                           ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                           : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    info.loadOp = readOnly ? VK_ATTACHMENT_LOAD_OP_LOAD
+                           : dynamicLoadOpForWrite(*write);
+    info.storeOp = readOnly ? VK_ATTACHMENT_STORE_OP_DONT_CARE
+                            : VK_ATTACHMENT_STORE_OP_STORE;
     info.clearValue.depthStencil = {1.0f, 0};
     return info;
+  }
+
+  const LX_core::RenderPathAttachmentContract *
+  dynamicDepthAttachmentContract(const LX_core::FramePass &graphPass) const {
+    const auto it = std::find_if(
+        graphPass.attachments.begin(), graphPass.attachments.end(),
+        [](const LX_core::RenderPathAttachmentContract &attachment) {
+          return attachment.depth;
+        });
+    return it == graphPass.attachments.end() ? nullptr : &*it;
   }
 
   void recordDynamicPass(usize passIndex, u32 imageIndex, VkExtent2D extent,
@@ -2952,23 +3114,49 @@ private:
     }
 
     std::optional<VkRenderingAttachmentInfo> depthAttachment;
+    const LX_core::RenderPathAttachmentContract *depthContract =
+        dynamicDepthAttachmentContract(graphPass);
     const auto depthWrite = findWriteForKind(
         compiledPass, LX_core::FrameGraphAttachmentKind::Depth);
-    if (depthWrite.has_value()) {
+    if (depthContract != nullptr) {
+      const bool readOnly =
+          depthContract->attachmentUsage ==
+          LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly;
+      if (readOnly && graphPass.renderState.depthWriteEnable) {
+        throw std::runtime_error(
+            "Dynamic read-only depth attachment requires depthWrite=false: " +
+            LX_core::GlobalStringTable::get().toDebugString(compiledPass.name));
+      }
       if (compiledPass.target.role == LX_core::RenderTargetRole::Swapchain) {
+        if (!depthWrite.has_value()) {
+          throw std::runtime_error(
+              "Dynamic swapchain read-only depth attachment is unsupported");
+        }
         depthAttachment = makeDynamicDepthAttachmentInfo(
-            m_swapchain->getDepthImageView(imageIndex), depthWrite->get());
+            m_swapchain->getDepthImageView(imageIndex), &depthWrite->get(),
+            depthContract->attachmentUsage);
       } else {
-        auto attachment = resourceManager().getFrameGraphAttachment(
-            depthWrite->get().resource.name);
+        const LX_core::StringID depthName =
+            depthWrite.has_value() ? depthWrite->get().resource.name
+                                   : LX_core::StringID(depthContract->target);
+        auto attachment = resourceManager().getFrameGraphAttachment(depthName);
         if (!attachment.has_value() || !attachment->get().texture) {
           throw std::runtime_error(
               "Dynamic offscreen pass missing depth attachment: " +
-              LX_core::GlobalStringTable::get().toDebugString(
-                  depthWrite->get().resource.name));
+              LX_core::GlobalStringTable::get().toDebugString(depthName));
+        }
+        if (readOnly) {
+          transitionFrameGraphAttachment(
+              LX_core::FrameGraphResourceRef::depthAttachment(depthName),
+              VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+              VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                  VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+              VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT, cmd);
         }
         depthAttachment = makeDynamicDepthAttachmentInfo(
-            attachment->get().texture->getImageView(), depthWrite->get());
+            attachment->get().texture->getImageView(),
+            depthWrite.has_value() ? &depthWrite->get() : nullptr,
+            depthContract->attachmentUsage);
       }
     }
 

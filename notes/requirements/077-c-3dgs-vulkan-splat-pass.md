@@ -111,7 +111,7 @@ Shader 输入 SHALL 以 activated values 为主：
 
 ## 依赖
 
-- `REQ-076-i`
+- `REQ-076-c`
 - `REQ-077-b`
 - finished `REQ-063-a`
 - `openspec/specs/renderer-backend-vulkan/spec.md`

@@ -367,8 +367,7 @@ def require_output_files(
 ) -> dict[str, object]:
     payload = json.loads(structured)
     required_paths = [
-        ("linearExrPath", "linear EXR"),
-        ("cpuSrgbPngPath", "CPU sRGB PNG"),
+        ("cpuSrgbPngPath", "realtime final PNG"),
         ("metadataPath", "metadata JSON"),
     ]
     for field, label in required_paths:

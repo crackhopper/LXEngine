@@ -345,4 +345,4 @@ validation profile 中 Shadow、IBL、Transparent/glass pass 关闭：
 
 2026-06-14 复核关闭：本文件描述的是 071 旧主线完成后的 Helmet/BMW direct lighting 验收，但其依赖的 `071-d` / `071-e` 已拆分到 `REQ-073-*` 与 `REQ-074-*`，材质基线也已从 Material v2 转向 Material v3 `bsdf.source` / Material Accessor ABI。
 
-当前等价验收不再从本文件实施；新架构上的 offline/realtime 对比由 `REQ-075-a` 承接。本文件按“旧 071 验收入口已被后续 active 需求取代”归档。
+当前等价验收不再从本文件实施；新架构上的 offline/realtime 对比由 `REQ-073-h` 承接。本文件按“旧 071 验收入口已被后续 active 需求取代”归档。

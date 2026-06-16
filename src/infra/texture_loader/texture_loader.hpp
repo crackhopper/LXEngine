@@ -21,6 +21,8 @@ public:
 
   static LX_core::TextureSharedPtr loadHdrTexture(
       const std::filesystem::path &filename);
+  static LX_core::TextureSharedPtr loadKtx2Cubemap(
+      const std::filesystem::path &filename);
 
 private:
   struct Impl;

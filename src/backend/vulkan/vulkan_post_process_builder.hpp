@@ -23,8 +23,6 @@ public:
       VulkanPostProcessOutputEncoding outputEncoding) const;
   [[nodiscard]] LX_core::MaterialInstance::UniquePtr
   createDeferredLightingMaterial() const;
-  [[nodiscard]] LX_core::MaterialInstance::UniquePtr
-  createSkyboxBackgroundMaterial() const;
 
 private:
   const VulkanPostProcessSettings &m_settings;

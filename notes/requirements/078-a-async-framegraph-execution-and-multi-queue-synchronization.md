@@ -26,7 +26,7 @@
 - 没有 secondary command buffer / worker thread parallel recording contract。
 - 没有真实 workload 上的 async compute 性能验收。
 
-如果继续把这些能力零散塞进 `REQ-073-e`、`REQ-076-b`、OfflineRT 或 3DGS 实现，会拖慢短期可用性目标，也会让同步 bug 难以归因。因此，本 REQ 作为后置集中升级：等 realtime / offline / 3DGS 都有真实 workload 后，再用统一 FrameGraph execution plan 一次性解决同步正确性和异步效率。
+如果继续把这些能力零散塞进 `REQ-073-e`、`REQ-073-j`、OfflineRT 或 3DGS 实现，会拖慢短期可用性目标，也会让同步 bug 难以归因。因此，本 REQ 作为后置集中升级：等 realtime / offline / 3DGS 都有真实 workload 后，再用统一 FrameGraph execution plan 一次性解决同步正确性和异步效率。
 
 ## 目标
 
@@ -41,8 +41,8 @@
 ## 非目标
 
 - 不阻塞 `REQ-073-e` 的 opaque indirect batching。
-- 不阻塞 `REQ-076-b` 的 transparent/BMW realtime smoke。
-- 不阻塞 `REQ-076-c` / `REQ-076-d` 的 OfflineRT graph path 和 hard cut。
+- 不阻塞 `REQ-073-j` 的 transparent/BMW realtime smoke。
+- 不阻塞 `REQ-074-h` / `REQ-074-i` 的 OfflineRT graph path 和 hard cut。
 - 不阻塞 `REQ-077-a` 到 `REQ-077-e` 的 3DGS 可视化闭环。
 - 不在本 REQ 之前强制替换所有现有 linear graphics queue 路径。
 - 不实现完全自动的 workload profitability scheduler；本 REQ 的 async 调度以显式 pass queue affinity 和可测规则为准。
@@ -311,8 +311,8 @@ rg -n "timeline|semaphore|ownership transfer|queue family" src/core src/backend 
 ## 依赖
 
 - `REQ-073-e`: indirect batching / diagnostics，提供稳定 draw submission 和 batch stats baseline。
-- `REQ-076-b`: transparent/BMW realtime path，提供更复杂 realtime graph 和 visual smoke。
-- `REQ-076-c` / `REQ-076-d`: OfflineRT graph path 和 hard cut，提供 compute path baseline。
+- `REQ-073-j`: transparent/BMW realtime path，提供更复杂 realtime graph 和 visual smoke。
+- `REQ-074-h` / `REQ-074-i`: OfflineRT graph path 和 hard cut，提供 compute path baseline。
 - `REQ-077-a` 到 `REQ-077-e`: 3DGS loader/runtime/render/editor/tutorial，提供 compute-suitable 或 high-throughput GPU workload。
 - `notes/roadmaps/research/async-compute/`: async compute 调研路线，作为设计参考但不直接占用 active 编号。
 - `notes/roadmaps/research/frame-graph/`: frame graph barrier / compile 研究，作为 barrier plan 的概念参考。
@@ -328,5 +328,5 @@ rg -n "timeline|semaphore|ownership transfer|queue family" src/core src/backend 
 ## 实施状态
 
 - 状态：未开始，后置到短期渲染可用性目标之后。
-- 当前不影响 `REQ-073-*`、`REQ-074-*`、`REQ-075-a`、`REQ-076-*` 和 `REQ-077-*` 的实施顺序。
+- 当前不影响 `REQ-073-*`、`REQ-074-*`、`REQ-073-h`、`REQ-076-*` 和 `REQ-077-*` 的实施顺序。
 - 触发条件：realtime / OfflineRT / 3DGS 至少形成一个可测性能基线，或者性能分析显示 CPU command recording、queue idle gap、compute-suitable workload 已经成为明确瓶颈。

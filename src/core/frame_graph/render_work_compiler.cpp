@@ -271,6 +271,8 @@ void applyPassPreparationFacts(
     if (passFacts.has_value()) {
       applyPassPreparationFacts(facts, passFacts->get());
     }
+    appendDescriptorResources(facts.descriptorResources,
+                              collectSceneLevelResourcesForPass(context, pass));
     return facts;
   }
 
@@ -515,6 +517,117 @@ void validateBindingPlanCompleteness(RenderInputDesc &desc) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
              "prepared descriptor resource for reflected shader binding '" +
                  binding.name + "' is missing or has incompatible type");
+    }
+  }
+}
+
+[[nodiscard]] bool passUsesFeature(const FramePass &pass,
+                                   std::string_view featureSource) {
+  return std::any_of(pass.reads.begin(), pass.reads.end(),
+                     [&](const FrameGraphRead &read) {
+                       return GlobalStringTable::get().toDebugString(
+                                  read.resource) == featureSource;
+                     });
+}
+
+[[nodiscard]] const ShaderResourceBinding *
+findReflectedBinding(const std::vector<ShaderResourceBinding> &bindings,
+                     std::string_view name) {
+  const auto it = std::find_if(
+      bindings.begin(), bindings.end(),
+      [&](const ShaderResourceBinding &binding) { return binding.name == name; });
+  return it == bindings.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] const RenderFeatureParameter *
+findParameterForBindingMember(const RenderFeature &feature,
+                              std::string_view bindingName,
+                              std::string_view memberName) {
+  for (const auto &[_, parameter] : feature.parameters) {
+    if (parameter.binding == bindingName && parameter.member == memberName) {
+      return &parameter;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool environmentParameterKindMatches(std::string_view memberName,
+                                                   std::string_view kind) {
+  if (memberName == "color") {
+    return kind == "vec3";
+  }
+  if (memberName == "intensity" || memberName == "rotation") {
+    return kind == "float";
+  }
+  if (memberName == "visibleInBackground") {
+    return kind == "bool";
+  }
+  return true;
+}
+
+void validateEnvironmentLightingFeatureBindings(
+    const FramePass &pass, const RenderWorkBuildContext &context,
+    RenderInputDesc &desc) {
+  if (!passUsesFeature(pass, "feature.environmentLighting")) {
+    return;
+  }
+  if (!context.hasRealtimeScene()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.environmentLighting requires a realtime scene resource "
+           "table");
+    return;
+  }
+
+  const SceneResourceTable &resources = context.realtimeScene().resources();
+  const auto featureHandle =
+      resources.findRenderFeatureByFeatureName("environmentLighting");
+  if (!featureHandle.has_value()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.environmentLighting has no live RenderFeature payload");
+    return;
+  }
+  const auto resolvedFeature = resources.resolve(*featureHandle);
+  if (!resolvedFeature.has_value()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.environmentLighting RenderFeature payload is unresolved");
+    return;
+  }
+  const RenderFeature &feature = resolvedFeature->get();
+
+  const ShaderResourceBinding *skyboxMap =
+      findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");
+  if (skyboxMap != nullptr) {
+    const auto environmentMap = feature.parameters.find("environmentMap");
+    if (environmentMap == feature.parameters.end() ||
+        environmentMap->second.kind != "textureCube" ||
+        environmentMap->second.binding != "SkyboxMap" ||
+        environmentMap->second.uri.empty()) {
+      reject(desc, RenderInputDiagnosticCode::MissingBinding,
+             "feature.environmentLighting parameter environmentMap does not "
+             "satisfy reflected binding SkyboxMap");
+    }
+  }
+
+  const ShaderResourceBinding *ubo =
+      findReflectedBinding(desc.pipelineBuildDesc.bindings,
+                           "EnvironmentLightingUBO");
+  if (ubo == nullptr) {
+    return;
+  }
+  for (const StructMemberInfo &member : ubo->members) {
+    const RenderFeatureParameter *parameter = findParameterForBindingMember(
+        feature, "EnvironmentLightingUBO", member.name);
+    if (parameter == nullptr) {
+      reject(desc, RenderInputDiagnosticCode::MissingBinding,
+             "feature.environmentLighting is missing EnvironmentLightingUBO." +
+                 member.name);
+      continue;
+    }
+    if (!environmentParameterKindMatches(member.name, parameter->kind)) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "feature.environmentLighting parameter for "
+             "EnvironmentLightingUBO." +
+                 member.name + " has incompatible kind " + parameter->kind);
     }
   }
 }
@@ -982,6 +1095,9 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     } else {
       reject(desc, RenderInputDiagnosticCode::UnsupportedInputContract,
              "unknown render input type");
+    }
+    if (desc.accepted()) {
+      validateEnvironmentLightingFeatureBindings(pass, context, desc);
     }
     if (desc.accepted()) {
       validateBindingPlanCompleteness(desc);

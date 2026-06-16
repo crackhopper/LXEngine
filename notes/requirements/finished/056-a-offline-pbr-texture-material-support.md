@@ -248,4 +248,4 @@ PBR 直接光公式必须放入 shader common 库。
 
 2026-06-14 复核关闭：本文档基于旧 `baseColorFactor` / `materialTag` / MaterialUBO-era PBR 合同，当前默认材质路线已迁移到 `schema: lxe.material.v2`、`bsdf.source`、Material v3 source-reflected storage 和 RenderPathGraph。
 
-本 REQ 的旧合同不再作为 active 实施目标维护；后续 offline/realtime 材质纹理质量与一致性由 `REQ-073-*`、`REQ-075-a` 承接。
+本 REQ 的旧合同不再作为 active 实施目标维护；后续 offline/realtime 材质纹理质量与一致性由 `REQ-073-*`、`REQ-073-h` 承接。

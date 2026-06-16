@@ -280,7 +280,7 @@ BVH 概念 SHALL 保留，并迁移到 backend-agnostic core/offline 层。新�
 
 ## 实施状态
 
-2026-06-14 复核关闭：offline renderer 已迁移到共享 SceneResourceTable / indexed scene data 模型。当前遗留的更高质量 path tracing、PBRT 高阶材质和 realtime bindless 默认路径属于 `REQ-057-a`、`REQ-073-*` 与 `REQ-075-a`，不阻塞本迁移需求归档。
+2026-06-14 复核关闭：offline renderer 已迁移到共享 SceneResourceTable / indexed scene data 模型。当前遗留的更高质量 path tracing、PBRT 高阶材质和 realtime bindless 默认路径属于 `REQ-057-a`、`REQ-073-*` 与 `REQ-073-h`，不阻塞本迁移需求归档。
 
 2026-06-02 已完成首版迁移：
 

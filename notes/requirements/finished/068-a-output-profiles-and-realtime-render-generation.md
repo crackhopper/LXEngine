@@ -1,6 +1,6 @@
 # REQ-068-a: Output Profiles 与 Realtime Render 生成
 
-> 2026-06-14 归档：`outputProfiles`、realtime render command/output、offline CLI 输出和对比辅助能力已经形成当前基础；pipeline sRGB、对比验收和 editor 展示后续由 `REQ-075-a` / `REQ-076-b` 承接。
+> 2026-06-14 归档：`outputProfiles`、realtime render command/output、offline CLI 输出和对比辅助能力已经形成当前基础；pipeline sRGB、对比验收和 editor 展示后续由 `REQ-073-h` / `REQ-073-j` 承接。
 
 > 2026-06-02 新增：把 scene 文件里的旧 `offlineRender.profiles` 拆成输出配置与离线算法配置两层，并在 editor 中增加基于 output profile 的实时离屏渲染导出命令，用于和 offline renderer 输出做对比。
 

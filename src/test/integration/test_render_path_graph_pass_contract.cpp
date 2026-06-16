@@ -119,11 +119,13 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
+          attachmentUsage: color-attachment-write
         - target: depth.main
           format: D32Float
           samples: 1
           layers: 1
           depth: true
+          attachmentUsage: depth-attachment-write
     sources: [geometry.vertex, material.bsdf, scene.camera, feature.toneMapping]
     targets: [hdr.color, depth.main]
     renderState:
@@ -170,8 +172,153 @@ passes:
          "sources should be retained");
   EXPECT(pass.targets.size() == 2 && pass.targets.back() == "depth.main",
          "targets should be retained");
+  EXPECT(pass.attachments.size() == 2, "attachments should be retained");
+  EXPECT(pass.attachments.size() == 2 &&
+             pass.attachments[0].attachmentUsage ==
+                 RenderPathAttachmentUsage::ColorAttachmentWrite,
+         "color attachment usage should be retained");
+  EXPECT(pass.attachments.size() == 2 &&
+             pass.attachments[1].attachmentUsage ==
+                 RenderPathAttachmentUsage::DepthAttachmentWrite,
+         "depth attachment usage should be retained");
   EXPECT(pass.renderState.depthWriteEnable,
          "render state should be retained");
+}
+
+void testRenderPathGraphParsesAttachmentUsage() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://attachment-usage", R"(
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+features:
+  environmentLighting:
+    uri: effects/environment_lighting.render-feature.yaml
+passes:
+  - id: SkyboxBackground
+    shader: render_paths/Skybox/skybox_background
+    stage: raster
+    dispatch: fullscreen
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+          attachmentUsage: color-attachment-write
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+          attachmentUsage: depth-attachment-read-only
+    sources: [feature.environmentLighting, depth.main]
+    targets: [hdr.color]
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: false
+      depthOp: LessEqual
+      blendEnable: false
+)");
+
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "read-only depth attachment usage should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "read-only depth attachment usage should not emit diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
+    return;
+  }
+  const RenderPassNode &pass = parsed.renderPathGraph->passes.front();
+  EXPECT(pass.attachments.size() == 2,
+         "skybox pass should retain two attachments");
+  EXPECT(pass.attachments.size() == 2 &&
+             pass.attachments[1].attachmentUsage ==
+                 RenderPathAttachmentUsage::DepthAttachmentReadOnly,
+         "depth attachment read-only usage should be retained");
+}
+
+void testRenderPathGraphRejectsUnknownAttachmentUsage() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bad-attachment-usage", R"(
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+passes:
+  - id: SkyboxBackground
+    shader: render_paths/Skybox/skybox_background
+    stage: raster
+    dispatch: fullscreen
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+          attachmentUsage: depth-read
+    sources: [depth.main]
+    targets: [hdr.color]
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: false
+      depthOp: LessEqual
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "unknown attachment usage should fail parse");
+  EXPECT(hasDiagnosticContaining(
+             parsed,
+             "passes.SkyboxBackground.rendering.attachments[0].attachmentUsage"),
+         "diagnostic should name attachmentUsage");
+}
+
+void testRenderPathGraphRejectsReadOnlyDepthAttachmentInTargets() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bad-read-only-depth-target", R"(
+schema: lxe.render-path-graph.v1
+name: ForwardMain
+renderPath: Forward
+passes:
+  - id: SkyboxBackground
+    shader: render_paths/Skybox/skybox_background
+    stage: raster
+    dispatch: fullscreen
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+          attachmentUsage: depth-attachment-read-only
+    sources: [depth.main]
+    targets: [hdr.color, depth.main]
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: false
+      depthOp: LessEqual
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "read-only depth attachment listed in targets should fail parse");
+  EXPECT(hasDiagnosticContaining(parsed, "read-only depth attachment"),
+         "diagnostic should explain read-only target mismatch");
 }
 
 void testMaterialRequiredInvalidBooleanReportsDiagnostic() {
@@ -306,6 +453,9 @@ int main() {
   testRenderPathGraphPassContractRequiresExplicitFields();
   testRasterPassRejectsOldTopLevelFiltersAndGeometry();
   testRenderPathGraphContractParsesCompletePass();
+  testRenderPathGraphParsesAttachmentUsage();
+  testRenderPathGraphRejectsUnknownAttachmentUsage();
+  testRenderPathGraphRejectsReadOnlyDepthAttachmentInTargets();
   testMaterialRequiredInvalidBooleanReportsDiagnostic();
   testFullscreenTriangleInputParses();
   testRenderPathGraphPassRejectsLegacyPassNodeFields();

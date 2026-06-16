@@ -25,7 +25,7 @@ migration to be meaningful:
 - the pipeline preparation phase happens explicitly after scene resources and
   material source variants are complete.
 
-`REQ-076-b` remains the broader realtime clean gate. It still owns Helmet/BMW
+`REQ-073-j` remains the broader realtime clean gate. It still owns Helmet/BMW
 smoke validation, final global fallback cleanup, debug/default material
 rejection, and end-to-end proof that unsupported sources or skipped draws cannot
 look like success.
@@ -382,6 +382,6 @@ compiled through the material source variant route.
 - `rg` audits show old tokens are absent from production code and ordinary
   tests, with only the named negative/audit tests and documentation remaining.
 
-This leaves `REQ-076-b` with a cleaner job: prove the complete realtime default
+This leaves `REQ-073-j` with a cleaner job: prove the complete realtime default
 path with Helmet/BMW smoke and finish broad fallback cleanup without also
 debugging old URI and source-variant bypass paths.

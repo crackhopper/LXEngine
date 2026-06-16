@@ -49,7 +49,7 @@ OfflineRenderJob
 
 `RenderWorkCompiler::buildInputs()` 在 offline domain 下根据 output width/height 生成 compute group count，并把 readback resource 设为 `OutputPixels`。`prepare()` 再通过 `OfflineRenderJob::offlineShader` 和 `offline::buildOfflineSceneStorageResources(job)` 准备 shader facts、descriptor resources、pipeline build desc 和 resource dependencies。
 
-这说明当前 offline 已经不走旧的 queue/item 路径，也不再通过 `Pass_OfflineRayTrace` token 选择 work。它仍然保留 `OfflineRenderJob::offlineShader` / provider 作为 shader side channel；把 shader URI、compute block、profile/output resource 完全迁到 OfflineRT graph asset，是 [REQ-076-c](../../requirements/076-c-offlinert-render-path-graph-compute-path.md) 的后续工作。
+这说明当前 offline 已经不走旧的 queue/item 路径，也不再通过 `Pass_OfflineRayTrace` token 选择 work。它仍然保留 `OfflineRenderJob::offlineShader` / provider 作为 shader side channel；把 shader URI、compute block、profile/output resource 完全迁到 OfflineRT graph asset，是 [REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md) 的后续工作。
 
 ## 共享的 backend 顺序
 
@@ -82,9 +82,9 @@ Realtime raster、fullscreen raster 和 offline compute 进入 Vulkan backend �
 | 已实现 | 后续边界 |
 |---|---|
 | Realtime RenderPathGraph pass 的 `input` 合同进入 `FramePass` | 更多非 opaque / transparent policy 仍由后续 REQ 扩展 |
-| `RenderWorkCompiler` 生成 scene-renderable draw、fullscreen draw 和 compute dispatch input | OfflineRT graph asset、compute block 和 shader URI hard cut 属于 `REQ-076-c` |
+| `RenderWorkCompiler` 生成 scene-renderable draw、fullscreen draw 和 compute dispatch input | OfflineRT graph asset、compute block 和 shader URI hard cut 属于 `REQ-074-h` |
 | `RenderInputDesc` 驱动 validation、pipeline lookup、upload planning 和 command recording | async multi-queue / automatic barrier 属于 `REQ-078-a` |
-| realtime metadata 使用 `renderInputStats` | 更复杂的 package readiness / Helmet-BMW smoke 属于 `REQ-076-d` |
+| realtime metadata 使用 `renderInputStats` | 更复杂的 package readiness / Helmet-BMW smoke 属于 `REQ-074-i` |
 
 ## 继续阅读
 

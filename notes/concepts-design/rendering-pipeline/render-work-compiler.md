@@ -110,7 +110,7 @@ pipeline 创建只看 `PipelineBuildDesc` / `RenderInputDesc`。upload plan 从 
 
 旧实现里的 `RenderWorkQueue`、`RenderWorkItem`、`RenderBatch`、`RenderIndirectBatch`、`renderBatchStats`、queue-derived pipeline preload、`Pass_OfflineRayTrace` pass-name branch 都不是当前正向工作流。它们只适合作为历史删除背景或审计 token，不应再出现在新的实现说明、正向测试或资产写法里。
 
-当前 offline software-compute 仍有一个 file-local `OfflineCompute` pass builder，并且 shader 仍通过 `OfflineRenderJob::offlineShader` / provider 进入 compiler preparation；这属于 [REQ-076-c](../../requirements/076-c-offlinert-render-path-graph-compute-path.md) 的后续 OfflineRT graph hard cut，不是旧 queue/item 路径。
+当前 offline software-compute 仍有一个 file-local `OfflineCompute` pass builder，并且 shader 仍通过 `OfflineRenderJob::offlineShader` / provider 进入 compiler preparation；这属于 [REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md) 的后续 OfflineRT graph hard cut，不是旧 queue/item 路径。
 
 ## 继续阅读
 
@@ -118,4 +118,4 @@ pipeline 创建只看 `PipelineBuildDesc` / `RenderInputDesc`。upload plan 从 
 - [Realtime 与 Offline：共享同一条 compiler 主线](realtime-offline-shared-flow.md)
 - [REQ-073-e2](../../requirements/073-e-render-work-compiler-single-path-hard-cut.md)
 - [REQ-073-e](../../requirements/073-e-indirect-material-batching-and-diagnostics.md)
-- [REQ-076-c](../../requirements/076-c-offlinert-render-path-graph-compute-path.md)
+- [REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md)

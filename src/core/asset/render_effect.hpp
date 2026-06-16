@@ -40,6 +40,13 @@ struct RenderPathGeometryContract final {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
 };
 
+enum class RenderPathAttachmentUsage {
+  ColorAttachmentWrite,
+  DepthAttachmentReadOnly,
+  DepthAttachmentWrite,
+  DepthAttachmentReadWrite,
+};
+
 enum class RenderPassInputKind {
   SceneRenderables,
   FullscreenTriangle,
@@ -68,6 +75,8 @@ struct RenderPathAttachmentContract final {
   u32 samples = 1;
   u32 layers = 1;
   bool depth = false;
+  RenderPathAttachmentUsage attachmentUsage =
+      RenderPathAttachmentUsage::ColorAttachmentWrite;
 };
 
 struct RenderPassNode final {
@@ -100,6 +109,9 @@ struct RenderFeatureParameter final {
   std::string value;
   ResourceUri uri;
   std::string valueType;
+  std::string binding;
+  std::string member;
+  bool required = false;
 };
 
 struct RenderFeature final {

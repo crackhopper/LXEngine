@@ -1,6 +1,6 @@
 # REQ-071-c: SceneResourceTable Parser 拆分与 Resource Ownership
 
-> 2026-06-14 归档：SceneResourceTable parser/resource ownership 基础已经落地；剩余 material source contract、package canonical state 和非 mesh resource 扩展分别由 `REQ-073-*`、`REQ-074-*`、`REQ-076-i` 承接。
+> 2026-06-14 归档：SceneResourceTable parser/resource ownership 基础已经落地；剩余 material source contract、package canonical state 和非 mesh resource 扩展分别由 `REQ-073-*`、`REQ-074-*`、`REQ-076-c` 承接。
 
 > 2026-06-10 新增：本 REQ 是 `REQ-071` 连续需求族的第三步。目标是在 `REQ-071-a` 已经前置的最小 `SceneResourceTable` URI 解析、加载、去重和 dependency 注册接口之上，把 mesh、texture、camera、light、SurfaceMaterial、RenderFeature、RenderPathGraph 等具体解析逻辑也接入同一资源抽象，并让 `SceneResourceTable` 真正成为资源 owner。
 

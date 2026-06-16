@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <array>
+#include <algorithm>
 #include <string>
 
 namespace LX_infra {
@@ -170,6 +171,7 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "gbuffer.normal",
       "gbuffer.material",
       "feature.toneMapping",
+      "feature.environmentLighting",
       "bloom.threshold",
       "bloom.blur_h",
       "bloom.blur_v",
@@ -182,6 +184,32 @@ bool isKnownRenderPathResourceName(const std::string &name) {
     }
   }
   return false;
+}
+
+std::optional<LX_core::RenderPathAttachmentUsage>
+parseAttachmentUsage(const YAML::Node &node, RenderPassNodeParseResult &result,
+                     const std::string &field) {
+  const std::string value = node.as<std::string>();
+  if (value == "color-attachment-write") {
+    return LX_core::RenderPathAttachmentUsage::ColorAttachmentWrite;
+  }
+  if (value == "depth-attachment-read-only") {
+    return LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly;
+  }
+  if (value == "depth-attachment-write") {
+    return LX_core::RenderPathAttachmentUsage::DepthAttachmentWrite;
+  }
+  if (value == "depth-attachment-read-write") {
+    return LX_core::RenderPathAttachmentUsage::DepthAttachmentReadWrite;
+  }
+  addDiagnostic(result, field, "unknown attachment usage");
+  return std::nullopt;
+}
+
+bool attachmentUsageIsDepth(LX_core::RenderPathAttachmentUsage usage) {
+  return usage == LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly ||
+         usage == LX_core::RenderPathAttachmentUsage::DepthAttachmentWrite ||
+         usage == LX_core::RenderPathAttachmentUsage::DepthAttachmentReadWrite;
 }
 
 bool rejectUnsupportedFields(const YAML::Node &node,
@@ -715,7 +743,7 @@ parseAttachmentContracts(const YAML::Node &node,
       }
       const std::string key = it->first.as<std::string>();
       if (key == "target" || key == "format" || key == "samples" ||
-          key == "layers" || key == "depth") {
+          key == "layers" || key == "depth" || key == "attachmentUsage") {
         continue;
       }
       addDiagnostic(result, prefix + "." + key,
@@ -743,9 +771,52 @@ parseAttachmentContracts(const YAML::Node &node,
     if (const auto depth = attachmentNode["depth"]) {
       attachment.depth = depth.as<bool>();
     }
+    attachment.attachmentUsage =
+        attachment.depth
+            ? LX_core::RenderPathAttachmentUsage::DepthAttachmentWrite
+            : LX_core::RenderPathAttachmentUsage::ColorAttachmentWrite;
+    if (const auto usage = attachmentNode["attachmentUsage"]) {
+      auto parsedUsage =
+          parseAttachmentUsage(usage, result, prefix + ".attachmentUsage");
+      if (!parsedUsage.has_value()) {
+        continue;
+      }
+      attachment.attachmentUsage = *parsedUsage;
+    }
+    const bool depthUsage = attachmentUsageIsDepth(attachment.attachmentUsage);
+    if (attachment.depth && !depthUsage) {
+      addDiagnostic(result, prefix + ".attachmentUsage",
+                    "depth attachment requires depth attachment usage");
+      continue;
+    }
+    if (!attachment.depth && depthUsage) {
+      addDiagnostic(result, prefix + ".attachmentUsage",
+                    "color attachment cannot use depth attachment usage");
+      continue;
+    }
     attachments.push_back(std::move(attachment));
   }
   return attachments;
+}
+
+void validateAttachmentUsageAgainstTargets(
+    const std::vector<LX_core::RenderPathAttachmentContract> &attachments,
+    const std::vector<std::string> &targets, RenderPassNodeParseResult &result,
+    const std::string &fieldPrefix) {
+  for (const auto &attachment : attachments) {
+    const bool inTargets =
+        std::find(targets.begin(), targets.end(), attachment.target) !=
+        targets.end();
+    if (attachment.attachmentUsage ==
+            LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly &&
+        inTargets) {
+      addDiagnostic(result,
+                    fieldPrefix + ".rendering.attachments." +
+                        attachment.target,
+                    "read-only depth attachment must not be listed in "
+                    "targets");
+    }
+  }
 }
 
 void validateResourceVocabulary(const std::vector<std::string> &resources,
@@ -831,6 +902,8 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   auto attachments =
       parseAttachmentContracts(node["rendering"]["attachments"], result,
                                fieldPrefix + ".rendering.attachments");
+  validateAttachmentUsageAgainstTargets(attachments, targets, result,
+                                        fieldPrefix);
   if (!result.diagnostics.empty()) {
     return result;
   }

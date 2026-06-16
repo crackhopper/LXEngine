@@ -24,11 +24,34 @@ bool requireField(ParsedRenderFeatureResource &result,
   return false;
 }
 
-std::string scalarNodeToString(const YAML::Node &node) {
+std::string nodeToStoredValue(const YAML::Node &node) {
   if (!node) {
     return {};
   }
+  if (!node.IsScalar()) {
+    return YAML::Dump(node);
+  }
   return node.as<std::string>();
+}
+
+bool parseBoolScalar(ParsedRenderFeatureResource &result,
+                     const LX_core::ResourceUri &uri, const YAML::Node &node,
+                     const std::string &field) {
+  if (!node || !node.IsScalar()) {
+    addDiagnostic(result, uri, field, "must be a boolean");
+    return false;
+  }
+  const std::string value = node.as<std::string>();
+  if (value == "true" || value == "false") {
+    return value == "true";
+  }
+  addDiagnostic(result, uri, field, "expected true or false");
+  return false;
+}
+
+bool kindAllowsUri(const std::string &kind) {
+  return kind == "textureCube" || kind == "texture2D" ||
+         kind == "texture3D" || kind == "buffer";
 }
 
 void rejectRenderFeatureFlowFields(ParsedRenderFeatureResource &result,
@@ -88,7 +111,8 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       }
       const std::string key = parameterField->first.as<std::string>();
       if (key == "kind" || key == "value" || key == "uri" ||
-          key == "valueType") {
+          key == "valueType" || key == "binding" || key == "member" ||
+          key == "required") {
         continue;
       }
       addDiagnostic(result, uri, field + "." + key,
@@ -101,15 +125,52 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
     LX_core::RenderFeatureParameter parameter;
     parameter.kind = parameterNode["kind"].as<std::string>();
     if (parameterNode["value"]) {
-      parameter.value = scalarNodeToString(parameterNode["value"]);
+      parameter.value = nodeToStoredValue(parameterNode["value"]);
     }
     if (parameterNode["uri"]) {
+      if (!kindAllowsUri(parameter.kind)) {
+        addDiagnostic(result, uri, field + ".uri",
+                      "uri is only supported for resource-like parameters");
+        continue;
+      }
       parameter.uri = parameterNode["uri"].as<std::string>();
     }
     if (parameterNode["valueType"]) {
       parameter.valueType = parameterNode["valueType"].as<std::string>();
     }
+    if (parameterNode["binding"]) {
+      parameter.binding = parameterNode["binding"].as<std::string>();
+    }
+    if (parameterNode["member"]) {
+      parameter.member = parameterNode["member"].as<std::string>();
+    }
+    if (parameterNode["required"]) {
+      parameter.required =
+          parseBoolScalar(result, uri, parameterNode["required"],
+                          field + ".required");
+      if (!result.diagnostics.empty()) {
+        continue;
+      }
+    }
     feature.parameters.emplace(name, std::move(parameter));
+  }
+}
+
+void validateEnvironmentLightingFeature(ParsedRenderFeatureResource &result,
+                                        const LX_core::ResourceUri &uri,
+                                        const LX_core::RenderFeature &feature) {
+  if (feature.feature != "environmentLighting") {
+    return;
+  }
+  const auto environmentMap = feature.parameters.find("environmentMap");
+  if (environmentMap == feature.parameters.end()) {
+    addDiagnostic(result, uri, "parameters.environmentMap",
+                  "missing required parameter");
+    return;
+  }
+  if (environmentMap->second.uri.empty()) {
+    addDiagnostic(result, uri, "parameters.environmentMap.uri",
+                  "missing required field");
   }
 }
 
@@ -129,6 +190,7 @@ void parseRenderFeature(ParsedRenderFeatureResource &result,
   feature.name = root["name"].as<std::string>();
   feature.feature = root["feature"].as<std::string>();
   parseRenderFeatureParameters(result, uri, root["parameters"], feature);
+  validateEnvironmentLightingFeature(result, uri, feature);
 
   if (!result.diagnostics.empty()) {
     return;

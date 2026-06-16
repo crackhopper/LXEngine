@@ -1,6 +1,6 @@
 # REQ-069-c: LXE Editor SceneRuntime 单文件拆分
 
-> 2026-06-14 归档：本文件已并入 `REQ-076-j: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
+> 2026-06-14 归档：本文件已并入 `REQ-076-a: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
 
 > 2026-06-02 新增：`REQ-069` 系列第三步，只拆分 `src/demos/lxe_editor/scene_runtime.cpp`。
 

@@ -2,7 +2,7 @@
 
 RenderPathGraph 可以先想成一张工厂流程图：它不存放材质参数，也不提交 Vulkan 命令，而是说明这一条渲染路线有哪些工序，每道工序用哪个 shader，读哪些输入，写哪些输出，以及这道工序从哪里取得 work input。
 
-在 LXEngine 里，这张流程图写在 `assets/render_paths/*.render-path.yaml`。当前默认实时路径包括 Forward / Deferred 及其 bloom 变体；OfflineRT 的 graph asset 仍属于 [REQ-076-c](../../requirements/076-c-offlinert-render-path-graph-compute-path.md) 后续工作。
+在 LXEngine 里，这张流程图写在 `assets/render_paths/*.render-path.yaml`。当前默认实时路径包括 Forward / Deferred 及其 bloom 变体；OfflineRT 的 graph asset 仍属于 [REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md) 后续工作。
 
 ## 根字段说明这是什么路线
 

@@ -1,6 +1,7 @@
 #include "core/frame_graph/frame_graph_build_plan.hpp"
 
 #include "core/frame_graph/graph_resource_registry.hpp"
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -18,6 +19,15 @@ FrameGraphResourceRef makeWriteRef(const std::string &target) {
 
 StringID bindingNameForSource(const RenderPassNode &node,
                               const std::string &source) {
+  if (source == "depth.main") {
+    for (const auto &attachment : node.attachments) {
+      if (attachment.target == source &&
+          attachment.attachmentUsage ==
+              RenderPathAttachmentUsage::DepthAttachmentReadOnly) {
+        return {};
+      }
+    }
+  }
   if (node.id == "BloomThreshold" && source == "hdr.color") {
     return StringID("SceneColor");
   }
@@ -54,6 +64,60 @@ StringID bindingNameForSource(const RenderPassNode &node,
     }
   }
   return {};
+}
+
+[[nodiscard]] bool containsName(const std::vector<std::string> &names,
+                                const std::string &name) {
+  return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+void validateAttachmentResourceFlow(const RenderPathGraph &graphAsset,
+                                    const RenderPassNode &node) {
+  const std::string graphName =
+      graphAsset.name.empty() ? "<unnamed>" : graphAsset.name;
+  const std::string passName = node.id.empty() ? "<unnamed>" : node.id;
+  const std::string prefix =
+      "RenderPathGraph '" + graphName + "' pass '" + passName + "'";
+
+  for (const auto &attachment : node.attachments) {
+    const bool inSources = containsName(node.sources, attachment.target);
+    const bool inTargets = containsName(node.targets, attachment.target);
+    switch (attachment.attachmentUsage) {
+    case RenderPathAttachmentUsage::ColorAttachmentWrite:
+      if (!inTargets) {
+        throw std::invalid_argument(prefix + " attachment '" +
+                                    attachment.target +
+                                    "' must be listed in targets");
+      }
+      break;
+    case RenderPathAttachmentUsage::DepthAttachmentReadOnly:
+      if (!inSources) {
+        throw std::invalid_argument(prefix + " read-only depth attachment '" +
+                                    attachment.target +
+                                    "' must be listed in sources");
+      }
+      if (inTargets) {
+        throw std::invalid_argument(prefix + " read-only depth attachment '" +
+                                    attachment.target +
+                                    "' must not be listed in targets");
+      }
+      break;
+    case RenderPathAttachmentUsage::DepthAttachmentWrite:
+      if (!inTargets) {
+        throw std::invalid_argument(prefix + " writable depth attachment '" +
+                                    attachment.target +
+                                    "' must be listed in targets");
+      }
+      break;
+    case RenderPathAttachmentUsage::DepthAttachmentReadWrite:
+      if (!inSources || !inTargets) {
+        throw std::invalid_argument(prefix + " read-write depth attachment '" +
+                                    attachment.target +
+                                    "' must be listed in sources and targets");
+      }
+      break;
+    }
+  }
 }
 
 FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
@@ -102,6 +166,7 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
   if (const auto inputError = validateRenderPassInputContract(node)) {
     throw std::invalid_argument(prefix + " " + *inputError);
   }
+  validateAttachmentResourceFlow(graphAsset, node);
 }
 
 } // namespace

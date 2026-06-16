@@ -32,11 +32,18 @@
 | `assets/models/` | 测试模型、示例模型、内置模型包 |
 | `assets/models/builtin/` | editor 内置模型目录，子目录里的 `asset.yaml` 会被扫描 |
 | `assets/textures/` | 独立纹理资源；有些模型包也会把贴图放在模型目录内部 |
-| `assets/env/` | 环境贴图资源；当前还没有作为正式 scene 资产完整接入 |
+| `assets/env/` | 环境贴图资源；HDR/EXR panorama 已能被当前环境资源路径读取，`khronos/neutral/` 保存 Khronos neutral KTX2 参考环境 |
 | `assets/scenes/` | 仓库自带 scene 文档 |
 | `assets/project_templates/` | 新建 project 时复制的只读模板 |
 
 这套布局对应当前资产目录约定。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
+
+`assets/env/khronos/neutral/ggx/specular.ktx2` 是 Khronos glTF Sample
+Environments 的 GGX 预过滤 specular cubemap。当前只为它接入了受限
+`TextureLoader::loadKtx2Cubemap()` 读取路径：uncompressed KTX2、
+`VK_FORMAT_R16G16B16A16_SFLOAT`、6 faces、mip chain。它还没有成为
+scene environment 的默认输入；`REQ-073-f` 会把 skybox/background pass、
+RenderFeature 参数和 scene-level environment resource 一起收束。
 
 ## 逻辑路径和真实路径分开
 

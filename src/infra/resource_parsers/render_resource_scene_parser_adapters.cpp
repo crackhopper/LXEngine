@@ -3,6 +3,7 @@
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_shader_resolver.hpp"
+#include "infra/resource_parsers/texture_resource_parser.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -213,6 +214,41 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
                            context.ownerUri, canonicalUri,
                            kRenderFeatureParserName,
                            std::move(parsedFeature.diagnostics));
+  }
+
+  for (auto &[parameterName, parameter] :
+       parsedFeature.renderFeature->parameters) {
+    if (parameter.uri.empty() ||
+        parameter.uri.string().rfind("builtin:", 0) == 0) {
+      continue;
+    }
+    if (parameter.kind != "textureCube" && parameter.kind != "texture2D" &&
+        parameter.kind != "texture3D") {
+      continue;
+    }
+
+    const LX_core::ResourceUri textureUri =
+        canonicalResourceUri(canonicalUri, parameter.uri);
+    TextureResourceParser textureParser;
+    const auto texture = textureParser.parse(
+        table, textureUri,
+        SceneResourceParseContext{
+            .ownerUri = {},
+            .textureContent = LX_core::TextureContent::Environment,
+        });
+    if (!texture.identity.isValid() ||
+        texture.metadata.state == LX_core::ResourceState::Failed) {
+      std::vector<std::string> diagnostics;
+      diagnostics.push_back("failed to load RenderFeature texture parameter '" +
+                            parameterName + "' resource '" +
+                            textureUri.string() + "'");
+      diagnostics.insert(diagnostics.end(), texture.diagnostics.begin(),
+                         texture.diagnostics.end());
+      return makeFailedParse(
+          table, LX_core::SceneResourceType::RenderFeature, context.ownerUri,
+          canonicalUri, kRenderFeatureParserName, std::move(diagnostics));
+    }
+    parameter.uri = texture.metadata.uri;
   }
 
   const LX_core::RenderFeatureHandle handle = table.registerRenderFeature(

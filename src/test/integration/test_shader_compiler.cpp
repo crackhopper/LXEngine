@@ -636,6 +636,62 @@ static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
 }
 
 static bool
+testGraphSkyboxBackgroundShaderContract(const std::filesystem::path &shaderDir) {
+  std::cout << "\n========================================\n";
+  std::cout << "  Test: graph skybox background shader contract\n";
+  std::cout << "========================================\n";
+
+  const auto expectBinding =
+      [](const std::vector<ShaderResourceBinding> &bindings,
+         const std::string &name, ShaderPropertyType type, u32 set,
+         u32 binding) {
+        const auto it = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto &candidate) { return candidate.name == name; });
+        return it != bindings.end() && it->type == type && it->set == set &&
+               it->binding == binding;
+      };
+
+  auto skybox = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Skybox" / "skybox_background.vert",
+      shaderDir / "render_paths" / "Skybox" / "skybox_background.frag", {});
+  if (!skybox.success) {
+    std::cerr << "  COMPILE FAILED: " << skybox.errorMessage << "\n";
+    return false;
+  }
+
+  const auto bindings = ShaderReflector::reflect(skybox.stages);
+  if (!expectBinding(bindings, "CameraUBO", ShaderPropertyType::UniformBuffer,
+                     0, 0) ||
+      !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
+                     0) ||
+      !expectBinding(bindings, "EnvironmentLightingUBO",
+                     ShaderPropertyType::UniformBuffer, 2, 0)) {
+    std::cerr << "  FAIL: graph skybox background bindings mismatch\n";
+    return false;
+  }
+
+  const auto ubo =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "EnvironmentLightingUBO";
+      });
+  const auto hasMember = [&](const std::string &name) {
+    return ubo != bindings.end() &&
+           std::any_of(ubo->members.begin(), ubo->members.end(),
+                       [&](const auto &member) { return member.name == name; });
+  };
+  if (!hasMember("color") || !hasMember("intensity") ||
+      !hasMember("rotation") || !hasMember("visibleInBackground")) {
+    std::cerr << "  FAIL: EnvironmentLightingUBO members mismatch\n";
+    return false;
+  }
+
+  std::cout
+      << "  PASS: graph skybox shader exposes environment feature ABI\n";
+  return true;
+}
+
+static bool
 testTextureCubeReflectionContract(const std::filesystem::path &shaderDir) {
   std::cout << "\n========================================\n";
   std::cout << "  Test: TextureCube reflection contract\n";
@@ -1204,6 +1260,8 @@ int main(int argc, char *argv[]) {
   if (!testTextureCubeReflectionContract(shaderDir))
     ++failures;
   if (!testIblBakeShaderContracts(shaderDir))
+    ++failures;
+  if (!testGraphSkyboxBackgroundShaderContract(shaderDir))
     ++failures;
 
   std::cout << "\n========================================\n";

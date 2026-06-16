@@ -13,6 +13,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <sstream>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -164,6 +165,68 @@ makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a,
       TextureDesc{1, 1, TextureFormat::RGBA8, content},
       std::vector<u8>{r, g, b, a});
   return std::make_unique<CombinedTextureSampler>(std::move(texture));
+}
+
+[[nodiscard]] CombinedTextureSamplerSharedPtr makeBuiltinWhiteEnvironmentCube() {
+  TextureDesc desc;
+  desc.width = 1;
+  desc.height = 1;
+  desc.format = TextureFormat::RGBA32Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.arrayLayers = 6;
+
+  std::vector<float> pixels(6u * 4u, 1.0f);
+  std::vector<u8> bytes(expectedTextureByteCount(desc));
+  std::memcpy(bytes.data(), pixels.data(), bytes.size());
+  auto sampler = std::make_shared<CombinedTextureSampler>(
+      std::make_shared<Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(StringID("SkyboxMap"));
+  sampler->setDirty();
+  return sampler;
+}
+
+[[nodiscard]] float parseFeatureFloat(const RenderFeatureParameter &parameter,
+                                      float fallback = 0.0f) {
+  if (parameter.value.empty()) {
+    return fallback;
+  }
+  return std::stof(parameter.value);
+}
+
+[[nodiscard]] bool parseFeatureBool(const RenderFeatureParameter &parameter,
+                                    bool fallback = false) {
+  if (parameter.value == "true") {
+    return true;
+  }
+  if (parameter.value == "false") {
+    return false;
+  }
+  return fallback;
+}
+
+[[nodiscard]] Vec3f parseFeatureVec3(const RenderFeatureParameter &parameter,
+                                     Vec3f fallback = Vec3f{1.0f, 1.0f,
+                                                            1.0f}) {
+  if (parameter.value.empty()) {
+    return fallback;
+  }
+  std::string text = parameter.value;
+  for (char &ch : text) {
+    if (ch == '[' || ch == ']' || ch == ',') {
+      ch = ' ';
+    }
+  }
+  std::istringstream in(text);
+  Vec3f value = fallback;
+  in >> value.x >> value.y >> value.z;
+  return value;
+}
+
+[[nodiscard]] const RenderFeatureParameter *
+findFeatureParameter(const RenderFeature &feature, const char *name) {
+  const auto it = feature.parameters.find(name);
+  return it == feature.parameters.end() ? nullptr : &it->second;
 }
 
 [[nodiscard]] const char *sceneResourceTypeName(SceneResourceType type) {
@@ -1039,6 +1102,19 @@ SceneResourceTable::findTexture(const ResourceUri &uri) const {
   return std::nullopt;
 }
 
+std::optional<RenderFeatureHandle>
+SceneResourceTable::findRenderFeatureByFeatureName(
+    std::string_view feature) const {
+  for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+    const auto &entry = m_renderFeatures[i];
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        entry.resource->feature == feature) {
+      return RenderFeatureHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
+}
+
 LightHandle SceneResourceTable::registerLight(LightBaseUniquePtr light) {
   auto handle = add<LightBase, LightHandle>(m_lights, std::move(light));
   advanceUploadGeneration();
@@ -1087,6 +1163,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         metadata != nullptr &&
         metadata->type == SceneResourceType::RenderFeature &&
         metadata->uri == uri) {
+      registerEnvironmentLightingResources(*entry.resource);
       return RenderFeatureHandle{i, entry.generation};
     }
   }
@@ -1096,6 +1173,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
   if (handle.isValid()) {
     m_renderFeatures[handle.index].metadataHandle =
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
+    registerEnvironmentLightingResources(*m_renderFeatures[handle.index].resource);
   }
   advanceUploadGeneration();
   return handle;
@@ -1780,6 +1858,64 @@ SceneResourceTable::getIblEnvironmentResources() const {
   }
   if (resources->environmentUbo) {
     out.emplace_back(*resources->environmentUbo);
+  }
+  return out;
+}
+
+void SceneResourceTable::registerEnvironmentLightingResources(
+    const RenderFeature &feature) {
+  if (feature.feature != "environmentLighting") {
+    return;
+  }
+
+  const auto *environmentMap = findFeatureParameter(feature, "environmentMap");
+  if (environmentMap == nullptr || environmentMap->uri.empty()) {
+    m_builtinEnvironmentLightingSkyboxMap.reset();
+    m_environmentLightingTexture.reset();
+    m_environmentLightingUbo.reset();
+    advanceUploadGeneration();
+    return;
+  }
+
+  m_builtinEnvironmentLightingSkyboxMap.reset();
+  m_environmentLightingTexture.reset();
+  if (environmentMap->uri == ResourceUri("builtin:env/white_cube")) {
+    m_builtinEnvironmentLightingSkyboxMap = makeBuiltinWhiteEnvironmentCube();
+  } else if (const auto texture = findTexture(environmentMap->uri)) {
+    auto resolved = resolve(*texture);
+    if (resolved.has_value()) {
+      resolved->get().setBindingName(StringID("SkyboxMap"));
+      m_environmentLightingTexture = *texture;
+    }
+  }
+
+  auto ubo = std::make_unique<EnvironmentLightingData>();
+  const auto *color = findFeatureParameter(feature, "color");
+  const auto *intensity = findFeatureParameter(feature, "intensity");
+  const auto *rotation = findFeatureParameter(feature, "rotation");
+  const auto *visible = findFeatureParameter(feature, "visibleInBackground");
+  ubo->set(color != nullptr ? parseFeatureVec3(*color)
+                            : Vec3f{1.0f, 1.0f, 1.0f},
+           intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
+           rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f,
+           visible != nullptr ? parseFeatureBool(*visible, true) : true);
+  m_environmentLightingUbo = std::move(ubo);
+  advanceUploadGeneration();
+}
+
+std::vector<GpuResourceRef>
+SceneResourceTable::getEnvironmentLightingResources() const {
+  std::vector<GpuResourceRef> out;
+  if (m_builtinEnvironmentLightingSkyboxMap) {
+    out.emplace_back(*m_builtinEnvironmentLightingSkyboxMap);
+  } else if (m_environmentLightingTexture.has_value()) {
+    auto resolved = resolve(*m_environmentLightingTexture);
+    if (resolved.has_value()) {
+      out.emplace_back(resolved->get());
+    }
+  }
+  if (m_environmentLightingUbo) {
+    out.emplace_back(*m_environmentLightingUbo);
   }
   return out;
 }

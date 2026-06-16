@@ -40,11 +40,13 @@ framePassGeometrySignature(const RenderPathGeometryContract &geometry) {
 
 [[nodiscard]] StringID
 framePassAttachmentSignature(const RenderPathAttachmentContract &attachment) {
+  const auto usage = static_cast<u32>(attachment.attachmentUsage);
   return StringID("attachment:target=" + attachment.target + ";format=" +
                   std::to_string(static_cast<u32>(attachment.format)) +
                   ";samples=" + std::to_string(attachment.samples) +
                   ";layers=" + std::to_string(attachment.layers) +
-                  ";depth=" + (attachment.depth ? "true" : "false"));
+                  ";depth=" + (attachment.depth ? "true" : "false") +
+                  ";usage=" + std::to_string(usage));
 }
 
 } // namespace
@@ -189,8 +191,12 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
   };
   const auto sameAllowedWriteMode = [&](const FrameGraphWrite &previous,
                                         const FrameGraphWrite &current) {
-    if (!previous.writeMode.has_value() || !current.writeMode.has_value()) {
+    if (!current.writeMode.has_value()) {
       return false;
+    }
+    if (!previous.writeMode.has_value()) {
+      return registry.allowsWriteMode(debugName(current.resource.name),
+                                      *current.writeMode);
     }
     if (*previous.writeMode != *current.writeMode) {
       return false;

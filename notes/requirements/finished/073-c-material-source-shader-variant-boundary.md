@@ -44,8 +44,8 @@
 - 不实现 source-local material storage；已由 `REQ-073-b` 处理。
 - 不迁移 `techniques/...` 到 `render_paths/...`；由 `REQ-073-d` 处理。
 - 不要求 raster work item 全部进入 indirect batch；由 `REQ-073-e` 处理。
-- 不彻底删除 realtime 旧 draw/descriptor fallback；由 `REQ-076-b` 处理。但本 REQ 的 Helmet smoke 不得通过旧 fallback 成功。
-- 不处理 OfflineRT 配置入口硬切；由 `REQ-076-c` / `REQ-076-d` 处理。
+- 不彻底删除 realtime 旧 draw/descriptor fallback；由 `REQ-073-j` 处理。但本 REQ 的 Helmet smoke 不得通过旧 fallback 成功。
+- 不处理 OfflineRT 配置入口硬切；由 `REQ-074-h` / `REQ-074-i` 处理。
 - 不实现完整 PBRT/glTF material 物理等价，只要求 `standard-pbr` metallic-roughness 工作流在 realtime smoke 中可用。
 - 不实现 package、BC7 或 pipeline cache blob。
 
@@ -388,8 +388,8 @@ rg/audit Forward / Deferred / OfflineRT pass shader，断言没有：
 
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
 - `REQ-073-e`: Indirect material batching and diagnostics。
-- `REQ-076-b`: Realtime material path hard cut and high-confidence smoke。
-- `REQ-076-c`: OfflineRT RenderPathGraph compute path。
+- `REQ-073-j`: Realtime material path hard cut and high-confidence smoke。
+- `REQ-074-h`: OfflineRT RenderPathGraph compute path。
 
 ## 实施状态
 
@@ -433,7 +433,7 @@ ctest --test-dir build --output-on-failure -R test_helmet_standard_pbr_realtime_
 
 Helmet smoke 输出了 192x192 非黑图，`litPixelCount=12349`、`averageLuminance=0.16042135793249698`，metadata 检查确认包含 `standard-pbr`、`standard_pbr.contract.glsl`、`RenderPathNodeSignature`、`PipelineKey` 和 final shader reflection，且不包含旧 `assets/materials/pbr.material`、`source: gltf` 或 fallback token。
 
-剩余的旧路径清理不属于本 REQ 的完成条件，继续由已列出的 `REQ-073-d/e` 和 `REQ-076-b/c` 承接；本 REQ 的 Helmet smoke 不依赖这些旧路径。
+剩余的旧路径清理不属于本 REQ 的完成条件，继续由已列出的 `REQ-073-d/e` 和 `REQ-073-j/c` 承接；本 REQ 的 Helmet smoke 不依赖这些旧路径。
 
 ## 归档记录
 

@@ -388,14 +388,14 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 - `REQ-073-c`: Material source shader variant boundary。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
 - `REQ-073-e`: Indirect material batching and diagnostics。
-- `REQ-076-b`: Realtime material path hard cut and smoke。
-- `REQ-076-e`: Specialized PBRT BSDF contracts，专门支持完整 PBRT glass/fourier/mix 或 conductor `eta/k` 的 realtime/offline 表达。
+- `REQ-073-j`: Realtime material path hard cut and smoke。
+- `REQ-075-a`: Specialized PBRT BSDF contracts，专门支持完整 PBRT glass/fourier/mix 或 conductor `eta/k` 的 realtime/offline 表达。
 - normal-map variant / tangent-free fast path 优化。
 - `REQ-074-a`: BC7 texture compression pipeline。
 
 ## 实施状态
 
-合同层已完成；GPU/bindless/indirect/realtime smoke 验证由 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-076-b` 分段承接。
+合同层已完成；GPU/bindless/indirect/realtime smoke 验证由 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-073-j` 分段承接。
 
 截至 2026-06-13，已落地：
 
@@ -418,9 +418,9 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 | `REQ-073-c` | RenderPath material source shader variant、final shader reflection、compile/reflection key 和 `PipelineKey` | shader variant 需要依赖 073-a 的 source contract 和 073-b 的 source-local storage 结构事实，且应在 URI 迁移和 indirect batching 之前先稳定 pipeline/reflection identity |
 | `REQ-073-d` | shader URI 从 `techniques/...` 迁移到 `render_paths/...`，并硬切 RenderPath/pass shader 术语 | URI 迁移是默认 asset / resolver / positive test 的硬切，触点广，应该和 shader variant 分开验收 |
 | `REQ-073-e` | indirect material batching、index-only work item、batch split diagnostics 和 Helmet/BMW batching stats | indirect 依赖 bindless table 与 final shader/pipeline identity；提前做会混入旧 descriptor fallback，无法判断 batch split 原因 |
-| `REQ-076-b` | realtime 旧 material/render fallback hard cut、Helmet/BMW realtime smoke / low-res visual validation | 视觉 smoke 应在数据、shader variant、URI 迁移和 indirect path 都成立后执行；无法渲染时必须 fail-fast 诊断，而不是用旧路径隐藏问题 |
-| `REQ-076-c` / `REQ-076-d` | OfflineRT RenderPathGraph compute path 和配置化入口 hard cut | OfflineRT 配置入口与实时 material contract 是相邻但独立的执行路径；本阶段只保证 Offline PBR direct shader 能使用 accessor ABI |
-| `REQ-076-e` | 完整 PBRT `glass`、`fourier`、`mix`、conductor `eta/k` 的物理准确表达 | 073-a 的目标是建立统一合同和 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 |
+| `REQ-073-j` | realtime 旧 material/render fallback hard cut、Helmet/BMW realtime smoke / low-res visual validation | 视觉 smoke 应在数据、shader variant、URI 迁移和 indirect path 都成立后执行；无法渲染时必须 fail-fast 诊断，而不是用旧路径隐藏问题 |
+| `REQ-074-h` / `REQ-074-i` | OfflineRT RenderPathGraph compute path 和配置化入口 hard cut | OfflineRT 配置入口与实时 material contract 是相邻但独立的执行路径；本阶段只保证 Offline PBR direct shader 能使用 accessor ABI |
+| `REQ-075-a` | 完整 PBRT `glass`、`fourier`、`mix`、conductor `eta/k` 的物理准确表达 | 073-a 的目标是建立统一合同和 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 |
 
 ### 原始 073-a 中未在本 REQ 完成的条目
 
@@ -430,11 +430,11 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 |---|---|---|---|
 | R5 / T6 / T7 中的 final shader variant、variant 后 shader reflection、compile/reflection key 和 `PipelineKey` 完整接入 | 只完成 contract source、accessor ABI、shader compiler 宏注入能力和 `requiresMaterialSourceVariant` 标记 | 073-a 阶段没有 source-local storage / backend table，也不能让 base shader reflection 伪装成最终 variant reflection | `REQ-073-c` |
 | `techniques/...` 到 `render_paths/...` 的默认 URI 迁移 | 仍有默认 shader 源位于 `assets/shaders/glsl/techniques/...` | URI 迁移必须在 source variant 稳定后单独硬切，否则会留下可解析但错误的 fallback | `REQ-073-d` |
-| T3 / T4 / T5 中“shader 实际采样 factor × texture / 默认纹理后非全黑”的渲染结果验证 | 已完成 source record packing 和默认纹理 slot 基础；尚未做 realtime 默认路径视觉验收 | shader 采样正确性依赖 variant shader + URI 迁移 + bindless/indirect 默认路径，不能用旧 renderer path 证明 | `REQ-076-b` |
+| T3 / T4 / T5 中“shader 实际采样 factor × texture / 默认纹理后非全黑”的渲染结果验证 | 已完成 source record packing 和默认纹理 slot 基础；尚未做 realtime 默认路径视觉验收 | shader 采样正确性依赖 variant shader + URI 迁移 + bindless/indirect 默认路径，不能用旧 renderer path 证明 | `REQ-073-j` |
 | T7 / T10 中“同 source 不因参数值或贴图存在性拆 pipeline/batch”的 renderer 级验证 | 已有 source signature / material signature 基础测试 | renderer 级 pipeline/batch 是否拆分取决于 final shader variant 和 RenderWorkQueue 默认消费新 table | `REQ-073-c` / `REQ-073-e` |
-| T9 Helmet/BMW 低分辨率 realtime 非全黑 validation | Helmet/BMW 资产和 converter 已写入 `bsdf.source`；未做 realtime clean-path smoke | 视觉 smoke 必须在 data foundation、shader variant、URI 迁移和 indirect path 都成立后执行；否则旧 fallback 会隐藏问题 | `REQ-076-b` |
-| OfflineRT 默认配置入口硬切 | Offline PBR direct shader 可使用 accessor ABI，但默认入口仍有 provider / hardcoded frame graph bridge | OfflineRT 配置入口是独立执行链，需要 RenderPathGraph compute path 先落地，再删除旧入口 | `REQ-076-c` / `REQ-076-d` |
-| 完整 PBRT `glass` / `fourier` / `mix` / conductor `eta/k` 的准确表达 | 当前 contract 明确标记 unsupported 或只保留 PBRT 参数 | 073-a 是 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 | `REQ-076-e` |
+| T9 Helmet/BMW 低分辨率 realtime 非全黑 validation | Helmet/BMW 资产和 converter 已写入 `bsdf.source`；未做 realtime clean-path smoke | 视觉 smoke 必须在 data foundation、shader variant、URI 迁移和 indirect path 都成立后执行；否则旧 fallback 会隐藏问题 | `REQ-073-j` |
+| OfflineRT 默认配置入口硬切 | Offline PBR direct shader 可使用 accessor ABI，但默认入口仍有 provider / hardcoded frame graph bridge | OfflineRT 配置入口是独立执行链，需要 RenderPathGraph compute path 先落地，再删除旧入口 | `REQ-074-h` / `REQ-074-i` |
+| 完整 PBRT `glass` / `fourier` / `mix` / conductor `eta/k` 的准确表达 | 当前 contract 明确标记 unsupported 或只保留 PBRT 参数 | 073-a 是 metallic realtime extension，不承诺完整 PBRT BSDF 物理模型 | `REQ-075-a` |
 
 本阶段验证：
 
@@ -446,7 +446,7 @@ Forward、Deferred、OfflineRT 都只调用统一 Material Accessor ABI。
 
 ## 归档记录
 
-2026-06-14 复核通过。073-a 的完成范围是 material source contract / accessor ABI / source signature 基础；GPU upload、shader variant、URI hard cut、realtime smoke、OfflineRT 配置入口和完整 PBRT BSDF 已在本文件中明确拆给后续 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-076-b/c/d/e`。
+2026-06-14 复核通过。073-a 的完成范围是 material source contract / accessor ABI / source signature 基础；GPU upload、shader variant、URI hard cut、realtime smoke、OfflineRT 配置入口和完整 PBRT BSDF 已在本文件中明确拆给后续 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-073-j/c/d/e`。
 
 本次归档前验证：
 

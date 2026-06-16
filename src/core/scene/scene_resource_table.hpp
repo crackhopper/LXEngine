@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace LX_core {
@@ -242,6 +243,8 @@ public:
   [[nodiscard]] std::optional<MeshHandle> findMesh(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<TextureHandle>
   findTexture(const ResourceUri &uri) const;
+  [[nodiscard]] std::optional<RenderFeatureHandle>
+  findRenderFeatureByFeatureName(std::string_view feature) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
   [[nodiscard]] GpuResourceRef
   buildRenderCameraUboResource(const CameraResource &camera) const;
@@ -253,6 +256,9 @@ public:
   getIblEnvironmentResourceSet() const;
   [[nodiscard]] IblEnvironmentResources *getMutableIblEnvironmentResources();
   [[nodiscard]] std::vector<GpuResourceRef> getIblEnvironmentResources() const;
+  void registerEnvironmentLightingResources(const RenderFeature &feature);
+  [[nodiscard]] std::vector<GpuResourceRef>
+  getEnvironmentLightingResources() const;
   void beginRenderResourceScope();
   [[nodiscard]] MaterialHandle
   addRenderMaterial(MaterialInstanceUniquePtr material);
@@ -399,6 +405,9 @@ private:
   std::vector<Entry<RenderFeature>> m_renderFeatures;
   std::vector<Entry<ShaderResourceMetadata>> m_shaders;
   mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
+  CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
+  std::optional<TextureHandle> m_environmentLightingTexture;
+  EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
       std::make_unique<SceneLightsData>();

@@ -84,6 +84,19 @@ ShaderResourceBinding makeTextureBinding(std::string name, u32 binding = 0) {
                                {}};
 }
 
+ShaderResourceBinding makeTextureCubeBinding(std::string name,
+                                             u32 binding = 0) {
+  return ShaderResourceBinding{std::move(name),
+                               1,
+                               binding,
+                               ShaderPropertyType::TextureCube,
+                               1,
+                               0,
+                               0,
+                               ShaderStage::Fragment,
+                               {}};
+}
+
 ShaderResourceBinding makeComputeStorageBinding(std::string name,
                                                 u32 binding = 0) {
   return ShaderResourceBinding{std::move(name),
@@ -1321,6 +1334,170 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   }
 }
 
+RenderFeature makeCompilerEnvironmentFeature(bool includeColor = true) {
+  RenderFeature feature;
+  feature.name = "EnvironmentLighting";
+  feature.feature = "environmentLighting";
+  feature.parameters["environmentMap"] = RenderFeatureParameter{
+      .kind = "textureCube",
+      .uri = ResourceUri("builtin:env/white_cube"),
+      .valueType = "linear-radiance",
+      .binding = "SkyboxMap",
+      .required = true,
+  };
+  if (includeColor) {
+    feature.parameters["color"] = RenderFeatureParameter{
+        .kind = "vec3",
+        .value = "[1.0, 1.0, 1.0]",
+        .binding = "EnvironmentLightingUBO",
+        .member = "color",
+        .required = true,
+    };
+  }
+  feature.parameters["intensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "EnvironmentLightingUBO",
+      .member = "intensity",
+      .required = true,
+  };
+  feature.parameters["rotation"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "0.0",
+      .binding = "EnvironmentLightingUBO",
+      .member = "rotation",
+      .required = true,
+  };
+  feature.parameters["visibleInBackground"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+      .binding = "EnvironmentLightingUBO",
+      .member = "visibleInBackground",
+      .required = true,
+  };
+  return feature;
+}
+
+FramePass makeSkyboxCompilerPass() {
+  FramePass pass;
+  pass.name = Pass_SkyboxBackground;
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = ResourceUri("render_paths/Skybox/skybox_background");
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("feature.environmentLighting"), StringID{}));
+  return pass;
+}
+
+ShaderResourceBinding makeEnvironmentLightingUboBinding() {
+  return ShaderResourceBinding{
+      "EnvironmentLightingUBO",
+      2,
+      0,
+      ShaderPropertyType::UniformBuffer,
+      1,
+      32,
+      0,
+      ShaderStage::Fragment,
+      {StructMemberInfo{"color", ShaderPropertyType::Vec3, 0, 12},
+       StructMemberInfo{"intensity", ShaderPropertyType::Float, 12, 4},
+       StructMemberInfo{"rotation", ShaderPropertyType::Float, 16, 4},
+       StructMemberInfo{"visibleInBackground", ShaderPropertyType::Float, 20,
+                        4}}};
+}
+
+void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
+  Scene scene("EnvironmentCompilerScene");
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting"),
+      makeCompilerEnvironmentFeature());
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 41}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 42}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.renderState.depthWriteEnable = false;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "environment feature fullscreen pass should produce one desc");
+  if (!descs.empty()) {
+    expectAcceptedDescHasBackendPipelineFacts(
+        descs.front(),
+        "environment feature bindings should satisfy skybox shader");
+    EXPECT(hasDescriptorBindingName(descs.front(), StringID("SkyboxMap")),
+           "accepted skybox desc should include SkyboxMap");
+    EXPECT(hasDescriptorBindingName(descs.front(),
+                                    StringID("EnvironmentLightingUBO")),
+           "accepted skybox desc should include EnvironmentLightingUBO");
+  }
+}
+
+void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
+  Scene scene("EnvironmentCompilerScene");
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting"),
+      makeCompilerEnvironmentFeature(/*includeColor=*/false));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 43}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 44}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "missing environment UBO member should produce one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "missing EnvironmentLightingUBO.color should reject desc");
+    EXPECT(hasDiagnosticCode(descs.front(), RenderInputDiagnosticCode::MissingBinding),
+           "missing environment UBO member should report MissingBinding");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1348,5 +1525,7 @@ int main() {
   testPassNameDoesNotCreateDefaultVisibilityWithoutCamera();
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
+  testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
+  testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   return g_failures == 0 ? 0 : 1;
 }

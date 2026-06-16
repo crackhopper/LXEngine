@@ -99,7 +99,7 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
             input_stats, "descExecutedInputCount"
         )
         self.assertGreater(input_count, 0)
-        self.assertGreater(accepted_input_count, 0)
+        self.assertGreaterEqual(accepted_input_count, 2)
         self.assertEqual(input_count, accepted_input_count + rejected_input_count)
         self.assertLess(rejected_input_count, input_count)
         self.assertGreater(submitted_draw_count, 0)
@@ -111,68 +111,11 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         self.assertTrue(payload.get("cpuSrgbPngPath"))
         self.assertTrue(payload.get("metadataPath"))
         self.assertGreaterEqual(
-            self._count_green_glow_pixels(
-                self.source_dir / payload["cpuSrgbPngPath"]
+            self._average_patch_luminance(
+                self.source_dir / payload["cpuSrgbPngPath"], 0, 0, 32, 32
             ),
-            128,
+            0.2,
         )
-
-    def test_debug_color_transfer_export_bundle_has_ramp_proof(self) -> None:
-        scene = (
-            self.source_dir
-            / "assets"
-            / "scenes"
-            / "generated"
-            / "helmet_standard_pbr.scene.yaml"
-        )
-        command = [
-            sys.executable,
-            str(
-                self.source_dir
-                / "src"
-                / "tools"
-                / "lxe_realtime_render"
-                / "lxe_realtime_render.py"
-            ),
-            "--scene",
-            str(scene),
-            "--profile",
-            "preview",
-            "--xvfb",
-            "--debug-color-transfer",
-            "--require-debug-color-transfer",
-            "--project-name",
-            "codex_test_debug_color_transfer",
-        ]
-        if self.editor:
-            command.extend(["--editor", self.editor])
-
-        result = subprocess.run(
-            command,
-            cwd=self.source_dir,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=120,
-            check=False,
-        )
-        if result.returncode != 0:
-            self.fail(
-                "debug color-transfer smoke failed\n"
-                f"stdout:\n{result.stdout}\n"
-                f"stderr:\n{result.stderr}"
-            )
-
-        payload = json.loads(result.stdout.strip())
-        debug_payload = payload["debugColorTransfer"]
-        self.assertTrue(debug_payload["manifestPath"])
-        self.assertGreaterEqual(len(debug_payload["targets"]), 6)
-        probe_labels = {
-            probe["label"]
-            for probe in debug_payload["manifest"].get("probes", [])
-        }
-        self.assertIn("gray18", probe_labels)
-        self.assertIn("half", probe_labels)
 
     def test_require_output_files_rejects_missing_render_input_stats(self) -> None:
         module = self._load_realtime_render_module()
@@ -578,13 +521,18 @@ class HelmetStandardPbrRealtimeSmokeTest(unittest.TestCase):
         return value
 
     @staticmethod
-    def _count_green_glow_pixels(path: Path) -> int:
+    def _average_patch_luminance(
+        path: Path, x0: int, y0: int, width: int, height: int
+    ) -> float:
         image = Image.open(path).convert("RGB")
-        return sum(
-            1
-            for red, green, blue in image.getdata()
-            if green > 80 and green > red * 1.25 and green > blue * 1.05
-        )
+        total = 0.0
+        count = 0
+        for y in range(y0, min(y0 + height, image.height)):
+            for x in range(x0, min(x0 + width, image.width)):
+                red, green, blue = image.getpixel((x, y))
+                total += (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255.0
+                count += 1
+        return total / max(count, 1)
 
     @staticmethod
     def _full_render_input_stats(

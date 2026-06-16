@@ -188,6 +188,81 @@ void testBuiltinDefaultTexturesAreStableSceneResources() {
          "rebuilding upload view should not duplicate default resources");
 }
 
+RenderFeature makeEnvironmentLightingFeature(ResourceUri uri) {
+  RenderFeature feature;
+  feature.name = "EnvironmentLighting";
+  feature.feature = "environmentLighting";
+  feature.parameters["environmentMap"] = RenderFeatureParameter{
+      .kind = "textureCube",
+      .uri = std::move(uri),
+      .valueType = "linear-radiance",
+      .binding = "SkyboxMap",
+      .required = true,
+  };
+  feature.parameters["color"] = RenderFeatureParameter{
+      .kind = "vec3",
+      .value = "[0.08, 0.08, 0.10]",
+      .binding = "EnvironmentLightingUBO",
+      .member = "color",
+      .required = true,
+  };
+  feature.parameters["intensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "EnvironmentLightingUBO",
+      .member = "intensity",
+      .required = true,
+  };
+  feature.parameters["rotation"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "0.0",
+      .binding = "EnvironmentLightingUBO",
+      .member = "rotation",
+      .required = true,
+  };
+  feature.parameters["visibleInBackground"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+      .binding = "EnvironmentLightingUBO",
+      .member = "visibleInBackground",
+      .required = true,
+  };
+  return feature;
+}
+
+void testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap() {
+  SceneResourceTable table;
+  const RenderFeatureHandle handle = table.registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting.render-feature"),
+      makeEnvironmentLightingFeature(ResourceUri("builtin:env/white_cube")));
+  EXPECT(handle.isValid(), "environment feature should register");
+
+  const auto resources = table.getEnvironmentLightingResources();
+  const auto hasBinding = [&](StringID bindingName) {
+    return std::any_of(resources.begin(), resources.end(),
+                       [&](const GpuResourceRef &resource) {
+                         return resource.isValid() &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+  EXPECT(hasBinding(StringID("SkyboxMap")),
+         "builtin white cube should register live SkyboxMap");
+  EXPECT(hasBinding(StringID("EnvironmentLightingUBO")),
+         "environment feature should register EnvironmentLightingUBO");
+}
+
+void testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap() {
+  SceneResourceTable table;
+  RenderFeature feature = makeEnvironmentLightingFeature(ResourceUri{});
+  const RenderFeatureHandle handle = table.registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting_missing_uri"),
+      std::move(feature));
+  EXPECT(handle.isValid(), "environment feature payload should register");
+  const auto resources = table.getEnvironmentLightingResources();
+  EXPECT(resources.empty(),
+         "missing environmentMap.uri must not create default SkyboxMap");
+}
+
 class TestShader final : public IShader {
 public:
   TestShader() {
@@ -1076,6 +1151,8 @@ int main() {
   testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies();
   testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices();
   testBuiltinDefaultTexturesAreStableSceneResources();
+  testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap();
+  testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();

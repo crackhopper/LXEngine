@@ -100,7 +100,7 @@ CPU resource SHALL 明确区分 raw storage 与 activated view：
 
 ## 依赖
 
-- `REQ-076-i`（定义非 mesh resource / primitive taxonomy；loader 可先实现纯 CPU 解析，但最终 resource contract 应与其对齐）
+- `REQ-076-c`（定义非 mesh resource / primitive taxonomy；loader 可先实现纯 CPU 解析，但最终 resource contract 应与其对齐）
 - assets-downloader 中的 Voxel51 3DGS train PLY cache 资产。
 - `openspec/specs/cpp-style-guide/spec.md`
 - `notes/roadmaps/research/3dgs-ply-rendering/01-格式与资产.md`

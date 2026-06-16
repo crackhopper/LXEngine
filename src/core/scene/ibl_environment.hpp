@@ -51,6 +51,34 @@ struct alignas(16) EnvironmentData final : public IGpuResource {
 
 using EnvironmentDataUniquePtr = std::unique_ptr<EnvironmentData>;
 
+struct alignas(16) EnvironmentLightingData final : public IGpuResource {
+  struct Param {
+    Vec4f colorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
+    Vec4f rotationVisible{0.0f, 1.0f, 0.0f, 0.0f};
+  };
+
+  void set(Vec3f color, float intensity, float rotation,
+           bool visibleInBackground) {
+    param.colorIntensity = Vec4f{color.x, color.y, color.z, intensity};
+    param.rotationVisible =
+        Vec4f{rotation, visibleInBackground ? 1.0f : 0.0f, 0.0f, 0.0f};
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return sizeof(Param); }
+  StringID getBindingName() const override {
+    static const StringID kName("EnvironmentLightingUBO");
+    return kName;
+  }
+
+  Param param{};
+};
+
+using EnvironmentLightingDataUniquePtr =
+    std::unique_ptr<EnvironmentLightingData>;
+
 struct IblEnvironmentResources {
   bool skyboxEnabled = true;
   CombinedTextureSamplerSharedPtr skyboxCubemap;

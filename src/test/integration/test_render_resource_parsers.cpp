@@ -116,6 +116,86 @@ parameters:
          "float envelope value should be retained");
 }
 
+void testRenderFeatureParsesBindingMemberRequiredSchema() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-feature-schema", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  color:
+    kind: vec3
+    value: [0.08, 0.08, 0.10]
+    binding: EnvironmentLightingUBO
+    member: color
+    required: true
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "feature binding/member/required schema should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "feature binding/member/required schema should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+
+  const auto &feature = *parsed.renderFeature;
+  const auto &environmentMap = feature.parameters.at("environmentMap");
+  EXPECT(environmentMap.kind == "textureCube",
+         "environmentMap kind should be retained");
+  EXPECT(environmentMap.uri == LX_core::ResourceUri("builtin:env/white_cube"),
+         "environmentMap uri should be retained");
+  EXPECT(environmentMap.valueType == "linear-radiance",
+         "environmentMap value type should be retained");
+  EXPECT(environmentMap.binding == "SkyboxMap",
+         "environmentMap binding should be retained");
+  EXPECT(environmentMap.required,
+         "environmentMap required flag should be retained");
+
+  const auto &color = feature.parameters.at("color");
+  EXPECT(color.binding == "EnvironmentLightingUBO",
+         "UBO binding should be retained");
+  EXPECT(color.member == "color", "UBO member should be retained");
+  EXPECT(color.required, "UBO member required flag should be retained");
+}
+
+void testRenderFeatureParsesTextureCubeUriParameter() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://texture-cube-feature", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: builtin:env/white_cube
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "textureCube uri parameter should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "textureCube uri parameter should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+  const auto &parameter = parsed.renderFeature->parameters.at("environmentMap");
+  EXPECT(parameter.kind == "textureCube",
+         "textureCube parameter kind should be retained");
+  EXPECT(parameter.uri == LX_core::ResourceUri("builtin:env/white_cube"),
+         "textureCube parameter uri should be retained");
+  EXPECT(parameter.binding == "SkyboxMap",
+         "textureCube parameter binding should be retained");
+}
+
 void testDefaultRenderFeatureAssetParses() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse(
@@ -137,6 +217,40 @@ void testDefaultRenderFeatureAssetParses() {
          "default tone mapping feature should retain feature kind");
   EXPECT(feature.parameters.find("exposure") != feature.parameters.end(),
          "default tone mapping feature should declare exposure");
+}
+
+void testEnvironmentLightingRenderFeatureAssetParses() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse(
+      "assets/effects/environment_lighting.render-feature.yaml",
+      readTextFile("assets/effects/environment_lighting.render-feature.yaml"));
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "environment lighting feature asset should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "environment lighting feature asset should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+
+  const auto &feature = *parsed.renderFeature;
+  EXPECT(feature.feature == "environmentLighting",
+         "environment lighting feature kind should be retained");
+  EXPECT(feature.parameters.size() == 5,
+         "environment lighting feature should declare exactly five "
+         "parameters");
+  for (const char *name : {"environmentMap", "color", "intensity", "rotation",
+                           "visibleInBackground"}) {
+    EXPECT(feature.parameters.find(name) != feature.parameters.end(),
+           std::string("environment lighting feature should declare ") + name);
+  }
+  EXPECT(feature.parameters.find("skyboxEnabled") == feature.parameters.end(),
+         "environment lighting feature must not declare skyboxEnabled");
+  EXPECT(feature.parameters.find("ambientColor") == feature.parameters.end(),
+         "environment lighting feature must not declare ambientColor");
+  EXPECT(feature.parameters.find("ambientIntensity") ==
+             feature.parameters.end(),
+         "environment lighting feature must not declare ambientIntensity");
 }
 
 void testTextureResourceParserUsesDeclaredContentFormat() {
@@ -241,11 +355,12 @@ void testDefaultRenderPathGraphAssetParses() {
          "default forward graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
          "default forward graph should use Forward render path");
-  EXPECT(graph.features.size() == 1,
-         "default forward graph should reference tone mapping feature");
-  EXPECT(graph.passes.size() == 4,
-         "default forward graph should declare shadow, opaque, tone-map, and "
-         "debug overlay passes");
+  EXPECT(graph.features.size() == 2,
+         "default forward graph should reference tone mapping and environment "
+         "features");
+  EXPECT(graph.passes.size() == 5,
+         "default forward graph should declare shadow, opaque, skybox, "
+         "tone-map, and debug overlay passes");
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
@@ -253,14 +368,16 @@ void testDefaultRenderPathGraphAssetParses() {
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),
          "default forward graph asset should compile into a FrameGraph plan");
-  if (compiled.getPasses().size() == 4) {
+  if (compiled.getPasses().size() == 5) {
     EXPECT(compiled.getPasses()[0].name == LX_core::StringID("Shadow"),
            "default forward graph should run shadow pass first");
     EXPECT(compiled.getPasses()[1].name == LX_core::StringID("Forward"),
            "default forward graph should run HDR producer after shadow");
-    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("PostProcess"),
+    EXPECT(compiled.getPasses()[2].name == LX_core::StringID("SkyboxBackground"),
+           "default forward graph should run skybox before tone map");
+    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("PostProcess"),
            "default forward graph should run tone map after HDR producer");
-    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("DebugOverlay"),
+    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("DebugOverlay"),
            "default forward graph should run debug overlay last");
   }
 }
@@ -284,9 +401,9 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
          "default deferred graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Deferred,
          "default deferred graph should use Deferred render path");
-  EXPECT(graph.passes.size() == 5,
+  EXPECT(graph.passes.size() == 6,
          "default deferred graph should declare shadow, GBuffer, lighting, "
-         "post-process, and debug overlay passes");
+         "skybox, post-process, and debug overlay passes");
   const LX_core::FrameGraph frameGraph =
       LX_core::buildFrameGraphFromRenderPathGraph(
           graph, LX_core::GraphResourceRegistry::makeDefault());
@@ -294,7 +411,7 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
       frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
   EXPECT(compiled.isValid(),
          "default deferred graph asset should compile into a FrameGraph plan");
-  if (compiled.getPasses().size() == 5) {
+  if (compiled.getPasses().size() == 6) {
     EXPECT(compiled.getPasses()[0].name == LX_core::StringID("Shadow"),
            "default deferred graph should run shadow pass first");
     EXPECT(compiled.getPasses()[1].name == LX_core::StringID("Deferred"),
@@ -302,9 +419,11 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
     EXPECT(compiled.getPasses()[2].name ==
                LX_core::StringID("DeferredLighting"),
            "default deferred graph should run lighting after GBuffer");
-    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("PostProcess"),
+    EXPECT(compiled.getPasses()[3].name == LX_core::StringID("SkyboxBackground"),
+           "default deferred graph should run skybox before post process");
+    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("PostProcess"),
            "default deferred graph should run post process after lighting");
-    EXPECT(compiled.getPasses()[4].name == LX_core::StringID("DebugOverlay"),
+    EXPECT(compiled.getPasses()[5].name == LX_core::StringID("DebugOverlay"),
            "default deferred graph should run debug overlay last");
   }
 }
@@ -379,6 +498,45 @@ parameters:
          "render feature parameter fields must not be silently ignored");
   EXPECT(hasDiagnosticContaining(parsed, "parameters.exposure.ignoredField"),
          "diagnostic should reject unknown parameter field");
+}
+
+void testRenderFeatureRejectsUnknownParameterField() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-parameter-extra-singular", R"(
+schema: lxe.render-feature.v1
+name: FeatureWithParameterExtra
+feature: toneMapping
+parameters:
+  exposure:
+    kind: float
+    value: 1.0
+    skyboxEnabled: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "singular unknown parameter field test should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.exposure.skyboxEnabled"),
+         "diagnostic should reject skyboxEnabled parameter field");
+}
+
+void testEnvironmentLightingFeatureRejectsMissingEnvironmentMapUri() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://environment-feature-missing-uri",
+                                   R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    binding: SkyboxMap
+    required: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "environmentLighting without environmentMap.uri should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.environmentMap.uri"),
+         "diagnostic should name parameters.environmentMap.uri");
 }
 
 void testRenderPathGraphRejectsEmptyPassContracts() {
@@ -911,16 +1069,87 @@ passes:
          "material source variant resolver runs");
 }
 
+void testParserAdapterLoadsEnvironmentFeatureTextureDependency() {
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  LX_core::SceneResourceTable table;
+  const LX_core::ResourceUri featureUri = writeTempRenderPathGraph(
+      "lxe_environment_texture_dependency.render-feature.yaml", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: assets/env/khronos/neutral/ggx/specular.ktx2
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: EnvironmentLightingUBO
+    member: color
+    required: true
+  intensity:
+    kind: float
+    value: 1.0
+    binding: EnvironmentLightingUBO
+    member: intensity
+    required: true
+  rotation:
+    kind: float
+    value: 0.0
+    binding: EnvironmentLightingUBO
+    member: rotation
+    required: true
+  visibleInBackground:
+    kind: bool
+    value: true
+    binding: EnvironmentLightingUBO
+    member: visibleInBackground
+    required: true
+)");
+
+  const auto parsed =
+      registry.parse(table, LX_core::SceneResourceType::RenderFeature,
+                     featureUri, LX_infra::SceneResourceParseContext{});
+
+  if (!parsed.diagnostics.empty()) {
+    for (const std::string &diagnostic : parsed.diagnostics) {
+      std::cerr << "[diag] " << diagnostic << '\n';
+    }
+  }
+  EXPECT(parsed.diagnostics.empty(),
+         "environment feature texture dependency should load without "
+         "diagnostics");
+  EXPECT(parsed.identity.isValid(),
+         "environment feature with texture dependency should register");
+  const auto texture = table.findTexture(
+      LX_core::ResourceUri("assets/env/khronos/neutral/ggx/specular.ktx2"));
+  EXPECT(texture.has_value(),
+         "environmentMap texture URI should register a live texture");
+  const auto resources = table.getEnvironmentLightingResources();
+  bool hasSkyboxMap = false;
+  for (const auto &resource : resources) {
+    if (resource.getBindingName() == LX_core::StringID("SkyboxMap")) {
+      hasSkyboxMap = true;
+    }
+  }
+  EXPECT(hasSkyboxMap,
+         "environment feature texture dependency should satisfy SkyboxMap");
+}
+
 void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
   struct ExpectedAsset final {
     const char *path;
     std::size_t shaderCount;
   };
   const ExpectedAsset assets[] = {
-      {"assets/render_paths/forward_main.render-path.yaml", 4},
-      {"assets/render_paths/forward_bloom.render-path.yaml", 7},
-      {"assets/render_paths/deferred_main.render-path.yaml", 5},
-      {"assets/render_paths/deferred_bloom.render-path.yaml", 8},
+      {"assets/render_paths/forward_main.render-path.yaml", 5},
+      {"assets/render_paths/forward_bloom.render-path.yaml", 8},
+      {"assets/render_paths/deferred_main.render-path.yaml", 6},
+      {"assets/render_paths/deferred_bloom.render-path.yaml", 9},
   };
 
   for (const ExpectedAsset &asset : assets) {
@@ -967,7 +1196,10 @@ int main() {
   }
 
   testRenderFeatureParsesPureEnvelope();
+  testRenderFeatureParsesBindingMemberRequiredSchema();
+  testRenderFeatureParsesTextureCubeUriParameter();
   testDefaultRenderFeatureAssetParses();
+  testEnvironmentLightingRenderFeatureAssetParses();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
@@ -975,6 +1207,8 @@ int main() {
   testRenderFeatureRejectsPassAndShaderFields();
   testRenderFeatureResourcesAreExplicitlyNotImplemented();
   testRenderFeatureRejectsUnknownParameterFields();
+  testRenderFeatureRejectsUnknownParameterField();
+  testEnvironmentLightingFeatureRejectsMissingEnvironmentMapUri();
   testRenderPathGraphRejectsEmptyPassContracts();
   testRenderPathGraphRejectsUnparsedAllowedLookingFields();
   testLegacyRenderEffectSchemaIsRejectedByNewParser();
@@ -982,6 +1216,7 @@ int main() {
   testParserAdapterRejectsRootUtilityShaderUri();
   testParserAdapterRejectsDirectShaderSourceUri();
   testParserAdapterResolvesRenderPathShaderUriForms();
+  testParserAdapterLoadsEnvironmentFeatureTextureDependency();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   if (g_failures != 0) {
     std::cerr << g_failures << " render feature parser checks failed\n";

@@ -30,8 +30,8 @@ root:
     - nodeName: game_camera
       name: game_cam
       transform:
-        translation: [3.19699, -0.14231, 2.17758]
-        rotation: [0.891314, 0.00777838, 0.453303, -0.00395592]
+        translation: [4.4693, 0.706849, 1.23665]
+        rotation: [0.7976, -0.0559327, 0.599117, 0.0420138]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       camera:
@@ -44,8 +44,8 @@ root:
     - nodeName: damaged_helmet
       name: damaged_helmet
       transform:
-        translation: [0.0, 0.0, 0.0]
-        rotation: [0.751125, 0.66016, 0.0, 0.0]
+        translation: [0.0, 0.0, -0.0]
+        rotation: [0.705927, 0.707542, 0.0248042, 0.0208911]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       mesh:
@@ -55,15 +55,22 @@ root:
     - nodeName: compare_key_light
       name: compare_key_light
       transform:
-        translation: [0.0, 4.0, 4.0]
-        rotation: [1.0, 0.0, 0.0, 0.0]
+        translation: [-0.190791, 1.24691, 0.016129]
+        rotation: [0.87303, 0.0083724, 0.487572, -0.00467584]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
       light:
         kind: Directional
-        direction: [-0.101885, -0.74465, -0.659633]
+        direction: [-0.851252, 0.0191783, -0.524407]
         color: [1.0, 1.0, 1.0]
         intensity: 4.0
         shadowStrength: 0.0
         shadowDistance: 80.0
         shadowCascadeCount: 1
+editor:
+  editorCamera:
+    position: [4.4693, 0.706849, 1.23665]
+    rotationEulerDeg: [-8.02275, 73.8241, 0.0]
+    fovY: 35.0
+    nearPlane: 0.1
+    farPlane: 20.0

@@ -6,7 +6,7 @@ Date: 2026-06-13
 
 `REQ-073-b` is not CPU-only scaffolding. It must complete a foundation loop from source-reflected material data to backend-consumable bindless-ready table/staging data.
 
-The requirement stops before shader variants, shader URI migration, renderer default-path consumption, indirect batching, and hard cut. Those remain in `REQ-073-c` through `REQ-076-b`.
+The requirement stops before shader variants, shader URI migration, renderer default-path consumption, indirect batching, and hard cut. Those remain in `REQ-073-c` through `REQ-073-j`.
 
 ## Required Scope In 073-b
 
@@ -35,15 +35,15 @@ The following work is not deferred vaguely; each item has an owning follow-up re
 | RenderPath material source shader variants, `LX_MATERIAL_CONTRACT_SOURCE` compile injection, final shader reflection, and build target boundary | `REQ-073-c` |
 | `techniques/...` to `render_paths/...` shader URI migration and RenderPath terminology hard cut | `REQ-073-d` |
 | RenderWorkQueue / geometry pass default consumption of bindless tables for indirect-capable work items, batch compatibility signatures, and split diagnostics | `REQ-073-e` |
-| Removal of old `SceneGpuMaterialRecord` / `MaterialUBO` realtime truth, per-material descriptor fallback, hidden debug/default-material fallback, and Helmet/BMW realtime smoke | `REQ-076-b` |
-| OfflineRT RenderPathGraph compute path and offline config hard cut | `REQ-076-c` / `REQ-076-d` |
+| Removal of old `SceneGpuMaterialRecord` / `MaterialUBO` realtime truth, per-material descriptor fallback, hidden debug/default-material fallback, and Helmet/BMW realtime smoke | `REQ-073-j` |
+| OfflineRT RenderPathGraph compute path and offline config hard cut | `REQ-074-h` / `REQ-074-i` |
 
 ## Current Implementation Status
 
 After Task 7, the code has moved past the initial scaffolding:
 
 - `SceneResourceTableUploadView` exposes `sourceMaterialRecords`, `sourceMaterialStorages`, and `materialRefs`.
-- Source-contract material draws use `materialIndex == u32_max` plus a valid `materialRefIndex`; the legacy `materialIndex` field only remains for old-path materials until `REQ-076-b`.
+- Source-contract material draws use `materialIndex == u32_max` plus a valid `materialRefIndex`; the legacy `materialIndex` field only remains for old-path materials until `REQ-073-j`.
 - `MaterialInstance` carries source URI, reflection hash, source signature, contract reflection, and table-owned texture handles for material parameters when registration converts pending textures.
 - `MaterialContractPackResult` packs source-reflected bytes and default/direct/canonical texture slots.
 - `SceneResourceTable` owns builtin `white`, `black`, and `flatNormal` texture resources.
@@ -54,7 +54,7 @@ boundary is outside this requirement:
 
 - old `SceneGpuMaterialRecord` still exists only for legacy/default realtime paths and must not become positive Material v3 truth again.
 
-`REQ-073-e` and `REQ-076-b` own the later renderer consumption and old-path
+`REQ-073-e` and `REQ-073-j` own the later renderer consumption and old-path
 removal work.
 
 ## Source Storage Terminology
@@ -86,4 +86,4 @@ Object/draw records should therefore store or resolve to `sourceStorageIndex` pl
 
 ## Non-goals
 
-`REQ-073-b` should not make the realtime renderer default path consume the new tables. It only proves the tables are complete and backend-consumable. Once that is true, `REQ-073-e` can make RenderWorkQueue and geometry passes consume them for batching, and `REQ-076-b` can remove the old fallback path.
+`REQ-073-b` should not make the realtime renderer default path consume the new tables. It only proves the tables are complete and backend-consumable. Once that is true, `REQ-073-e` can make RenderWorkQueue and geometry passes consume them for batching, and `REQ-073-j` can remove the old fallback path.

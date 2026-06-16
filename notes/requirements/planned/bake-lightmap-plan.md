@@ -107,7 +107,7 @@ scene:
 
 ## 依赖
 
-- `REQ-076-g`
+- `REQ-075-c`
 - Irradiance Probe / SH Bake planned route
 - mesh UV2 / asset pipeline readiness
 

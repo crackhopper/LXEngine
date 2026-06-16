@@ -52,6 +52,8 @@ void expectNear(float actual, float expected, const char *message) {
 }
 
 void writeTextFile(const std::filesystem::path &path, const std::string &text);
+void writeBinaryFile(const std::filesystem::path &path,
+                     const std::vector<unsigned char> &bytes);
 
 template <typename T>
 void appendBinary(std::vector<unsigned char> &bytes, const T &value) {
@@ -476,6 +478,17 @@ void writeTextFile(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
+void writeBinaryFile(const std::filesystem::path &path,
+                     const std::vector<unsigned char> &bytes) {
+  std::ofstream out(path, std::ios::binary);
+  if (!out) {
+    std::cerr << "[FAIL] failed to open binary fixture: " << path << '\n';
+    std::exit(1);
+  }
+  out.write(reinterpret_cast<const char *>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+}
+
 bool loadSceneThrowsFor(const std::string &yamlText,
                         const std::string &expectedDiagnostic) {
   const std::filesystem::path path =
@@ -797,6 +810,68 @@ root:
          "scene document should reject ambientColor with wrong arity");
 }
 
+void testKhronosNeutralGgxKtx2LoadsAsPrefilteredCubemap() {
+  const bool found =
+      cdToWhereAssetsExist("env/khronos/neutral/ggx/specular.ktx2");
+  expect(found, "Khronos neutral GGX environment asset must exist");
+
+  const auto texture = infra::TextureLoader::loadKtx2Cubemap(
+      "assets/env/khronos/neutral/ggx/specular.ktx2");
+  expect(texture != nullptr, "KTX2 cubemap loader should return a texture");
+
+  const auto &desc = texture->desc();
+  expect(desc.width == 1024, "neutral GGX cubemap width should match source");
+  expect(desc.height == 1024, "neutral GGX cubemap height should match source");
+  expect(desc.format == LX_core::TextureFormat::RGBA16Float,
+         "neutral GGX cubemap should load as RGBA16Float");
+  expect(desc.content == LX_core::TextureContent::Environment,
+         "neutral GGX cubemap should be tagged as environment content");
+  expect(desc.dimension == LX_core::TextureDimension::TextureCube,
+         "neutral GGX KTX2 should load as a cubemap");
+  expect(desc.arrayLayers == 6, "neutral GGX cubemap should have six faces");
+  expect(desc.mipLevels == 11,
+         "neutral GGX cubemap should preserve prefiltered mip levels");
+  expect(texture->size() == LX_core::expectedTextureByteCount(desc),
+         "neutral GGX cubemap byte count should match descriptor");
+}
+
+void testKtx2CubemapLoaderRejectsSupercompressedInput() {
+  std::vector<unsigned char> bytes(80u, 0u);
+  const unsigned char identifier[] = {0xABu, 0x4Bu, 0x54u, 0x58u,
+                                      0x20u, 0x32u, 0x30u, 0xBBu,
+                                      0x0Du, 0x0Au, 0x1Au, 0x0Au};
+  std::copy(std::begin(identifier), std::end(identifier), bytes.begin());
+  auto setLe32 = [&](std::size_t offset, std::uint32_t value) {
+    bytes[offset + 0u] = static_cast<unsigned char>((value >> 0u) & 0xFFu);
+    bytes[offset + 1u] = static_cast<unsigned char>((value >> 8u) & 0xFFu);
+    bytes[offset + 2u] = static_cast<unsigned char>((value >> 16u) & 0xFFu);
+    bytes[offset + 3u] = static_cast<unsigned char>((value >> 24u) & 0xFFu);
+  };
+  setLe32(12u, 97u);
+  setLe32(16u, 2u);
+  setLe32(20u, 4u);
+  setLe32(24u, 4u);
+  setLe32(36u, 6u);
+  setLe32(40u, 1u);
+  setLe32(44u, 1u);
+
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_supercompressed_ktx2_rejected.ktx2";
+  writeBinaryFile(path, bytes);
+  try {
+    (void)infra::TextureLoader::loadKtx2Cubemap(path);
+  } catch (const std::runtime_error &error) {
+    std::filesystem::remove(path);
+    expect(std::string(error.what()).find("Supercompressed KTX2") !=
+               std::string::npos,
+           "supercompressed KTX2 rejection diagnostic should be explicit");
+    return;
+  }
+  std::filesystem::remove(path);
+  expect(false, "KTX2 cubemap loader should reject supercompressed input");
+}
+
 } // namespace
 
 int main() {
@@ -812,6 +887,8 @@ int main() {
   testSceneDocumentRejectsDeletedProgrammaticExtensionOnSave();
   testSceneDocumentLoadsAmbientEnvironmentColor();
   testSceneDocumentRejectsInvalidAmbientEnvironmentColor();
+  testKhronosNeutralGgxKtx2LoadsAsPrefilteredCubemap();
+  testKtx2CubemapLoaderRejectsSupercompressedInput();
   std::cout << "test_gltf_scene_asset_loader passed\n";
   return 0;
 }

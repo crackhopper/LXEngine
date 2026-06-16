@@ -1,6 +1,6 @@
 # REQ-071-e: Superseded Scene Package Fast Load Scope
 
-> 2026-06-12 更新：本 REQ 原本同时定义 `.lxpkg` 文件格式、SceneResourceTable 序列化、backend pipeline cache metadata、加载 UI、Merkle hash、MaterialTemplate grouping 和性能验收。后续改为在 `REQ-074-c` 到 `REQ-074-f` 中分段实施，并在 `REQ-074-g` 做完成后的硬切清理。
+> 2026-06-12 更新：本 REQ 原本同时定义 `.lxpkg` 文件格式、SceneResourceTable 序列化、backend pipeline cache metadata、加载 UI、Merkle hash、MaterialTemplate grouping 和性能验收。后续改为在 `REQ-074-c` 到 `REQ-074-f` 中分段实施，并在 `REQ-073-g` 做完成后的硬切清理。
 
 ## 当前结论
 
@@ -16,7 +16,7 @@
 | Vulkan pipeline cache blob / backend cache metadata | `REQ-074-e` | 与 CPU package 分离，但作为 package optional backend section |
 | source scene vs package load time benchmark | `REQ-074-f` | 以 BMW M6 为主要性能验收对象 |
 | package 前旧路径硬切 | `REQ-074-b` | 防止旧 material/render fallback 被写进 package canonical state |
-| package 后旧路径硬切 | `REQ-074-g` | package + GPU cache 路径完成后，再清理剩余 bridge |
+| package 后旧路径硬切 | `REQ-073-g` | package + GPU cache 路径完成后，再清理剩余 bridge |
 | editor loading UI / async package restore progress | 后续独立 REQ | 不阻塞 package 文件格式和性能闭环 |
 
 ## 保留背景
@@ -32,9 +32,9 @@ REQ-074-c  LxScenePackage file format
 REQ-074-d  SceneResourceTable package serialization and restore
 REQ-074-e  GPU pipeline cache package metadata and Vulkan restore
 REQ-074-f  BMW M6 package load performance comparison
-REQ-074-g  Post-package hard cut and cleanup
+REQ-073-g  Post-package hard cut and cleanup
 ```
 
 ## 实施状态
 
-2026-06-14 复核关闭：已拆分接管；不从本 REQ 继续实施。本文件移出 active，package/canonical state/GPU cache/性能验收以 `REQ-074-b` 到 `REQ-074-g` 为准。
+2026-06-14 复核关闭：已拆分接管；不从本 REQ 继续实施。本文件移出 active，package/canonical state/GPU cache/性能验收以 `REQ-074-b` 到 `REQ-073-g` 为准。

@@ -1,6 +1,6 @@
 # REQ-054-a: Vulkan Renderer Boundary Hard Cut
 
-> 2026-06-14 归档：`REQ-054-b` 的 Vulkan compute offline MVP 已经落地，当前代码也已经有 `VulkanRendererFoundation`、`VulkanRealtimeRenderer`、headless foundation wrapper 和 `backend::offline::VulkanOfflineRenderer`。本 REQ 不再保留 active；OfflineRT 默认图路径和 realtime/offline renderer 边界并入 `REQ-076-c`，`offlineShader` / old config bridge 删除并入 `REQ-076-d`，realtime renderer 大文件拆分并入 `REQ-076-j`。
+> 2026-06-14 归档：`REQ-054-b` 的 Vulkan compute offline MVP 已经落地，当前代码也已经有 `VulkanRendererFoundation`、`VulkanRealtimeRenderer`、headless foundation wrapper 和 `backend::offline::VulkanOfflineRenderer`。本 REQ 不再保留 active；OfflineRT 默认图路径和 realtime/offline renderer 边界并入 `REQ-074-h`，`offlineShader` / old config bridge 删除并入 `REQ-074-i`，realtime renderer 大文件拆分并入 `REQ-076-a`。
 
 ## 背景
 
@@ -19,19 +19,19 @@
 
 | 兼容路径 | 当前代码表现 | 清理归属 |
 |---|---|---|
-| OfflineRT 旧入口 | `OfflineRenderJob::offlineShader`、`createOfflineRenderFrameGraph()`、`Pass_OfflineRayTrace` 特判 | `REQ-076-c` / `REQ-076-d` |
-| realtime material / descriptor fallback | `DescriptorResourceList` 等价、legacy material validation、旧材质 record 边界 | `REQ-073-e` / `REQ-076-b` |
+| OfflineRT 旧入口 | `OfflineRenderJob::offlineShader`、`createOfflineRenderFrameGraph()`、`Pass_OfflineRayTrace` 特判 | `REQ-074-h` / `REQ-074-i` |
+| realtime material / descriptor fallback | `DescriptorResourceList` 等价、legacy material validation、旧材质 record 边界 | `REQ-073-e` / `REQ-073-j` |
 | `techniques/...` shader URI | 默认资产和 positive path 的 URI/术语迁移 | `REQ-073-d` |
 | package / pipeline cache restore | package canonical state、GPU cache blob、post-package cleanup | `REQ-074-*` |
 | renderer public facade | `VulkanRenderer` 名称仍保留给 editor | 本 REQ 允许保留，但必须保持 thin facade |
 
-因此，本历史 REQ 的目标是让 Vulkan renderer 结构本身干净：realtime/offline/foundation 边界明确，compatibility bridge 有命名、有归属、有删除条件；具体拆文件和降行数工作已由后置的 `REQ-076-d` 汇总执行。
+因此，本历史 REQ 的目标是让 Vulkan renderer 结构本身干净：realtime/offline/foundation 边界明确，compatibility bridge 有命名、有归属、有删除条件；具体拆文件和降行数工作已由后置的 `REQ-074-i` 汇总执行。
 
 ## 目标
 
 1. 把 `REQ-054-a` 的实施边界更新为“当前结构收口”，不再重复 `REQ-054-b` 已完成的 offline MVP。
 2. 让 `VulkanRenderer` public facade 保持薄委托，不再承载新行为。
-3. 把 `VulkanRealtimeRenderer` 的大文件拆分要求移交到 `REQ-076-j`，本 REQ 只定义拆分时不能破坏的 renderer 边界。
+3. 把 `VulkanRealtimeRenderer` 的大文件拆分要求移交到 `REQ-076-a`，本 REQ 只定义拆分时不能破坏的 renderer 边界。
 4. 建立 renderer 层 compatibility bridge 台账，明确每个 bridge 的 owner REQ、默认路径是否允许使用、删除条件和验证方式。
 5. 保证 offline renderer 不依赖 realtime renderer、swapchain、GUI 或 editor frame loop。
 6. 不接管 Material v3、RenderPath shader URI、OfflineRT graph path、package/canonical state 等后续 active REQ 的具体 hard cut，但本 REQ 必须防止 renderer refactor 扩大这些兼容路径。
@@ -39,12 +39,12 @@
 ## 非目标
 
 - 不实现新的 offline integrator 算法。
-- 不实现 Material v3 source storage、shader variant、indirect batching 或 realtime material hard cut；这些由 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-076-b` 承接。
+- 不实现 Material v3 source storage、shader variant、indirect batching 或 realtime material hard cut；这些由 `REQ-073-b` 到 `REQ-073-e` 以及 `REQ-073-j` 承接。
 - 不迁移 `techniques/...` 到 `render_paths/...`；这是 `REQ-073-d`。
-- 不删除 OfflineRT 旧 provider / `offlineShader` / hardcoded FrameGraph；这是 `REQ-076-c` / `REQ-076-d`。
+- 不删除 OfflineRT 旧 provider / `offlineShader` / hardcoded FrameGraph；这是 `REQ-074-h` / `REQ-074-i`。
 - 不实现 package、BC7、pipeline cache restore 或 post-package cleanup；这些由 `REQ-074-*` 承接。
 - 不重命名 editor-facing `VulkanRenderer` facade，除非后续有单独 API cleanup 需求。
-- 不执行大文件拆分；`src/backend/vulkan/vulkan_realtime_renderer.cpp` 的具体拆分由 `REQ-076-j` 承接。
+- 不执行大文件拆分；`src/backend/vulkan/vulkan_realtime_renderer.cpp` 的具体拆分由 `REQ-076-a` 承接。
 
 ## 需求
 
@@ -92,7 +92,7 @@
 
 `src/backend/vulkan/vulkan_realtime_renderer.cpp` 当前仍是 3000+ 行级主文件，但具体拆分不在本 REQ 内执行。
 
-本 REQ 对 `REQ-076-j` 的约束：
+本 REQ 对 `REQ-076-a` 的约束：
 
 - 新 helper 不得把 offline integrator、OfflineRT 旧 provider 或 headless runtime 接回 realtime renderer。
 - 新 helper 不得新增 material/URI/offline 兼容 fallback。
@@ -118,12 +118,12 @@
 
 | Bridge | 当前调用点 | 删除归属 |
 |---|---|---|
-| `OfflineRenderJob::offlineShader` | `src/core/offline/offline_render_job.hpp`、`software_compute_offline_integrator.cpp` | `REQ-076-d` |
-| hardcoded offline graph | `src/core/offline/offline_render_work_graph.cpp` | `REQ-076-c` / `REQ-076-d` |
-| `Pass_OfflineRayTrace` compute item 特判 | `src/core/frame_graph/render_queue.cpp` | `REQ-076-d` |
+| `OfflineRenderJob::offlineShader` | `src/core/offline/offline_render_job.hpp`、`software_compute_offline_integrator.cpp` | `REQ-074-i` |
+| hardcoded offline graph | `src/core/offline/offline_render_work_graph.cpp` | `REQ-074-h` / `REQ-074-i` |
+| `Pass_OfflineRayTrace` compute item 特判 | `src/core/frame_graph/render_queue.cpp` | `REQ-074-i` |
 | `techniques/...` shader URI | render path assets / shader resolver / tests | `REQ-073-d` |
 | descriptor-resource equality as batch boundary | `src/core/frame_graph/render_queue.cpp` | `REQ-073-e` |
-| old material fallback / non-bindless path | realtime submission and validation boundary | `REQ-076-b` |
+| old material fallback / non-bindless path | realtime submission and validation boundary | `REQ-073-j` |
 | `BloomColor` implicit fallback read | `VulkanRealtimeRenderer::attachFrameGraphSampledResources()` | 本 REQ 或后续 RenderPathGraph cleanup |
 
 本 REQ 不要求立即删除所有 bridge，但要求任何 renderer refactor 不得把 unnamed bridge 搬成更难删除的 helper。
@@ -141,8 +141,8 @@ offline renderer SHALL 保持和 realtime renderer 分离。
 
 与后续需求边界：
 
-- OfflineRT 从 hardcoded graph 切到 RenderPathGraph 属于 `REQ-076-c`。
-- 删除 `offlineShader` side channel 和 old provider bridge 属于 `REQ-076-d`。
+- OfflineRT 从 hardcoded graph 切到 RenderPathGraph 属于 `REQ-074-h`。
+- 删除 `offlineShader` side channel 和 old provider bridge 属于 `REQ-074-i`。
 - 本 REQ 只保证这些 bridge 不跨回 realtime/foundation 边界。
 
 ### R6: Realtime Submission Hard-cut Boundary
@@ -162,14 +162,14 @@ realtime renderer 的提交路径 SHALL 只表达 renderer 结构，不承担 Ma
 
 ### R7: Helper Boundary Contract
 
-`REQ-076-j` 拆出 render target dump、profile output、IBL/post/shadow helper 时，SHALL 遵守本 REQ 的边界合同。
+`REQ-076-a` 拆出 render target dump、profile output、IBL/post/shadow helper 时，SHALL 遵守本 REQ 的边界合同。
 
 要求：
 
 - debug dump、profile output、post/skybox/shadow helper 不拥有 swapchain 生命周期。
 - IBL bake injection 与 scene-level environment resource sync 不读取 editor/session 全局状态。
 - 当前 `pipeline_srgb.png` 仍 unavailable 的事实由 `REQ-068-a` 跟踪，本 REQ 不改变 output profile 语义。
-- helper 只消费显式输入；如果必须穿透到 renderer 内部状态，需要先在 `REQ-076-j` 的职责审计中记录原因。
+- helper 只消费显式输入；如果必须穿透到 renderer 内部状态，需要先在 `REQ-076-a` 的职责审计中记录原因。
 
 ### R8: Tests And Audit
 
@@ -214,17 +214,17 @@ ctest --test-dir build --output-on-failure -R \
 - 不把 offline integrator 接回 `gpu::Renderer` realtime 接口。
 - 不把 073/074 的材质、URI、package hard cut 偷偷塞进 054-a。
 - 不把兼容 bridge 搬进命名更干净但语义更隐蔽的新 helper。
-- 不用本 REQ 执行降行数拆分；拆文件统一由 `REQ-076-j` 管理。
+- 不用本 REQ 执行降行数拆分；拆文件统一由 `REQ-076-a` 管理。
 
 ## 依赖
 
 - 当前 Vulkan backend。
 - `REQ-073-d`: RenderPath shader URI migration and terminology hard cut。
 - `REQ-073-e`: Indirect material batching and diagnostics。
-- `REQ-076-b`: Realtime material path hard cut and smoke。
-- `REQ-076-c` / `REQ-076-d`: OfflineRT RenderPathGraph path and config hard cut。
+- `REQ-073-j`: Realtime material path hard cut and smoke。
+- `REQ-074-h` / `REQ-074-i`: OfflineRT RenderPathGraph path and config hard cut。
 - `REQ-074-*`: package / pipeline cache / post-package cleanup。
-- `REQ-076-j`: large-file decomposition backlog。
+- `REQ-076-a`: large-file decomposition backlog。
 
 ## 后续工作
 
@@ -246,8 +246,8 @@ ctest --test-dir build --output-on-failure -R \
 
 仍未完成：
 
-- `vulkan_realtime_renderer.cpp` 仍是 3000+ 行级主文件；具体拆分已经移交 `REQ-076-j`，本 REQ 只保留 renderer 边界要求。
+- `vulkan_realtime_renderer.cpp` 仍是 3000+ 行级主文件；具体拆分已经移交 `REQ-076-a`，本 REQ 只保留 renderer 边界要求。
 - `software-compute` integrator 仍自建 headless Vulkan runtime，尚未和 foundation 统一或明确保留原因。
-- OfflineRT 仍有 `offlineShader`、hardcoded offline graph 和 `Pass_OfflineRayTrace` 特判，这些由 `REQ-076-c/d` 删除，但本 REQ 要保证它们不污染 renderer foundation/realtime 边界。
+- OfflineRT 仍有 `offlineShader`、hardcoded offline graph 和 `Pass_OfflineRayTrace` 特判，这些由 `REQ-074-h/i` 删除，但本 REQ 要保证它们不污染 renderer foundation/realtime 边界。
 - realtime material / descriptor / batch 兼容路径仍在清理中，归属 `REQ-073-e/f`；本 REQ 需要在拆分时保留 diagnostics，不扩大 fallback。
 - compatibility bridge 台账尚未落成测试或文档化状态表。

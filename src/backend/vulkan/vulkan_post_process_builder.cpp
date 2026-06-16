@@ -21,7 +21,6 @@ namespace {
 constexpr const char *kPostProcessShaderName = "render_paths/Post/post_process";
 constexpr const char *kBloomThresholdShaderName =
     "render_paths/Post/bloom_threshold";
-constexpr const char *kSkyboxShaderName = "skybox";
 constexpr const char *kDeferredLightingShaderName =
     "render_paths/Deferred/deferred_lighting";
 
@@ -119,49 +118,6 @@ std::vector<LX_core::ShaderResourceBinding> postProcessBindings() {
                                      0,
                                      LX_core::ShaderStage::Fragment,
                                      {}},
-  };
-}
-
-std::vector<LX_core::ShaderResourceBinding> skyboxBindings() {
-  return {
-      LX_core::ShaderResourceBinding{
-          "CameraUBO",
-          0,
-          0,
-          LX_core::ShaderPropertyType::UniformBuffer,
-          1,
-          LX_core::CameraData::ResourceSize,
-          0,
-          LX_core::ShaderStage::Vertex | LX_core::ShaderStage::Fragment,
-          {LX_core::StructMemberInfo{"view", LX_core::ShaderPropertyType::Mat4,
-                                     0, 64},
-           LX_core::StructMemberInfo{"proj", LX_core::ShaderPropertyType::Mat4,
-                                     64, 64},
-           LX_core::StructMemberInfo{
-               "eyePos", LX_core::ShaderPropertyType::Vec3, 128, 12}}},
-      LX_core::ShaderResourceBinding{"SkyboxMap",
-                                     1,
-                                     0,
-                                     LX_core::ShaderPropertyType::TextureCube,
-                                     1,
-                                     0,
-                                     0,
-                                     LX_core::ShaderStage::Fragment,
-                                     {}},
-      LX_core::ShaderResourceBinding{
-          "EnvironmentUBO",
-          2,
-          0,
-          LX_core::ShaderPropertyType::UniformBuffer,
-          1,
-          sizeof(LX_core::EnvironmentData::Param),
-          0,
-          LX_core::ShaderStage::Fragment,
-          {LX_core::StructMemberInfo{"params",
-                                     LX_core::ShaderPropertyType::Vec4, 0, 16},
-           LX_core::StructMemberInfo{"ambientColorIntensity",
-                                     LX_core::ShaderPropertyType::Vec4, 16,
-                                     16}}},
   };
 }
 
@@ -427,32 +383,6 @@ VulkanPostProcessBuilder::createDeferredLightingMaterial() const {
   tmpl->setPassDefinition(LX_core::Pass_DeferredLighting,
                           makeFullscreenPassDefinition(shaderProgram));
   tmpl->rebuildMaterialInterface();
-  auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
-  material->syncGpuData();
-  return material;
-}
-
-LX_core::MaterialInstanceUniquePtr
-VulkanPostProcessBuilder::createSkyboxBackgroundMaterial() const {
-  auto shader = std::make_shared<StaticFullscreenShader>(
-      kSkyboxShaderName, loadGraphicsShaderStages(kSkyboxShaderName),
-      skyboxBindings());
-
-  auto tmpl = LX_core::MaterialTemplate::create(kSkyboxShaderName);
-  LX_core::ShaderProgramSet shaderProgram;
-  shaderProgram.shaderName = kSkyboxShaderName;
-  shaderProgram.shader = shader;
-
-  LX_core::MaterialPassDefinition passDefinition;
-  passDefinition.shaderProgram = std::move(shaderProgram);
-  passDefinition.renderState.cullMode = LX_core::CullMode::None;
-  passDefinition.renderState.depthTestEnable = true;
-  passDefinition.renderState.depthWriteEnable = false;
-  passDefinition.renderState.depthOp = LX_core::CompareOp::LessEqual;
-  passDefinition.renderState.blendEnable = false;
-  tmpl->setPassDefinition(LX_core::Pass_Forward, std::move(passDefinition));
-  tmpl->rebuildMaterialInterface();
-
   auto material = LX_core::MaterialInstance::createUnique(std::move(tmpl));
   material->syncGpuData();
   return material;

@@ -1,6 +1,6 @@
 # REQ-069-a: Vulkan Realtime Renderer 单文件拆分
 
-> 2026-06-14 归档：本文件已并入 `REQ-076-j: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
+> 2026-06-14 归档：本文件已并入 `REQ-076-a: Large File Decomposition Backlog`，不再作为单独 active 需求实施。以下内容保留为历史拆分草稿。
 
 > 2026-06-02 调整：`REQ-069` 系列按“一份大文件一个需求”推进。本需求只拆分 `src/backend/vulkan/vulkan_realtime_renderer.cpp`，不夹带其它大文件治理。
 

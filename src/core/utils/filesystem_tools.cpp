@@ -18,6 +18,10 @@ bool hasRuntimeAssetDirs(const fs::path &root) {
          fs::exists(root / "assets" / "shaders" / "glsl");
 }
 
+bool hasRuntimeShaderDir(const fs::path &root) {
+  return fs::exists(root / "assets" / "shaders" / "glsl");
+}
+
 bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName) {
   return fs::exists(root / "assets" / "shaders" / "glsl" /
                         (shaderName + ".vert.spv")) &&
@@ -25,12 +29,21 @@ bool hasShaderOutputsAtRoot(const fs::path& root, const std::string& shaderName)
                         (shaderName + ".frag.spv"));
 }
 
+bool hasShaderFileAtRoot(const fs::path &root, const std::string &shaderFile) {
+  return fs::exists(root / "assets" / "shaders" / "glsl" / shaderFile);
+}
+
 bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
-  return hasShaderOutputsAtRoot(root, "render_paths/Forward/pbr") &&
+  return hasShaderFileAtRoot(
+             root, "render_paths/Forward/pbr.standard_pbr.frag.spv") &&
          hasShaderOutputsAtRoot(root, "render_paths/Post/post_process") &&
          hasShaderOutputsAtRoot(root,
+                                "render_paths/Skybox/skybox_background") &&
+         hasShaderOutputsAtRoot(root,
                                 "render_paths/Deferred/deferred_lighting") &&
-         hasShaderOutputsAtRoot(root, "render_paths/Deferred/pbr_gbuffer");
+         hasShaderFileAtRoot(
+             root,
+             "render_paths/Deferred/pbr_gbuffer.standard_pbr.frag.spv");
 }
 
 std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
@@ -39,7 +52,8 @@ std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
       runtimeRoot,
   };
   for (const auto &candidate : candidates) {
-    if (hasRuntimeAssetDirs(candidate) && hasCurrentShaderOutputsAtRoot(candidate)) {
+    if (hasRuntimeShaderDir(candidate) &&
+        hasCurrentShaderOutputsAtRoot(candidate)) {
       return candidate;
     }
   }
