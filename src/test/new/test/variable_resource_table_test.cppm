@@ -6,14 +6,14 @@ module;
 export module LX_New_Test.Test.VariableResourceTableTest;
 
 import LX_New_Common.Platform;
-import LX_New_Common.Memory;
+import LX_New_Core.Resource;
 
 export namespace LX_New_Test {
 
 struct TestVarMeta { LX_New_Common::u32 width; LX_New_Common::u32 height; };
 
 inline bool run_variable_resource_table_tests() {
-    using namespace LX_New_Common;
+    using namespace LX_New_Core;
     bool pass = true;
     auto check = [&](bool cond, const char* msg) {
         if (!cond) { std::cerr << "  FAIL: " << msg << "\n"; pass = false; }
@@ -29,7 +29,7 @@ inline bool run_variable_resource_table_tests() {
         pixelData[0] = 0xFF;
         ResourceHandle h = table.allocate(meta, {pixelData, 128});
         check(h.isValid(), "alloc returns valid handle");
-        check(h.type_id == 2, "type_id correct");
+        check(h.type_id() == 2, "type_id correct");
     }
 
     // T2: getRawData returns correct pointer

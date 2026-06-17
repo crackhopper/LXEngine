@@ -6,13 +6,29 @@
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
   ],
   "cmake.buildArgs": [],
-  "editor.defaultFormatter": "ms-vscode.cpptools",
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "files.encoding": "utf8",
   "C_Cpp.clang_format_style": "{ BasedOnStyle: LLVM, BreakBeforeBraces: Attach }",
+  // 1. 重新启用微软官方的 IntelliSense 引擎
+  "C_Cpp.intelliSenseEngine": "default",
+  // 2. 将 C/C++ 文件的默认格式化器和语言服务切回 cpptools
+  "[cppm]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
+  },
   "[cpp]": {
-    "editor.tabSize": 2,
-    "editor.insertSpaces": true,
-    "editor.detectIndentation": false,
-    "files.encoding": "utf8"
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
+  },
+  "[hpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
+  },
+  "[h]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.formatOnSave": true
   },
   "[ps1]": {
     "files.encoding": "utf8bom"
@@ -23,7 +39,7 @@
   "[glsl]": {
     "files.encoding": "utf8",
     "editor.defaultFormatter": "nolanderc.glsl-analyzer"
-  },  
+  },
   "[vert]": {
     "files.encoding": "utf8"
   },
@@ -108,6 +124,7 @@
   "[cmake]": {
     "editor.defaultFormatter": "KylinIdeTeam.cmake-intellisence"
   },
+  "cmake.loggingLevel": "info",
   "[json]": {
     "editor.defaultFormatter": "vscode.json-language-features"
   },

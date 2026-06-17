@@ -5,14 +5,14 @@ module;
 export module LX_New_Test.Test.TypedResourceTableTest;
 
 import LX_New_Common.Platform;
-import LX_New_Common.Memory;
+import LX_New_Core.Resource;
 
 export namespace LX_New_Test {
 
 struct TestResource { LX_New_Common::f32 value[4]; };
 
 inline bool run_typed_resource_table_tests() {
-    using namespace LX_New_Common;
+    using namespace LX_New_Core;
     bool pass = true;
     auto check = [&](bool cond, const char* msg) {
         if (!cond) { std::cerr << "  FAIL: " << msg << "\n"; pass = false; }
@@ -25,16 +25,16 @@ inline bool run_typed_resource_table_tests() {
     {
         TestResource data = {{1.0f, 2.0f, 3.0f, 4.0f}};
         ResourceHandle h = table.allocate(data);
-        check(h.index == 0, "first alloc_index 0");
-        check(h.generation == 1, "first alloc generation 1");
-        check(h.type_id == 1, "type_id matches");
+        check(h.index() == 0, "first alloc_index 0");
+        check(h.generation() == 1, "first alloc generation 1");
+        check(h.type_id() == 1, "type_id matches");
     }
 
     // T2: second allocation gets index 1
     {
         TestResource data = {{5.0f, 6.0f, 7.0f, 8.0f}};
         ResourceHandle h = table.allocate(data);
-        check(h.index == 1, "second alloc index 1");
+        check(h.index() == 1, "second alloc index 1");
     }
 
     // T3: get returns valid pointer to data
@@ -61,8 +61,8 @@ inline bool run_typed_resource_table_tests() {
         ResourceHandle h1 = table.allocate(data);
         table.release(h1);
         ResourceHandle h2 = table.allocate(data);
-        check(h2.index == h1.index, "reuses same index");
-        check(h2.generation == h1.generation + 1, "generation incremented");
+        check(h2.index() == h1.index(), "reuses same index");
+        check(h2.generation() == h1.generation() + 1, "generation incremented");
     }
 
     // T6: stale handle returns nullptr

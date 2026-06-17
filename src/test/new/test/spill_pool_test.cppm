@@ -6,11 +6,13 @@ export module LX_New_Test.Test.SpillPoolTest;
 
 import LX_New_Common.Platform;
 import LX_New_Common.Memory;
+import LX_New_Core.Resource.Types;
 
 export namespace LX_New_Test {
 
 inline bool run_spill_pool_tests() {
     using namespace LX_New_Common;
+    using namespace LX_New_Core;
     bool pass = true;
     auto check = [&](bool cond, const char* msg) {
         if (!cond) { std::cerr << "  FAIL: " << msg << "\n"; pass = false; }
@@ -35,7 +37,7 @@ inline bool run_spill_pool_tests() {
     // T3: append — adds items
     {
         SpillPool<u32, 4> pool;
-        u32 head = kSpillNone;
+        u32 head = kNoneChunk;
         head = pool.append(head, 10);
         head = pool.append(head, 20);
         check(pool.itemCount(head) == 2, "two items appended");
@@ -44,7 +46,7 @@ inline bool run_spill_pool_tests() {
     // T4: spill — spills to second block
     {
         SpillPool<u32, 2> pool;
-        u32 head = kSpillNone;
+        u32 head = kNoneChunk;
         for (u32 i = 0; i < 5; ++i) head = pool.append(head, i * 100);
         check(pool.itemCount(head) == 5, "5 items across spill blocks");
     }
@@ -52,7 +54,7 @@ inline bool run_spill_pool_tests() {
     // T5: iterator — iterates all items
     {
         SpillPool<u32, 2> pool;
-        u32 head = kSpillNone;
+        u32 head = kNoneChunk;
         for (u32 i = 1; i <= 5; ++i) head = pool.append(head, i);
         u32 count = 0, sum = 0;
         for (auto it = pool.begin(head); it != pool.end(); ++it) {
@@ -65,7 +67,7 @@ inline bool run_spill_pool_tests() {
     // T6: freeChain multi-block
     {
         SpillPool<u32, 2> pool;
-        u32 head = kSpillNone;
+        u32 head = kNoneChunk;
         for (u32 i = 0; i < 6; ++i) head = pool.append(head, i);
         pool.freeChain(head);
         check(pool.freeListSize() == 3, "all 3 blocks freed");

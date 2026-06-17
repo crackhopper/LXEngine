@@ -19,7 +19,8 @@ project(Renderer LANGUAGES C CXX)
 set(LX_PROJECT_VERSION "0.1.0-dev" CACHE STRING
     "LXEngine project version embedded into build metadata")
 
-# set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# 导出 compile_commands.json，供 clangd / cpptools 智能提示使用。
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 enable_testing()
 
@@ -138,4 +139,12 @@ add_custom_target(lxe_clean_workspace
 # 引入 shader 编译 target
 add_subdirectory(assets/shaders)
 add_subdirectory(src/tools)
+
+# -------------------------------
+# 新分层（C++20 modules）：new_common 基础库 -> new_core
+# 与旧 core/infra/backend 完全隔离。
+# -------------------------------
+add_subdirectory(src/new_common)
+add_subdirectory(src/new_core)
+
 add_subdirectory(src/test)
