@@ -217,6 +217,16 @@ void testRemovedLegacyFiniteBoxRuntimeTokensDoNotAppearInProductionRuntime() {
        "removed legacy finite-box scene resource registration"},
       {"src/core/scene/ibl_environment.hpp", "EnvironmentLightingFiniteBoxUBO",
        "removed legacy finite-box UBO resource type"},
+      {"src/core/scene/ibl_environment.hpp", "BackgroundMode",
+       "removed legacy background-mode runtime state"},
+      {"src/core/scene/scene_resource_table.cpp", "backgroundMode",
+       "removed legacy background-mode scene resource registration"},
+      {"src/core/scene/scene_resource_table.cpp", "finiteBox",
+       "removed legacy finite-box scene resource registration"},
+      {"assets/shaders/glsl/common/environment_lighting.glsl",
+       "backgroundMode", "removed legacy background-mode shader ABI"},
+      {"assets/shaders/glsl/render_paths/Skybox/skybox_background.frag",
+       "backgroundMode", "removed legacy background-mode shader ABI"},
       {"src/core/asset/shader_binding_ownership.hpp",
        "EnvironmentLightingFiniteBoxUBO",
        "removed legacy finite-box system-owned shader binding"},
@@ -299,13 +309,6 @@ parameters:
     valueType: linear-radiance
     binding: SkyboxMap
     required: true
-  backgroundMode:
-    kind: enum
-    value: infinite
-    binding: EnvironmentLightingUBO
-    member: backgroundMode
-    required: true
-    allowedValues: [none, infinite, finiteBox]
   color:
     kind: vec3
     value: [0.08, 0.08, 0.10]
@@ -358,13 +361,12 @@ parameters:
     valueType: linear-radiance
     binding: SkyboxMap
     required: true
-  backgroundMode:
-    kind: enum
-    value: infinite
+  intensity:
+    kind: float
+    value: 1.0
     binding: EnvironmentLightingUBO
-    member: backgroundMode
+    member: intensity
     required: true
-    allowedValues: [none, infinite, finiteBox]
 )");
 
   EXPECT(parsed.renderFeature.has_value(),
@@ -462,6 +464,45 @@ void testEnvironmentLightingRenderFeatureAssetParses() {
   EXPECT(feature.parameters.find("ambientIntensity") ==
              feature.parameters.end(),
          "environment lighting feature must not declare ambientIntensity");
+}
+
+void testEnvironmentLightingRegistrationUsesCurrentFeatureParameters() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse(
+      "assets/effects/environment_lighting.render-feature.yaml",
+      readTextFile("assets/effects/environment_lighting.render-feature.yaml"));
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "environment lighting feature asset should parse before registration");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+
+  LX_core::SceneResourceTable table;
+  LX_core::RenderFeature feature = *parsed.renderFeature;
+  feature.parameters.at("environmentMap").uri =
+      LX_core::ResourceUri("builtin:env/white_cube");
+  const LX_core::RenderFeatureHandle handle = table.registerRenderFeature(
+      LX_core::ResourceUri(
+          "assets/effects/environment_lighting.render-feature.yaml"),
+      std::move(feature));
+  EXPECT(handle.isValid(),
+         "environment lighting feature payload should register");
+
+  const auto resources = table.getEnvironmentLightingResources();
+  const auto hasBinding = [&](LX_core::StringID bindingName) {
+    return std::any_of(resources.begin(), resources.end(),
+                       [&](const LX_core::GpuResourceRef &resource) {
+                         return resource.isValid() &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+
+  EXPECT(hasBinding(LX_core::StringID("SkyboxMap")),
+         "current environment lighting feature should register SkyboxMap");
+  EXPECT(hasBinding(LX_core::StringID("EnvironmentLightingUBO")),
+         "current environment lighting feature should register "
+         "EnvironmentLightingUBO without a backgroundMode parameter");
 }
 
 void testForwardPassRenderFeatureAssetParses() {
@@ -1975,6 +2016,7 @@ int main() {
   testRenderFeatureParsesTextureCubeUriParameter();
   testDefaultRenderFeatureAssetParses();
   testEnvironmentLightingRenderFeatureAssetParses();
+  testEnvironmentLightingRegistrationUsesCurrentFeatureParameters();
   testForwardPassRenderFeatureAssetParses();
   testSkyboxRenderFeatureAssetParses();
   testBloomRenderFeatureAssetParses();

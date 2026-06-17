@@ -220,23 +220,6 @@ findFeatureParameter(const RenderFeature &feature, const char *name) {
   return it == feature.parameters.end() ? nullptr : &it->second;
 }
 
-[[nodiscard]] std::optional<EnvironmentLightingData::BackgroundMode>
-parseEnvironmentBackgroundMode(const RenderFeatureParameter &parameter) {
-  if (parameter.kind != "enum") {
-    return std::nullopt;
-  }
-  if (parameter.value == "none") {
-    return EnvironmentLightingData::BackgroundMode::None;
-  }
-  if (parameter.value == "infinite") {
-    return EnvironmentLightingData::BackgroundMode::Infinite;
-  }
-  if (parameter.value == "finiteBox") {
-    return EnvironmentLightingData::BackgroundMode::FiniteBox;
-  }
-  return std::nullopt;
-}
-
 [[nodiscard]] ToneMappingData::Mode
 parseToneMappingMode(const RenderFeatureParameter *parameter) {
   if (parameter == nullptr || parameter->value == "aces") {
@@ -1287,6 +1270,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         metadata->uri == uri) {
       registerEnvironmentLightingResources(*entry.resource);
       registerToneMappingResources(*entry.resource);
+      registerBloomResources(*entry.resource);
       return RenderFeatureHandle{i, entry.generation};
     }
   }
@@ -1298,6 +1282,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
     registerEnvironmentLightingResources(*m_renderFeatures[handle.index].resource);
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
+    registerBloomResources(*m_renderFeatures[handle.index].resource);
   }
   advanceUploadGeneration();
   return handle;
@@ -2046,22 +2031,10 @@ void SceneResourceTable::registerEnvironmentLightingResources(
   const auto *color = findFeatureParameter(feature, "color");
   const auto *intensity = findFeatureParameter(feature, "intensity");
   const auto *rotation = findFeatureParameter(feature, "rotation");
-  const auto *backgroundMode =
-      findFeatureParameter(feature, "backgroundMode");
-  const auto parsedBackgroundMode =
-      backgroundMode != nullptr
-          ? parseEnvironmentBackgroundMode(*backgroundMode)
-          : std::optional<EnvironmentLightingData::BackgroundMode>{};
-  if (!parsedBackgroundMode.has_value()) {
-    m_environmentLightingUbo.reset();
-    advanceUploadGeneration();
-    return;
-  }
   ubo->set(color != nullptr ? parseFeatureVec3(*color)
                             : Vec3f{1.0f, 1.0f, 1.0f},
            intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
-           rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f,
-           *parsedBackgroundMode);
+           rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
   m_environmentLightingUbo = std::move(ubo);
   advanceUploadGeneration();
 }
@@ -2106,6 +2079,30 @@ std::vector<GpuResourceRef> SceneResourceTable::getToneMappingResources() const 
   std::vector<GpuResourceRef> out;
   if (m_toneMappingUbo) {
     out.emplace_back(*m_toneMappingUbo);
+  }
+  return out;
+}
+
+void SceneResourceTable::registerBloomResources(const RenderFeature &feature) {
+  if (feature.feature != "bloom") {
+    return;
+  }
+
+  auto ubo = std::make_unique<BloomData>();
+  const auto *threshold = findFeatureParameter(feature, "threshold");
+  const auto *intensity = findFeatureParameter(feature, "intensity");
+  const auto *radius = findFeatureParameter(feature, "radius");
+  ubo->set(threshold != nullptr ? parseFeatureFloat(*threshold, 1.0f) : 1.0f,
+           intensity != nullptr ? parseFeatureFloat(*intensity, 0.0f) : 0.0f,
+           radius != nullptr ? parseFeatureFloat(*radius, 1.0f) : 1.0f);
+  m_bloomUbo = std::move(ubo);
+  advanceUploadGeneration();
+}
+
+std::vector<GpuResourceRef> SceneResourceTable::getBloomResources() const {
+  std::vector<GpuResourceRef> out;
+  if (m_bloomUbo) {
+    out.emplace_back(*m_bloomUbo);
   }
   return out;
 }

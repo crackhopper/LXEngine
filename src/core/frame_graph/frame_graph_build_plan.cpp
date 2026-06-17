@@ -35,6 +35,9 @@ StringID bindingNameForSource(const RenderPassNode &node,
       (node.id == "BloomBlurV" && source == "bloom.blurH")) {
     return StringID("BloomSource");
   }
+  if (node.id == "Bloom" && source == "hdr.color") {
+    return StringID("SceneColor");
+  }
   if (node.id == "PostProcess") {
     if (source == "hdr.color") {
       return StringID("SceneColor");

@@ -1,7 +1,7 @@
 #ifndef LX_FEATURE_BLOOM_GLSL
 #define LX_FEATURE_BLOOM_GLSL
 
-layout(set = 5, binding = 0) uniform BloomUBO {
+layout(set = 0, binding = 1) uniform BloomUBO {
   float threshold;
   float intensity;
   float radius;

@@ -104,12 +104,13 @@ readTextFile(const LX_core::ResourceUri &uri, std::string &diagnostic) {
 [[nodiscard]] std::optional<LX_core::IShaderSharedPtr> compileShaderPayload(
     const LX_core::ResourceUri &graphUri, const LX_core::ResourceUri &shaderUri,
     const std::vector<LX_core::ResourceUri> &sourceUris,
-    std::vector<std::string> &diagnostics) {
+    std::vector<std::string> &diagnostics,
+    const std::vector<LX_core::ShaderVariant> &variants = {}) {
   std::vector<LX_core::ShaderStageCode> stages;
   for (const LX_core::ResourceUri &sourceUri : sourceUris) {
     const std::filesystem::path sourcePath = pathFromUri(sourceUri);
     LX_infra::CompileResult compiled =
-        LX_infra::ShaderCompiler::compileFile(sourcePath);
+        LX_infra::ShaderCompiler::compileFile(sourcePath, variants);
     if (!compiled.success) {
       diagnostics.push_back(
           "RenderPathGraph '" + graphUri.string() + "' failed to compile "
@@ -153,6 +154,60 @@ readTextFile(const LX_core::ResourceUri &uri, std::string &diagnostic) {
   return std::make_shared<LX_infra::CompiledShader>(
       std::move(stages), std::move(bindings), std::move(vertexInputs),
       std::move(specializationConstants), shaderUri.string());
+}
+
+[[nodiscard]] std::optional<LX_core::ResourceUri>
+representativeMaterialContractSource(const LX_core::RenderPassNode &pass) {
+  const auto allowsType = [&](std::string_view type) {
+    return pass.input.material.types.empty() ||
+           std::find(pass.input.material.types.begin(),
+                     pass.input.material.types.end(), std::string(type)) !=
+               pass.input.material.types.end();
+  };
+  struct ContractCandidate final {
+    const char *type;
+    const char *uri;
+  };
+  constexpr ContractCandidate kCandidates[] = {
+      {"standard-pbr",
+       "assets://shaders/glsl/common/materials/standard_pbr.contract.glsl"},
+      {"matte", "assets://shaders/glsl/common/materials/matte.contract.glsl"},
+      {"uber", "assets://shaders/glsl/common/materials/uber.contract.glsl"},
+      {"metal", "assets://shaders/glsl/common/materials/metal.contract.glsl"},
+      {"substrate",
+       "assets://shaders/glsl/common/materials/substrate.contract.glsl"},
+      {"unlit-texture",
+       "assets://shaders/glsl/common/materials/unlit_texture.contract.glsl"},
+  };
+  for (const ContractCandidate &candidate : kCandidates) {
+    if (allowsType(candidate.type)) {
+      return LX_core::ResourceUri(candidate.uri);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<LX_core::IShaderSharedPtr>
+compileRepresentativeMaterialVariantShaderPayload(
+    const LX_core::ResourceUri &graphUri, const LX_core::RenderPassNode &pass,
+    const std::vector<LX_core::ResourceUri> &sourceUris,
+    std::vector<std::string> &diagnostics) {
+  const auto materialContract = representativeMaterialContractSource(pass);
+  if (!materialContract.has_value()) {
+    diagnostics.push_back("RenderPathGraph '" + graphUri.string() + "' pass '" +
+                          pass.id + "' shader '" + pass.shaderUri.string() +
+                          "' requires LX_MATERIAL_CONTRACT_SOURCE but no "
+                          "representative material contract is available");
+    return std::nullopt;
+  }
+
+  return compileShaderPayload(
+      graphUri, pass.shaderUri, sourceUris, diagnostics,
+      {LX_core::ShaderVariant{
+          .macroName = "LX_MATERIAL_CONTRACT_SOURCE",
+          .enabled = true,
+          .materialContractSource = *materialContract,
+      }});
 }
 
 [[nodiscard]] std::optional<bool> shaderRequiresMaterialSourceVariant(
@@ -415,7 +470,31 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
              "' does not include LX_MATERIAL_CONTRACT_SOURCE"});
       }
       std::optional<LX_core::IShaderSharedPtr> shaderPayload;
-      if (!*requiresMaterialSourceVariant) {
+      if (*requiresMaterialSourceVariant) {
+        shaderPayload = compileRepresentativeMaterialVariantShaderPayload(
+            canonicalUri, pass, shaderSourceUris.sourceUris, shaderDiagnostics);
+        if (!shaderPayload.has_value()) {
+          LX_core::ResourceMetadata failedShader;
+          failedShader.type = LX_core::SceneResourceType::Shader;
+          failedShader.uri = pass.shaderUri;
+          failedShader.state = LX_core::ResourceState::Failed;
+          for (const std::string &diagnostic : shaderDiagnostics) {
+            failedShader.diagnostics.push_back(LX_core::ResourceDiagnostic{
+                .ownerUri = canonicalUri,
+                .resourceUri = pass.shaderUri,
+                .parserName = kRenderPathGraphParserName,
+                .message = diagnostic,
+            });
+          }
+          const LX_core::ResourceIdentityHandle failedShaderIdentity =
+              table.internResourceMetadata(std::move(failedShader));
+          (void)failedShaderIdentity;
+          return makeFailedParse(
+              table, LX_core::SceneResourceType::RenderPathGraph,
+              context.ownerUri, canonicalUri, kRenderPathGraphParserName,
+              shaderDiagnostics);
+        }
+      } else {
         shaderPayload = compileShaderPayload(canonicalUri, pass.shaderUri,
                                              shaderSourceUris.sourceUris,
                                              shaderDiagnostics);

@@ -17,7 +17,6 @@ layout(set = 2, binding = 0) uniform EnvironmentLightingUBO {
     vec3 color;
     float intensity;
     float rotation;
-    float backgroundMode;
 } environmentLighting;
 
 mat3 lxeYawRotation(float radians) {
@@ -29,11 +28,6 @@ mat3 lxeYawRotation(float radians) {
 }
 
 void main() {
-    const float LxeBackgroundModeInfinite = 1.0;
-    if (abs(environmentLighting.backgroundMode - LxeBackgroundModeInfinite) > 0.5) {
-        discard;
-    }
-
     vec4 viewPos = inverse(camera.proj) * vec4(vNdc, 1.0, 1.0);
     vec3 viewDir = normalize(viewPos.xyz / max(abs(viewPos.w), 0.0001));
     vec3 worldDir = normalize(transpose(mat3(camera.view)) * viewDir);
@@ -43,7 +37,6 @@ void main() {
     params.color = environmentLighting.color;
     params.intensity = environmentLighting.intensity;
     params.rotation = environmentLighting.rotation;
-    params.backgroundMode = environmentLighting.backgroundMode;
 
     vec3 hdr = lxeApplyEnvironmentRadiance(texture(SkyboxMap, worldDir).rgb,
                                            params);

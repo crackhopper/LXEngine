@@ -277,6 +277,8 @@ public:
   getEnvironmentLightingResources() const;
   void registerToneMappingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef> getToneMappingResources() const;
+  void registerBloomResources(const RenderFeature &feature);
+  [[nodiscard]] std::vector<GpuResourceRef> getBloomResources() const;
   void beginRenderResourceScope();
   [[nodiscard]] MaterialHandle
   addRenderMaterial(MaterialInstanceUniquePtr material);
@@ -429,6 +431,7 @@ private:
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
   ToneMappingDataUniquePtr m_toneMappingUbo;
+  BloomDataUniquePtr m_bloomUbo;
   std::vector<PassFeatureData> m_passFeatureData;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =

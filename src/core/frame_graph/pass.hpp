@@ -16,6 +16,7 @@ inline const StringID Pass_Shadow = StringID("Shadow");
 inline const StringID Pass_BloomThreshold = StringID("BloomThreshold");
 inline const StringID Pass_BloomBlurH = StringID("BloomBlurH");
 inline const StringID Pass_BloomBlurV = StringID("BloomBlurV");
+inline const StringID Pass_Bloom = StringID("Bloom");
 inline const StringID Pass_PostProcess = StringID("PostProcess");
 inline const StringID Pass_DebugToneMapLinear =
     StringID("DebugToneMapLinear");

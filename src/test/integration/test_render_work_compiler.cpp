@@ -1530,8 +1530,7 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   }
 }
 
-RenderFeature makeCompilerEnvironmentFeature(
-    bool includeColor = true, std::string backgroundModeValue = "infinite") {
+RenderFeature makeCompilerEnvironmentFeature(bool includeColor = true) {
   RenderFeature feature;
   feature.name = "EnvironmentLighting";
   feature.feature = "environmentLighting";
@@ -1565,20 +1564,6 @@ RenderFeature makeCompilerEnvironmentFeature(
       .member = "rotation",
       .required = true,
   };
-  feature.parameters["backgroundMode"] = RenderFeatureParameter{
-      .kind = "enum",
-      .value = std::move(backgroundModeValue),
-      .binding = "EnvironmentLightingUBO",
-      .member = "backgroundMode",
-      .required = true,
-      .allowedValues = {"none", "infinite", "finiteBox"},
-  };
-  feature.parameters["finiteBoxBounds"] = RenderFeatureParameter{
-      .kind = "vec6",
-      .value = "[-5.0, 5.0, -2.0, 3.0, -5.0, 5.0]",
-      .requiredWhenParameter = "backgroundMode",
-      .requiredWhenEquals = "finiteBox",
-  };
   return feature;
 }
 
@@ -1606,8 +1591,7 @@ ShaderResourceBinding makeEnvironmentLightingUboBinding() {
       ShaderStage::Fragment,
       {StructMemberInfo{"color", ShaderPropertyType::Vec3, 0, 12},
        StructMemberInfo{"intensity", ShaderPropertyType::Float, 12, 4},
-       StructMemberInfo{"rotation", ShaderPropertyType::Float, 16, 4},
-       StructMemberInfo{"backgroundMode", ShaderPropertyType::Float, 20, 4}}};
+       StructMemberInfo{"rotation", ShaderPropertyType::Float, 16, 4}}};
 }
 
 void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {

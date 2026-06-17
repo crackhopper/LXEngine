@@ -5,7 +5,6 @@ struct EnvironmentLightingParams {
     vec3 color;
     float intensity;
     float rotation;
-    float backgroundMode;
 };
 
 vec3 lxeApplyEnvironmentRadiance(vec3 sampleRadiance,

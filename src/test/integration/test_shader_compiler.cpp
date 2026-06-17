@@ -707,7 +707,37 @@ static bool testBloomShaderContracts(const std::filesystem::path &shaderDir) {
     }
   }
 
-  std::cout << "  PASS: bloom shaders reflect threshold and blur inputs\n";
+  auto blitResult = ShaderCompiler::compileProgram(
+      shaderDir / "render_paths" / "Bloom" / "blit.vert",
+      shaderDir / "render_paths" / "Bloom" / "blit.frag", {});
+  if (!blitResult.success) {
+    std::cerr << "  COMPILE FAILED: " << blitResult.errorMessage << "\n";
+    return false;
+  }
+  bindings = ShaderReflector::reflect(blitResult.stages);
+  const auto blitSceneColor =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "SceneColor";
+      });
+  const auto blitBloomUbo =
+      std::find_if(bindings.begin(), bindings.end(), [](const auto &binding) {
+        return binding.name == "BloomUBO";
+      });
+  if (blitSceneColor == bindings.end() ||
+      blitSceneColor->type != ShaderPropertyType::Texture2D ||
+      blitSceneColor->set != 0 || blitSceneColor->binding != 0) {
+    std::cerr << "  FAIL: Bloom blit SceneColor binding mismatch\n";
+    return false;
+  }
+  if (blitBloomUbo == bindings.end() ||
+      blitBloomUbo->type != ShaderPropertyType::UniformBuffer ||
+      blitBloomUbo->set != 0 || blitBloomUbo->binding != 1 ||
+      blitBloomUbo->size != 16) {
+    std::cerr << "  FAIL: Bloom blit BloomUBO binding mismatch\n";
+    return false;
+  }
+
+  std::cout << "  PASS: bloom shaders reflect threshold, blur, and blit inputs\n";
   return true;
 }
 

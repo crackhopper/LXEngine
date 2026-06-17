@@ -632,9 +632,6 @@ findParameterForBindingMember(const RenderFeature &feature,
   if (memberName == "intensity" || memberName == "rotation") {
     return kind == "float";
   }
-  if (memberName == "backgroundMode") {
-    return kind == "enum";
-  }
   return true;
 }
 
@@ -839,6 +836,7 @@ void fillSceneDrawCommand(const Scene &scene,
       draw.drawCommands.push_back(RenderDrawCommand{
           .indexCount = static_cast<u32>(indexBuffer->indexCount()),
           .instanceCount = 1,
+          .firstInstance = 0,
       });
       return;
     }
@@ -851,6 +849,7 @@ void fillSceneDrawCommand(const Scene &scene,
           .indexCount = mesh->get().getIndexCount(),
           .instanceCount = 1,
           .firstIndex = mesh->get().getIndexOffset(),
+          .firstInstance = 0,
       });
       return;
     }
@@ -879,6 +878,7 @@ void fillRawRenderableResources(const IRenderable &renderable,
     draw.drawCommands.push_back(RenderDrawCommand{
         .indexCount = static_cast<u32>(indexBuffer->indexCount()),
         .instanceCount = 1,
+        .firstInstance = 0,
     });
   }
 }
@@ -943,6 +943,7 @@ void buildSceneRenderableInputs(
       draw->primitiveIndex = 0;
       draw->sortCenter = data.sortCenter;
       draw->materialTypeSignature = data.materialTypeSignature;
+      draw->drawCommands.clear();
       fillSceneDrawCommand(scene, data, *draw);
     }
 

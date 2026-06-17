@@ -220,20 +220,6 @@ RenderFeature makeEnvironmentLightingFeature(ResourceUri uri) {
       .member = "rotation",
       .required = true,
   };
-  feature.parameters["backgroundMode"] = RenderFeatureParameter{
-      .kind = "enum",
-      .value = "infinite",
-      .binding = "EnvironmentLightingUBO",
-      .member = "backgroundMode",
-      .required = true,
-      .allowedValues = {"none", "infinite", "finiteBox"},
-  };
-  feature.parameters["finiteBoxBounds"] = RenderFeatureParameter{
-      .kind = "vec6",
-      .value = "[-5.0, 5.0, -2.0, 3.0, -5.0, 5.0]",
-      .requiredWhenParameter = "backgroundMode",
-      .requiredWhenEquals = "finiteBox",
-  };
   return feature;
 }
 

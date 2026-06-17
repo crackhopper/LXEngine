@@ -54,20 +54,12 @@ using EnvironmentDataUniquePtr = std::unique_ptr<EnvironmentData>;
 struct alignas(16) EnvironmentLightingData final : public IGpuResource {
   struct Param {
     Vec4f colorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
-    Vec4f rotationBackgroundMode{0.0f, 1.0f, 0.0f, 0.0f};
+    Vec4f rotation{0.0f, 0.0f, 0.0f, 0.0f};
   };
 
-  enum class BackgroundMode : u32 {
-    None = 0,
-    Infinite = 1,
-    FiniteBox = 2,
-  };
-
-  void set(Vec3f color, float intensity, float rotation,
-           BackgroundMode backgroundMode) {
+  void set(Vec3f color, float intensity, float rotationRadians) {
     param.colorIntensity = Vec4f{color.x, color.y, color.z, intensity};
-    param.rotationBackgroundMode =
-        Vec4f{rotation, static_cast<float>(backgroundMode), 0.0f, 0.0f};
+    param.rotation = Vec4f{rotationRadians, 0.0f, 0.0f, 0.0f};
     setDirty();
   }
 
@@ -113,6 +105,29 @@ struct alignas(16) ToneMappingData final : public IGpuResource {
 };
 
 using ToneMappingDataUniquePtr = std::unique_ptr<ToneMappingData>;
+
+struct alignas(16) BloomData final : public IGpuResource {
+  struct Param {
+    Vec4f params{1.0f, 0.0f, 1.0f, 0.0f};
+  };
+
+  void set(float threshold, float intensity, float radius) {
+    param.params = Vec4f{threshold, intensity, radius, 0.0f};
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return sizeof(Param); }
+  StringID getBindingName() const override {
+    static const StringID kName("BloomUBO");
+    return kName;
+  }
+
+  Param param{};
+};
+
+using BloomDataUniquePtr = std::unique_ptr<BloomData>;
 
 struct IblEnvironmentResources {
   bool skyboxEnabled = true;

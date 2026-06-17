@@ -1171,19 +1171,19 @@ Expected: PASS.
 **Files:**
 - No additional files unless tests reveal a scoped gap.
 
-- [ ] **Step 1: Run core tests**
+- [x] **Step 1: Run core tests**
 
 ```bash
 ctest --test-dir build --output-on-failure -R "(test_render_resource_parsers|test_render_work_compiler|test_shader_compiler)"
 ```
 
-- [ ] **Step 2: Run realtime smoke**
+- [x] **Step 2: Run realtime smoke**
 
 ```bash
 ctest --test-dir build --output-on-failure -R "test_helmet_standard_pbr_realtime_smoke"
 ```
 
-- [ ] **Step 3: Run direct realtime render**
+- [x] **Step 3: Run direct realtime render**
 
 ```bash
 python3 src/tools/lxe_realtime_render/lxe_realtime_render.py --scene assets/scenes/generated/helmet_standard_pbr.scene.yaml --profile preview --xvfb --require-nonblack --require-pipeline-metadata --project-name codex_forward_pass_feature --editor build/src/editor/lxe_editor
@@ -1198,7 +1198,7 @@ Expected:
 - helmet remains visible in front of the room where geometry overlaps in depth
 - no runtime finite-box injection path is used
 
-- [ ] **Step 4: Hard-cut temporary smoke/debug helpers**
+- [x] **Step 4: Hard-cut temporary smoke/debug helpers**
 
 Before commit, remove any temporary debug code added only to inspect the room render. The final tree may keep normal automated smoke tests, but must not keep temporary runtime branches, debug render paths, or alternate scene-load paths.
 

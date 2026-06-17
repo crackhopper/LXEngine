@@ -68,7 +68,7 @@ constexpr const char *kBloomBlurVShaderName = "render_paths/Post/bloom_blur_v";
 constexpr const char *kDefaultForwardRenderPathGraphAsset =
     "assets/render_paths/forward_main.render-path.yaml";
 constexpr const char *kDefaultForwardBloomRenderPathGraphAsset =
-    "assets/render_paths/forward_bloom.render-path.yaml";
+    "assets/render_paths/forward_main.render-path.yaml";
 constexpr const char *kDefaultDeferredRenderPathGraphAsset =
     "assets/render_paths/deferred_main.render-path.yaml";
 constexpr const char *kDefaultDeferredBloomRenderPathGraphAsset =
@@ -1603,8 +1603,7 @@ public:
             }
           };
       if (pass.name == LX_core::Pass_Forward) {
-        pass.target = swapchainDesc;
-        syncSwapchainAttachmentFormats(pass);
+        pass.target = forwardHdrDesc;
       } else if (pass.name == LX_core::Pass_Deferred) {
         pass.target = gbufferDesc;
       } else if (pass.name == LX_core::Pass_DeferredLighting) {
@@ -1614,6 +1613,9 @@ public:
                  pass.name == LX_core::Pass_BloomBlurH ||
                  pass.name == LX_core::Pass_BloomBlurV) {
         pass.target = bloomDesc;
+      } else if (pass.name == LX_core::Pass_Bloom) {
+        pass.target = swapchainDesc;
+        syncSwapchainAttachmentFormats(pass);
       } else if (pass.name == LX_core::Pass_PostProcess) {
         pass.target = swapchainDesc;
         syncSwapchainAttachmentFormats(pass);
@@ -1648,6 +1650,7 @@ public:
         expandGraphDeclaredShadowCascadePass(pass);
         return;
       }
+      addGraphFullscreenShaderItem(pass);
       m_frameGraph.addPass(std::move(pass));
     };
     const auto assignRuntimeTargetsForValidation =
@@ -1735,14 +1738,9 @@ public:
           forwardGraphAsset, forwardRenderPathGraph, m_postProcessSettings);
       registerRenderFeatureDependenciesFromGraphAsset(
           *m_scene, forwardGraphAsset, forwardRenderPathGraph);
-      const std::vector<LX_core::StringID> forwardPasses =
-          m_postProcessSettings.bloomEnabled
-              ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
-                                               LX_core::Pass_Forward,
-                                               LX_core::Pass_DebugOverlay}
-              : std::vector<LX_core::StringID>{
-                    LX_core::Pass_Shadow, LX_core::Pass_Forward,
-                    LX_core::Pass_DebugOverlay};
+      const std::vector<LX_core::StringID> forwardPasses{
+          LX_core::Pass_Shadow, LX_core::Pass_Forward, LX_core::Pass_Bloom,
+          LX_core::Pass_DebugOverlay};
       LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
                                               forwardPasses, forwardPasses);
       resolveMaterialSourceVariantsOrThrow(
