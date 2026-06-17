@@ -8,6 +8,7 @@ import LX_New_Test.Test.RawBufferTest;
 import LX_New_Test.Test.TypedResourceTableTest;
 import LX_New_Test.Test.VariableResourceTableTest;
 import LX_New_Test.Test.SpillPoolTest;
+import LX_New_Test.Test.GameObjectManagerTest;
 
 export namespace LX_New_Test {
 
@@ -32,6 +33,10 @@ inline bool run_memory_tests() {
 
     std::cout << "[SpillPool]\n";
     if (!run_spill_pool_tests()) all_pass = false;
+    else std::cout << "  OK\n";
+
+    std::cout << "[GameObjectManager]\n";
+    if (!run_game_object_manager_tests()) all_pass = false;
     else std::cout << "  OK\n";
 
     return all_pass;

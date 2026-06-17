@@ -150,4 +150,133 @@ public:
     }
 };
 
+// ---------------------------------------------------------------------------
+// GameObjectMeta (56 bytes) + GameObjectManager (mark-sweep GC from Root)
+// Inlined into this TU because MSVC cannot resolve partition-to-partition
+// imports under FILE_SET CXX_MODULES.
+// ---------------------------------------------------------------------------
+
+export constexpr u32 kInlineRefCount = 4;
+export constexpr u32 kInlineHandleCount = 4;
+
+export struct GameObjectMeta {
+    u8  marked : 1;
+    u8  alive  : 1;
+    u8  _pad   : 6;
+
+    u8  refCount;
+    u32 refs[kInlineRefCount];
+    u32 refSpillHead;
+
+    u8  handleCount;
+    u64 handles[kInlineHandleCount];
+    u32 handleSpillHead;
+};
+
+export class GameObjectManager {
+    std::vector<GameObjectMeta> m_metas;
+    std::vector<u32>            m_freeMetaList;
+    std::vector<u32>            m_roots;
+    SpillPool<u32, 8>  m_refPool;
+    SpillPool<u64, 8>  m_handlePool;
+
+public:
+    u32 allocMeta() {
+        if (!m_freeMetaList.empty()) {
+            u32 idx = m_freeMetaList.back();
+            m_freeMetaList.pop_back();
+            m_metas[idx] = GameObjectMeta{};
+            m_metas[idx].alive = true;
+            return idx;
+        }
+        u32 idx = (u32)m_metas.size();
+        m_metas.push_back(GameObjectMeta{});
+        m_metas[idx].alive = true;
+        return idx;
+    }
+
+    void freeMeta(u32 idx) {
+        m_metas[idx].alive = false;
+        m_freeMetaList.push_back(idx);
+    }
+
+    bool isAlive(u32 idx) const { return idx < m_metas.size() && m_metas[idx].alive; }
+
+    void setRefs(u32 metaIdx, std::span<const u32> targets) {
+        auto& meta = m_metas[metaIdx];
+        meta.refCount = 0;
+        meta.refSpillHead = kNoneChunk;
+        for (u32 t : targets) {
+            if (meta.refCount < kInlineRefCount) {
+                meta.refs[meta.refCount++] = t;
+            } else {
+                meta.refSpillHead = m_refPool.append(meta.refSpillHead, t);
+            }
+        }
+    }
+
+    u8 getRefCount(u32 idx) const { return m_metas[idx].refCount; }
+    u32 getSpillRefCount(u32 idx) const { return m_refPool.itemCount(m_metas[idx].refSpillHead); }
+
+    void setHandles(u32 metaIdx, std::span<const u64> handles) {
+        auto& meta = m_metas[metaIdx];
+        meta.handleCount = 0;
+        meta.handleSpillHead = kNoneChunk;
+        for (u64 h : handles) {
+            if (meta.handleCount < kInlineHandleCount) {
+                meta.handles[meta.handleCount++] = h;
+            } else {
+                meta.handleSpillHead = m_handlePool.append(meta.handleSpillHead, h);
+            }
+        }
+    }
+
+    u8 getHandleCount(u32 idx) const { return m_metas[idx].handleCount; }
+    u32 getSpillHandleCount(u32 idx) const { return m_handlePool.itemCount(m_metas[idx].handleSpillHead); }
+
+    void addToRoot(u32 idx) { m_roots.push_back(idx); }
+    void removeFromRoot(u32 idx) {
+        auto it = std::find(m_roots.begin(), m_roots.end(), idx);
+        if (it != m_roots.end()) { *it = m_roots.back(); m_roots.pop_back(); }
+    }
+    u32 getRootCount() const { return (u32)m_roots.size(); }
+
+    void mark() {
+        for (auto& meta : m_metas) { if (meta.alive) meta.marked = false; }
+        for (u32 r : m_roots) markRecursive(r);
+    }
+
+    void clearMarks() {
+        for (auto& meta : m_metas) meta.marked = false;
+    }
+
+    bool isMarked(u32 idx) const { return idx < m_metas.size() && m_metas[idx].marked; }
+
+    void markRecursive(u32 metaIdx) {
+        if (metaIdx >= m_metas.size()) return;
+        auto& meta = m_metas[metaIdx];
+        if (!meta.alive || meta.marked) return;
+        meta.marked = true;
+        for (u8 i = 0; i < meta.refCount; ++i) markRecursive(meta.refs[i]);
+        for (auto it = m_refPool.begin(meta.refSpillHead); it != m_refPool.end(); ++it)
+            markRecursive(*it);
+    }
+
+    void sweep() {
+        for (u32 i = 0; i < m_metas.size(); ++i) {
+            auto& meta = m_metas[i];
+            if (!meta.alive || meta.marked) continue;
+            meta.alive = false;
+            meta.marked = false;
+            meta.refCount = 0;
+            meta.handleCount = 0;
+            if (meta.refSpillHead != kNoneChunk) { m_refPool.freeChain(meta.refSpillHead); meta.refSpillHead = kNoneChunk; }
+            if (meta.handleSpillHead != kNoneChunk) { m_handlePool.freeChain(meta.handleSpillHead); meta.handleSpillHead = kNoneChunk; }
+            m_freeMetaList.push_back(i);
+        }
+    }
+
+    void tick() { mark(); sweep(); }
+};
+
 } // namespace LX_New_Common
