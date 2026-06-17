@@ -28,7 +28,7 @@ inline bool run_variable_resource_table_tests() {
         u8 pixelData[128] = {};
         pixelData[0] = 0xFF;
         ResourceHandle h = table.allocate(meta, {pixelData, 128});
-        check(h.isValid(), "alloc returns valid handle");
+        check(h.raw != 0, "alloc returns valid handle");
         check(h.type_id() == 2, "type_id correct");
     }
 
@@ -73,8 +73,8 @@ inline bool run_variable_resource_table_tests() {
         ResourceHandle h1 = table.allocate(meta, {data, 16});
         table.release(h1);
         ResourceHandle h2 = table.allocate(meta, {data, 16});
-        check(h2.index == h1.index, "reuses same index");
-        check(h2.generation == h1.generation + 1, "generation incremented");
+        check(h2.index() == h1.index(), "reuses same index");
+        check(h2.generation() == h1.generation() + 1, "generation incremented");
         u8* raw = table.getRawData(h2);
         raw[0] = 0xDD;
         raw = table.getRawData(h2);

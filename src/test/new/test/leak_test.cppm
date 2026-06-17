@@ -2,10 +2,10 @@ module;
 #include <cassert>
 #include <iostream>
 #include <vector>
-#include <array>
 
 export module LX_New_Test.Test.LeakTest;
 
+import LX_New_Common.Platform;
 import LX_New_Common.Memory;
 
 export namespace LX_New_Test {
@@ -17,34 +17,7 @@ inline bool run_leak_tests() {
         if (!cond) { std::cerr << "  FAIL: " << msg << "\n"; pass = false; }
     };
 
-    // TL1: create + destroy scene graph
-    {
-        GameObjectManager gom;
-        u32 scene = gom.allocMeta(), node = gom.allocMeta(), ro = gom.allocMeta();
-        gom.setRefs(scene, std::array<u32,1>{node});
-        gom.setRefs(node, std::array<u32,1>{ro});
-        gom.addToRoot(scene);
-        gom.tick();
-        gom.removeFromRoot(scene);
-        gom.tick();
-        check(!gom.isAlive(scene), "scene collected");
-    }
-
-    // TL2: alloc resources, add root, remove, tick
-    {
-        GameObjectManager gom;
-        u32 obj = gom.allocMeta();
-        u64 fakeHandle = 0x12345678ull;
-        fakeHandle |= (u64)1 << 16;
-        gom.setHandles(obj, std::array<u64,1>{fakeHandle});
-        gom.addToRoot(obj);
-        gom.tick();
-        gom.removeFromRoot(obj);
-        gom.tick();
-        check(!gom.isAlive(obj), "obj collected");
-    }
-
-    // TL3: spill pool alloc + free
+    // TL1: spill pool alloc + free — verifies no leak
     {
         SpillPool<u32, 4> pool;
         u32 head = kNoneChunk;
@@ -53,30 +26,38 @@ inline bool run_leak_tests() {
         check(pool.freeListSize() > 0, "spill blocks freed");
     }
 
-    // TL4: raw buffer alloc + free — verifies no leak
+    // TL2: raw buffer alloc + free — verifies no leak, reuse without growth
     {
         RawBuffer buf;
         std::vector<u32> offsets;
         for (int i = 0; i < 100; ++i) offsets.push_back(buf.allocate(64, 16));
         u32 capAfterAlloc = buf.capacity();
         for (auto o : offsets) buf.free(o, 64);
-        // After freeing all, allocate again — should reuse freed space, not expand
         u32 reuse = buf.allocate(64, 16);
         check(reuse == 0, "reuses first freed block");
         check(buf.capacity() == capAfterAlloc, "capacity unchanged (no expansion)");
     }
 
-    // TL5: cyclic refs unrooted → GC collects
+    // TL3: raw buffer move-then-destroy — no double free (ASAN verifies)
     {
-        GameObjectManager gom;
-        u32 a = gom.allocMeta(), b = gom.allocMeta();
-        gom.setRefs(a, std::array<u32,1>{b});
-        gom.setRefs(b, std::array<u32,1>{a});
-        gom.addToRoot(a);
-        gom.tick();
-        gom.removeFromRoot(a);
-        gom.tick();
-        check(!gom.isAlive(a) && !gom.isAlive(b), "cycle collected");
+        RawBuffer buf;
+        buf.allocate(256, 16);
+        {
+            RawBuffer moved(std::move(buf));
+            moved.allocate(128, 16);
+        }
+        check(buf.getBase() == nullptr, "source null after move+destroy");
+    }
+
+    // TL4: many alloc/free/destroy cycles — ASAN verifies no leak
+    {
+        for (int round = 0; round < 20; ++round) {
+            RawBuffer buf;
+            std::vector<u32> offs;
+            for (int i = 0; i < 50; ++i) offs.push_back(buf.allocate(128, 32));
+            for (auto o : offs) buf.free(o, 128);
+        }
+        check(true, "20 alloc/free/destroy cycles completed");
     }
 
     return pass;

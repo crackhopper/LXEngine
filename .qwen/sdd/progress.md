@@ -19,3 +19,12 @@ Base commit: de3efe17
 | 9: GC Integration Tests | complete (commit 86a0653a, 5 tests pass) |
 | 10: ASAN Leak Test | complete (commit 86a0653a, 5 leak tests pass, CMake ASAN option added) |
 | 11: new_core integration | complete (commit 86a0653a, core.cppm imports Memory) |
+
+## Reorganization (post-task fixes)
+| Task | Status | Commits | Review |
+|---|---|---|---|
+| ResourceHandle moved to new_core/resource | complete (commit f4706f0d) |
+| RawBuffer aligned memory management (_aligned_malloc, 256-byte base alignment) | complete (commit f4706f0d) |
+| All resource code inlined to resource.cppm (MSVC partition workaround) | complete (commit f4706f0d) |
+| Comments + usage examples added to RawBuffer, SpillBlock | complete (commit f4706f0d) |
+| All tests passing (100%, 1/1) | verified |

@@ -4,6 +4,8 @@ export module LX_New_Core;
 
 import LX_New_Common.Platform;
 import LX_New_Common.Memory;
+import LX_New_Core.Resource;
+import LX_New_Core.GameObject;
 
 export namespace LX_New_Core {
 

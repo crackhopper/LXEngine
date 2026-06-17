@@ -1,4 +1,5 @@
 module;
+#include <compare>
 
 export module LX_New_Core.Resource;
 

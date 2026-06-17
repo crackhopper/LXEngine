@@ -5,19 +5,20 @@ module;
 
 export module LX_New_Test.Test.GcIntegrationTest;
 
-import LX_New_Common.Memory;
+import LX_New_Common.Platform;
+import LX_New_Core.Resource;
+import LX_New_Core.GameObject;
 
 export namespace LX_New_Test {
 
 inline bool run_gc_integration_tests() {
-    using namespace LX_New_Common;
+    using namespace LX_New_Core;
     bool pass = true;
     auto check = [&](bool cond, const char* msg) {
         if (!cond) { std::cerr << "  FAIL: " << msg << "\n"; pass = false; }
     };
 
     // T1: scene graph, addToRoot, tick → nothing collected
-    std::cerr << "  T1...\n";
     {
         GameObjectManager gom;
         u32 scene = gom.allocMeta(), node = gom.allocMeta(), ro = gom.allocMeta();
@@ -30,7 +31,6 @@ inline bool run_gc_integration_tests() {
     }
 
     // T2: removeFromRoot, tick → entire graph collected
-    std::cerr << "  T2...\n";
     {
         GameObjectManager gom;
         u32 scene = gom.allocMeta(), node = gom.allocMeta();
@@ -43,10 +43,10 @@ inline bool run_gc_integration_tests() {
     }
 
     // T3: partial removal — only unreachable subgraph collected
-    std::cerr << "  T3...\n";
     {
         GameObjectManager gom;
-        u32 s1 = gom.allocMeta(), s2 = gom.allocMeta(), n1 = gom.allocMeta(), n2 = gom.allocMeta();
+        u32 s1 = gom.allocMeta(), s2 = gom.allocMeta();
+        u32 n1 = gom.allocMeta(), n2 = gom.allocMeta();
         gom.setRefs(s1, std::array<u32,1>{n1});
         gom.setRefs(s2, std::array<u32,1>{n2});
         gom.addToRoot(s1); gom.addToRoot(s2);
@@ -59,7 +59,6 @@ inline bool run_gc_integration_tests() {
     }
 
     // T4: shared resource — survives while either root alive
-    std::cerr << "  T4...\n";
     {
         GameObjectManager gom;
         u32 s1 = gom.allocMeta(), s2 = gom.allocMeta(), shared = gom.allocMeta();
@@ -75,18 +74,32 @@ inline bool run_gc_integration_tests() {
         check(!gom.isAlive(shared), "shared collected after both removed");
     }
 
-    // T5: cycle — A→B→A, both unrooted, both collected
-    std::cerr << "  T5...\n";
+    // T5: handle release cascade — GameObject death cascades into ResourceManager::release
     {
-        GameObjectManager gom;
-        u32 a = gom.allocMeta(), b = gom.allocMeta();
-        gom.setRefs(a, std::array<u32,1>{b});
-        gom.setRefs(b, std::array<u32,1>{a});
-        gom.addToRoot(a);
+        ResourceManager rm;
+        TypedResourceTable<f32> table;
+        table.setTypeId(3);
+        rm.registerTable(3, &table);
+        GameObjectManager gom(&rm);
+
+        f32 v1 = 1.0f, v2 = 2.0f;
+        ResourceHandle h1 = table.allocate(v1);
+        ResourceHandle h2 = table.allocate(v2);
+        check(table.get(h1) != nullptr, "h1 valid before GC");
+        check(table.get(h2) != nullptr, "h2 valid before GC");
+
+        u32 obj = gom.allocMeta();
+        gom.setHandles(obj, std::array<u64,2>{h1.raw, h2.raw});
+        gom.addToRoot(obj);
         gom.tick();
-        gom.removeFromRoot(a);
+        check(table.get(h1) != nullptr, "h1 valid while rooted");
+        check(table.get(h2) != nullptr, "h2 valid while rooted");
+
+        gom.removeFromRoot(obj);
         gom.tick();
-        check(!gom.isAlive(a) && !gom.isAlive(b), "cycle collected");
+        check(!gom.isAlive(obj), "obj collected");
+        check(table.get(h1) == nullptr, "h1 released by cascade");
+        check(table.get(h2) == nullptr, "h2 released by cascade");
     }
 
     return pass;

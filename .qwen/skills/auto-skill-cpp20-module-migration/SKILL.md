@@ -47,11 +47,82 @@ export namespace LX_New_Common {
 
 ## MSVC 模块约束（重要）
 
+### 问题 1：分区到分区导入
+
 **MSVC 的 `CXX_SCAN_FOR_MODULES` 无法正确解析分区到分区的导入**（即同一个主模块下的 `:PartitionA` 导入 `:PartitionB`）。
 
 **症状**：编译时报错 `cannot find module partition 'LX_New_Common.Memory:Types'` 或类似错误。
 
 **解决方案**：将模板类或跨分区依赖的类型直接内联到主模块接口单元（MIU）中，而不是放在独立的 `.cppm` 分区文件里。
+
+### 问题 2：跨 target 导入分区
+
+**MSVC 跨 target import 分区时无法解析完整分区名**（如 `LX_New_Common.Memory.RawBuffer`）。
+
+**症状**：编译时报错 `C2230: 无法找到模块"LX_New_Common.Memory.RawBuffer"`。
+
+**解决方案**：跨 target import 只使用主模块名，不写分区名：
+```cpp
+// ✅ 正确 — 跨 target 导入主模块
+import LX_New_Common.Memory;
+
+// ❌ 错误 — MSVC 报错 C2230
+import LX_New_Common.Memory.RawBuffer;
+```
+
+### 问题 3：新 target 必须启用模块扫描
+
+每个新 target 的 `CMakeLists.txt` 必须添加：
+```cmake
+set_target_properties(${LIB} PROPERTIES CXX_SCAN_FOR_MODULES ON)
+```
+否则 MSVC 无法正确解析 `import` 语句的模块依赖顺序。
+
+### 问题 4：BMI 输出目录不存在
+
+MSVC 生成 `.ifc` 文件时需要目录已存在。如果 `rmdir` 清理后直接 build 可能报错 `C3474: 无法打开输出文件 "...ifc"`。
+
+**解决方案**：重新 `cmake .. -G Ninja` configure 后再 build，或手动创建缺失的 `CMakeFiles/${LIB}.dir` 目录。
+
+### 问题 5：跨命名空间类型别名不可见
+
+`LX_New_Common` 中的类型别名（`u8`/`u16`/`u32`/`u64` 等）定义在 `export namespace LX_New_Common { using u32 = uint32_t; }`。当 `new_core` 模块通过 `import LX_New_Common.Platform` 导入后，这些类型只以 `LX_New_Common::u32` 形式可见，在 `namespace LX_New_Core { ... }` 内直接写 `u32` 会报错。
+
+**症状**：`error C2061: 语法错误: 标识符"u32"` — 类型不可见。
+
+**解决方案**：在每个使用 `LX_New_Common` 类型的新命名空间块开头加 `using namespace LX_New_Common;`：
+
+```cpp
+// ✅ 正确 — 在新命名空间内引入 using directive
+export namespace LX_New_Core {
+using namespace LX_New_Common;   // ← 让 u32/u64/f32 等在本地可见
+
+using MemoryIndex = u32;          // ← 现在可以用了
+}
+```
+
+**注意**：`using namespace` 在模块接口单元中不会被导出，仅影响当前 TU 的名称查找。每个独立分区文件需要各自添加此指令。
+
+### 问题 6：标准库头文件不随模块导入传递
+
+C++20 模块的全局模块片段（`module; ... #include`）中的头文件**不会传递给导入者**。如果一个模块分区导出了使用 `operator<=>` 的类型，所有导入该分区的模块单元都需要在自己的全局模块片段中包含 `<compare>`。
+
+**症状**：`error C3774: 找不到"std::partial_ordering": 请包括 <compare> 标头`。
+
+**解决方案**：在每个导入或重新导出含 `operator<=>` 类型的 `.cppm` 文件的全局模块片段中显式 `#include <compare>`：
+
+```cpp
+// resource_manager.cppm (导入 :TypedResourceTable，后者导入 :ResourceHandle)
+module;
+#include <compare>   // ← ResourceHandle 的 operator<=> 需要
+
+export module LX_New_Core.Resource:ResourceManager;
+
+import :TypedResourceTable;
+import :VariableResourceTable;
+```
+
+同样的模式适用于 `<vector>`、`<span>` 等——虽然某些头文件可能被标准库内部传递性包含（如 `<vector>` 会拉入 `<compare>`），但不应依赖此行为。
 
 **示例 — 错误的分区拆分**：
 ```cpp

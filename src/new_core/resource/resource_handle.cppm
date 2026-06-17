@@ -8,6 +8,7 @@ import LX_New_Common.Platform;
 import :Types;
 
 export namespace LX_New_Core {
+using namespace LX_New_Common;
 
 struct ResourceHandle {
     u64 raw = 0;
@@ -58,6 +59,9 @@ struct ResourceHandle {
         u64 val = static_cast<u64>(g) & GEN_MASK;
         raw = (raw & ~(GEN_MASK << GEN_SHIFT)) | (val << GEN_SHIFT);
     }
+
+    [[nodiscard]] constexpr bool isValid() const noexcept { return generation() != 0; }
+    static constexpr ResourceHandle invalid() noexcept { return ResourceHandle{}; }
 
     [[nodiscard]] auto operator<=>(const ResourceHandle &) const = default;
 };
