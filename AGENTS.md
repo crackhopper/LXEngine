@@ -17,12 +17,38 @@ LXEngine is a Vulkan-based 3D renderer written in C++20 with three layers:
 | `core` | `src/core/` | Platform-agnostic interfaces, math, resource types, scene graph |
 | `infra` | `src/infra/` | Windowing, mesh/texture loaders, shader compiler, other infrastructure |
 | `backend` | `src/backend/` | Vulkan backend |
+| `new_common` | `src/new_common/` | C++20 module rewrite — platform, math, memory (new track, see Development Tracks) |
+| `new_core` | `src/new_core/` | C++20 module rewrite — resource, game object (new track, see Development Tracks) |
 
 Important executable areas:
 
 - `src/demos/lxe_editor/`: main interactive demo
 - `src/test/`: integration tests
 - `assets/`: runtime assets and test assets
+
+## Development Tracks
+
+This repository runs **two parallel development tracks**. They are intentionally kept separate — code from one track must not be modified to accommodate the other unless explicitly requested.
+
+### Regular track (agent-driven, minimal human review)
+
+Directories: `src/core/`, `src/infra/`, `src/backend/`, `src/test/`, `src/demos/`
+
+This is the original production codebase. Agents implement features and fix bugs here directly. Human review is sparse — the agent is trusted to produce correct, well-tested code.
+
+### New track (refactored rewrite, high human review)
+
+Directories: `src/new_common/`, `src/new_core/`, `src/test/new/`
+
+This is a ground-up rewrite using C++20 named modules (`.cppm`). Every change is human-reviewed and manually adjusted. The code is deliberately dual-tracked alongside the regular code.
+
+**Default rule:** Unless a spec or user request explicitly mentions the new track, target the **regular track only**. Do not modify, reference, or depend on `new` code for regular-track work.
+
+When a spec or requirement explicitly targets the new track:
+
+- Load the C++20 module migration skill first (`.qwen/skills/auto-skill-cpp20-module-migration/`)
+- Expect detailed human review of every line
+- Follow `new` track conventions: C++20 modules, partition imports (`import :Partition;`), no raw headers
 
 ## Read Order
 
