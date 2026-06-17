@@ -9,6 +9,8 @@ import LX_New_Test.Test.TypedResourceTableTest;
 import LX_New_Test.Test.VariableResourceTableTest;
 import LX_New_Test.Test.SpillPoolTest;
 import LX_New_Test.Test.GameObjectManagerTest;
+import LX_New_Test.Test.GcIntegrationTest;
+import LX_New_Test.Test.LeakTest;
 
 export namespace LX_New_Test {
 
@@ -37,6 +39,14 @@ inline bool run_memory_tests() {
 
     std::cout << "[GameObjectManager]\n";
     if (!run_game_object_manager_tests()) all_pass = false;
+    else std::cout << "  OK\n";
+
+    std::cout << "[GcIntegration]\n";
+    if (!run_gc_integration_tests()) all_pass = false;
+    else std::cout << "  OK\n";
+
+    std::cout << "[LeakTest]\n";
+    if (!run_leak_tests()) all_pass = false;
     else std::cout << "  OK\n";
 
     return all_pass;

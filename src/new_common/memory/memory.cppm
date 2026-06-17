@@ -10,6 +10,7 @@ export import :Types;
 export import :ResourceHandle;
 export import :RawBuffer;
 export import :SpillBlock;
+export import :ResourceManager;
 
 export namespace LX_New_Common {
 
@@ -187,11 +188,15 @@ public:
             m_freeMetaList.pop_back();
             m_metas[idx] = GameObjectMeta{};
             m_metas[idx].alive = true;
+            m_metas[idx].refSpillHead = kNoneChunk;
+            m_metas[idx].handleSpillHead = kNoneChunk;
             return idx;
         }
         u32 idx = (u32)m_metas.size();
         m_metas.push_back(GameObjectMeta{});
         m_metas[idx].alive = true;
+        m_metas[idx].refSpillHead = kNoneChunk;
+        m_metas[idx].handleSpillHead = kNoneChunk;
         return idx;
     }
 
