@@ -2301,22 +2301,6 @@ SceneResourceTable::getMutableIblEnvironmentResources() {
 std::vector<GpuResourceRef>
 SceneResourceTable::getIblEnvironmentResources() const {
   std::vector<GpuResourceRef> out;
-  if (m_activeIblEnvironment.has_value()) {
-    const auto specular = resolveConst<IblTexturePayloadResource,
-                                       IblSpecularPrefilteredCubemapHandle>(
-        m_iblSpecularPrefilteredCubemaps,
-        m_activeIblEnvironment->specularPrefilteredCubemap);
-    if (specular.has_value() && specular->get().sampler) {
-      out.emplace_back(*specular->get().sampler);
-    }
-    const auto brdf =
-        resolveConst<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
-            m_standardPbrBrdfLuts, m_activeIblEnvironment->standardPbrBrdfLut);
-    if (brdf.has_value() && brdf->get().sampler) {
-      out.emplace_back(*brdf->get().sampler);
-    }
-    return out;
-  }
   const auto *resources = getIblEnvironmentResourceSet();
   if (resources == nullptr) {
     return out;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/asset/texture.hpp"
 #include "core/frame_graph/render_input.hpp"
 #include "core/pipeline/pipeline_build_desc.hpp"
 #include "core/pipeline/pipeline_key.hpp"
@@ -20,6 +21,8 @@
 #include <vulkan/vulkan.h>
 
 namespace LX_core::backend {
+
+[[nodiscard]] VkFormat vulkanTextureFormat(TextureFormat format);
 
 class VulkanDevice;
 class VulkanCommandBufferManager;

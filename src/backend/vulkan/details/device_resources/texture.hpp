@@ -10,6 +10,7 @@ class VulkanCommandBuffer;
 class VulkanBuffer;
 class VulkanDevice;
 
+[[nodiscard]] VkDeviceSize vulkanTextureFormatBytesPerPixel(VkFormat format);
 
 class VulkanTexture;
 using VulkanTextureUniquePtr = std::unique_ptr<VulkanTexture>;

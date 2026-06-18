@@ -186,6 +186,18 @@ CombinedTextureSamplerSharedPtr specularPrefilteredPayloadFixture() {
   return makeTexturePayload(desc, StringID("PrefilteredEnvMap"));
 }
 
+CombinedTextureSamplerSharedPtr irradianceMapPayloadFixture() {
+  TextureDesc desc;
+  desc.width = 4;
+  desc.height = 4;
+  desc.format = TextureFormat::RGBA16Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 6;
+  return makeTexturePayload(desc, StringID("IrradianceMap"));
+}
+
 CombinedTextureSamplerSharedPtr brdfLutPayloadFixture() {
   TextureDesc desc;
   desc.width = 256;
@@ -205,6 +217,15 @@ IblEnvironmentActivationPayload iblActivationPayloadFixture(u64 generation) {
   payload.specularPrefilteredCubemap = specularPrefilteredPayloadFixture();
   payload.standardPbrBrdfLut = brdfLutPayloadFixture();
   return payload;
+}
+
+IblEnvironmentResources iblDescriptorResourceFixture() {
+  IblEnvironmentResources resources;
+  resources.irradianceCubemap = irradianceMapPayloadFixture();
+  resources.prefilteredRadianceCubemap = specularPrefilteredPayloadFixture();
+  resources.brdfLut = brdfLutPayloadFixture();
+  resources.environmentUbo = std::make_unique<EnvironmentData>(1.0f, 3.0f);
+  return resources;
 }
 
 void testBuiltinDefaultTexturesAreStableSceneResources() {
@@ -399,6 +420,64 @@ void testIblActivationRejectsMetadataOnlyPayloads() {
          "metadata-only texture records must not satisfy IBL activation");
   EXPECT(table.buildUploadView().activeIblGeneration == 0,
          "failed metadata-only activation must not publish a generation");
+}
+
+void testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists() {
+  SceneResourceTable table;
+  table.setIblEnvironmentResources(iblDescriptorResourceFixture());
+  const IblEnvironmentActivationResult activated =
+      table.activateIblEnvironment(iblActivationPayloadFixture(2));
+  EXPECT(activated.ok, "active IBL fixture should activate");
+
+  const std::vector<GpuResourceRef> resources =
+      table.getIblEnvironmentResources();
+  const auto hasBinding = [&](StringID bindingName) {
+    return std::any_of(resources.begin(), resources.end(),
+                       [&](const GpuResourceRef &resource) {
+                         return resource.isValid() &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+
+  EXPECT(hasBinding(StringID("EnvironmentUBO")),
+         "descriptor resource path should keep EnvironmentUBO while active "
+         "typed IBL records are upload-view-only");
+  EXPECT(hasBinding(StringID("IrradianceMap")),
+         "descriptor resource path should keep IrradianceMap while active "
+         "typed IBL records are upload-view-only");
+  EXPECT(hasBinding(StringID("PrefilteredEnvMap")),
+         "descriptor resource path should keep PrefilteredEnvMap");
+  EXPECT(hasBinding(StringID("BrdfLut")),
+         "descriptor resource path should keep BrdfLut");
+}
+
+void testIblActivationReplacesOldLiveHandlesOnSuccess() {
+  SceneResourceTable table;
+  const IblEnvironmentActivationResult first =
+      table.activateIblEnvironment(iblActivationPayloadFixture(3));
+  EXPECT(first.ok, "first activation should succeed");
+  const SceneResourceTableUploadView firstView = table.buildUploadView();
+  const SceneActiveIblUploadState firstActive = firstView.activeIbl;
+
+  const IblEnvironmentActivationResult second =
+      table.activateIblEnvironment(iblActivationPayloadFixture(4));
+  EXPECT(second.ok, "second activation should succeed");
+  const SceneResourceTableUploadView secondView = table.buildUploadView();
+
+  EXPECT(secondView.activeIblGeneration == 4,
+         "second activation should publish the new generation");
+  EXPECT(!table.isAlive(firstActive.diffuseSh),
+         "old diffuse SH handle should no longer be live");
+  EXPECT(!table.isAlive(firstActive.specularPrefilteredCubemap),
+         "old specular cubemap handle should no longer be live");
+  EXPECT(!table.isAlive(firstActive.standardPbrBrdfLut),
+         "old BRDF LUT handle should no longer be live");
+  EXPECT(secondView.environmentDiffuseShPayloads.size() == 1,
+         "upload view should expose one active diffuse SH payload");
+  EXPECT(secondView.environmentSpecularPrefilteredCubemaps.size() == 1,
+         "upload view should expose one active specular cubemap payload");
+  EXPECT(secondView.standardPbrBrdfLuts.size() == 1,
+         "upload view should expose one active BRDF LUT payload");
 }
 
 class TestShader final : public IShader {
@@ -1283,6 +1362,8 @@ int main() {
   testEnvironmentRuntimeStateTracksSceneEnvironmentNode();
   testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady();
   testIblActivationRejectsMetadataOnlyPayloads();
+  testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists();
+  testIblActivationReplacesOldLiveHandlesOnSuccess();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();

@@ -15,6 +15,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_vulkan_post_process_builder
   test_scene_resource_upload_view_v2
   test_vulkan_offline_renderer
+  test_vulkan_texture_format_mapping
 )
 
 function(lx_register_ctest test_name)

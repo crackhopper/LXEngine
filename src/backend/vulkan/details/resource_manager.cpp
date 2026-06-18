@@ -31,7 +31,7 @@ usize cubemapSubresourceKey(u32 mipLevel, u32 faceLayer) {
   return (static_cast<usize>(mipLevel) << 32u) | static_cast<usize>(faceLayer);
 }
 
-VkFormat toVkFormat(TextureFormat format) {
+VkFormat textureFormatToVkFormat(TextureFormat format) {
   switch (format) {
   case TextureFormat::RGBA8:
     return VK_FORMAT_R8G8B8A8_UNORM;
@@ -43,6 +43,8 @@ VkFormat toVkFormat(TextureFormat format) {
     return VK_FORMAT_R8G8B8_SRGB;
   case TextureFormat::R8:
     return VK_FORMAT_R8_UNORM;
+  case TextureFormat::RG16Float:
+    return VK_FORMAT_R16G16_SFLOAT;
   case TextureFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case TextureFormat::RGBA32Float:
@@ -189,6 +191,10 @@ void validateNonEmptyBufferResource(const IGpuResource &cpuRes) {
 }
 } // namespace
 
+VkFormat vulkanTextureFormat(TextureFormat format) {
+  return textureFormatToVkFormat(format);
+}
+
 VulkanResourceManager::VulkanResourceManager(Token, VulkanDevice &device)
     : m_device(device),
       m_pipelineCache(std::make_unique<PipelineCache>(device)) {}
@@ -307,7 +313,7 @@ VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
           "CombinedImageSampler resource missing texture data");
     }
     const auto &desc = texCpu->texture()->desc();
-    const VkFormat vkFormat = toVkFormat(desc.format);
+    const VkFormat vkFormat = vulkanTextureFormat(desc.format);
     VkImageUsageFlags usage =
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     if (desc.dimension == TextureDimension::TextureCube) {

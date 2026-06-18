@@ -145,6 +145,29 @@ private:
 };
 } // namespace
 
+VkDeviceSize vulkanTextureFormatBytesPerPixel(VkFormat format) {
+  switch (format) {
+  case VK_FORMAT_R8_UNORM:
+    return 1;
+  case VK_FORMAT_R8G8B8_UNORM:
+  case VK_FORMAT_R8G8B8_SRGB:
+    return 3;
+  case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_R8G8B8A8_SRGB:
+  case VK_FORMAT_B8G8R8A8_UNORM:
+  case VK_FORMAT_B8G8R8A8_SRGB:
+    return 4;
+  case VK_FORMAT_R16G16_SFLOAT:
+    return 4;
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return 8;
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return 16;
+  default:
+    throw std::runtime_error("Unsupported texture copy format");
+  }
+}
+
 VulkanImageView::VulkanImageView(VkDevice device, VkImageView imageView)
     : m_device(device), m_imageView(imageView) {}
 
@@ -532,33 +555,14 @@ void VulkanTexture::copyFromBuffer(VulkanCommandBuffer &cmd,
   VkDeviceSize offset = 0;
   u32 mipWidth = m_width;
   u32 mipHeight = m_height;
-  const auto bytesPerPixel = [&]() -> VkDeviceSize {
-    switch (m_format) {
-    case VK_FORMAT_R8_UNORM:
-      return 1;
-    case VK_FORMAT_R8G8B8_UNORM:
-    case VK_FORMAT_R8G8B8_SRGB:
-      return 3;
-    case VK_FORMAT_R8G8B8A8_UNORM:
-    case VK_FORMAT_R8G8B8A8_SRGB:
-    case VK_FORMAT_B8G8R8A8_UNORM:
-    case VK_FORMAT_B8G8R8A8_SRGB:
-      return 4;
-    case VK_FORMAT_R16G16B16A16_SFLOAT:
-      return 8;
-    case VK_FORMAT_R32G32B32A32_SFLOAT:
-      return 16;
-    default:
-      throw std::runtime_error("Unsupported texture copy format");
-    }
-  }();
+  const VkDeviceSize bytesPerPixel = vulkanTextureFormatBytesPerPixel(m_format);
 
   for (u32 mip = 0; mip < m_mipLevels; ++mip) {
     const u32 levelWidth = std::max(mipWidth, 1u);
     const u32 levelHeight = std::max(mipHeight, 1u);
-    const VkDeviceSize layerBytes =
-        static_cast<VkDeviceSize>(levelWidth) *
-        static_cast<VkDeviceSize>(levelHeight) * bytesPerPixel;
+    const VkDeviceSize layerBytes = static_cast<VkDeviceSize>(levelWidth) *
+                                    static_cast<VkDeviceSize>(levelHeight) *
+                                    bytesPerPixel;
 
     for (u32 layer = 0; layer < m_arrayLayers; ++layer) {
       VkBufferImageCopy region{};
