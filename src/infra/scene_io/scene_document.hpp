@@ -8,6 +8,7 @@
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/light.hpp"
 #include "core/scene/object.hpp"
+#include "core/scene/scene_environment_node.hpp"
 #include "core/scene/scene_render_settings.hpp"
 #include "core/scene/visibility_mask.hpp"
 
@@ -121,6 +122,8 @@ struct SceneNodeDocument final {
   ProceduralMaterialState proceduralMaterial;
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;
+  std::optional<LX_core::SceneEnvironmentNode> environment;
+  LX_core::SceneNodeBakeMarkers bake;
   std::optional<CameraNodeState> camera;
   std::optional<std::string> cameraOfflineYaml;
   std::optional<LightNodeState> light;

@@ -569,6 +569,173 @@ void saveProceduralMaterialState(YAML::Emitter &out,
   out << YAML::EndMap;
 }
 
+[[nodiscard]] bool loadRequiredBool(const YAML::Node &node,
+                                    const char *fieldName) {
+  if (!node || !node.IsScalar()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a bool");
+  }
+  try {
+    return node.as<bool>();
+  } catch (const std::exception &) {
+    throw std::runtime_error(std::string(fieldName) + " must be a bool");
+  }
+}
+
+[[nodiscard]] std::string loadRequiredString(const YAML::Node &node,
+                                             const char *fieldName) {
+  if (!node || !node.IsScalar()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a string");
+  }
+  try {
+    return node.as<std::string>();
+  } catch (const std::exception &) {
+    throw std::runtime_error(std::string(fieldName) + " must be a string");
+  }
+}
+
+[[nodiscard]] LX_core::SceneIblBakeMarker
+loadSceneIblBakeMarker(const YAML::Node &node, const char *fieldName) {
+  if (!node) {
+    throw std::runtime_error(std::string(fieldName) + " is missing");
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a map");
+  }
+
+  LX_core::SceneIblBakeMarker marker;
+  bool hasEnabled = false;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "enabled") {
+      marker.enabled =
+          loadRequiredBool(value, (std::string(fieldName) + ".enabled").c_str());
+      hasEnabled = true;
+    } else {
+      throw std::runtime_error(std::string(fieldName) + "." + key +
+                               " is not supported");
+    }
+  }
+  if (!hasEnabled) {
+    throw std::runtime_error(std::string(fieldName) + ".enabled is required");
+  }
+  LX_core::validateSceneIblBakeMarker(marker, fieldName);
+  return marker;
+}
+
+[[nodiscard]] LX_core::SceneEnvironmentNode
+loadSceneEnvironmentNode(const YAML::Node &node, const char *fieldName) {
+  if (!node) {
+    throw std::runtime_error(std::string(fieldName) + " is missing");
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a map");
+  }
+
+  LX_core::SceneEnvironmentNode environment;
+  bool hasFeatureUri = false;
+  bool hasBake = false;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "feature") {
+      if (!value.IsMap()) {
+        throw std::runtime_error(std::string(fieldName) +
+                                 ".feature must be a map");
+      }
+      for (auto featureIt = value.begin(); featureIt != value.end();
+           ++featureIt) {
+        const std::string featureKey = featureIt->first.as<std::string>();
+        if (featureKey == "uri") {
+          const std::string uri =
+              loadRequiredString(featureIt->second,
+                                 (std::string(fieldName) + ".feature.uri")
+                                     .c_str());
+          validateSceneAssetUriInternal(
+              uri, (std::string(fieldName) + ".feature.uri").c_str());
+          environment.featureUri = LX_core::ResourceUri(uri);
+          hasFeatureUri = true;
+        } else {
+          throw std::runtime_error(std::string(fieldName) + ".feature." +
+                                   featureKey + " is not supported");
+        }
+      }
+    } else if (key == "bake") {
+      environment.bake =
+          loadSceneIblBakeMarker(value,
+                                 (std::string(fieldName) + ".bake").c_str());
+      hasBake = true;
+    } else {
+      throw std::runtime_error(std::string(fieldName) + "." + key +
+                               " is not supported");
+    }
+  }
+  if (!hasFeatureUri) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".feature.uri is required");
+  }
+  if (!hasBake) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".bake.enabled is required");
+  }
+  LX_core::validateSceneEnvironmentNode(environment, fieldName);
+  return environment;
+}
+
+[[nodiscard]] LX_core::SceneNodeBakeMarkers
+loadSceneNodeBakeMarkers(const YAML::Node &node, const char *fieldName) {
+  LX_core::SceneNodeBakeMarkers bake;
+  if (!node) {
+    return bake;
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a map");
+  }
+
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "ibl") {
+      bake.ibl =
+          loadSceneIblBakeMarker(value,
+                                 (std::string(fieldName) + ".ibl").c_str());
+    } else {
+      throw std::runtime_error(std::string(fieldName) + "." + key +
+                               " is not supported");
+    }
+  }
+  return bake;
+}
+
+void saveSceneIblBakeMarker(YAML::Emitter &out,
+                            const LX_core::SceneIblBakeMarker &marker) {
+  out << YAML::BeginMap;
+  out << YAML::Key << "enabled" << YAML::Value << marker.enabled;
+  out << YAML::EndMap;
+}
+
+void saveSceneEnvironmentNode(YAML::Emitter &out,
+                              const LX_core::SceneEnvironmentNode &environment) {
+  out << YAML::Key << "environment" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "feature" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "uri" << YAML::Value << environment.featureUri.string();
+  out << YAML::EndMap;
+  out << YAML::Key << "bake" << YAML::Value;
+  saveSceneIblBakeMarker(out, environment.bake);
+  out << YAML::EndMap;
+}
+
+void saveSceneNodeBakeMarkers(YAML::Emitter &out,
+                              const LX_core::SceneNodeBakeMarkers &bake) {
+  if (!bake.ibl.has_value()) {
+    return;
+  }
+  out << YAML::Key << "bake" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "ibl" << YAML::Value;
+  saveSceneIblBakeMarker(out, *bake.ibl);
+  out << YAML::EndMap;
+}
+
 [[nodiscard]] EnvironmentState loadEnvironmentState(const YAML::Node &node) {
   EnvironmentState state;
   if (!node) {
@@ -1103,12 +1270,17 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       entry.meshOfflineYaml = dumpYamlNode(offlineNode);
     }
   }
-  if (const auto materialNode = node["material"];
-      materialNode && materialNode["uri"]) {
-    entry.materialUri = materialNode["uri"].as<std::string>();
-    validateSceneAssetUriInternal(*entry.materialUri, "nodes[].material.uri");
-    if (const auto offlineNode = materialNode["offline"]; offlineNode) {
-      entry.materialOfflineYaml = dumpYamlNode(offlineNode);
+  if (const auto materialNode = node["material"]; materialNode) {
+    if (materialNode["bake"]) {
+      throw std::runtime_error(
+          "nodes[].material.bake is not supported; use nodes[].bake.ibl.enabled");
+    }
+    if (materialNode["uri"]) {
+      entry.materialUri = materialNode["uri"].as<std::string>();
+      validateSceneAssetUriInternal(*entry.materialUri, "nodes[].material.uri");
+      if (const auto offlineNode = materialNode["offline"]; offlineNode) {
+        entry.materialOfflineYaml = dumpYamlNode(offlineNode);
+      }
     }
   }
   if (node["materials"]) {
@@ -1121,6 +1293,11 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
       node["nodeMaterialOverrides"], "nodes[].nodeMaterialOverrides");
   entry.materialOverrides = loadMaterialOverrideState(
       node["materialOverrides"], "nodes[].materialOverrides");
+  if (const auto environmentNode = node["environment"]; environmentNode) {
+    entry.environment =
+        loadSceneEnvironmentNode(environmentNode, "nodes[].environment");
+  }
+  entry.bake = loadSceneNodeBakeMarkers(node["bake"], "nodes[].bake");
   if (const auto cameraNode = node["camera"]; cameraNode) {
     const auto legacyEye =
         loadOptionalVec3(cameraNode["eye"], "nodes[].camera.eye");
@@ -1175,7 +1352,9 @@ void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
       rootNode.materialOfflineYaml.has_value() ||
       !rootNode.proceduralMaterial.empty() ||
       !rootNode.nodeMaterialOverrides.empty() ||
-      !rootNode.materialOverrides.empty() || rootNode.camera.has_value() ||
+      !rootNode.materialOverrides.empty() ||
+      rootNode.environment.has_value() || rootNode.bake.ibl.has_value() ||
+      rootNode.camera.has_value() ||
       rootNode.cameraOfflineYaml.has_value() || rootNode.light.has_value() ||
       rootNode.offlineYaml.has_value()) {
     throw std::runtime_error("scene document root payload is unsupported");
@@ -1217,6 +1396,10 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
   saveMaterialOverrideState(out, "nodeMaterialOverrides",
                             node.nodeMaterialOverrides);
   saveMaterialOverrideState(out, "materialOverrides", node.materialOverrides);
+  if (node.environment.has_value()) {
+    saveSceneEnvironmentNode(out, *node.environment);
+  }
+  saveSceneNodeBakeMarkers(out, node.bake);
   if (node.camera.has_value()) {
     saveCameraState(out, *node.camera, node.cameraOfflineYaml);
   }

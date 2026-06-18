@@ -8,6 +8,7 @@
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
+#include "infra/scene_io/scene_document.hpp"
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_compiler.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
@@ -103,6 +104,38 @@ std::string readTextFile(const std::string &path) {
   std::ostringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
+}
+
+LX_infra::scene_io::SceneDocument
+parseSceneYaml(const std::string &fileName, const std::string &contents) {
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() / fileName;
+  std::ofstream file(path);
+  file << contents;
+  file.close();
+  return LX_infra::scene_io::loadSceneDocument(path);
+}
+
+template <typename Callable>
+void expectThrowsContaining(Callable &&callable, const std::string &needle,
+                            const std::string &message) {
+  try {
+    callable();
+  } catch (const std::exception &error) {
+    const std::string what = error.what();
+    EXPECT(what.find(needle) != std::string::npos, message);
+    return;
+  }
+  EXPECT(false, message);
+}
+
+bool legacySceneEnvironmentSatisfiesEnvironmentNode(
+    const LX_infra::scene_io::SceneDocument &document) {
+  const auto &rootNode = document.rootNode();
+  return std::any_of(rootNode.children.begin(), rootNode.children.end(),
+                     [](const LX_infra::scene_io::SceneNodeDocument &node) {
+                       return node.environment.has_value();
+                     });
 }
 
 LX_core::ShaderVariant parserTestMaterialContractSourceVariant() {
@@ -2003,6 +2036,261 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
   }
 }
 
+void testSceneDocumentParsesEnvironmentNodeAndBakeMarkers() {
+  const auto parsed = parseSceneYaml(
+      "lxe_environment_node.scene.yaml", R"(
+scene:
+  name: EnvironmentNode
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature:
+          uri: assets/effects/environment_lighting.render-feature.yaml
+        bake:
+          enabled: true
+    - nodeName: helmet
+      name: helmet
+      bake:
+        ibl:
+          enabled: true
+)");
+
+  EXPECT(parsed.rootNode().children.size() == 2,
+         "scene should retain authored child nodes");
+  if (parsed.rootNode().children.size() < 2) {
+    return;
+  }
+
+  const auto &environmentNode = parsed.rootNode().children[0];
+  const auto &objectNode = parsed.rootNode().children[1];
+  EXPECT(environmentNode.environment.has_value(),
+         "environment node should parse");
+  EXPECT(environmentNode.environment->featureUri ==
+             LX_core::ResourceUri(
+                 "assets/effects/environment_lighting.render-feature.yaml"),
+         "environment node should retain feature uri");
+  EXPECT(environmentNode.environment->bake.enabled,
+         "environment node should retain bake.enabled");
+  EXPECT(objectNode.bake.ibl.has_value() && objectNode.bake.ibl->enabled,
+         "object node should retain top-level bake.ibl.enabled");
+}
+
+void testSceneDocumentRejectsMaterialBakeMarker() {
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_material_bake.scene.yaml", R"(
+scene:
+  name: MaterialBake
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: object
+      name: object
+      material:
+        uri: assets/materials/standard-pbr/standard-pbr.material.yaml
+        bake:
+          enabled: true
+)");
+      },
+      "nodes[].material.bake is not supported; use nodes[].bake.ibl.enabled",
+      "material.bake should be rejected with the migration diagnostic");
+}
+
+void testSceneDocumentRejectsUnknownEnvironmentNodeField() {
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_environment_unknown.scene.yaml", R"(
+scene:
+  name: UnknownEnvironmentField
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature:
+          uri: assets/effects/environment_lighting.render-feature.yaml
+        bake:
+          enabled: true
+        ignored: true
+)");
+      },
+      "nodes[].environment.ignored",
+      "unknown environment-node fields should fail-fast with YAML path");
+}
+
+void testSceneDocumentRejectsIncompleteEnvironmentNode() {
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_environment_missing_feature_uri.scene.yaml",
+                             R"(
+scene:
+  name: MissingEnvironmentFeatureUri
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature: {}
+        bake:
+          enabled: true
+)");
+      },
+      "nodes[].environment.feature.uri",
+      "missing environment.feature.uri should fail-fast with YAML path");
+
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_environment_missing_bake_enabled.scene.yaml",
+                             R"(
+scene:
+  name: MissingEnvironmentBakeEnabled
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature:
+          uri: assets/effects/environment_lighting.render-feature.yaml
+        bake: {}
+)");
+      },
+      "nodes[].environment.bake.enabled",
+      "missing environment.bake.enabled should fail-fast with YAML path");
+}
+
+void testSceneDocumentRejectsEnvironmentNodeWrongTypesWithPaths() {
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_environment_bake_enabled_type.scene.yaml",
+                             R"(
+scene:
+  name: WrongEnvironmentBakeEnabledType
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature:
+          uri: assets/effects/environment_lighting.render-feature.yaml
+        bake:
+          enabled: not-a-bool
+)");
+      },
+      "nodes[].environment.bake.enabled",
+      "wrong environment.bake.enabled type should name YAML path");
+
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_object_bake_enabled_type.scene.yaml", R"(
+scene:
+  name: WrongObjectBakeEnabledType
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: object
+      name: object
+      bake:
+        ibl:
+          enabled: not-a-bool
+)");
+      },
+      "nodes[].bake.ibl.enabled",
+      "wrong bake.ibl.enabled type should name YAML path");
+
+  expectThrowsContaining(
+      [] {
+        (void)parseSceneYaml("lxe_environment_feature_uri_type.scene.yaml",
+                             R"(
+scene:
+  name: WrongEnvironmentFeatureUriType
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: sky
+      name: sky
+      environment:
+        feature:
+          uri: [assets, effects]
+        bake:
+          enabled: true
+)");
+      },
+      "nodes[].environment.feature.uri",
+      "wrong environment.feature.uri type should name YAML path");
+}
+
+void testLegacySceneEnvironmentDoesNotSatisfyEnvironmentNode() {
+  const auto document = parseSceneYaml(
+      "lxe_legacy_scene_environment.scene.yaml", R"(
+scene:
+  name: LegacyEnvironment
+  environment:
+    enabled: true
+    hdrUri: assets/env/studio_small_03_2k.hdr
+root:
+  nodeName: scene_root
+  name: ""
+  children:
+    - nodeName: object
+      name: object
+)");
+
+  EXPECT(document.hasEnvironment(),
+         "legacy scene.environment should remain top-level scene state");
+  EXPECT(!legacySceneEnvironmentSatisfiesEnvironmentNode(document),
+         "legacy scene.environment must not satisfy environment node");
+}
+
+void testSceneDocumentSavesEnvironmentNodeAndExplicitBakeFalse() {
+  LX_infra::scene_io::SceneDocument document;
+  auto &root = document.mutableRootNode();
+  LX_infra::scene_io::SceneNodeDocument environmentNode;
+  environmentNode.nodeName = "sky";
+  environmentNode.name = "sky";
+  environmentNode.environment = LX_core::SceneEnvironmentNode{
+      .featureUri = LX_core::ResourceUri(
+          "assets/effects/environment_lighting.render-feature.yaml"),
+      .bake = LX_core::SceneIblBakeMarker{.enabled = false},
+  };
+  root.children.push_back(std::move(environmentNode));
+
+  LX_infra::scene_io::SceneNodeDocument objectNode;
+  objectNode.nodeName = "helmet";
+  objectNode.name = "helmet";
+  objectNode.bake.ibl = LX_core::SceneIblBakeMarker{.enabled = false};
+  root.children.push_back(std::move(objectNode));
+
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_environment_node_round_trip.scene.yaml";
+  LX_infra::scene_io::saveSceneDocument(path, document);
+  const auto roundTripped = LX_infra::scene_io::loadSceneDocument(path);
+
+  EXPECT(roundTripped.rootNode().children[0].environment.has_value(),
+         "saved environment node should round-trip");
+  EXPECT(!roundTripped.rootNode().children[0].environment->bake.enabled,
+         "explicit environment bake.enabled false should round-trip");
+  EXPECT(roundTripped.rootNode().children[1].bake.ibl.has_value(),
+         "explicit object bake.ibl marker should round-trip");
+  EXPECT(!roundTripped.rootNode().children[1].bake.ibl->enabled,
+         "explicit object bake.ibl.enabled false should round-trip");
+}
+
 } // namespace
 
 int main() {
@@ -2048,6 +2336,13 @@ int main() {
   testParserAdapterResolvesRenderPathShaderUriForms();
   testParserAdapterLoadsEnvironmentFeatureTextureDependency();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
+  testSceneDocumentParsesEnvironmentNodeAndBakeMarkers();
+  testSceneDocumentRejectsMaterialBakeMarker();
+  testSceneDocumentRejectsUnknownEnvironmentNodeField();
+  testSceneDocumentRejectsIncompleteEnvironmentNode();
+  testSceneDocumentRejectsEnvironmentNodeWrongTypesWithPaths();
+  testLegacySceneEnvironmentDoesNotSatisfyEnvironmentNode();
+  testSceneDocumentSavesEnvironmentNodeAndExplicitBakeFalse();
   if (g_failures != 0) {
     std::cerr << g_failures << " render feature parser checks failed\n";
     return 1;
