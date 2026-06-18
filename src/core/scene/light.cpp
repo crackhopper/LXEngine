@@ -106,6 +106,18 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
   });
 }
 
+template <typename PassRange>
+bool replaceSupportedPasses(std::unordered_set<StringID, StringID::Hash> &dst,
+                            const PassRange &passes) {
+  std::unordered_set<StringID, StringID::Hash> updated{passes.begin(),
+                                                       passes.end()};
+  if (updated == dst) {
+    return false;
+  }
+  dst = std::move(updated);
+  return true;
+}
+
 } // namespace
 
 DirectionalLight::DirectionalLight()
@@ -443,11 +455,15 @@ BoundingBox DirectionalLight::getDebugLocalBounds() const {
 
 void DirectionalLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void DirectionalLight::setSupportedPasses(const std::vector<StringID> &passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void DirectionalLight::updateShadowViewProjection() {
@@ -541,11 +557,15 @@ BoundingBox PointLight::getDebugLocalBounds() const {
 
 void PointLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void PointLight::setSupportedPasses(const std::vector<StringID> &passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void PointLight::emitLightPropertyChanged() const {
@@ -650,11 +670,15 @@ BoundingBox SpotLight::getDebugLocalBounds() const {
 
 void SpotLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void SpotLight::setSupportedPasses(const std::vector<StringID> &passes) {
-  m_supportedPasses = {passes.begin(), passes.end()};
+  if (replaceSupportedPasses(m_supportedPasses, passes)) {
+    emitLightPropertyChanged();
+  }
 }
 
 void SpotLight::emitLightPropertyChanged() const {

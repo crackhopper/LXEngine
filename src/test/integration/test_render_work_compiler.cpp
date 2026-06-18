@@ -2447,6 +2447,37 @@ void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
          "point light aggregate updates should not use dirty-host-buffer-only generation");
 }
 
+void testLightPassMembershipDirtiesDescriptorSelectionOnly() {
+  auto scene = Scene::create("light_pass_dirty");
+  auto lightNode = SceneNode::create("point_light_passes");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<PointLight>());
+  auto light = scene->getPointLight(*lightNode);
+  EXPECT(light.has_value(), "attached point light should be resolvable");
+  if (!light.has_value()) {
+    return;
+  }
+
+  const u64 beforeRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
+  light->get().setSupportedPasses({Pass_Forward});
+
+  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
+         "light pass membership should not advance runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeSelection + 1,
+         "light pass membership should refresh prepared descriptor resource selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeDescriptor + 1,
+         "light pass membership should refresh descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
+         "light pass membership should not use dirty-host-buffer-only generation");
+}
+
 void testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection() {
   auto scene = Scene::create("directional_cascade_dirty");
   auto cameraNode = SceneNode::create("camera");
@@ -2680,6 +2711,7 @@ int main() {
   testAttachedMeshReplacementReleasesOldSceneResources();
   testAttachedMaterialReplacementReleasesOldMaterialTextures();
   testLightPropertyChangesDirtyDescriptorSelectionOnly();
+  testLightPassMembershipDirtiesDescriptorSelectionOnly();
   testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection();
   testLightNodeTransformDirtiesDescriptorSelectionOnly();
   testParentTransformSyncsDescendantRuntimeResources();
