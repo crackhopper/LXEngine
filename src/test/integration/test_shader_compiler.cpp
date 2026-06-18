@@ -245,6 +245,7 @@ struct FeatureParameterProbe {
   std::string kind;
   std::string binding;
   std::string member;
+  bool volatileRuntime = false;
 };
 
 struct FeatureProbe {
@@ -297,6 +298,8 @@ static FeatureProbe parseFeatureProbe(const std::filesystem::path &path) {
         feature.parameters[activeParameter].binding = value;
       } else if (key == "member") {
         feature.parameters[activeParameter].member = value;
+      } else if (key == "volatile") {
+        feature.parameters[activeParameter].volatileRuntime = value == "true";
       }
     }
   }
@@ -1027,6 +1030,19 @@ static bool testForwardMainFeatureShaderAbi(
       const auto constants =
           ShaderReflector::reflectSpecializationConstants(compileResult.stages);
       for (const auto &[name, parameter] : feature.parameters) {
+        if (parameter.volatileRuntime) {
+          const auto constant = std::find_if(
+              constants.begin(), constants.end(), [&](const auto &candidate) {
+                return candidate.name == name;
+              });
+          if (constant != constants.end()) {
+            std::cerr << "  FAIL: volatile pass feature " << featureUri
+                      << " parameter " << name
+                      << " was reflected as a specialization constant\n";
+            return false;
+          }
+          continue;
+        }
         const auto constant = std::find_if(
             constants.begin(), constants.end(), [&](const auto &candidate) {
               return candidate.name == name;

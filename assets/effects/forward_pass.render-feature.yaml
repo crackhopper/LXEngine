@@ -17,3 +17,21 @@ parameters:
     kind: bool
     value: false
     required: true
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+    required: true
+  environmentIblReady:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: environmentIblReady
+    required: true
+  standardPbrIblReady:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: standardPbrIblReady
+    required: true

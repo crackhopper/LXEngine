@@ -138,7 +138,7 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       const std::string key = parameterField->first.as<std::string>();
       if (key == "kind" || key == "value" || key == "uri" ||
           key == "valueType" || key == "binding" || key == "member" ||
-          key == "required" || key == "allowedValues" ||
+          key == "required" || key == "volatile" || key == "allowedValues" ||
           key == "requiredWhen") {
         continue;
       }
@@ -151,6 +151,46 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
     }
     LX_core::RenderFeatureParameter parameter;
     parameter.kind = parameterNode["kind"].as<std::string>();
+    if (parameterNode["volatile"]) {
+      const usize diagnosticCount = result.diagnostics.size();
+      parameter.volatileRuntime =
+          parseBoolScalar(result, uri, parameterNode["volatile"],
+                          field + ".volatile");
+      if (result.diagnostics.size() != diagnosticCount) {
+        continue;
+      }
+    }
+    if (parameter.volatileRuntime && parameterNode["value"]) {
+      addDiagnostic(result, uri, field + ".value",
+                    "volatile parameter must not define value");
+    }
+    if (parameter.volatileRuntime && parameterNode["constantId"]) {
+      addDiagnostic(result, uri, field + ".constantId",
+                    "volatile parameter must not define constantId");
+    }
+    if (parameter.volatileRuntime && parameterNode["specialization"]) {
+      addDiagnostic(result, uri, field + ".specialization",
+                    "volatile parameter must not define specialization");
+    }
+    if (parameter.volatileRuntime &&
+        parameterNode["specializationConstant"]) {
+      addDiagnostic(
+          result, uri, field + ".specializationConstant",
+          "volatile parameter must not define specializationConstant");
+    }
+    if (parameter.volatileRuntime &&
+        parameterNode["specializationConstants"]) {
+      addDiagnostic(
+          result, uri, field + ".specializationConstants",
+          "volatile parameter must not define specializationConstants");
+    }
+    if (parameter.volatileRuntime && parameterNode["valueType"]) {
+      addDiagnostic(result, uri, field + ".valueType",
+                    "volatile parameter must not define valueType");
+    }
+    if (!result.diagnostics.empty()) {
+      continue;
+    }
     if (parameterNode["value"]) {
       parameter.value = nodeToStoredValue(parameterNode["value"]);
     }
@@ -297,16 +337,31 @@ void validateRenderFeatureSchema(ParsedRenderFeatureResource &result,
                       "required for binding/member ABI parameters");
       }
       if (feature.level == LX_core::RenderFeatureLevel::Pass) {
-        if (!parameter.binding.empty()) {
+        if (!parameter.volatileRuntime && !parameter.binding.empty()) {
           addDiagnostic(result, uri, field + ".binding",
                         "pass-level parameters must use shader reflection "
                         "specialization constants, not bindings");
         }
-        if (!parameter.member.empty()) {
+        if (!parameter.volatileRuntime && !parameter.member.empty()) {
           addDiagnostic(result, uri, field + ".member",
                         "pass-level parameters must use shader reflection "
                         "specialization constants, not UBO members");
         }
+      }
+    }
+    if (parameter.volatileRuntime) {
+      if (feature.level != LX_core::RenderFeatureLevel::Pass) {
+        addDiagnostic(result, uri, field + ".volatile",
+                      "volatile parameters are only supported for pass-level "
+                      "runtime data");
+      }
+      if (parameter.binding.empty()) {
+        addDiagnostic(result, uri, field + ".binding",
+                      "volatile parameter must define binding");
+      }
+      if (parameter.member.empty()) {
+        addDiagnostic(result, uri, field + ".member",
+                      "volatile parameter must define member");
       }
     }
   }

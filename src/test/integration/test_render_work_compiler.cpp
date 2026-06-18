@@ -203,12 +203,28 @@ public:
     return m_specializationConstants;
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(u32, u32) const override {
-    return std::nullopt;
+  findBinding(u32 set, u32 binding) const override {
+    const auto it = std::find_if(
+        m_bindings.begin(), m_bindings.end(),
+        [&](const ShaderResourceBinding &candidate) {
+          return candidate.set == set && candidate.binding == binding;
+        });
+    if (it == m_bindings.end()) {
+      return std::nullopt;
+    }
+    return std::cref(*it);
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
-  findBinding(const std::string &) const override {
-    return std::nullopt;
+  findBinding(const std::string &name) const override {
+    const auto it = std::find_if(
+        m_bindings.begin(), m_bindings.end(),
+        [&](const ShaderResourceBinding &candidate) {
+          return candidate.name == name;
+        });
+    if (it == m_bindings.end()) {
+      return std::nullopt;
+    }
+    return std::cref(*it);
   }
   usize getProgramHash() const override { return 0x1234u; }
   std::string getShaderName() const override { return "validated_fake_shader"; }
@@ -1028,6 +1044,18 @@ RenderFeature makeCompilerPassFeature() {
   return feature;
 }
 
+RenderFeature makeCompilerPassFeatureWithVolatileRuntimeField() {
+  RenderFeature feature = makeCompilerPassFeature();
+  feature.parameters["enableIblLighting"] = RenderFeatureParameter{
+      .kind = "bool",
+      .binding = "PassRuntimeUBO",
+      .member = "enableIblLighting",
+      .required = true,
+      .volatileRuntime = true,
+  };
+  return feature;
+}
+
 void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
   const ResourceUri shaderUri("memory://shaders/compiler_pass_specialization");
   auto shader = std::make_shared<FakeShader>(
@@ -1137,6 +1165,123 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
                         return constant.constantId < 10;
                       }),
          "compiler should not add unrelated hardcoded Forward constants");
+}
+
+void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
+  const ResourceUri shaderUri("memory://shaders/compiler_pass_specialization");
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{
+          ShaderResourceBinding{
+              .name = "PassRuntimeUBO",
+              .set = 4,
+              .binding = 1,
+              .type = ShaderPropertyType::UniformBuffer,
+              .members = {StructMemberInfo{
+                  "enableIblLighting", ShaderPropertyType::Int, 0, 4}},
+          },
+      },
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 51}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 52}},
+      },
+      std::vector<VertexInputAttribute>{
+          VertexInputAttribute{.name = "inPos", .location = 0,
+                               .type = DataType::Float3}},
+      std::vector<ShaderSpecializationConstantInfo>{
+          ShaderSpecializationConstantInfo{
+              .name = "render_probe",
+              .stage = ShaderStage::Fragment,
+              .constantId = 17,
+              .type = ShaderSpecializationValueType::Bool,
+          },
+          ShaderSpecializationConstantInfo{
+              .name = "enable_probe_debug",
+              .stage = ShaderStage::Vertex,
+              .constantId = 23,
+              .type = ShaderSpecializationValueType::Bool,
+          },
+      });
+
+  Scene scene("PassFeatureVolatileCompilerScene");
+  [[maybe_unused]] const ShaderHandle shaderHandle =
+      scene.resources().registerShaderResource(
+          shaderUri, std::vector<ResourceUri>{shaderUri}, shader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/compiler_pass_feature"),
+          makeCompilerPassFeatureWithVolatileRuntimeField());
+
+  RenderPathGraph graph;
+  graph.name = "CompilerPassFeatureVolatileGraph";
+  graph.features.push_back(RenderPathFeatureDependency{
+      .slot = "compilerPassFeature",
+      .uri = ResourceUri("memory://features/compiler_pass_feature"),
+  });
+  RenderPassNode node;
+  node.id = "CompilerPass";
+  node.shaderUri = shaderUri;
+  node.stage = RenderPassStage::Raster;
+  node.dispatch = RenderPassDispatch::Fullscreen;
+  node.input.kind = RenderPassInputKind::FullscreenTriangle;
+  node.sources = {"feature.compilerPassFeature"};
+  graph.passes.push_back(node);
+  [[maybe_unused]] const RenderPathGraphHandle graphHandle =
+      scene.resources().registerRenderPathGraph(
+          ResourceUri("memory://graphs/compiler_pass_feature_volatile"), graph);
+
+  FramePass pass;
+  pass.name = StringID("CompilerPass");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = shaderUri;
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("feature.compilerPassFeature"), StringID{}));
+
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("compiler.pass.feature.variant");
+  passFacts.shaderProgram.shaderName = shaderUri.string();
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "volatile pass-level feature fullscreen pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+
+  const auto &constants = descs.front().pipelineBuildDesc.specializationConstants;
+  const auto hasSpecializationConstant =
+      [&](const std::string &name) -> bool {
+    const PassFeatureData *data =
+        scene.resources().findPassFeatureDataByFeatureName(
+            "compilerPassFeature");
+    return data != nullptr &&
+           std::any_of(data->specializationValues.begin(),
+                       data->specializationValues.end(),
+                       [&](const PassFeatureSpecializationValue &value) {
+                         return value.parameterName == name;
+                       });
+  };
+
+  EXPECT(constants.size() == 2,
+         "volatile pass field must not become a pipeline specialization "
+         "constant");
+  EXPECT(!hasSpecializationConstant("enableIblLighting"),
+         "volatile IBL field must not become specialization constant");
 }
 
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
@@ -1891,6 +2036,7 @@ int main() {
   testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature();
   testPipelineKeyIncludesGenericPassSpecializationValue();
   testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection();
+  testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();

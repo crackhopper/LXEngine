@@ -611,6 +611,9 @@ void SceneResourceTable::registerPassFeatureSpecializationData(
 
   const auto &constants = shader.getSpecializationConstants();
   for (const auto &[name, parameter] : feature.parameters) {
+    if (parameter.volatileRuntime) {
+      continue;
+    }
     const auto constant = std::find_if(
         constants.begin(), constants.end(),
         [&](const ShaderSpecializationConstantInfo &candidate) {

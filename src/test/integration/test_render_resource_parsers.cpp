@@ -568,17 +568,38 @@ void testForwardPassRenderFeatureAssetParses() {
              feature.shader->uri ==
                  LX_core::ResourceUri("render_paths/Forward/pbr"),
          "forwardPass should declare Forward pbr shader ABI owner");
-  EXPECT(feature.parameters.size() == 3,
-         "forwardPass should only declare flow switches");
+  EXPECT(feature.parameters.size() == 6,
+         "forwardPass should declare flow switches and volatile IBL fields");
   for (const char *name :
        {"render_skybox", "enable_tonemapping", "enable_gamma"}) {
     EXPECT(feature.parameters.find(name) != feature.parameters.end(),
            std::string("forwardPass should declare ") + name);
     if (feature.parameters.find(name) != feature.parameters.end()) {
+      EXPECT(!feature.parameters.at(name).volatileRuntime,
+             std::string("non-volatile pass parameter expected: ") + name);
       EXPECT(feature.parameters.at(name).binding.empty(),
              std::string("pass parameter must not declare binding: ") + name);
       EXPECT(feature.parameters.at(name).member.empty(),
              std::string("pass parameter must not declare member: ") + name);
+    }
+  }
+  for (const char *name :
+       {"enableIblLighting", "environmentIblReady", "standardPbrIblReady"}) {
+    EXPECT(feature.parameters.find(name) != feature.parameters.end(),
+           std::string("forwardPass should declare volatile field ") + name);
+    if (feature.parameters.find(name) != feature.parameters.end()) {
+      const auto &parameter = feature.parameters.at(name);
+      EXPECT(parameter.volatileRuntime,
+             std::string("IBL pass field should be volatile: ") + name);
+      EXPECT(parameter.binding == "PassRuntimeUBO",
+             std::string("IBL pass field should use PassRuntimeUBO: ") +
+                 name);
+      EXPECT(parameter.member == name,
+             std::string("IBL pass field should map to same UBO member: ") +
+                 name);
+      EXPECT(parameter.value.empty(),
+             std::string("volatile IBL pass field must not define value: ") +
+                 name);
     }
   }
 }
@@ -727,6 +748,73 @@ void testRenderFeatureShaderAbiValidationAcceptsPassSpecializationConstants() {
       LX_core::validateRenderFeatureShaderAbi(feature, shader);
   EXPECT(!typeDiagnostics.empty(),
          "pass-level feature should reject specialization type mismatch");
+}
+
+void testRenderFeatureShaderAbiValidationAcceptsVolatilePassUniformMembers() {
+  LX_core::RenderFeature feature;
+  feature.name = "ForwardPass";
+  feature.feature = "forwardPass";
+  feature.level = LX_core::RenderFeatureLevel::Pass;
+  feature.shader = LX_core::RenderFeatureShaderContract{
+      LX_core::ResourceUri("render_paths/Forward/pbr")};
+  feature.parameters["enableIblLighting"] = LX_core::RenderFeatureParameter{
+      .kind = "bool",
+      .binding = "PassRuntimeUBO",
+      .member = "enableIblLighting",
+      .required = true,
+      .volatileRuntime = true,
+  };
+
+  FakeShader shader;
+  shader.bindings = {
+      LX_core::ShaderResourceBinding{
+          .name = "PassRuntimeUBO",
+          .set = 4,
+          .binding = 1,
+          .type = LX_core::ShaderPropertyType::UniformBuffer,
+          .members = {LX_core::StructMemberInfo{
+              "enableIblLighting", LX_core::ShaderPropertyType::Int, 0, 4}},
+      },
+  };
+
+  const auto diagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(diagnostics.empty(),
+         "volatile pass-level feature should validate reflected UBO member ABI");
+
+  shader.bindings[0].members.clear();
+  const auto missingMemberDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, shader);
+  EXPECT(!missingMemberDiagnostics.empty(),
+         "volatile pass-level feature should reject missing UBO member");
+
+  FakeShader missingPassRuntimeShader;
+  const auto deferredPassRuntimeDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, missingPassRuntimeShader);
+  EXPECT(deferredPassRuntimeDiagnostics.empty(),
+         "missing PassRuntimeUBO is temporarily deferred until Task 14 shader "
+         "ABI lands");
+
+  feature.parameters["enableIblLighting"].binding = "OtherRuntimeUBO";
+  const auto missingOtherRuntimeDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, missingPassRuntimeShader);
+  EXPECT(!missingOtherRuntimeDiagnostics.empty(),
+         "missing non-PassRuntimeUBO volatile binding should fail ABI "
+         "validation");
+
+  FakeShader wrongBindingTypeShader;
+  wrongBindingTypeShader.bindings = {
+      LX_core::ShaderResourceBinding{
+          .name = "OtherRuntimeUBO",
+          .set = 4,
+          .binding = 2,
+          .type = LX_core::ShaderPropertyType::Texture2D,
+      },
+  };
+  const auto wrongBindingTypeDiagnostics =
+      LX_core::validateRenderFeatureShaderAbi(feature, wrongBindingTypeShader);
+  EXPECT(!wrongBindingTypeDiagnostics.empty(),
+         "volatile pass-level feature should reject reflected non-UBO binding");
 }
 
 void testProductionRenderFeatureAssetsValidateShaderAbi() {
@@ -898,6 +986,118 @@ parameters:
          "diagnostic should reject pass-level member");
   EXPECT(hasDiagnosticContaining(parsed, "parameters.other.specialization"),
          "diagnostic should reject parameter-level specialization");
+}
+
+void testRenderFeatureRejectsVolatileValueAndSpecializationFields() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto withValue = parser.parse("memory://feature-volatile-value", R"(
+schema: lxe.render-feature.v1
+name: PassFeature
+feature: passFeature
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    value: true
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+)");
+
+  EXPECT(!withValue.renderFeature.has_value(),
+         "volatile pass parameter with value should fail");
+  EXPECT(hasDiagnosticContaining(withValue,
+                                 "volatile parameter must not define value"),
+         "diagnostic should reject volatile value");
+
+  const auto withConstantId =
+      parser.parse("memory://feature-volatile-constant-id", R"(
+schema: lxe.render-feature.v1
+name: PassFeature
+feature: passFeature
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    constantId: 7
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+)");
+
+  EXPECT(!withConstantId.renderFeature.has_value(),
+         "volatile pass parameter with constantId should fail");
+  EXPECT(hasDiagnosticContaining(
+             withConstantId, "volatile parameter must not define constantId"),
+         "diagnostic should reject volatile constantId");
+
+  const auto withSpecialization =
+      parser.parse("memory://feature-volatile-specialization", R"(
+schema: lxe.render-feature.v1
+name: PassFeature
+feature: passFeature
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    specialization:
+      constantId: 7
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+)");
+
+  EXPECT(!withSpecialization.renderFeature.has_value(),
+         "volatile pass parameter with specialization metadata should fail");
+  EXPECT(hasDiagnosticContaining(withSpecialization,
+                                 "volatile parameter must not define "
+                                 "specialization"),
+         "diagnostic should reject volatile specialization metadata");
+}
+
+void testRenderFeatureAcceptsVolatilePassUniformField() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-volatile-uniform", R"(
+schema: lxe.render-feature.v1
+name: PassFeature
+feature: passFeature
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+    required: true
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "volatile pass uniform field should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "volatile pass uniform field should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+  const auto parameter =
+      parsed.renderFeature->parameters.find("enableIblLighting");
+  EXPECT(parameter != parsed.renderFeature->parameters.end(),
+         "volatile pass uniform field should be retained");
+  if (parameter != parsed.renderFeature->parameters.end()) {
+    EXPECT(parameter->second.binding == "PassRuntimeUBO",
+           "volatile pass uniform field should retain binding");
+    EXPECT(parameter->second.member == "enableIblLighting",
+           "volatile pass uniform field should retain member");
+    EXPECT(parameter->second.volatileRuntime,
+           "volatile YAML field should be consumed into volatileRuntime");
+  }
 }
 
 void testTextureResourceParserUsesDeclaredContentFormat() {
@@ -2559,12 +2759,15 @@ int main() {
   testBloomRenderFeatureAssetParses();
   testRenderFeatureShaderAbiValidationAcceptsShaderBindingsAndMembers();
   testRenderFeatureShaderAbiValidationAcceptsPassSpecializationConstants();
+  testRenderFeatureShaderAbiValidationAcceptsVolatilePassUniformMembers();
   testProductionRenderFeatureAssetsValidateShaderAbi();
   testRenderFeatureRejectsMissingLevel();
   testRenderFeatureRejectsInvalidLevel();
   testRenderFeatureRejectsMalformedShader();
   testRenderFeatureRejectsAbiParameterWithoutShaderUri();
   testRenderFeatureRejectsPassBindingMemberAndSpecialization();
+  testRenderFeatureRejectsVolatileValueAndSpecializationFields();
+  testRenderFeatureAcceptsVolatilePassUniformField();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();

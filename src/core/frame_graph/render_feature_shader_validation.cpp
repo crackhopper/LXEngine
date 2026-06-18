@@ -27,6 +27,9 @@ std::string featureParameterTypeName(const RenderFeatureParameter &parameter) {
 
 bool parameterKindMatchesBinding(const RenderFeatureParameter &parameter,
                                  ShaderPropertyType type) {
+  if (parameter.kind == "bool") {
+    return type == ShaderPropertyType::Int;
+  }
   if (parameter.kind == "textureCube") {
     return type == ShaderPropertyType::TextureCube;
   }
@@ -124,6 +127,51 @@ void validatePassLevelParameter(
     const IShader &shader, const std::string &name,
     const RenderFeatureParameter &parameter,
     std::vector<RenderFeatureShaderValidationDiagnostic> &diagnostics) {
+  if (parameter.volatileRuntime) {
+    if (parameter.binding.empty()) {
+      diagnostics.push_back(makeError(
+          name, "volatile pass parameter has no shader ABI binding"));
+      return;
+    }
+    const auto binding = shader.findBinding(parameter.binding);
+    if (!binding.has_value()) {
+      if (parameter.binding == "PassRuntimeUBO") {
+        // TODO(Task 14): Forward shader does not reflect PassRuntimeUBO yet.
+        // Keep this narrow deferral only for the temporary runtime IBL fields.
+        return;
+      }
+      diagnostics.push_back(makeError(
+          name, "shader ABI binding '" + parameter.binding +
+                    "' was not reflected"));
+      return;
+    }
+    if (parameter.member.empty()) {
+      diagnostics.push_back(makeError(
+          name, "volatile pass parameter has no shader ABI member"));
+      return;
+    }
+    if (binding->get().type != ShaderPropertyType::UniformBuffer) {
+      diagnostics.push_back(makeError(
+          name, "shader ABI binding '" + parameter.binding +
+                    "' is not a UniformBuffer"));
+      return;
+    }
+    const StructMemberInfo *member = findMember(binding->get(), parameter.member);
+    if (member == nullptr) {
+      diagnostics.push_back(makeError(
+          name, "shader ABI member '" + parameter.member +
+                    "' was not reflected in binding '" + parameter.binding + "'"));
+      return;
+    }
+    if (!parameterKindMatchesBinding(parameter, member->type)) {
+      diagnostics.push_back(makeError(
+          name, "shader ABI member '" + parameter.member +
+                    "' type does not match parameter kind '" +
+                    featureParameterTypeName(parameter) + "'"));
+    }
+    return;
+  }
+
   const auto &constants = shader.getSpecializationConstants();
   const auto constant = std::find_if(
       constants.begin(), constants.end(),

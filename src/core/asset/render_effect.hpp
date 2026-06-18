@@ -112,6 +112,7 @@ struct RenderFeatureParameter final {
   std::string binding;
   std::string member;
   bool required = false;
+  bool volatileRuntime = false;
   std::vector<std::string> allowedValues;
   std::string requiredWhenParameter;
   std::string requiredWhenEquals;
