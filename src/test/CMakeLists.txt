@@ -11,6 +11,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_render_path_graph_pass_contract
   test_render_resource_parsers
   test_render_work_compiler
+  test_scene_bake_cache
   test_vulkan_post_process_builder
   test_scene_resource_upload_view_v2
   test_vulkan_offline_renderer
@@ -49,6 +50,7 @@ endforeach()
 
 if(TARGET ${LXE_EDITOR_LIB})
   target_link_libraries(test_lxe_editor_render_debug_dump PRIVATE ${LXE_EDITOR_LIB})
+  target_link_libraries(test_scene_bake_cache PRIVATE ${LXE_EDITOR_LIB})
 endif()
 
 foreach(TEST_EXE

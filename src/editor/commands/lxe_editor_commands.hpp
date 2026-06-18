@@ -11,6 +11,7 @@
 
 namespace LX_core {
 class EditorState;
+class IblBakeJobService;
 class Scene;
 } // namespace LX_core
 
@@ -49,6 +50,8 @@ struct LxeEditorCommandContext final {
       std::function<LX_core::CommandResult(std::string_view profileName)>;
   using RealtimeRenderModeFn =
       std::function<LX_core::CommandResult(std::string_view modeName)>;
+  using IblBakeJobServiceFn = std::function<
+      std::optional<std::reference_wrapper<LX_core::IblBakeJobService>>()>;
 
   LX_core::EditorState &editorState;
   LX_core::Scene &scene;
@@ -78,7 +81,11 @@ struct LxeEditorCommandContext final {
   RealtimeRenderListJsonFn realtimeRenderListJson;
   RealtimeRenderRunFn realtimeRenderRun;
   RealtimeRenderModeFn realtimeRenderMode;
+  IblBakeJobServiceFn iblBakeJobs;
 };
+
+void registerBakeCommands(LX_core::CommandBus &bus,
+                          LX_core::IblBakeJobService &service);
 
 void registerLxeEditorCommands(LX_core::CommandBus &bus,
                                const LxeEditorCommandContext &context);

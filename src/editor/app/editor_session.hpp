@@ -4,6 +4,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/platform/types.hpp"
 #include "core/rhi/live_render_view.hpp"
+#include "core/scene/ibl_bake_job.hpp"
 #include "editor/app/editor_config_state.hpp"
 #include "editor/app/editor_data_state.hpp"
 #include "editor/app/editor_scene_state.hpp"
@@ -161,6 +162,7 @@ private:
   EditorDataState m_editorDataState;
   EditorDataDocument m_editorData;
   RecordingController m_recording;
+  LX_core::IblBakeJobService m_iblBakeJobs;
   DisplayCommandHooks m_displayCommandHooks;
   RenderDebugCommandHooks m_renderDebugCommandHooks;
   RealtimeRenderProfileHooks m_realtimeRenderProfileHooks;

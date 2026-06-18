@@ -1495,6 +1495,11 @@ void LxeEditorSession::rebuildBindings(
               [this](std::string_view modeName) {
                 return setRealtimeRenderMode(modeName);
               },
+          .iblBakeJobs =
+              [this]() -> std::optional<
+                            std::reference_wrapper<LX_core::IblBakeJobService>> {
+                return m_iblBakeJobs;
+              },
       });
   registerRenderDebugCommand(*m_commandBus, m_renderDebugCommandHooks);
 
