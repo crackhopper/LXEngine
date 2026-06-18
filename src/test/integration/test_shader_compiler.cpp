@@ -1,3 +1,4 @@
+#include "core/asset/shader_binding_ownership.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/scene_system_abi.hpp"
 #include "core/scene/scene_system_abi_validation.hpp"
@@ -1458,22 +1459,25 @@ static bool testPbrFragmentAppliesDirectionalLightIntensity(
 }
 
 static bool
-testPbrFragmentAppliesConstantEnvironmentLight(
+testPbrFragmentUsesSurfaceLightingFacts(
     const std::filesystem::path &fragPath) {
-  std::cout << "  Test: PBR fragment applies constant environment light\n";
+  std::cout << "  Test: PBR fragment uses surface lighting facts\n";
   const auto source = readTextFile(fragPath);
-  if (source.find("lxEvaluateConstantEnvironmentLight") == std::string::npos) {
-    std::cerr << "  FAIL: pbr.frag should apply constant environment "
-                 "lighting before postprocess\n";
+  if (source.find("EnvironmentUBO") != std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should not source surface lighting from "
+                 "retired EnvironmentUBO\n";
     return false;
   }
-  if (source.find("environment.ambientColorIntensity") == std::string::npos) {
-    std::cerr << "  FAIL: pbr.frag should source ambient lighting from "
-                 "the environment uniform\n";
+  if (source.find("#include \"common/ibl_lighting.glsl\"") ==
+          std::string::npos ||
+      source.find("lxSurfaceLightingStandardPbrIblReady") ==
+          std::string::npos) {
+    std::cerr << "  FAIL: pbr.frag should source runtime surface lighting "
+                 "facts from the shared IBL helper\n";
     return false;
   }
 
-  std::cout << "  PASS: PBR fragment applies constant environment light\n";
+  std::cout << "  PASS: PBR fragment uses surface lighting facts\n";
   return true;
 }
 
@@ -1496,10 +1500,52 @@ testIblFormulaUsesSharedCommon(const std::filesystem::path &shaderDir) {
       shaderSource("render_paths/Forward/pbr.frag");
   const std::string deferredSource =
       shaderSource("render_paths/Deferred/deferred_lighting.frag");
+  const std::filesystem::path commonPath =
+      shaderDir / "common" / "ibl_lighting.glsl";
+  const std::string commonSource = readTextFile(commonPath);
+  const std::string surfaceFeatureSource =
+      shaderSource("features/surface_lighting.glsl");
 
+  passed &= expect(std::filesystem::exists(commonPath),
+                   "common/ibl_lighting.glsl should exist");
+  passed &= expect(
+      commonSource.find("evaluateIblStandardPbr(") != std::string::npos,
+      "common IBL helper should expose standard PBR IBL formula");
+  passed &= expect(
+      commonSource.find("texture(IrradianceMap") != std::string::npos,
+      "common IBL helper should sample IrradianceMap");
+  passed &= expect(
+      commonSource.find("textureLod(PrefilteredEnvMap") != std::string::npos,
+      "common IBL helper should sample PrefilteredEnvMap");
+  passed &= expect(commonSource.find("texture(BrdfLut") != std::string::npos,
+                   "common IBL helper should sample BrdfLut");
+  passed &= expect(
+      commonSource.find("#include \"features/surface_lighting.glsl\"") !=
+          std::string::npos,
+      "common IBL helper should include the surfaceLighting ABI");
+  passed &= expect(
+      commonSource.find("lxSurfaceLightingStandardPbrIblReady") !=
+          std::string::npos,
+      "common IBL helper should use the shared readiness branch");
+  passed &= expect(
+      surfaceFeatureSource.find("surfaceLighting.enableIblLighting") !=
+          std::string::npos,
+      "surfaceLighting feature ABI should branch on enableIblLighting");
+  passed &= expect(
+      surfaceFeatureSource.find("surfaceLighting.environmentIblReady") !=
+          std::string::npos,
+      "surfaceLighting feature ABI should branch on environmentIblReady");
+  passed &= expect(
+      surfaceFeatureSource.find("surfaceLighting.standardPbrIblReady") !=
+          std::string::npos,
+      "surfaceLighting feature ABI should branch on standardPbrIblReady");
   passed &= expect(
       forwardSource.find("evaluateIblStandardPbr(") != std::string::npos,
       "Forward should call common IBL helper");
+  passed &= expect(
+      forwardSource.find("#include \"common/ibl_lighting.glsl\"") !=
+          std::string::npos,
+      "Forward should include common IBL helper");
   passed &= expect(
       forwardSource.find("textureLod(PrefilteredEnvMap") == std::string::npos, // named-negative-ibl-formula-audit
       "Forward must not inline prefiltered env formula");
@@ -1509,10 +1555,114 @@ testIblFormulaUsesSharedCommon(const std::filesystem::path &shaderDir) {
       deferredSource.find("common/ibl_lighting.glsl") != std::string::npos,
       "Deferred should include common IBL helper");
   passed &= expect(
+      deferredSource.find("evaluateIblStandardPbr(") != std::string::npos,
+      "Deferred should call common IBL helper");
+  passed &= expect(
       deferredSource.find("textureLod(PrefilteredEnvMap") == std::string::npos, // named-negative-ibl-formula-audit
       "Deferred must not inline prefiltered env formula");
   passed &= expect(deferredSource.find("texture(BrdfLut") == std::string::npos, // named-negative-ibl-formula-audit
                    "Deferred must not inline BRDF LUT formula");
+  const std::vector<std::string> retiredTruthTokens{ // named-negative-ibl-formula-audit
+      "HAS_IBL", "EnvironmentUBO", "iblIntensity"};
+  for (const std::string &token : retiredTruthTokens) {
+    passed &= expect(forwardSource.find(token) == std::string::npos,
+                     "Forward must not contain retired IBL truth token " +
+                         token);
+    passed &= expect(deferredSource.find(token) == std::string::npos,
+                     "Deferred must not contain retired IBL truth token " +
+                         token);
+  }
+
+  const auto expectSharedIblReflection =
+      [&](const std::filesystem::path &vertPath,
+          const std::filesystem::path &fragPath,
+          const std::vector<ShaderVariant> &variants,
+          const char *label) {
+        auto compileResult =
+            ShaderCompiler::compileProgram(vertPath, fragPath, variants);
+        if (!compileResult.success) {
+          std::cerr << "  FAIL: " << label
+                    << " IBL ABI compile failed: "
+                    << compileResult.errorMessage << "\n";
+          return false;
+        }
+        const auto bindings = ShaderReflector::reflect(compileResult.stages);
+        bool ok = true;
+        ok &= expect(hasBinding(bindings, "IrradianceMap",
+                                ShaderPropertyType::TextureCube, 3, 0),
+                     std::string(label) +
+                         " should reflect IrradianceMap at set=3 binding=0");
+        ok &= expect(hasBinding(bindings, "PrefilteredEnvMap",
+                                ShaderPropertyType::TextureCube, 3, 1),
+                     std::string(label) +
+                         " should reflect PrefilteredEnvMap at set=3 "
+                         "binding=1");
+        ok &= expect(hasBinding(bindings, "BrdfLut",
+                                ShaderPropertyType::Texture2D, 3, 2),
+                     std::string(label) +
+                         " should reflect BrdfLut at set=3 binding=2");
+        const auto surfaceLighting =
+            std::find_if(bindings.begin(), bindings.end(),
+                         [](const ShaderResourceBinding &binding) {
+                           return binding.name == "SurfaceLightingUBO";
+                         });
+        ok &= expect(surfaceLighting != bindings.end(),
+                     std::string(label) +
+                         " should reflect SurfaceLightingUBO");
+        if (surfaceLighting != bindings.end()) {
+          ok &= expect(surfaceLighting->type ==
+                           ShaderPropertyType::UniformBuffer,
+                       std::string(label) +
+                           " SurfaceLightingUBO should be a uniform buffer");
+          ok &= expect(surfaceLighting->set == 4 &&
+                           surfaceLighting->binding == 2,
+                       std::string(label) +
+                           " SurfaceLightingUBO should use set=4 binding=2");
+          const struct {
+            const char *name;
+            u32 offset;
+          } members[] = {{"enableIblLighting", 0},
+                         {"diffuseIblIntensity", 4},
+                         {"specularIblIntensity", 8},
+                         {"environmentIblReady", 12},
+                         {"standardPbrIblReady", 16}};
+          for (const auto &member : members) {
+            const StructMemberInfo *reflectedMember =
+                findMember(*surfaceLighting, member.name);
+            ok &= expect(reflectedMember != nullptr,
+                         std::string(label) +
+                             " SurfaceLightingUBO should reflect member " +
+                             member.name);
+            if (reflectedMember != nullptr) {
+              ok &= expect(reflectedMember->offset == member.offset,
+                           std::string(label) +
+                               " SurfaceLightingUBO member offset mismatch for " +
+                               member.name);
+            }
+          }
+        }
+        return ok;
+      };
+
+  passed &= expectSharedIblReflection(
+      shaderDir / "render_paths" / "Forward" / "pbr.vert",
+      shaderDir / "render_paths" / "Forward" / "pbr.frag",
+      withMaterialContractSource(), "Forward");
+  passed &= expectSharedIblReflection(
+      shaderDir / "render_paths" / "Deferred" / "deferred_lighting.vert",
+      shaderDir / "render_paths" / "Deferred" / "deferred_lighting.frag", {},
+      "Deferred");
+
+  passed &= expect(isSystemOwnedBinding("SurfaceLightingUBO"),
+                   "SurfaceLightingUBO should be system-owned");
+  const auto expectedSurfaceLightingType =
+      getExpectedTypeForSystemBinding("SurfaceLightingUBO");
+  passed &= expect(expectedSurfaceLightingType.has_value() &&
+                       *expectedSurfaceLightingType ==
+                           ShaderPropertyType::UniformBuffer,
+                   "SurfaceLightingUBO should expect UniformBuffer type");
+  passed &= expect(!isMaterialOwnedBinding("SurfaceLightingUBO"),
+                   "SurfaceLightingUBO should not be material-owned");
 
   if (passed) {
     std::cout << "  PASS: Forward and Deferred use shared IBL formula\n";
@@ -1786,7 +1936,7 @@ int main(int argc, char *argv[]) {
     ++failures;
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
     ++failures;
-  if (!testPbrFragmentAppliesConstantEnvironmentLight(fragPath))
+  if (!testPbrFragmentUsesSurfaceLightingFacts(fragPath))
     ++failures;
   if (!testIblFormulaUsesSharedCommon(shaderDir))
     ++failures;

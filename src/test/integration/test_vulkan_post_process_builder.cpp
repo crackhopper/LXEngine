@@ -1,5 +1,6 @@
 #include "backend/vulkan/vulkan_post_process_builder.hpp"
 #include "backend/vulkan/vulkan_realtime_renderer.hpp"
+#include "core/frame_graph/pass.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -54,6 +55,39 @@ void testStandardPostProcessKeepsOutputEncodingGamma() {
          "PostProcessUBO.gamma should be a float");
   expectNear(value->floatValue, 1.0f,
              "linear output encoding should keep gamma at 1.0");
+}
+
+void testDeferredLightingMaterialUsesSharedIblRuntimeAbi() {
+  const LX_core::backend::VulkanPostProcessSettings settings;
+  LX_core::backend::VulkanPostProcessBuilder builder(settings);
+  const auto material = builder.createDeferredLightingMaterial();
+  const auto shader = material->getPassShader(LX_core::Pass_DeferredLighting);
+  expect(shader != nullptr, "DeferredLighting material should expose a shader");
+
+  const auto hasBinding = [&](const char *name,
+                              LX_core::ShaderPropertyType type, u32 set,
+                              u32 binding) {
+    const auto found = shader->findBinding(name);
+    return found.has_value() && found->get().type == type &&
+           found->get().set == set && found->get().binding == binding;
+  };
+
+  expect(hasBinding("IrradianceMap", LX_core::ShaderPropertyType::TextureCube,
+                    3, 0),
+         "DeferredLighting runtime ABI should bind IrradianceMap");
+  expect(hasBinding("PrefilteredEnvMap",
+                    LX_core::ShaderPropertyType::TextureCube, 3, 1),
+         "DeferredLighting runtime ABI should bind PrefilteredEnvMap");
+  expect(hasBinding("BrdfLut", LX_core::ShaderPropertyType::Texture2D, 3, 2),
+         "DeferredLighting runtime ABI should bind BrdfLut");
+  expect(hasBinding("ToneMappingUBO",
+                    LX_core::ShaderPropertyType::UniformBuffer, 4, 0),
+         "DeferredLighting runtime ABI should bind ToneMappingUBO");
+  expect(hasBinding("SurfaceLightingUBO",
+                    LX_core::ShaderPropertyType::UniformBuffer, 4, 2),
+         "DeferredLighting runtime ABI should bind SurfaceLightingUBO");
+  expect(!shader->findBinding("EnvironmentUBO").has_value(),
+         "DeferredLighting runtime ABI should not bind retired EnvironmentUBO");
 }
 
 LX_core::backend::PreparedRenderStateKey makePreparedKey(
@@ -233,6 +267,7 @@ void testPreparedRenderStateCacheSplitsDescriptorAndVolatileUploadDirty() {
 int main() {
   testStandardPostProcessUsesConfiguredExposure();
   testStandardPostProcessKeepsOutputEncodingGamma();
+  testDeferredLightingMaterialUsesSharedIblRuntimeAbi();
   testPreparedRenderStateCacheSkipsStaticFrameWork();
   testPreparedRenderStateCacheInvalidatesOnTargetShapeChange();
   testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration();

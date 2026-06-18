@@ -455,6 +455,7 @@ private:
   [[nodiscard]] bool
   validateActiveIblEnvironment(const ActiveIblEnvironmentResources &active,
                                std::vector<std::string> &diagnostics) const;
+  void updateSurfaceLightingIblReadiness();
 
   void advanceUploadGeneration();
   void advanceDescriptorResourceSelectionGeneration();

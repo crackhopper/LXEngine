@@ -1,6 +1,7 @@
 #version 450
 
 #include "common/pbr.glsl"
+#include "common/ibl_lighting.glsl"
 #include "common/tone_mapping.glsl"
 
 layout(location = 0) in vec2 vUV;
@@ -22,20 +23,9 @@ layout(set = 2, binding = 0) uniform LightUBO {
     vec4 color;
 } light;
 
-layout(set = 3, binding = 3) uniform EnvironmentUBO {
-    vec4 params;
-    vec4 ambientColorIntensity;
-} environment;
-
 layout(set = 4, binding = 0) uniform ToneMappingUBO {
     vec4 params; // x: enabled, y: exposure, z: mode, w: gamma
 } toneMapping;
-
-#ifdef HAS_IBL
-layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
-layout(set = 3, binding = 1) uniform samplerCube PrefilteredEnvMap;
-layout(set = 3, binding = 2) uniform sampler2D BrdfLut;
-#endif
 
 vec3 reconstructWorldPosition(vec2 uv, float depth) {
     vec4 clip = vec4(uv * 2.0 - 1.0, depth, 1.0);
@@ -84,29 +74,10 @@ void main() {
     vec3 F0 = lxPbrF0(albedoAlpha.rgb, metallic);
     float NdotV = max(dot(N, V), 0.0);
     vec3 color = lxPbrLayeredClearcoatDirectLight(pbrInput, clearcoat);
-    color += lxEvaluateConstantEnvironmentLight(
-        albedoAlpha.rgb, metallic, roughness, ao, NdotV, F0,
-        environment.ambientColorIntensity);
-
-#ifdef HAS_IBL
-    float iblIntensity = max(environment.params.x, 0.0);
-    if (iblIntensity > 0.0) {
-        vec3 F_ibl = lxFresnelSchlickRoughness(NdotV, F0, roughness);
-        vec3 kD_ibl = (vec3(1.0) - F_ibl) * (1.0 - metallic);
-
-        vec3 irradiance = texture(IrradianceMap, N).rgb;
-        vec3 diffuse = irradiance * albedoAlpha.rgb;
-
-        vec3 R = reflect(-V, N);
-        float maxMip = max(environment.params.y - 1.0, 0.0);
-        vec3 prefilteredColor =
-            textureLod(PrefilteredEnvMap, R, roughness * maxMip).rgb;
-        vec2 brdf = texture(BrdfLut, vec2(NdotV, roughness)).rg;
-        vec3 specularIbl = prefilteredColor * (F_ibl * brdf.x + brdf.y);
-
-        color += (kD_ibl * diffuse + specularIbl) * ao * iblIntensity;
+    if (lxSurfaceLightingStandardPbrIblReady()) {
+        color += evaluateIblStandardPbr(albedoAlpha.rgb, metallic, roughness,
+                                        ao, N, V, NdotV, F0);
     }
-#endif
 
     LxToneMappingParams toneParams;
     toneParams.enabled = toneMapping.params.x;

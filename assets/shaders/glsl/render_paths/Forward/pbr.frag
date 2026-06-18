@@ -4,6 +4,7 @@
 #include "common/material_surface.glsl"
 #include "common/material_bsdf.glsl"
 #include "common/pbr.glsl"
+#include "common/ibl_lighting.glsl"
 #include "common/gamma_adjust.glsl"
 #include "features/tone_mapping.glsl"
 #if defined(LX_MATERIAL_CONTRACT_SOURCE)
@@ -43,17 +44,6 @@ layout(set = 2, binding = 0) uniform LightUBO {
     vec4 direction;
     vec4 color;
 } light;
-
-layout(set = 3, binding = 3) uniform EnvironmentUBO {
-    vec4 params; // x: IBL intensity, y: prefiltered mip count
-    vec4 ambientColorIntensity; // rgb: constant environment color, a: intensity
-} environment;
-
-#ifdef HAS_IBL
-layout(set = 3, binding = 0) uniform samplerCube IrradianceMap;
-layout(set = 3, binding = 1) uniform samplerCube PrefilteredEnvMap;
-layout(set = 3, binding = 2) uniform sampler2D BrdfLut;
-#endif
 
 mat3 makeFallbackTangentFrame(vec3 normal) {
     vec3 helper = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0)
@@ -115,30 +105,11 @@ void main() {
         vec3 F0 = lxPbrF0(albedo.rgb, metallic);
 
         float NdotV = max(dot(N, V), 0.0);
-        vec3 ambient = lxEvaluateConstantEnvironmentLight(
-            albedo.rgb, metallic, roughness, ao, NdotV, F0,
-            environment.ambientColorIntensity);
-#ifdef HAS_IBL
-        // Ambient/IBL is opt-in through the material variant and scene
-        // EnvironmentUBO. Direct-light compare materials leave HAS_IBL disabled.
-        float iblIntensity = max(environment.params.x, 0.0);
-        if (iblIntensity > 0.0) {
-            vec3 F_ibl = lxFresnelSchlickRoughness(NdotV, F0, roughness);
-            vec3 kD_ibl = (vec3(1.0) - F_ibl) * (1.0 - metallic);
-
-            vec3 irradiance = texture(IrradianceMap, N).rgb;
-            vec3 diffuse = irradiance * albedo.rgb;
-
-            vec3 R = reflect(-V, N);
-            float maxMip = max(environment.params.y - 1.0, 0.0);
-            vec3 prefilteredColor =
-                textureLod(PrefilteredEnvMap, R, roughness * maxMip).rgb;
-            vec2 brdf = texture(BrdfLut, vec2(NdotV, roughness)).rg;
-            vec3 specularIbl = prefilteredColor * (F_ibl * brdf.x + brdf.y);
-
-            ambient = (kD_ibl * diffuse + specularIbl) * ao * iblIntensity;
+        vec3 ambient = vec3(0.0);
+        if (lxSurfaceLightingStandardPbrIblReady()) {
+            ambient = evaluateIblStandardPbr(albedo.rgb, metallic, roughness,
+                                             ao, N, V, NdotV, F0);
         }
-#endif
 
         vec3 color = ambient + Lo;
         color += lxPbrEmissive(pbrInput);

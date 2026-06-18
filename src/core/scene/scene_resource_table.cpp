@@ -524,6 +524,8 @@ SceneResourceTable::SceneResourceTable() {
   (void)registerTexture(
       defaultFlatNormalTextureUri(),
       makeSolidDefaultTexture(128, 128, 255, 255, TextureContent::Normal));
+  m_iblEnvironmentResources =
+      completeIblEnvironmentResources(IblEnvironmentResources{});
 }
 SceneResourceTable::~SceneResourceTable() = default;
 SceneResourceTable::SceneResourceTable(SceneResourceTable &&) noexcept =
@@ -2210,6 +2212,34 @@ bool SceneResourceTable::validateActiveIblEnvironment(
   return ok;
 }
 
+void SceneResourceTable::updateSurfaceLightingIblReadiness() {
+  if (!m_surfaceLightingUbo) {
+    return;
+  }
+
+  bool environmentReady = false;
+  bool standardPbrReady = false;
+  if (m_activeIblEnvironment.has_value()) {
+    environmentReady = m_activeIblEnvironment->diffuseSh.isValid() &&
+                       m_activeIblEnvironment->specularPrefilteredCubemap
+                           .isValid();
+    standardPbrReady =
+        m_activeIblEnvironment->standardPbrBrdfLut.isValid();
+  }
+
+  auto &param = m_surfaceLightingUbo->param;
+  if ((param.environmentIblReady != 0u) == environmentReady &&
+      (param.standardPbrIblReady != 0u) == standardPbrReady) {
+    return;
+  }
+
+  m_surfaceLightingUbo->set(param.enableIblLighting != 0u,
+                            param.diffuseIblIntensity,
+                            param.specularIblIntensity, environmentReady,
+                            standardPbrReady);
+  markDescriptorUploadDirty();
+}
+
 IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
     IblEnvironmentActivationPayload payload) {
   const u64 activeGeneration =
@@ -2276,6 +2306,7 @@ IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
         m_standardPbrBrdfLuts, oldActive->standardPbrBrdfLut);
   }
   markBakedResourceDirty();
+  updateSurfaceLightingIblReadiness();
   return IblEnvironmentActivationResult::success(activeGeneration);
 }
 
@@ -2416,6 +2447,7 @@ void SceneResourceTable::registerSurfaceLightingResources(
            parseFeatureBool(environmentIblReady, false),
            parseFeatureBool(standardPbrIblReady, false));
   m_surfaceLightingUbo = std::move(ubo);
+  updateSurfaceLightingIblReadiness();
   markDescriptorUploadDirty();
 }
 

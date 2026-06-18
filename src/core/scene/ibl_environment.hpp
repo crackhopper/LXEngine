@@ -240,6 +240,46 @@ struct IblEnvironmentActivationResult final {
 
 inline IblEnvironmentResources
 completeIblEnvironmentResources(IblEnvironmentResources resources) {
+  const auto makeFallbackSampler = [](StringID bindingName,
+                                      TextureDimension dimension,
+                                      TextureFormat format,
+                                      TextureContent content) {
+    TextureDesc desc;
+    desc.width = 1;
+    desc.height = 1;
+    desc.format = format;
+    desc.content = content;
+    desc.dimension = dimension;
+    desc.mipLevels = 1;
+    desc.arrayLayers = dimension == TextureDimension::TextureCube ? 6u : 1u;
+
+    auto sampler = std::make_shared<CombinedTextureSampler>(
+        std::make_shared<Texture>(
+            desc, std::vector<u8>(expectedTextureByteCount(desc), 0)));
+    sampler->setBindingName(bindingName);
+    sampler->setDirty();
+    return sampler;
+  };
+
+  if (!resources.irradianceCubemap) {
+    resources.irradianceCubemap =
+        makeFallbackSampler(StringID("IrradianceMap"),
+                            TextureDimension::TextureCube,
+                            TextureFormat::RGBA16Float,
+                            TextureContent::Environment);
+  }
+  if (!resources.prefilteredRadianceCubemap) {
+    resources.prefilteredRadianceCubemap =
+        makeFallbackSampler(StringID("PrefilteredEnvMap"),
+                            TextureDimension::TextureCube,
+                            TextureFormat::RGBA16Float,
+                            TextureContent::Environment);
+  }
+  if (!resources.brdfLut) {
+    resources.brdfLut =
+        makeFallbackSampler(StringID("BrdfLut"), TextureDimension::Texture2D,
+                            TextureFormat::RG16Float, TextureContent::Data);
+  }
   if (resources.skyboxCubemap) {
     resources.skyboxCubemap->setBindingName(StringID("SkyboxMap"));
   }

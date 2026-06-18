@@ -391,6 +391,14 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       out.emplace_back(resource.get());
     }
   }
+  if (pass == Pass_DeferredLighting) {
+    for (const GpuResourceRef &resource :
+         m_resources.getIblEnvironmentResources()) {
+      if (resource.isValid()) {
+        out.emplace_back(resource.get());
+      }
+    }
+  }
   for (const GpuResourceRef &resource : m_resources.getToneMappingResources()) {
     if (resource.isValid()) {
       out.emplace_back(resource.get());

@@ -5,6 +5,7 @@
 #include "core/resource/resource_metadata.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/ibl_bake_manifest.hpp"
+#include "core/scene/scene.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
 #include <algorithm>
@@ -293,6 +294,65 @@ RenderFeature makeEnvironmentLightingFeature(ResourceUri uri) {
   return feature;
 }
 
+RenderFeature makeSurfaceLightingFeature() {
+  RenderFeature feature;
+  feature.name = "SurfaceLighting";
+  feature.feature = "surfaceLighting";
+  feature.level = RenderFeatureLevel::Shader;
+  feature.shader = RenderFeatureShaderContract{
+      .uri = ResourceUri("features/surface_lighting"),
+  };
+  feature.parameters["enableIblLighting"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+      .binding = "SurfaceLightingUBO",
+      .member = "enableIblLighting",
+      .required = true,
+  };
+  feature.parameters["diffuseIblIntensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "SurfaceLightingUBO",
+      .member = "diffuseIblIntensity",
+      .required = true,
+  };
+  feature.parameters["specularIblIntensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "SurfaceLightingUBO",
+      .member = "specularIblIntensity",
+      .required = true,
+  };
+  feature.parameters["environmentIblReady"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "false",
+      .binding = "SurfaceLightingUBO",
+      .member = "environmentIblReady",
+      .required = true,
+  };
+  feature.parameters["standardPbrIblReady"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "false",
+      .binding = "SurfaceLightingUBO",
+      .member = "standardPbrIblReady",
+      .required = true,
+  };
+  return feature;
+}
+
+const SurfaceLightingData::Param *
+findSurfaceLightingParam(const SceneResourceTable &table) {
+  for (const GpuResourceRef &resource : table.getSurfaceLightingResources()) {
+    if (resource.isValid() &&
+        resource.getBindingName() == StringID("SurfaceLightingUBO") &&
+        resource.get().getByteSize() == sizeof(SurfaceLightingData::Param)) {
+      return static_cast<const SurfaceLightingData::Param *>(
+          resource.get().getRawData());
+    }
+  }
+  return nullptr;
+}
+
 void testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap() {
   SceneResourceTable table;
   const RenderFeatureHandle handle = table.registerRenderFeature(
@@ -449,6 +509,142 @@ void testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists() {
          "descriptor resource path should keep PrefilteredEnvMap");
   EXPECT(hasBinding(StringID("BrdfLut")),
          "descriptor resource path should keep BrdfLut");
+}
+
+void testIblDescriptorResourcesIncludeDefaultSamplersWhenEnvironmentIsMissing() {
+  SceneResourceTable table;
+  IblEnvironmentResources resources;
+  resources.environmentUbo = std::make_unique<EnvironmentData>();
+  table.setIblEnvironmentResources(std::move(resources));
+
+  const std::vector<GpuResourceRef> descriptors =
+      table.getIblEnvironmentResources();
+  const auto hasSamplerBinding = [&](StringID bindingName) {
+    return std::any_of(descriptors.begin(), descriptors.end(),
+                       [&](const GpuResourceRef &resource) {
+                         return resource.isValid() &&
+                                resource.getType() ==
+                                    ResourceType::CombinedImageSampler &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+
+  EXPECT(hasSamplerBinding(StringID("IrradianceMap")),
+         "default IBL descriptor package should include IrradianceMap");
+  EXPECT(hasSamplerBinding(StringID("PrefilteredEnvMap")),
+         "default IBL descriptor package should include PrefilteredEnvMap");
+  EXPECT(hasSamplerBinding(StringID("BrdfLut")),
+         "default IBL descriptor package should include BrdfLut");
+}
+
+void testDefaultSceneResourceTableExportsIblSamplerFallbacks() {
+  SceneResourceTable table;
+  const std::vector<GpuResourceRef> descriptors =
+      table.getIblEnvironmentResources();
+  const auto hasSamplerBinding = [&](StringID bindingName) {
+    return std::any_of(descriptors.begin(), descriptors.end(),
+                       [&](const GpuResourceRef &resource) {
+                         return resource.isValid() &&
+                                resource.getType() ==
+                                    ResourceType::CombinedImageSampler &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+
+  EXPECT(hasSamplerBinding(StringID("IrradianceMap")),
+         "default SceneResourceTable should export an IrradianceMap fallback");
+  EXPECT(hasSamplerBinding(StringID("PrefilteredEnvMap")),
+         "default SceneResourceTable should export a PrefilteredEnvMap "
+         "fallback");
+  EXPECT(hasSamplerBinding(StringID("BrdfLut")),
+         "default SceneResourceTable should export a BrdfLut fallback");
+}
+
+void testSurfaceLightingReadinessFollowsActiveIblActivation() {
+  SceneResourceTable table;
+  const RenderFeatureHandle featureHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/surface_lighting.render-feature"),
+      makeSurfaceLightingFeature());
+  EXPECT(featureHandle.isValid(), "surface lighting feature should register");
+
+  const SurfaceLightingData::Param *before = findSurfaceLightingParam(table);
+  EXPECT(before != nullptr, "surface lighting UBO should be exported");
+  if (before != nullptr) {
+    EXPECT(before->enableIblLighting == 1u,
+           "surface lighting should keep the authored IBL enable flag");
+    EXPECT(before->environmentIblReady == 0u,
+           "surface lighting should start with environment IBL unavailable");
+    EXPECT(before->standardPbrIblReady == 0u,
+           "surface lighting should start with standard-PBR IBL unavailable");
+  }
+
+  const IblEnvironmentActivationResult activated =
+      table.activateIblEnvironment(iblActivationPayloadFixture(5));
+  EXPECT(activated.ok, "complete active IBL payload should activate");
+
+  const SurfaceLightingData::Param *after = findSurfaceLightingParam(table);
+  EXPECT(after != nullptr, "surface lighting UBO should remain exported");
+  if (after != nullptr) {
+    EXPECT(after->enableIblLighting == 1u,
+           "activation should preserve the authored IBL enable flag");
+    EXPECT(after->environmentIblReady == 1u,
+           "activation should publish environment IBL readiness");
+    EXPECT(after->standardPbrIblReady == 1u,
+           "activation should publish standard-PBR IBL readiness");
+  }
+}
+
+void testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration() {
+  SceneResourceTable table;
+  const IblEnvironmentActivationResult activated =
+      table.activateIblEnvironment(iblActivationPayloadFixture(6));
+  EXPECT(activated.ok, "complete active IBL payload should activate");
+
+  const RenderFeatureHandle featureHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/surface_lighting.render-feature"),
+      makeSurfaceLightingFeature());
+  EXPECT(featureHandle.isValid(), "surface lighting feature should register");
+
+  const SurfaceLightingData::Param *param = findSurfaceLightingParam(table);
+  EXPECT(param != nullptr, "surface lighting UBO should be exported");
+  if (param != nullptr) {
+    EXPECT(param->environmentIblReady == 1u,
+           "surface lighting registration should observe active environment "
+           "IBL");
+    EXPECT(param->standardPbrIblReady == 1u,
+           "surface lighting registration should observe active standard-PBR "
+           "IBL");
+  }
+}
+
+void testSceneLevelResourcesIncludeIblSamplerFallbacks() {
+  Scene scene("SceneLevelIblFallbacks");
+  const auto hasSamplerBinding = [](const DescriptorResourceList &resources,
+                                    StringID bindingName) {
+    return std::any_of(resources.begin(), resources.end(),
+                       [&](const DescriptorResourceRef &resource) {
+                         return resource.isResource() &&
+                                resource.resource().isValid() &&
+                                resource.resource().getType() ==
+                                    ResourceType::CombinedImageSampler &&
+                                resource.getBindingName() == bindingName;
+                       });
+  };
+
+  const DescriptorResourceList deferredResources = scene.getSceneLevelResources(
+      Pass_DeferredLighting, RenderTarget{});
+  EXPECT(hasSamplerBinding(deferredResources, StringID("IrradianceMap")),
+         "scene-level resources should include IrradianceMap fallback");
+  EXPECT(hasSamplerBinding(deferredResources, StringID("PrefilteredEnvMap")),
+         "scene-level resources should include PrefilteredEnvMap fallback");
+  EXPECT(hasSamplerBinding(deferredResources, StringID("BrdfLut")),
+         "scene-level resources should include BrdfLut fallback");
+
+  const DescriptorResourceList forwardResources =
+      scene.getSceneLevelResources(Pass_Forward, RenderTarget{});
+  EXPECT(!hasSamplerBinding(forwardResources, StringID("IrradianceMap")),
+         "Forward renderables should receive IBL descriptors through shader "
+         "reflection, not unconditional scene-level resources");
 }
 
 void testIblActivationReplacesOldLiveHandlesOnSuccess() {
@@ -1363,6 +1559,11 @@ int main() {
   testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady();
   testIblActivationRejectsMetadataOnlyPayloads();
   testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists();
+  testIblDescriptorResourcesIncludeDefaultSamplersWhenEnvironmentIsMissing();
+  testDefaultSceneResourceTableExportsIblSamplerFallbacks();
+  testSurfaceLightingReadinessFollowsActiveIblActivation();
+  testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration();
+  testSceneLevelResourcesIncludeIblSamplerFallbacks();
   testIblActivationReplacesOldLiveHandlesOnSuccess();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
