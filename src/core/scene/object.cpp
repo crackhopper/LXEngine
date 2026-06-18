@@ -181,6 +181,21 @@ getSkeletonComponent(const SceneNode &node) {
   return node.getComponent<SkeletonComponent>();
 }
 
+bool sceneNodeAspectChangesPreparedStructure(const SceneNodeAspect aspect) {
+  switch (aspect) {
+  case SceneNodeAspect::Identity:
+  case SceneNodeAspect::Hierarchy:
+  case SceneNodeAspect::RenderableStructure:
+    return true;
+  case SceneNodeAspect::Transform:
+  case SceneNodeAspect::Visibility:
+  case SceneNodeAspect::CameraProperties:
+  case SceneNodeAspect::LightProperties:
+    return false;
+  }
+  return false;
+}
+
 } // namespace
 
 SceneNode::SceneNode(PathRootTag)
@@ -780,6 +795,9 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
     return;
   }
 
+  if (sceneNodeAspectChangesPreparedStructure(aspect)) {
+    scene->markRuntimeNodeChanged();
+  }
   if (aspect == SceneNodeAspect::RenderableStructure) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
     const_cast<SceneNode &>(*this).rebuildValidatedCache();
@@ -809,6 +827,10 @@ void SceneNode::emitRuntimeNodeLifecycle(const SceneEventType type,
     return;
   }
 
+  if (type == SceneEventType::SceneNodeAdded ||
+      type == SceneEventType::SceneNodeRemoved) {
+    scene->markRuntimeNodeChanged();
+  }
   scene->events().emit(SceneEvent{
       .domain = SceneEventDomain::Runtime,
       .type = type,

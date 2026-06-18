@@ -2021,6 +2021,9 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
   const u64 graph0 = table.graphGeneration();
   const u64 resource0 = table.resourceGeneration();
   const u64 feature0 = table.featureGeneration();
+  const u64 selection0 = table.descriptorResourceSelectionGeneration();
+  const u64 descriptor0 = table.descriptorUploadGeneration();
+  const u64 volatile0 = table.volatileUploadGeneration();
   const u64 upload0 = table.uploadGeneration();
 
   table.markFeatureRuntimeDirty();
@@ -2030,36 +2033,141 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
          "feature runtime dirty should not change resource generation");
   EXPECT(table.featureGeneration() == feature0 + 1,
          "feature runtime dirty should advance feature generation");
+  EXPECT(table.descriptorResourceSelectionGeneration() == selection0,
+         "feature runtime dirty should not advance descriptor resource selection generation");
+  EXPECT(table.descriptorUploadGeneration() == descriptor0 + 1,
+         "feature runtime dirty should advance descriptor upload generation");
+  EXPECT(table.volatileUploadGeneration() == volatile0,
+         "feature runtime dirty should not advance volatile upload generation");
   EXPECT(table.uploadGeneration() == upload0 + 1,
          "feature runtime dirty should keep upload generation semantics");
 
+  const u64 featureDirtySelection =
+      table.descriptorResourceSelectionGeneration();
+  const u64 featureDirtyDescriptor = table.descriptorUploadGeneration();
+  const u64 featureDirtyVolatile = table.volatileUploadGeneration();
   const u64 featureDirtyUpload = table.uploadGeneration();
   table.markBakedResourceDirty();
   EXPECT(table.graphGeneration() == graph0,
          "baked resource dirty should not change graph generation");
-  EXPECT(table.resourceGeneration() == resource0 + 1,
-         "baked resource dirty should advance resource generation");
+  EXPECT(table.resourceGeneration() == resource0,
+         "baked resource dirty should not change structural resource generation");
   EXPECT(table.featureGeneration() == feature0 + 1,
          "baked resource dirty should not change feature generation");
+  EXPECT(table.descriptorResourceSelectionGeneration() ==
+             featureDirtySelection + 1,
+         "baked resource dirty should advance descriptor resource selection generation");
+  EXPECT(table.descriptorUploadGeneration() == featureDirtyDescriptor + 1,
+         "baked resource dirty should advance descriptor upload generation");
+  EXPECT(table.volatileUploadGeneration() == featureDirtyVolatile,
+         "baked resource dirty should not advance volatile upload generation");
   EXPECT(table.uploadGeneration() == featureDirtyUpload + 1,
          "baked resource dirty should keep upload generation semantics");
 
   const u64 beforeCameraResource = table.resourceGeneration();
+  const u64 beforeCameraSelection =
+      table.descriptorResourceSelectionGeneration();
+  const u64 beforeCameraDescriptor = table.descriptorUploadGeneration();
+  const u64 beforeCameraVolatile = table.volatileUploadGeneration();
   const u64 beforeCameraUpload = table.uploadGeneration();
   const CameraHandle camera = table.registerCamera(CameraResource{});
   EXPECT(camera.isValid(), "registerCamera should produce a live handle");
   EXPECT(table.resourceGeneration() == beforeCameraResource + 1,
          "registerCamera should advance resource generation");
+  EXPECT(table.descriptorResourceSelectionGeneration() == beforeCameraSelection,
+         "registerCamera should not advance descriptor resource selection generation");
+  EXPECT(table.descriptorUploadGeneration() == beforeCameraDescriptor + 1,
+         "registerCamera should advance descriptor upload generation");
+  EXPECT(table.volatileUploadGeneration() == beforeCameraVolatile,
+         "registerCamera should not advance volatile upload generation");
   EXPECT(table.uploadGeneration() == beforeCameraUpload + 1,
          "registerCamera should advance upload generation");
 
   const u64 afterCameraRegisterResource = table.resourceGeneration();
+  const u64 afterCameraRegisterSelection =
+      table.descriptorResourceSelectionGeneration();
+  const u64 afterCameraRegisterDescriptor = table.descriptorUploadGeneration();
+  const u64 afterCameraRegisterVolatile = table.volatileUploadGeneration();
   const u64 afterCameraRegisterUpload = table.uploadGeneration();
   table.updateCamera(camera, CameraResource{});
   EXPECT(table.resourceGeneration() == afterCameraRegisterResource,
          "updateCamera should leave structural resource generation unchanged");
+  EXPECT(table.descriptorResourceSelectionGeneration() ==
+             afterCameraRegisterSelection,
+         "updateCamera should leave descriptor resource selection generation unchanged");
+  EXPECT(table.descriptorUploadGeneration() == afterCameraRegisterDescriptor,
+         "updateCamera should leave descriptor upload generation unchanged");
+  EXPECT(table.volatileUploadGeneration() == afterCameraRegisterVolatile + 1,
+         "updateCamera should advance volatile upload generation");
   EXPECT(table.uploadGeneration() == afterCameraRegisterUpload + 1,
          "updateCamera should still advance upload generation");
+
+  ObjectResource object;
+  const ObjectHandle objectHandle = table.registerObject(object);
+  EXPECT(objectHandle.isValid(), "registerObject should produce a live handle");
+  const u64 afterObjectRegisterResource = table.resourceGeneration();
+  const u64 afterObjectRegisterSelection =
+      table.descriptorResourceSelectionGeneration();
+  const u64 afterObjectRegisterDescriptor =
+      table.descriptorUploadGeneration();
+  const u64 afterObjectRegisterVolatile = table.volatileUploadGeneration();
+  const u64 afterObjectRegisterUpload = table.uploadGeneration();
+  object.visible = false;
+  table.updateObject(objectHandle, object);
+  EXPECT(table.resourceGeneration() == afterObjectRegisterResource,
+         "value-only updateObject should leave structural resource generation unchanged");
+  EXPECT(table.descriptorResourceSelectionGeneration() ==
+             afterObjectRegisterSelection + 1,
+         "value-only updateObject should refresh prepared descriptor resources");
+  EXPECT(table.descriptorUploadGeneration() == afterObjectRegisterDescriptor + 1,
+         "value-only updateObject should refresh descriptor upload generation");
+  EXPECT(table.volatileUploadGeneration() == afterObjectRegisterVolatile,
+         "value-only updateObject should not use the dirty-host-buffer-only generation");
+  EXPECT(table.uploadGeneration() == afterObjectRegisterUpload + 1,
+         "value-only updateObject should still advance upload generation");
+}
+
+void testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges() {
+  auto scene = Scene::create("node_generation");
+  auto parent = SceneNode::create("parent");
+  auto child = SceneNode::create("child");
+  const u64 beforeAdd = scene->runtimeNodeGeneration();
+  scene->addRenderable(parent);
+  EXPECT(scene->runtimeNodeGeneration() == beforeAdd + 1,
+         "scene runtime node generation should advance on add");
+  scene->addRenderable(child);
+
+  const u64 initial = scene->runtimeNodeGeneration();
+  child->setName("renamed_child");
+  EXPECT(scene->runtimeNodeGeneration() == initial + 1,
+         "scene runtime node generation should advance on identity changes");
+
+  const u64 afterIdentity = scene->runtimeNodeGeneration();
+  child->setParent(parent);
+  EXPECT(scene->runtimeNodeGeneration() == afterIdentity + 1,
+         "scene runtime node generation should advance on hierarchy changes");
+
+  const u64 afterHierarchy = scene->runtimeNodeGeneration();
+  child->setTranslation(Vec3f{1.0f, 2.0f, 3.0f});
+  EXPECT(scene->runtimeNodeGeneration() == afterHierarchy,
+         "scene runtime node generation should not advance on transform changes");
+
+  auto cameraNode = SceneNode::create("camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to test node");
+  scene->addCamera(cameraNode);
+  const u64 afterCameraAdd = scene->runtimeNodeGeneration();
+  cameraNode->setTranslation(Vec3f{0.0f, 1.0f, 5.0f});
+  EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
+         "scene runtime node generation should not advance on camera transform changes");
+  camera->get().setFovY(60.0f);
+  EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
+         "scene runtime node generation should not advance on camera property changes");
+
+  const u64 afterValueOnlyChanges = scene->runtimeNodeGeneration();
+  scene->removeRenderable(child);
+  EXPECT(scene->runtimeNodeGeneration() == afterValueOnlyChanges + 1,
+         "scene runtime node generation should advance on removal");
 }
 
 } // namespace
@@ -2098,5 +2206,6 @@ int main() {
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   testSceneResourceTableTracksSplitRenderGenerations();
+  testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges();
   return g_failures == 0 ? 0 : 1;
 }

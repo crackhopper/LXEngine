@@ -701,6 +701,7 @@ void Scene::removeRenderable(const SceneNodeSharedPtr &node) {
   }
 
   for (const auto &removedNode : removedNodes) {
+    markRuntimeNodeChanged();
     m_events.emit(SceneEvent{
         .domain = SceneEventDomain::Runtime,
         .type = SceneEventType::SceneNodeRemoved,

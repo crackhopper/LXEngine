@@ -245,6 +245,24 @@ void VulkanResourceManager::syncResource(
   }
 }
 
+void VulkanResourceManager::touchResource(const GpuResourceRef &cpuRef) {
+  if (!cpuRef.isValid()) {
+    return;
+  }
+  const IGpuResource &cpuRes = cpuRef.get();
+
+  if (cpuRes.getType() == ResourceType::Special) {
+    return;
+  }
+
+  const ResourceCacheIdentity identity = cpuRes.getBackendCacheIdentity();
+  m_activeResourceIds.insert(identity);
+  const auto it = m_gpuResources.find(identity);
+  if (it != m_gpuResources.end()) {
+    it->second.lastSeenFrame = m_frameSerial;
+  }
+}
+
 std::unique_ptr<VulkanAnyResource>
 VulkanResourceManager::createGpuResource(const IGpuResource &cpuRes) {
   ResourceType type = cpuRes.getType();

@@ -18,12 +18,15 @@ struct PreparedRenderStateKey final {
   u64 graphGeneration = 0;
   u64 resourceGeneration = 0;
   u64 featureGeneration = 0;
+  u64 sceneNodeGeneration = 0;
   RenderTargetDesc target;
 
   [[nodiscard]] bool operator==(const PreparedRenderStateKey &rhs) const {
     return graphGeneration == rhs.graphGeneration &&
            resourceGeneration == rhs.resourceGeneration &&
-           featureGeneration == rhs.featureGeneration && target == rhs.target;
+           featureGeneration == rhs.featureGeneration &&
+           sceneNodeGeneration == rhs.sceneNodeGeneration &&
+           target == rhs.target;
   }
 
   [[nodiscard]] bool operator!=(const PreparedRenderStateKey &rhs) const {
@@ -34,7 +37,9 @@ struct PreparedRenderStateKey final {
 struct PreparedRenderStateCacheSnapshot final {
   bool valid = false;
   PreparedRenderStateKey key;
-  u64 uploadGeneration = 0;
+  u64 descriptorResourceSelectionGeneration = 0;
+  u64 descriptorUploadGeneration = 0;
+  u64 volatileUploadGeneration = 0;
 };
 
 struct PreparedRenderStateCacheDecision final {
@@ -42,6 +47,8 @@ struct PreparedRenderStateCacheDecision final {
   bool rebuildRenderInputs = false;
   bool rebuildDescriptorUploadPlans = false;
   bool syncUploadPlans = false;
+  bool syncVolatileResources = false;
+  bool touchCachedUploadResources = false;
   PreparedRenderStateCacheSnapshot nextSnapshot;
 };
 
@@ -52,12 +59,16 @@ struct PreparedRenderWorkDiagnostics final {
   u64 descriptorUploadPlanBuildCount = 0;
   u64 uploadPlanSyncCount = 0;
   u64 volatileUploadSyncCount = 0;
+  u64 cachedUploadResourceTouchCount = 0;
 };
 
 [[nodiscard]] PreparedRenderStateCacheDecision
 evaluatePreparedRenderStateCache(
     const PreparedRenderStateCacheSnapshot &current,
-    const PreparedRenderStateKey &nextKey, u64 nextUploadGeneration);
+    const PreparedRenderStateKey &nextKey,
+    u64 nextDescriptorResourceSelectionGeneration,
+    u64 nextDescriptorUploadGeneration,
+    u64 nextVolatileUploadGeneration);
 
 class VulkanRealtimeRenderer final : public gpu::Renderer {
 public:

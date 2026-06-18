@@ -1081,20 +1081,35 @@ namespace LX_core::backend {
 
 PreparedRenderStateCacheDecision evaluatePreparedRenderStateCache(
     const PreparedRenderStateCacheSnapshot &current,
-    const PreparedRenderStateKey &nextKey, const u64 nextUploadGeneration) {
+    const PreparedRenderStateKey &nextKey,
+    const u64 nextDescriptorResourceSelectionGeneration,
+    const u64 nextDescriptorUploadGeneration,
+    const u64 nextVolatileUploadGeneration) {
   PreparedRenderStateCacheDecision decision;
   const bool structuralDirty = !current.valid || current.key != nextKey;
-  const bool uploadDirty =
-      structuralDirty || current.uploadGeneration != nextUploadGeneration;
+  const bool descriptorResourceSelectionDirty =
+      structuralDirty || current.descriptorResourceSelectionGeneration !=
+                             nextDescriptorResourceSelectionGeneration;
+  const bool descriptorUploadDirty =
+      descriptorResourceSelectionDirty ||
+      current.descriptorUploadGeneration != nextDescriptorUploadGeneration;
+  const bool volatileUploadDirty =
+      !descriptorUploadDirty &&
+      current.volatileUploadGeneration != nextVolatileUploadGeneration;
 
   decision.rebuildFrameGraph = structuralDirty;
-  decision.rebuildRenderInputs = structuralDirty;
-  decision.rebuildDescriptorUploadPlans = uploadDirty;
-  decision.syncUploadPlans = uploadDirty;
+  decision.rebuildRenderInputs = descriptorResourceSelectionDirty;
+  decision.rebuildDescriptorUploadPlans = descriptorUploadDirty;
+  decision.syncUploadPlans = descriptorUploadDirty;
+  decision.syncVolatileResources = volatileUploadDirty;
+  decision.touchCachedUploadResources = current.valid && !descriptorUploadDirty;
   decision.nextSnapshot = PreparedRenderStateCacheSnapshot{
       .valid = true,
       .key = nextKey,
-      .uploadGeneration = nextUploadGeneration,
+      .descriptorResourceSelectionGeneration =
+          nextDescriptorResourceSelectionGeneration,
+      .descriptorUploadGeneration = nextDescriptorUploadGeneration,
+      .volatileUploadGeneration = nextVolatileUploadGeneration,
   };
   return decision;
 }
@@ -1518,14 +1533,6 @@ public:
     }
   }
 
-  [[nodiscard]] bool preparedUploadGenerationDirty() const {
-    if (!m_scene || !m_preparedUploadGeneration.has_value()) {
-      return true;
-    }
-    return *m_preparedUploadGeneration !=
-           m_scene->resources().uploadGeneration();
-  }
-
   void syncPreparedFramePassUploadPlans() {
     for (const PreparedRenderPassInputs &prepared :
          m_preparedCompiledPassInputs) {
@@ -1535,7 +1542,12 @@ public:
       syncRenderUploadPlan(prepared.uploadPlan);
     }
     if (m_scene) {
-      m_preparedUploadGeneration = m_scene->resources().uploadGeneration();
+      m_preparedDescriptorResourceSelectionGeneration =
+          m_scene->resources().descriptorResourceSelectionGeneration();
+      m_preparedDescriptorUploadGeneration =
+          m_scene->resources().descriptorUploadGeneration();
+      m_preparedVolatileUploadGeneration =
+          m_scene->resources().volatileUploadGeneration();
     }
     ++m_preparedRenderWorkDiagnostics.uploadPlanSyncCount;
   }
@@ -1577,6 +1589,36 @@ public:
     if (syncedAny) {
       ++m_preparedRenderWorkDiagnostics.volatileUploadSyncCount;
     }
+    if (m_scene) {
+      m_preparedVolatileUploadGeneration =
+          m_scene->resources().volatileUploadGeneration();
+    }
+  }
+
+  void touchPreparedUploadResources() {
+    std::unordered_set<LX_core::ResourceCacheIdentity> touched;
+    bool touchedAny = false;
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
+      if (!prepared.uploadPlanValid) {
+        continue;
+      }
+      for (const LX_core::GpuResourceRef &resource :
+           prepared.uploadPlan.resources) {
+        if (!resource.isValid() ||
+            resource.get().getType() == LX_core::ResourceType::Special) {
+          continue;
+        }
+        if (!touched.insert(resource.getBackendCacheIdentity()).second) {
+          continue;
+        }
+        resourceManager().touchResource(resource);
+        touchedAny = true;
+      }
+    }
+    if (touchedAny) {
+      ++m_preparedRenderWorkDiagnostics.cachedUploadResourceTouchCount;
+    }
   }
 
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
@@ -1601,6 +1643,7 @@ public:
         .graphGeneration = resources.graphGeneration(),
         .resourceGeneration = resources.resourceGeneration(),
         .featureGeneration = resources.featureGeneration(),
+        .sceneNodeGeneration = m_scene->runtimeNodeGeneration(),
         .target = std::move(target),
     };
   }
@@ -1613,19 +1656,33 @@ public:
     return PreparedRenderStateCacheSnapshot{
         .valid = true,
         .key = *m_preparedRenderStateKey,
-        .uploadGeneration = m_preparedUploadGeneration.value_or(
-            m_scene->resources().uploadGeneration()),
+        .descriptorResourceSelectionGeneration =
+            m_preparedDescriptorResourceSelectionGeneration.value_or(
+                m_scene->resources()
+                    .descriptorResourceSelectionGeneration()),
+        .descriptorUploadGeneration =
+            m_preparedDescriptorUploadGeneration.value_or(
+                m_scene->resources().descriptorUploadGeneration()),
+        .volatileUploadGeneration =
+            m_preparedVolatileUploadGeneration.value_or(
+                m_scene->resources().volatileUploadGeneration()),
     };
   }
 
   [[nodiscard]] PreparedRenderStateCacheDecision
   evaluateCurrentPreparedRenderState() const {
     const LX_core::RenderTargetDesc target = makeSwapchainTarget().toDesc();
-    const u64 uploadGeneration =
-        m_scene ? m_scene->resources().uploadGeneration() : 0;
+    const u64 descriptorResourceSelectionGeneration =
+        m_scene ? m_scene->resources().descriptorResourceSelectionGeneration()
+                : 0;
+    const u64 descriptorUploadGeneration =
+        m_scene ? m_scene->resources().descriptorUploadGeneration() : 0;
+    const u64 volatileUploadGeneration =
+        m_scene ? m_scene->resources().volatileUploadGeneration() : 0;
     return evaluatePreparedRenderStateCache(
         preparedRenderStateSnapshot(), makePreparedRenderStateKey(target),
-        uploadGeneration);
+        descriptorResourceSelectionGeneration, descriptorUploadGeneration,
+        volatileUploadGeneration);
   }
 
   [[nodiscard]] bool preparedRenderStateStructuralDirty() const {
@@ -1634,16 +1691,32 @@ public:
 
   void invalidatePreparedRenderState() {
     m_preparedRenderStateKey.reset();
-    m_preparedUploadGeneration.reset();
+    m_preparedDescriptorResourceSelectionGeneration.reset();
+    m_preparedDescriptorUploadGeneration.reset();
+    m_preparedVolatileUploadGeneration.reset();
     m_preparedCompiledPassInputs.clear();
   }
 
-  void syncPreparedUploadPlansIfGenerationDirty(
+  void syncPreparedWorkIfInputOrDescriptorGenerationDirty(
       bool waitForSharedHostBuffers) {
-    if (!m_scene || !preparedUploadGenerationDirty()) {
+    if (!m_scene) {
       return;
     }
-    rebuildPreparedUploadPlans();
+    const PreparedRenderStateCacheDecision decision =
+        evaluateCurrentPreparedRenderState();
+    if (decision.rebuildFrameGraph || (!decision.rebuildRenderInputs &&
+                                       !decision.rebuildDescriptorUploadPlans)) {
+      return;
+    }
+    if (decision.rebuildRenderInputs && m_swapchain) {
+      m_swapchain->waitForAllFrames();
+    }
+    if (decision.rebuildRenderInputs) {
+      rebuildPreparedRenderPassInputs();
+    }
+    if (decision.rebuildDescriptorUploadPlans) {
+      rebuildPreparedUploadPlans();
+    }
     if (waitForSharedHostBuffers && m_swapchain &&
         preparedFramePassUploadPlansRequireSharedHostBufferSync()) {
       m_swapchain->waitForAllFrames();
@@ -1919,7 +1992,9 @@ public:
     rebuildPreparedRenderPassInputs();
     rebuildPreparedUploadPlans();
     m_preparedRenderStateKey = makePreparedRenderStateKey(swapchainDesc);
-    m_preparedUploadGeneration.reset();
+    m_preparedDescriptorResourceSelectionGeneration.reset();
+    m_preparedDescriptorUploadGeneration.reset();
+    m_preparedVolatileUploadGeneration.reset();
     syncPreparedFramePassUploadPlans();
     resourceManager().collectGarbage();
 
@@ -1942,7 +2017,7 @@ public:
       return;
     }
 
-    syncPreparedUploadPlansIfGenerationDirty(
+    syncPreparedWorkIfInputOrDescriptorGenerationDirty(
         /*waitForSharedHostBuffers=*/true);
 
     if (m_swapchain &&
@@ -1957,6 +2032,7 @@ public:
     // host buffers from the already-prepared upload plans; do not rebuild
     // structural render inputs for this path.
     syncDirtyVolatilePreparedResources();
+    touchPreparedUploadResources();
     resourceManager().collectGarbage();
   }
 
@@ -1976,7 +2052,7 @@ public:
     if (m_scene && preparedRenderStateStructuralDirty()) {
       initScene(m_scene);
     }
-    syncPreparedUploadPlansIfGenerationDirty(
+    syncPreparedWorkIfInputOrDescriptorGenerationDirty(
         /*waitForSharedHostBuffers=*/true);
 
     const VkExtent2D extent = m_swapchain->getExtent();
@@ -2348,7 +2424,9 @@ public:
       std::vector<LX_core::DescriptorResourceList>
           compiledPassDescriptorResources;
       std::optional<PreparedRenderStateKey> preparedRenderStateKey;
-      std::optional<u64> preparedUploadGeneration;
+      std::optional<u64> preparedDescriptorResourceSelectionGeneration;
+      std::optional<u64> preparedDescriptorUploadGeneration;
+      std::optional<u64> preparedVolatileUploadGeneration;
       std::vector<PreparedRenderPassInputs> preparedCompiledPassInputs;
       PreparedRenderWorkDiagnostics preparedRenderWorkDiagnostics;
       std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
@@ -2366,8 +2444,12 @@ public:
         renderer.m_compiledPassDescriptorResources =
             std::move(compiledPassDescriptorResources);
         renderer.m_preparedRenderStateKey = std::move(preparedRenderStateKey);
-        renderer.m_preparedUploadGeneration =
-            std::move(preparedUploadGeneration);
+        renderer.m_preparedDescriptorResourceSelectionGeneration =
+            std::move(preparedDescriptorResourceSelectionGeneration);
+        renderer.m_preparedDescriptorUploadGeneration =
+            std::move(preparedDescriptorUploadGeneration);
+        renderer.m_preparedVolatileUploadGeneration =
+            std::move(preparedVolatileUploadGeneration);
         renderer.m_preparedCompiledPassInputs =
             std::move(preparedCompiledPassInputs);
         renderer.m_preparedRenderWorkDiagnostics =
@@ -2389,8 +2471,13 @@ public:
                        std::move(m_compiledPassDescriptorResources),
                    .preparedRenderStateKey =
                        std::move(m_preparedRenderStateKey),
-                   .preparedUploadGeneration =
-                       std::move(m_preparedUploadGeneration),
+                   .preparedDescriptorResourceSelectionGeneration =
+                       std::move(
+                           m_preparedDescriptorResourceSelectionGeneration),
+                   .preparedDescriptorUploadGeneration =
+                       std::move(m_preparedDescriptorUploadGeneration),
+                   .preparedVolatileUploadGeneration =
+                       std::move(m_preparedVolatileUploadGeneration),
                    .preparedCompiledPassInputs =
                        std::move(m_preparedCompiledPassInputs),
                    .preparedRenderWorkDiagnostics =
@@ -2485,7 +2572,9 @@ public:
     rebuildPreparedRenderPassInputs();
     rebuildPreparedUploadPlans();
     m_preparedRenderStateKey.reset();
-    m_preparedUploadGeneration.reset();
+    m_preparedDescriptorResourceSelectionGeneration.reset();
+    m_preparedDescriptorUploadGeneration.reset();
+    m_preparedVolatileUploadGeneration.reset();
     syncPreparedFramePassUploadPlans();
 
     for (usize passIndex = 0;
@@ -3556,7 +3645,9 @@ private:
   std::vector<LX_core::DescriptorResourceList>
       m_compiledPassDescriptorResources{};
   std::optional<PreparedRenderStateKey> m_preparedRenderStateKey;
-  std::optional<u64> m_preparedUploadGeneration;
+  std::optional<u64> m_preparedDescriptorResourceSelectionGeneration;
+  std::optional<u64> m_preparedDescriptorUploadGeneration;
+  std::optional<u64> m_preparedVolatileUploadGeneration;
   std::vector<PreparedRenderPassInputs> m_preparedCompiledPassInputs;
   PreparedRenderWorkDiagnostics m_preparedRenderWorkDiagnostics;
   std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>

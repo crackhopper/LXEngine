@@ -104,6 +104,7 @@ public:
 
   void syncResource(VulkanCommandBufferManager &cmdBufferManager,
                     const GpuResourceRef &cpuRes);
+  void touchResource(const GpuResourceRef &cpuRes);
   void beginFrame(u32 currentFrameIndex);
   void collectGarbage();
 

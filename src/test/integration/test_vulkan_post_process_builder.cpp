@@ -58,11 +58,12 @@ void testStandardPostProcessKeepsOutputEncodingGamma() {
 
 LX_core::backend::PreparedRenderStateKey makePreparedKey(
     u64 graphGeneration, u64 resourceGeneration, u64 featureGeneration,
-    LX_core::RenderTargetDesc target) {
+    LX_core::RenderTargetDesc target, u64 sceneNodeGeneration = 4) {
   return LX_core::backend::PreparedRenderStateKey{
       .graphGeneration = graphGeneration,
       .resourceGeneration = resourceGeneration,
       .featureGeneration = featureGeneration,
+      .sceneNodeGeneration = sceneNodeGeneration,
       .target = std::move(target),
   };
 }
@@ -76,7 +77,8 @@ void testPreparedRenderStateCacheSkipsStaticFrameWork() {
       LX_core::ImageFormat::BGRA8Srgb, LX_core::ImageFormat::D32Float);
   auto key = makePreparedKey(1, 2, 3, target);
 
-  const auto first = evaluatePreparedRenderStateCache(snapshot, key, 10);
+  const auto first =
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 10, 20);
   expect(first.rebuildFrameGraph,
          "first frame should compile the frame graph");
   expect(first.rebuildRenderInputs,
@@ -84,9 +86,14 @@ void testPreparedRenderStateCacheSkipsStaticFrameWork() {
   expect(first.rebuildDescriptorUploadPlans,
          "first frame should build descriptor upload plans");
   expect(first.syncUploadPlans, "first frame should sync upload plans");
+  expect(!first.syncVolatileResources,
+         "first frame full upload sync should cover volatile resources");
+  expect(!first.touchCachedUploadResources,
+         "first frame has no cached upload resources to refresh");
 
   snapshot = first.nextSnapshot;
-  const auto repeat = evaluatePreparedRenderStateCache(snapshot, key, 10);
+  const auto repeat =
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 10, 20);
   expect(!repeat.rebuildFrameGraph,
          "static repeated frame should not compile the frame graph");
   expect(!repeat.rebuildRenderInputs,
@@ -95,22 +102,30 @@ void testPreparedRenderStateCacheSkipsStaticFrameWork() {
          "static repeated frame should not rebuild descriptor upload plans");
   expect(!repeat.syncUploadPlans,
          "static repeated frame should not sync unchanged upload plans");
+  expect(!repeat.syncVolatileResources,
+         "static repeated frame should not sync clean volatile resources");
+  expect(repeat.touchCachedUploadResources,
+         "static repeated frame should refresh cached upload resource liveness");
 
-  const auto uploadDirty =
-      evaluatePreparedRenderStateCache(snapshot, key, 11);
-  expect(!uploadDirty.rebuildFrameGraph,
-         "upload-only dirty frame should reuse the compiled frame graph");
-  expect(!uploadDirty.rebuildRenderInputs,
-         "upload-only dirty frame should reuse prepared render inputs");
-  expect(uploadDirty.rebuildDescriptorUploadPlans,
-         "upload generation change should rebuild descriptor upload plans");
-  expect(uploadDirty.syncUploadPlans,
-         "upload generation change should sync upload plans");
+  const auto descriptorDirty =
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 11, 20);
+  expect(!descriptorDirty.rebuildFrameGraph,
+         "descriptor-only dirty frame should reuse the compiled frame graph");
+  expect(!descriptorDirty.rebuildRenderInputs,
+         "descriptor-only dirty frame should reuse prepared render inputs");
+  expect(descriptorDirty.rebuildDescriptorUploadPlans,
+         "descriptor upload generation change should rebuild descriptor upload plans");
+  expect(descriptorDirty.syncUploadPlans,
+         "descriptor upload generation change should sync upload plans");
+  expect(!descriptorDirty.syncVolatileResources,
+         "descriptor upload sync should cover volatile resources");
+  expect(!descriptorDirty.touchCachedUploadResources,
+         "descriptor upload sync should refresh resource liveness itself");
 
-  snapshot = uploadDirty.nextSnapshot;
+  snapshot = descriptorDirty.nextSnapshot;
   key.resourceGeneration += 1;
   const auto resourceDirty =
-      evaluatePreparedRenderStateCache(snapshot, key, 11);
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 11, 20);
   expect(resourceDirty.rebuildFrameGraph,
          "resource generation change should compile the frame graph");
   expect(resourceDirty.rebuildRenderInputs,
@@ -119,6 +134,8 @@ void testPreparedRenderStateCacheSkipsStaticFrameWork() {
          "resource generation change should rebuild descriptor upload plans");
   expect(resourceDirty.syncUploadPlans,
          "resource generation change should sync upload plans");
+  expect(!resourceDirty.syncVolatileResources,
+         "resource generation change full upload sync should cover volatile resources");
 }
 
 void testPreparedRenderStateCacheInvalidatesOnTargetShapeChange() {
@@ -131,11 +148,11 @@ void testPreparedRenderStateCacheInvalidatesOnTargetShapeChange() {
   const auto unormTarget = LX_core::RenderTargetDesc::swapchain(
       LX_core::ImageFormat::BGRA8, LX_core::ImageFormat::D32Float);
   const auto first = evaluatePreparedRenderStateCache(
-      snapshot, makePreparedKey(1, 2, 3, srgbTarget), 10);
+      snapshot, makePreparedKey(1, 2, 3, srgbTarget), 30, 10, 20);
   snapshot = first.nextSnapshot;
 
   const auto targetDirty = evaluatePreparedRenderStateCache(
-      snapshot, makePreparedKey(1, 2, 3, unormTarget), 10);
+      snapshot, makePreparedKey(1, 2, 3, unormTarget), 30, 10, 20);
   expect(targetDirty.rebuildFrameGraph,
          "swapchain target shape change should compile the frame graph");
   expect(targetDirty.rebuildRenderInputs,
@@ -146,6 +163,71 @@ void testPreparedRenderStateCacheInvalidatesOnTargetShapeChange() {
          "swapchain target shape change should sync upload plans");
 }
 
+void testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration() {
+  using LX_core::backend::PreparedRenderStateCacheSnapshot;
+  using LX_core::backend::evaluatePreparedRenderStateCache;
+
+  PreparedRenderStateCacheSnapshot snapshot;
+  const auto target = LX_core::RenderTargetDesc::swapchain(
+      LX_core::ImageFormat::BGRA8Srgb, LX_core::ImageFormat::D32Float);
+  const auto first = evaluatePreparedRenderStateCache(
+      snapshot, makePreparedKey(1, 2, 3, target, 4), 30, 10, 20);
+  snapshot = first.nextSnapshot;
+
+  const auto nodeDirty = evaluatePreparedRenderStateCache(
+      snapshot, makePreparedKey(1, 2, 3, target, 5), 30, 10, 20);
+  expect(nodeDirty.rebuildFrameGraph,
+         "scene-node generation change should compile the frame graph");
+  expect(nodeDirty.rebuildRenderInputs,
+         "scene-node generation change should rebuild render inputs");
+  expect(nodeDirty.rebuildDescriptorUploadPlans,
+         "scene-node generation change should rebuild descriptor upload plans");
+  expect(nodeDirty.syncUploadPlans,
+         "scene-node generation change should sync upload plans");
+}
+
+void testPreparedRenderStateCacheSplitsDescriptorAndVolatileUploadDirty() {
+  using LX_core::backend::PreparedRenderStateCacheSnapshot;
+  using LX_core::backend::evaluatePreparedRenderStateCache;
+
+  PreparedRenderStateCacheSnapshot snapshot;
+  const auto target = LX_core::RenderTargetDesc::swapchain(
+      LX_core::ImageFormat::BGRA8Srgb, LX_core::ImageFormat::D32Float);
+  const auto key = makePreparedKey(1, 2, 3, target, 4);
+  const auto first =
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 10, 20);
+  snapshot = first.nextSnapshot;
+
+  const auto bakedResourceDirty =
+      evaluatePreparedRenderStateCache(snapshot, key, 31, 11, 20);
+  expect(!bakedResourceDirty.rebuildFrameGraph,
+         "baked-resource upload dirty should not compile the frame graph");
+  expect(bakedResourceDirty.rebuildRenderInputs,
+         "baked-resource upload dirty should rebuild render inputs and descs");
+  expect(bakedResourceDirty.rebuildDescriptorUploadPlans,
+         "baked-resource upload dirty should rebuild descriptor upload plans");
+  expect(bakedResourceDirty.syncUploadPlans,
+         "baked-resource upload dirty should sync full upload plans");
+  expect(!bakedResourceDirty.syncVolatileResources,
+         "baked-resource upload dirty should not use the volatile-only path");
+
+  snapshot = first.nextSnapshot;
+  const auto valueOnlyDirty =
+      evaluatePreparedRenderStateCache(snapshot, key, 30, 10, 21);
+  expect(!valueOnlyDirty.rebuildFrameGraph,
+         "value-only volatile dirty should not compile the frame graph");
+  expect(!valueOnlyDirty.rebuildRenderInputs,
+         "value-only volatile dirty should not rebuild render inputs");
+  expect(!valueOnlyDirty.rebuildDescriptorUploadPlans,
+         "value-only volatile dirty should not rebuild descriptor upload plans");
+  expect(!valueOnlyDirty.syncUploadPlans,
+         "value-only volatile dirty should not sync full upload plans");
+  expect(valueOnlyDirty.syncVolatileResources,
+         "value-only volatile dirty should sync only dirty host buffers");
+  expect(valueOnlyDirty.touchCachedUploadResources,
+         "value-only volatile dirty should refresh cached static resource liveness");
+}
+
 } // namespace
 
 int main() {
@@ -153,5 +235,7 @@ int main() {
   testStandardPostProcessKeepsOutputEncodingGamma();
   testPreparedRenderStateCacheSkipsStaticFrameWork();
   testPreparedRenderStateCacheInvalidatesOnTargetShapeChange();
+  testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration();
+  testPreparedRenderStateCacheSplitsDescriptorAndVolatileUploadDirty();
   return 0;
 }

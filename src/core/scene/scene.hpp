@@ -239,6 +239,9 @@ public:
   [[nodiscard]] const SceneResourceTable &resources() const {
     return m_resources;
   }
+  [[nodiscard]] u64 runtimeNodeGeneration() const {
+    return m_runtimeNodeGeneration;
+  }
 
   /// REQ-009 two-axis filter form: camera by matchesTarget(target), light by
   /// supportsPass(pass). Returns camera data resources first, then light data
@@ -271,6 +274,10 @@ private:
   static void appendPaths(const SceneNode &node, std::vector<std::string> &out);
   static void appendTreeLines(const SceneNode &node, std::string prefix,
                               bool isLast, std::string &out);
+  void markRuntimeNodeChanged() {
+    m_runtimeNodeGeneration =
+        m_runtimeNodeGeneration == u64_max ? 1 : m_runtimeNodeGeneration + 1;
+  }
   void registerNodeResources(SceneNode &node);
   void releaseNodeResources(SceneNode &node);
   void syncNodeResourceState(SceneNode &node) const;
@@ -285,6 +292,7 @@ private:
   SceneRealtimeRenderSettings m_realtimeRenderSettings;
   mutable SceneResourceTable m_resources;
   SceneEventHub m_events;
+  u64 m_runtimeNodeGeneration = 0;
 };
 
 using SceneSharedPtr = Scene::SharedPtr;

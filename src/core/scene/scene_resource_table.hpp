@@ -326,6 +326,9 @@ public:
   [[nodiscard]] u64 graphGeneration() const;
   [[nodiscard]] u64 resourceGeneration() const;
   [[nodiscard]] u64 featureGeneration() const;
+  [[nodiscard]] u64 descriptorResourceSelectionGeneration() const;
+  [[nodiscard]] u64 descriptorUploadGeneration() const;
+  [[nodiscard]] u64 volatileUploadGeneration() const;
   [[nodiscard]] u64 uploadGeneration() const;
   void markFeatureRuntimeDirty();
   void markBakedResourceDirty();
@@ -431,6 +434,12 @@ private:
   hasLiveTypedResourceMetadata(ResourceIdentityHandle handle) const;
 
   void advanceUploadGeneration();
+  void advanceDescriptorResourceSelectionGeneration();
+  void advanceDescriptorUploadGeneration();
+  void advanceVolatileUploadGeneration();
+  void markDescriptorResourceSelectionDirty();
+  void markDescriptorUploadDirty();
+  void markVolatileUploadDirty();
   void advanceGraphGeneration();
   void advanceResourceGeneration();
   void advanceFeatureGeneration();
@@ -463,6 +472,9 @@ private:
   u64 m_graphGeneration = 0;
   u64 m_resourceGeneration = 0;
   u64 m_featureGeneration = 0;
+  u64 m_descriptorResourceSelectionGeneration = 0;
+  u64 m_descriptorUploadGeneration = 0;
+  u64 m_volatileUploadGeneration = 0;
   mutable std::vector<Vec4f> m_gpuPositions;
   mutable std::vector<SceneGpuAttributeStreamRecord> m_gpuAttributeStreams;
   mutable std::vector<Vec4f> m_gpuAttributeValues;
