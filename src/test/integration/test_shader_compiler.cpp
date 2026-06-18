@@ -1562,8 +1562,8 @@ testIblFormulaUsesSharedCommon(const std::filesystem::path &shaderDir) {
       "Deferred must not inline prefiltered env formula");
   passed &= expect(deferredSource.find("texture(BrdfLut") == std::string::npos, // named-negative-ibl-formula-audit
                    "Deferred must not inline BRDF LUT formula");
-  const std::vector<std::string> retiredTruthTokens{ // named-negative-ibl-formula-audit
-      "HAS_IBL", "EnvironmentUBO", "iblIntensity"};
+  const std::vector<std::string> retiredTruthTokens{
+      "HAS_IBL", "EnvironmentUBO", "iblIntensity"}; // named-negative-ibl-formula-audit
   for (const std::string &token : retiredTruthTokens) {
     passed &= expect(forwardSource.find(token) == std::string::npos,
                      "Forward must not contain retired IBL truth token " +

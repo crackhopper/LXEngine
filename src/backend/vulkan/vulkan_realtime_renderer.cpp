@@ -36,7 +36,6 @@
 #include "details/device.hpp"
 #include "details/device_resources/buffer.hpp"
 #include "details/device_resources/texture.hpp"
-#include "details/ibl_bake_renderer.hpp"
 #include "details/render_objects/framebuffer.hpp"
 #include "details/render_objects/render_pass.hpp"
 #include "details/render_objects/swapchain.hpp"
@@ -1729,39 +1728,6 @@ public:
     syncPreparedFramePassUploadPlans();
   }
 
-  void bakeSceneIblEnvironmentIfNeeded() {
-    if (!m_scene) {
-      return;
-    }
-    auto *resources = m_scene->resources().getMutableIblEnvironmentResources();
-    if (resources == nullptr || !resources->equirectangularMap ||
-        resources->bakedSkyboxCubemap) {
-      return;
-    }
-
-    LX_core::backend::IblBakeRenderer baker(device(), resourceManager(),
-                                            commandBufferManager());
-    const u32 prefilterMipCount = std::max(
-        1u, static_cast<u32>(std::round(
-                resources->environmentUbo
-                    ? resources->environmentUbo->getPrefilteredMipCount()
-                    : 1.0f)));
-    auto baked = baker.bakeStaticEnvironment({
-        .equirectangularMap = resources->equirectangularMap,
-        .skyboxSize = 64,
-        .irradianceSize = 32,
-        .prefilterSize = 64,
-        .prefilterMipCount = prefilterMipCount,
-        .brdfLutSize = 128,
-    });
-
-    resources->bakedSkyboxCubemap = std::move(baked.skybox);
-    resources->bakedIrradianceCubemap = std::move(baked.irradiance);
-    resources->bakedPrefilteredRadianceCubemap = std::move(baked.prefiltered);
-    resources->bakedBrdfLut = std::move(baked.brdfLut);
-    m_scene->resources().markBakedResourceDirty();
-  }
-
   void initScene(SceneSharedPtr _scene) {
     ++m_initSceneCallCount;
     if (m_swapchain) {
@@ -1780,7 +1746,6 @@ public:
         LX_core::RenderTargetDesc::offscreenDepth(swapchainTarget.depthFormat);
 
     updateDirectionalLightCascades();
-    bakeSceneIblEnvironmentIfNeeded();
     auto &forwardRenderPass = resourceManager().getRenderPass(forwardHdrDesc);
     forwardRenderPass.setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 

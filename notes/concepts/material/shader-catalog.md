@@ -13,7 +13,7 @@
 | Shadow | `render_paths/Forward/shadow_depth_only` | RenderPathGraph 的 `Shadow` pass |
 | Debug / 诊断 | `render_paths/Debug/debug_overlay`、`debug_line`、`mesh_debug`、`minimal`、`texture_cube_probe` | RenderPathGraph debug overlay、debug draw、resize 诊断或 cubemap probe |
 | HDR 后处理 | `skybox`、`render_paths/Post/bloom_threshold`、`render_paths/Post/bloom_blur_h`、`render_paths/Post/bloom_blur_v`、`render_paths/Post/post_process` | RenderPathGraph / fullscreen pass 消费 HDR、bloom 和 post-process source |
-| IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `IblBakeRenderer` 手动创建 bake draw |
+| IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `bake_environment_ibl` / `bake_standard_pbr_brdf_lut` graph 声明 bake pass，旧手写 bake helper 已删除 |
 | Offline compute | `techniques/OfflineRT/offline_pbr_direct_ray` | CLI 默认创建 offline compute shader，再经 `RenderWorkCompiler` 进入 compute pipeline |
 | 共享片段 | `scene_lights_ubo.glsl` | GLSL include 片段，声明 scene lights UBO 结构 |
 
@@ -98,7 +98,12 @@ IBL bake shader 像把一张全景灯光照片加工成几种棚灯工具：先�
 | `ibl_prefilter_env` | `ibl_prefilter_env.vert` / `.frag` | 按 roughness/mip 采样 skybox，生成 prefiltered environment mip chain | `SkyboxMap`、`CaptureViewUBO`、`PrefilterUBO` |
 | `ibl_brdf_lut` | `ibl_brdf_lut.vert` / `.frag` | fullscreen 生成 PBR specular IBL 使用的 BRDF lookup texture | 无 descriptor binding |
 
-`IblBakeRenderer` 会为 cubemap 的每个 face 和 prefilter 的每个 mip 更新 `CaptureViewUBO` / `PrefilterUBO`，然后执行对应 shader。当前 `ibl_prefilter_env.frag` 使用 `textureLod` 近似 prefilter；它已经满足当前 bake 资源合同，但不是完整重要性采样实现。
+当前 bake 入口由 `assets/render_paths/bake_environment_ibl.render-path.yaml`
+和 `assets/render_paths/bake_standard_pbr_brdf_lut.render-path.yaml` 描述。
+graph 明确列出 source、target、shader URI 和 readback 需求；backend 的低层 helper
+不再由 realtime scene 初始化直接触发，旧的手写 bake helper 已从默认路径中移除。
+`ibl_prefilter_env.frag` 仍使用 `textureLod` 近似 prefilter；它满足当前 bake 资源合同，
+但不是完整重要性采样实现。
 
 ## Offline Compute Shader
 

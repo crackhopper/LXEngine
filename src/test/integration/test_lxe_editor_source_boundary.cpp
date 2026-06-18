@@ -190,6 +190,8 @@ int main() {
   const auto editorDir = sourceRoot / "src" / "editor";
   const auto rootCMake = sourceRoot / "CMakeLists.txt";
   const auto demosCMake = sourceRoot / "src" / "demos" / "CMakeLists.txt";
+  const std::string docsSuperpowersPath = "docs/superpowers";
+  const std::string notesSuperpowersPath = "notes/superpowers";
 
   EXPECT(std::filesystem::is_directory(editorDir),
          "src/editor must exist after editor promotion");
@@ -218,25 +220,19 @@ int main() {
 
   const std::vector<LegacyTokenAudit> audits = {
       {"bakeStaticEnvironment", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
+       {"notes/requirements", docsSuperpowersPath, notesSuperpowersPath}},
       {"IblBakeRenderer", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
+       {"notes/requirements", docsSuperpowersPath, notesSuperpowersPath}},
       {"HAS_IBL", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
-      {"EnvironmentUBO", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
-      {"PrefilteredEnvMap", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
-      {"BrdfLut", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
+       {"notes/requirements", docsSuperpowersPath, notesSuperpowersPath}},
       {"iblIntensity", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
+       {"src/core/scene/ibl_environment.hpp", "notes/requirements",
+        docsSuperpowersPath, notesSuperpowersPath}},
       {"ForwardIblLighting", // named-negative-legacy-token-audit
-       {"notes/requirements", "docs/superpowers"}},
-      {"feature.surfaceLighting", // named-negative-legacy-token-audit
-       {"docs/superpowers"}},
+       {"src/test/integration/test_render_resource_parsers.cpp",
+        "notes/requirements", docsSuperpowersPath, notesSuperpowersPath}},
       {"feature.iblLighting", // named-negative-legacy-token-audit
-       {"docs/superpowers"}},
+       {docsSuperpowersPath, notesSuperpowersPath}},
   };
   const std::vector<LegacyTokenLineMarkerAllowance> lineMarkerAllowances = {
       {"src/test/integration/test_lxe_editor_source_boundary.cpp",
