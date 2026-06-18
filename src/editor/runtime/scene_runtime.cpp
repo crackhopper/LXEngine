@@ -1532,6 +1532,18 @@ void buildSceneNodesRecursive(
       timer.emplace(g_sceneLoadTimingStats->sceneRegisterMs);
     }
     runtime->scene->addRenderable(node);
+    if (nodeDocument.bake.ibl.has_value()) {
+      const auto meshComponent =
+          node->getComponent<LX_core::MeshComponent>();
+      if (meshComponent.has_value()) {
+        const LX_core::ObjectHandle objectHandle =
+            meshComponent->get().getObjectHandle();
+        if (objectHandle.isValid()) {
+          runtime->scene->resources().setObjectIblBakeMarker(
+              objectHandle, *nodeDocument.bake.ibl);
+        }
+      }
+    }
   }
 
   nodesByPath[node->getPath()] = node;

@@ -108,6 +108,7 @@ struct RenderFeatureParameter final {
   std::string kind;
   std::string value;
   ResourceUri uri;
+  std::string sourceHash;
   std::string valueType;
   std::string binding;
   std::string member;

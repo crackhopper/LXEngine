@@ -137,6 +137,7 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       }
       const std::string key = parameterField->first.as<std::string>();
       if (key == "kind" || key == "value" || key == "uri" ||
+          key == "sourceHash" ||
           key == "valueType" || key == "binding" || key == "member" ||
           key == "required" || key == "volatile" || key == "allowedValues" ||
           key == "requiredWhen") {
@@ -201,6 +202,20 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
         continue;
       }
       parameter.uri = parameterNode["uri"].as<std::string>();
+    }
+    if (parameterNode["sourceHash"]) {
+      if (!kindAllowsUri(parameter.kind)) {
+        addDiagnostic(result, uri, field + ".sourceHash",
+                      "sourceHash is only supported for resource-like "
+                      "parameters");
+        continue;
+      }
+      if (!parameterNode["sourceHash"].IsScalar()) {
+        addDiagnostic(result, uri, field + ".sourceHash",
+                      "must be a scalar string");
+        continue;
+      }
+      parameter.sourceHash = parameterNode["sourceHash"].as<std::string>();
     }
     if (parameterNode["valueType"]) {
       parameter.valueType = parameterNode["valueType"].as<std::string>();

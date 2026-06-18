@@ -347,6 +347,7 @@ parameters:
   environmentMap:
     kind: textureCube
     uri: builtin:env/white_cube
+    sourceHash: builtin-white-hash
     valueType: linear-radiance
     binding: SkyboxMap
     required: true
@@ -372,6 +373,8 @@ parameters:
          "environmentMap kind should be retained");
   EXPECT(environmentMap.uri == LX_core::ResourceUri("builtin:env/white_cube"),
          "environmentMap uri should be retained");
+  EXPECT(environmentMap.sourceHash == "builtin-white-hash",
+         "environmentMap source hash should be retained");
   EXPECT(environmentMap.valueType == "linear-radiance",
          "environmentMap value type should be retained");
   EXPECT(environmentMap.binding == "SkyboxMap",

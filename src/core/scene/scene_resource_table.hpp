@@ -8,8 +8,10 @@
 #include "core/resource/resource_metadata.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/camera.hpp"
+#include "core/scene/ibl_bake_keys.hpp"
 #include "core/scene/ibl_environment.hpp"
 #include "core/scene/light.hpp"
+#include "core/scene/scene_environment_node.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 #include "core/scene/scene_resource_handles.hpp"
 #include "core/scene/scene_resource_table_upload_view.hpp"
@@ -288,6 +290,10 @@ public:
   [[nodiscard]] std::optional<SceneEnvironmentRuntimeState>
   environmentRuntimeState() const;
   [[nodiscard]] bool hasEnvironmentNode() const;
+  void addEnvironmentIblBakeRequest(RenderFeatureHandle feature);
+  void setObjectIblBakeMarker(ObjectHandle handle, SceneIblBakeMarker marker);
+  [[nodiscard]] IblBakeItemCollection collectIblBakeItems(
+      ResourceUri bakeRenderPathUri = ResourceUri{}) const;
   void registerToneMappingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef> getToneMappingResources() const;
   void registerBloomResources(const RenderFeature &feature);
@@ -464,6 +470,8 @@ private:
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
   std::optional<SceneEnvironmentRuntimeState> m_environmentRuntimeState;
+  std::vector<RenderFeatureHandle> m_environmentIblBakeRequests;
+  std::vector<std::optional<SceneIblBakeMarker>> m_objectIblBakeMarkers;
   ToneMappingDataUniquePtr m_toneMappingUbo;
   BloomDataUniquePtr m_bloomUbo;
   std::vector<PassFeatureData> m_passFeatureData;

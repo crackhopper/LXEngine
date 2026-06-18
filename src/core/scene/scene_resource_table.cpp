@@ -1778,6 +1778,9 @@ void SceneResourceTable::release(ObjectHandle handle) {
   if (!isAlive(handle)) {
     return;
   }
+  if (handle.index < m_objectIblBakeMarkers.size()) {
+    m_objectIblBakeMarkers[handle.index].reset();
+  }
   release<ObjectResource, ObjectHandle>(m_objects, handle);
   advanceResourceGeneration();
   markDescriptorUploadDirty();
@@ -1808,6 +1811,11 @@ void SceneResourceTable::release(RenderFeatureHandle handle) {
   if (!isAlive(handle)) {
     return;
   }
+  m_environmentIblBakeRequests.erase(
+      std::remove(m_environmentIblBakeRequests.begin(),
+                  m_environmentIblBakeRequests.end(),
+                  handle),
+      m_environmentIblBakeRequests.end());
   release<RenderFeature, RenderFeatureHandle>(m_renderFeatures, handle);
   advanceFeatureGeneration();
   markDescriptorUploadDirty();
@@ -2215,6 +2223,152 @@ SceneResourceTable::environmentRuntimeState() const {
 bool SceneResourceTable::hasEnvironmentNode() const {
   return m_environmentRuntimeState.has_value() &&
          m_environmentRuntimeState->nodePresent;
+}
+
+void SceneResourceTable::addEnvironmentIblBakeRequest(
+    RenderFeatureHandle feature) {
+  if (!isAlive(feature)) {
+    return;
+  }
+  if (std::find(m_environmentIblBakeRequests.begin(),
+                m_environmentIblBakeRequests.end(),
+                feature) == m_environmentIblBakeRequests.end()) {
+    m_environmentIblBakeRequests.push_back(feature);
+  }
+}
+
+void SceneResourceTable::setObjectIblBakeMarker(ObjectHandle handle,
+                                                SceneIblBakeMarker marker) {
+  if (!isAlive(handle)) {
+    return;
+  }
+  if (handle.index >= m_objectIblBakeMarkers.size()) {
+    m_objectIblBakeMarkers.resize(static_cast<usize>(handle.index) + 1u);
+  }
+  m_objectIblBakeMarkers[handle.index] = marker;
+}
+
+namespace {
+
+[[nodiscard]] const RenderFeatureParameter *
+findEnvironmentMapParameter(const RenderFeature &feature) {
+  const auto it = feature.parameters.find("environmentMap");
+  return it == feature.parameters.end() ? nullptr : &it->second;
+}
+
+[[nodiscard]] bool containsEnvironmentKey(
+    const std::vector<IblBakeItem> &items, const EnvironmentIblBakeKey &key) {
+  return std::any_of(items.begin(), items.end(), [&](const IblBakeItem &item) {
+    if (item.kind != IblBakeItemKind::EnvironmentLight) {
+      return false;
+    }
+    const auto *stored = std::get_if<EnvironmentIblBakeKey>(&item.key);
+    return stored != nullptr && *stored == key;
+  });
+}
+
+[[nodiscard]] bool containsMaterialKey(const std::vector<IblBakeItem> &items,
+                                       const MaterialIblBakeKey &key) {
+  return std::any_of(items.begin(), items.end(), [&](const IblBakeItem &item) {
+    if (item.kind != IblBakeItemKind::MaterialBrdf) {
+      return false;
+    }
+    const auto *stored = std::get_if<MaterialIblBakeKey>(&item.key);
+    return stored != nullptr && *stored == key;
+  });
+}
+
+} // namespace
+
+IblBakeItemCollection SceneResourceTable::collectIblBakeItems(
+    ResourceUri bakeRenderPathUri) const {
+  IblBakeItemCollection collection;
+  BakeItemId nextItemId = 1;
+
+  const auto appendEnvironment = [&](RenderFeatureHandle featureHandle) {
+    const auto feature = resolve(featureHandle);
+    if (!feature.has_value()) {
+      return;
+    }
+    const RenderFeatureParameter *environmentMap =
+        findEnvironmentMapParameter(feature->get());
+    if (environmentMap == nullptr || environmentMap->uri.empty()) {
+      return;
+    }
+    std::string sourceHash = environmentMap->sourceHash;
+    if (const auto textureHandle = findTexture(environmentMap->uri)) {
+      if (sourceHash.empty()) {
+        sourceHash = metadata(*textureHandle).contentHash;
+      }
+    }
+    EnvironmentIblBakeKey key{
+        .environmentMapUri = environmentMap->uri,
+        .sourceHash = std::move(sourceHash),
+    };
+    if (containsEnvironmentKey(collection.environmentItems, key)) {
+      return;
+    }
+    IblBakeItem item{
+        .id = nextItemId++,
+        .kind = IblBakeItemKind::EnvironmentLight,
+        .key = key,
+        .bakeRenderPathUri = bakeRenderPathUri,
+    };
+    collection.environmentItems.push_back(item);
+    collection.items.push_back(std::move(item));
+  };
+
+  if (m_environmentRuntimeState.has_value() &&
+      m_environmentRuntimeState->nodePresent &&
+      m_environmentRuntimeState->bakeRequested) {
+    appendEnvironment(m_environmentRuntimeState->feature);
+  }
+  for (RenderFeatureHandle feature : m_environmentIblBakeRequests) {
+    appendEnvironment(feature);
+  }
+
+  for (u32 i = 0; i < m_objects.size(); ++i) {
+    const auto &entry = m_objects[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    if (i >= m_objectIblBakeMarkers.size() ||
+        !m_objectIblBakeMarkers[i].has_value() ||
+        !m_objectIblBakeMarkers[i]->enabled) {
+      continue;
+    }
+    const ObjectResource &object = *entry.resource;
+    const auto material = resolve(object.material);
+    if (!material.has_value()) {
+      continue;
+    }
+    const MaterialInstance &materialInstance = material->get();
+    const std::string &materialType = materialInstance.getBsdfType();
+    if (!isSupportedMaterialIblBakeType(materialType)) {
+      collection.warnings.push_back(IblBakeJobEvent{
+          .severity = IblBakeJobSeverity::Warning,
+          .message = "unsupported material type: " + materialType,
+      });
+      continue;
+    }
+    MaterialIblBakeKey key{
+        .materialType = materialType,
+        .bsdfModel = materialIblBakeModelForType(materialType),
+    };
+    if (containsMaterialKey(collection.materialItems, key)) {
+      continue;
+    }
+    IblBakeItem item{
+        .id = nextItemId++,
+        .kind = IblBakeItemKind::MaterialBrdf,
+        .key = key,
+        .bakeRenderPathUri = bakeRenderPathUri,
+    };
+    collection.materialItems.push_back(item);
+    collection.items.push_back(std::move(item));
+  }
+
+  return collection;
 }
 
 void SceneResourceTable::registerToneMappingResources(
