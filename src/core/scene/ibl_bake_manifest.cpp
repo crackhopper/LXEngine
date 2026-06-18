@@ -133,12 +133,21 @@ validateIblBakePayload(const Sh9IrradiancePayload &payload) {
   if (payload.layout != "rgb-interleaved") {
     addDiagnostic(result, "layout must be rgb-interleaved");
   }
+  bool hasNonZeroCoefficient = false;
   for (const Vec3f &coefficient : payload.coefficients) {
     if (!std::isfinite(coefficient.x) || !std::isfinite(coefficient.y) ||
         !std::isfinite(coefficient.z)) {
       addDiagnostic(result, "coefficients must be finite RGB triples");
       break;
     }
+    if (std::fabs(coefficient.x) > 0.000001f ||
+        std::fabs(coefficient.y) > 0.000001f ||
+        std::fabs(coefficient.z) > 0.000001f) {
+      hasNonZeroCoefficient = true;
+    }
+  }
+  if (!hasNonZeroCoefficient) {
+    addDiagnostic(result, "coefficients must contain nonzero lighting");
   }
   return result;
 }

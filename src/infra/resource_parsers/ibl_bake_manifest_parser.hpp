@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/asset/texture.hpp"
 #include "core/scene/ibl_bake_manifest.hpp"
 
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,6 +19,20 @@ template <typename Manifest> struct ParsedIblBakeManifest final {
 
 struct ParsedSh9IrradiancePayload final {
   std::optional<LX_core::Sh9IrradiancePayload> payload;
+  std::vector<std::string> diagnostics;
+};
+
+struct ParsedIblBakeKtx2Payload final {
+  struct Info final {
+    LX_core::TextureFormat format = LX_core::TextureFormat::RGBA8;
+    u32 width = 0;
+    u32 height = 0;
+    u32 mipLevels = 0;
+    LX_core::TextureDimension dimension = LX_core::TextureDimension::Texture2D;
+    u32 faceCount = 1;
+  };
+
+  std::optional<Info> info;
   std::vector<std::string> diagnostics;
 };
 
@@ -36,6 +52,9 @@ public:
   [[nodiscard]] ParsedSh9IrradiancePayload
   parseSh9IrradiancePayload(const LX_core::ResourceUri &uri,
                             std::string_view yamlText) const;
+  [[nodiscard]] ParsedIblBakeKtx2Payload
+  parseKtx2Payload(const LX_core::ResourceUri &uri,
+                   std::span<const u8> bytes) const;
 
   [[nodiscard]] std::string writeEnvironmentManifest(
       const LX_core::EnvironmentIblBakeManifest &manifest) const;

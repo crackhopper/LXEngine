@@ -6,7 +6,10 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
@@ -22,10 +25,207 @@ namespace {
 using EnvironmentManifest = LX_core::EnvironmentIblBakeManifest;
 using MaterialManifest = LX_core::MaterialIblBakeManifest;
 
+constexpr std::array<u8, 12> kKtx2Identifier = {
+    0xABu, 0x4Bu, 0x54u, 0x58u, 0x20u, 0x32u,
+    0x30u, 0xBBu, 0x0Du, 0x0Au, 0x1Au, 0x0Au};
+constexpr u32 kVkFormatR16G16Sfloat = 83u;
+constexpr u32 kVkFormatR16G16B16A16Sfloat = 97u;
+
+struct Ktx2Header final {
+  u32 vkFormat = 0;
+  u32 typeSize = 0;
+  u32 pixelWidth = 0;
+  u32 pixelHeight = 0;
+  u32 pixelDepth = 0;
+  u32 layerCount = 0;
+  u32 faceCount = 0;
+  u32 levelCount = 0;
+  u32 supercompressionScheme = 0;
+};
+
+struct Ktx2LevelIndex final {
+  u64 byteOffset = 0;
+  u64 byteLength = 0;
+  u64 uncompressedByteLength = 0;
+};
+
 void addDiagnostic(std::vector<std::string> &diagnostics,
                    const LX_core::ResourceUri &uri, const std::string &field,
                    const std::string &message) {
   diagnostics.push_back(uri.string() + ": " + field + ": " + message);
+}
+
+void appendDiagnostics(LX_core::IblBakeValidationResult &result,
+                       const std::vector<std::string> &diagnostics) {
+  if (diagnostics.empty()) {
+    return;
+  }
+  result.ok = false;
+  result.diagnostics.insert(result.diagnostics.end(), diagnostics.begin(),
+                            diagnostics.end());
+}
+
+[[nodiscard]] std::string readTextFile(const std::filesystem::path &path,
+                                       std::vector<std::string> &diagnostics,
+                                       const std::string &field) {
+  std::ifstream in(path);
+  if (!in) {
+    diagnostics.push_back(field + " failed to open payload file: " +
+                          path.generic_string());
+    return {};
+  }
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
+}
+
+[[nodiscard]] std::vector<u8>
+readBinaryFile(const std::filesystem::path &path,
+               std::vector<std::string> &diagnostics,
+               const std::string &field) {
+  std::ifstream in(path, std::ios::binary | std::ios::ate);
+  if (!in) {
+    diagnostics.push_back(field + " failed to open payload file: " +
+                          path.generic_string());
+    return {};
+  }
+  const std::streamsize size = in.tellg();
+  if (size <= 0) {
+    diagnostics.push_back(field + " payload file is empty: " +
+                          path.generic_string());
+    return {};
+  }
+  std::vector<u8> bytes(static_cast<usize>(size));
+  in.seekg(0, std::ios::beg);
+  if (!in.read(reinterpret_cast<char *>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()))) {
+    diagnostics.push_back(field + " failed to read payload file: " +
+                          path.generic_string());
+    return {};
+  }
+  return bytes;
+}
+
+template <typename T>
+[[nodiscard]] T readLe(std::span<const u8> bytes, usize offset,
+                       std::vector<std::string> &diagnostics,
+                       const LX_core::ResourceUri &uri,
+                       const std::string &field) {
+  if (offset + sizeof(T) > bytes.size()) {
+    addDiagnostic(diagnostics, uri, field, "truncated KTX2 payload");
+    return {};
+  }
+  T value{};
+  std::memcpy(&value, bytes.data() + offset, sizeof(T));
+  return value;
+}
+
+[[nodiscard]] std::optional<LX_core::TextureFormat>
+textureFormatForVkFormat(u32 vkFormat) {
+  if (vkFormat == kVkFormatR16G16Sfloat) {
+    return LX_core::TextureFormat::RG16Float;
+  }
+  if (vkFormat == kVkFormatR16G16B16A16Sfloat) {
+    return LX_core::TextureFormat::RGBA16Float;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] Ktx2Header parseKtx2Header(
+    std::vector<std::string> &diagnostics, const LX_core::ResourceUri &uri,
+    std::span<const u8> bytes) {
+  Ktx2Header header;
+  if (bytes.size() < 80u) {
+    addDiagnostic(diagnostics, uri, "$", "KTX2 file is too small");
+    return header;
+  }
+  if (!std::equal(kKtx2Identifier.begin(), kKtx2Identifier.end(),
+                  bytes.begin())) {
+    addDiagnostic(diagnostics, uri, "$", "not a KTX2 file");
+    return header;
+  }
+
+  header.vkFormat = readLe<u32>(bytes, 12u, diagnostics, uri, "vkFormat");
+  header.typeSize = readLe<u32>(bytes, 16u, diagnostics, uri, "typeSize");
+  header.pixelWidth =
+      readLe<u32>(bytes, 20u, diagnostics, uri, "pixelWidth");
+  header.pixelHeight =
+      readLe<u32>(bytes, 24u, diagnostics, uri, "pixelHeight");
+  header.pixelDepth =
+      readLe<u32>(bytes, 28u, diagnostics, uri, "pixelDepth");
+  header.layerCount =
+      readLe<u32>(bytes, 32u, diagnostics, uri, "layerCount");
+  header.faceCount = readLe<u32>(bytes, 36u, diagnostics, uri, "faceCount");
+  header.levelCount =
+      readLe<u32>(bytes, 40u, diagnostics, uri, "levelCount");
+  header.supercompressionScheme =
+      readLe<u32>(bytes, 44u, diagnostics, uri, "supercompressionScheme");
+  return header;
+}
+
+[[nodiscard]] std::vector<Ktx2LevelIndex> parseKtx2LevelIndex(
+    std::vector<std::string> &diagnostics, const LX_core::ResourceUri &uri,
+    std::span<const u8> bytes, u32 levelCount) {
+  constexpr usize kLevelIndexOffset = 80u;
+  constexpr usize kLevelIndexSize = 24u;
+  const usize byteCount = static_cast<usize>(levelCount) * kLevelIndexSize;
+  std::vector<Ktx2LevelIndex> levels;
+  if (kLevelIndexOffset + byteCount > bytes.size()) {
+    addDiagnostic(diagnostics, uri, "levels", "KTX2 level index is truncated");
+    return levels;
+  }
+
+  levels.reserve(levelCount);
+  for (u32 level = 0; level < levelCount; ++level) {
+    const usize offset = kLevelIndexOffset +
+                         static_cast<usize>(level) * kLevelIndexSize;
+    levels.push_back(Ktx2LevelIndex{
+        .byteOffset =
+            readLe<u64>(bytes, offset + 0u, diagnostics, uri, "levels"),
+        .byteLength =
+            readLe<u64>(bytes, offset + 8u, diagnostics, uri, "levels"),
+        .uncompressedByteLength =
+            readLe<u64>(bytes, offset + 16u, diagnostics, uri, "levels"),
+    });
+  }
+  return levels;
+}
+
+void validateKtx2LevelPayloads(std::vector<std::string> &diagnostics,
+                               const LX_core::ResourceUri &uri,
+                               std::span<const u8> bytes,
+                               const LX_core::TextureDesc &desc) {
+  const std::vector<Ktx2LevelIndex> levels =
+      parseKtx2LevelIndex(diagnostics, uri, bytes, desc.mipLevels);
+  if (levels.size() != desc.mipLevels) {
+    return;
+  }
+
+  u32 mipWidth = desc.width;
+  u32 mipHeight = desc.height;
+  const usize bytesPerPixel = LX_core::textureBytesPerPixel(desc.format);
+  for (u32 mip = 0; mip < desc.mipLevels; ++mip) {
+    const usize expectedBytes =
+        static_cast<usize>(std::max(mipWidth, 1u)) *
+        static_cast<usize>(std::max(mipHeight, 1u)) * bytesPerPixel *
+        static_cast<usize>(desc.arrayLayers);
+    const Ktx2LevelIndex &level = levels[mip];
+    if (level.byteLength != expectedBytes ||
+        level.uncompressedByteLength != expectedBytes) {
+      addDiagnostic(diagnostics, uri, "levels",
+                    "KTX2 level byte length does not match texture contract");
+    }
+    if (level.byteLength == 0u) {
+      addDiagnostic(diagnostics, uri, "levels",
+                    "KTX2 level payload must be non-empty");
+    }
+    if (level.byteOffset > bytes.size() ||
+        level.byteLength > bytes.size() - static_cast<usize>(level.byteOffset)) {
+      addDiagnostic(diagnostics, uri, "levels",
+                    "KTX2 level payload is out of bounds");
+    }
+    mipWidth = std::max(mipWidth / 2u, 1u);
+    mipHeight = std::max(mipHeight / 2u, 1u);
+  }
 }
 
 YAML::Node loadYaml(std::vector<std::string> &diagnostics,
@@ -125,14 +325,20 @@ std::string pathString(const T &path) {
   return std::filesystem::path(path).generic_string();
 }
 
-void validatePayloadFile(LX_core::IblBakeValidationResult &result,
-                         const std::filesystem::path &manifestPath,
-                         const std::filesystem::path &relativePath,
-                         const std::string &field) {
+[[nodiscard]] std::filesystem::path
+resolvePayloadPath(const std::filesystem::path &manifestPath,
+                   const std::filesystem::path &relativePath) {
+  return relativePath.is_absolute() ? relativePath
+                                    : manifestPath.parent_path() / relativePath;
+}
+
+void validateSh9PayloadFile(const IblBakeManifestParser &parser,
+                            LX_core::IblBakeValidationResult &result,
+                            const std::filesystem::path &manifestPath,
+                            const std::filesystem::path &relativePath,
+                            const std::string &field) {
   const std::filesystem::path path =
-      relativePath.is_absolute()
-          ? relativePath
-          : manifestPath.parent_path() / relativePath;
+      resolvePayloadPath(manifestPath, relativePath);
   std::error_code ec;
   if (!std::filesystem::exists(path, ec) || ec) {
     result.ok = false;
@@ -140,11 +346,69 @@ void validatePayloadFile(LX_core::IblBakeValidationResult &result,
                                  path.generic_string());
     return;
   }
-  const auto size = std::filesystem::file_size(path, ec);
-  if (ec || size == 0) {
+  std::vector<std::string> diagnostics;
+  const std::string text = readTextFile(path, diagnostics, field);
+  if (!diagnostics.empty()) {
+    appendDiagnostics(result, diagnostics);
+    return;
+  }
+  const auto parsed = parser.parseSh9IrradiancePayload(
+      LX_core::ResourceUri(path.generic_string()), text);
+  if (!parsed.payload.has_value()) {
+    appendDiagnostics(result, parsed.diagnostics);
+  }
+}
+
+void validateKtx2PayloadFile(const IblBakeManifestParser &parser,
+                             LX_core::IblBakeValidationResult &result,
+                             const std::filesystem::path &manifestPath,
+                             const std::filesystem::path &relativePath,
+                             const std::string &field,
+                             LX_core::TextureFormat expectedFormat,
+                             LX_core::TextureDimension expectedDimension,
+                             u32 expectedWidth, u32 expectedHeight,
+                             u32 expectedMips, u32 expectedFaces) {
+  const std::filesystem::path path =
+      resolvePayloadPath(manifestPath, relativePath);
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec) || ec) {
     result.ok = false;
-    result.diagnostics.push_back(field + " payload file is empty: " +
+    result.diagnostics.push_back(field + " missing payload file: " +
                                  path.generic_string());
+    return;
+  }
+  std::vector<std::string> diagnostics;
+  const std::vector<u8> bytes = readBinaryFile(path, diagnostics, field);
+  if (!diagnostics.empty()) {
+    appendDiagnostics(result, diagnostics);
+    return;
+  }
+  const auto parsed = parser.parseKtx2Payload(
+      LX_core::ResourceUri(path.generic_string()), bytes);
+  if (!parsed.info.has_value()) {
+    appendDiagnostics(result, parsed.diagnostics);
+    return;
+  }
+  const ParsedIblBakeKtx2Payload::Info &info = *parsed.info;
+  if (info.format != expectedFormat) {
+    result.ok = false;
+    result.diagnostics.push_back(field + " KTX2 format does not match");
+  }
+  if (info.dimension != expectedDimension) {
+    result.ok = false;
+    result.diagnostics.push_back(field + " KTX2 dimension does not match");
+  }
+  if (info.width != expectedWidth || info.height != expectedHeight) {
+    result.ok = false;
+    result.diagnostics.push_back(field + " KTX2 size does not match");
+  }
+  if (info.mipLevels != expectedMips) {
+    result.ok = false;
+    result.diagnostics.push_back(field + " KTX2 mip count does not match");
+  }
+  if (info.faceCount != expectedFaces) {
+    result.ok = false;
+    result.diagnostics.push_back(field + " KTX2 face count does not match");
   }
 }
 
@@ -487,6 +751,80 @@ ParsedSh9IrradiancePayload IblBakeManifestParser::parseSh9IrradiancePayload(
   return result;
 }
 
+ParsedIblBakeKtx2Payload IblBakeManifestParser::parseKtx2Payload(
+    const LX_core::ResourceUri &uri, std::span<const u8> bytes) const {
+  ParsedIblBakeKtx2Payload result;
+  const Ktx2Header header = parseKtx2Header(result.diagnostics, uri, bytes);
+  if (!result.diagnostics.empty()) {
+    return result;
+  }
+
+  const std::optional<LX_core::TextureFormat> format =
+      textureFormatForVkFormat(header.vkFormat);
+  if (!format.has_value()) {
+    addDiagnostic(result.diagnostics, uri, "vkFormat",
+                  "unsupported KTX2 format for IBL bake payload");
+  }
+  if (header.typeSize != 2u) {
+    addDiagnostic(result.diagnostics, uri, "typeSize",
+                  "KTX2 type size must be 2");
+  }
+  if (header.pixelWidth == 0u || header.pixelHeight == 0u) {
+    addDiagnostic(result.diagnostics, uri, "pixelWidth",
+                  "KTX2 dimensions must be non-zero");
+  }
+  if (header.pixelDepth != 0u) {
+    addDiagnostic(result.diagnostics, uri, "pixelDepth",
+                  "3D KTX2 payloads are not supported for IBL bake");
+  }
+  if (header.layerCount != 0u) {
+    addDiagnostic(result.diagnostics, uri, "layerCount",
+                  "KTX2 array layers are not supported for IBL bake");
+  }
+  if (header.faceCount != 1u && header.faceCount != 6u) {
+    addDiagnostic(result.diagnostics, uri, "faceCount",
+                  "KTX2 payload must be 2D or cubemap");
+  }
+  if (header.levelCount == 0u) {
+    addDiagnostic(result.diagnostics, uri, "levelCount",
+                  "KTX2 payload must contain at least one mip level");
+  }
+  if (header.supercompressionScheme != 0u) {
+    addDiagnostic(result.diagnostics, uri, "supercompressionScheme",
+                  "supercompressed KTX2 payloads are not supported");
+  }
+  if (!result.diagnostics.empty() || !format.has_value()) {
+    return result;
+  }
+
+  LX_core::TextureDesc desc;
+  desc.width = header.pixelWidth;
+  desc.height = header.pixelHeight;
+  desc.format = *format;
+  desc.dimension = header.faceCount == 6u
+                       ? LX_core::TextureDimension::TextureCube
+                       : LX_core::TextureDimension::Texture2D;
+  desc.mipLevels = header.levelCount;
+  desc.arrayLayers = header.faceCount == 6u ? 6u : 1u;
+  try {
+    validateKtx2LevelPayloads(result.diagnostics, uri, bytes, desc);
+  } catch (const std::exception &error) {
+    addDiagnostic(result.diagnostics, uri, "$", error.what());
+  }
+
+  if (result.diagnostics.empty()) {
+    result.info = ParsedIblBakeKtx2Payload::Info{
+        .format = desc.format,
+        .width = desc.width,
+        .height = desc.height,
+        .mipLevels = desc.mipLevels,
+        .dimension = desc.dimension,
+        .faceCount = header.faceCount,
+    };
+  }
+  return result;
+}
+
 std::string IblBakeManifestParser::writeEnvironmentManifest(
     const EnvironmentManifest &manifest) const {
   YAML::Emitter out;
@@ -578,10 +916,15 @@ IblBakeManifestParser::validateEnvironmentPayloadFiles(
     const std::filesystem::path &manifestPath,
     const EnvironmentManifest &manifest) const {
   LX_core::IblBakeValidationResult result;
-  validatePayloadFile(result, manifestPath, manifest.diffuseFile,
-                      "outputs.diffuse.file");
-  validatePayloadFile(result, manifestPath, manifest.specularFile,
-                      "outputs.specular.file");
+  validateSh9PayloadFile(*this, result, manifestPath, manifest.diffuseFile,
+                         "outputs.diffuse.file");
+  validateKtx2PayloadFile(*this, result, manifestPath, manifest.specularFile,
+                          "outputs.specular.file",
+                          LX_core::TextureFormat::RGBA16Float,
+                          LX_core::TextureDimension::TextureCube,
+                          manifest.specularResolution,
+                          manifest.specularResolution, manifest.specularMips,
+                          manifest.specularFaces);
   return result;
 }
 
@@ -590,8 +933,11 @@ IblBakeManifestParser::validateMaterialPayloadFiles(
     const std::filesystem::path &manifestPath,
     const MaterialManifest &manifest) const {
   LX_core::IblBakeValidationResult result;
-  validatePayloadFile(result, manifestPath, manifest.brdfFile,
-                      "outputs.brdf.file");
+  validateKtx2PayloadFile(*this, result, manifestPath, manifest.brdfFile,
+                          "outputs.brdf.file",
+                          LX_core::TextureFormat::RG16Float,
+                          LX_core::TextureDimension::Texture2D,
+                          manifest.brdfSize, manifest.brdfSize, 1u, 1u);
   return result;
 }
 

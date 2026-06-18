@@ -8,6 +8,7 @@
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/runtime/scene_runtime.hpp"
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -124,6 +125,58 @@ CombinedTextureSamplerSharedPtr brdfLutPayloadFixture() {
   return makeTexturePayload(desc, StringID("BrdfLut"));
 }
 
+template <typename T> void writeLe(std::vector<u8> &bytes, usize offset, T value) {
+  for (usize i = 0; i < sizeof(T); ++i) {
+    bytes[offset + i] = static_cast<u8>((value >> (i * 8u)) & 0xffu);
+  }
+}
+
+std::vector<u8> makeKtx2Payload(TextureDesc desc, u8 seed = 0x31u) {
+  constexpr std::array<u8, 12> kIdentifier = {
+      0xABu, 0x4Bu, 0x54u, 0x58u, 0x20u, 0x32u,
+      0x30u, 0xBBu, 0x0Du, 0x0Au, 0x1Au, 0x0Au};
+  constexpr u32 kVkFormatR16G16Sfloat = 83u;
+  constexpr u32 kVkFormatR16G16B16A16Sfloat = 97u;
+  const u32 vkFormat = desc.format == TextureFormat::RG16Float
+                           ? kVkFormatR16G16Sfloat
+                           : kVkFormatR16G16B16A16Sfloat;
+  const u32 faceCount = desc.dimension == TextureDimension::TextureCube ? 6u : 1u;
+  desc.arrayLayers = faceCount;
+  const usize headerBytes = 80u + static_cast<usize>(desc.mipLevels) * 24u;
+  std::vector<u8> bytes(headerBytes, 0u);
+  std::copy(kIdentifier.begin(), kIdentifier.end(), bytes.begin());
+  writeLe<u32>(bytes, 12u, vkFormat);
+  writeLe<u32>(bytes, 16u, 2u);
+  writeLe<u32>(bytes, 20u, desc.width);
+  writeLe<u32>(bytes, 24u, desc.height);
+  writeLe<u32>(bytes, 28u, 0u);
+  writeLe<u32>(bytes, 32u, 0u);
+  writeLe<u32>(bytes, 36u, faceCount);
+  writeLe<u32>(bytes, 40u, desc.mipLevels);
+  writeLe<u32>(bytes, 44u, 0u);
+
+  usize dataOffset = headerBytes;
+  u32 mipWidth = desc.width;
+  u32 mipHeight = desc.height;
+  const usize bytesPerPixel = textureBytesPerPixel(desc.format);
+  for (u32 mip = 0; mip < desc.mipLevels; ++mip) {
+    const usize levelBytes =
+        static_cast<usize>(std::max(mipWidth, 1u)) *
+        static_cast<usize>(std::max(mipHeight, 1u)) * bytesPerPixel *
+        static_cast<usize>(faceCount);
+    const usize levelIndexOffset = 80u + static_cast<usize>(mip) * 24u;
+    writeLe<u64>(bytes, levelIndexOffset + 0u, static_cast<u64>(dataOffset));
+    writeLe<u64>(bytes, levelIndexOffset + 8u, static_cast<u64>(levelBytes));
+    writeLe<u64>(bytes, levelIndexOffset + 16u, static_cast<u64>(levelBytes));
+    bytes.insert(bytes.end(), levelBytes,
+                 static_cast<u8>(seed + static_cast<u8>(mip)));
+    dataOffset += levelBytes;
+    mipWidth = std::max(mipWidth / 2u, 1u);
+    mipHeight = std::max(mipHeight / 2u, 1u);
+  }
+  return bytes;
+}
+
 IblEnvironmentActivationPayload iblActivationPayloadFixture(u64 generation) {
   IblEnvironmentActivationPayload payload;
   payload.generation = generation;
@@ -175,6 +228,17 @@ void writeTextFile(const std::filesystem::path &path, const std::string &text) {
   out << text;
 }
 
+void writeBinaryFile(const std::filesystem::path &path,
+                     const std::vector<u8> &bytes) {
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    std::cerr << "[FAIL] unable to write " << path << '\n';
+    std::exit(1);
+  }
+  out.write(reinterpret_cast<const char *>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+}
+
 std::filesystem::path makeTempDir(const std::string &name) {
   const std::filesystem::path path = repoRootForTest() / (".tmp_" + name);
   std::filesystem::remove_all(path);
@@ -204,8 +268,18 @@ public:
   void writeValidCache(const IblBakeItem &item) {
     const std::filesystem::path dir = itemDir(item);
     std::filesystem::create_directories(dir);
-    writeTextFile(dir / "diffuse_sh9.yaml", "payload\n");
-    writeTextFile(dir / "specular_prefilter.ktx2", "payload\n");
+    writeTextFile(dir / "diffuse_sh9.yaml",
+                  m_parser.writeSh9IrradiancePayload(sh9PayloadFixture()));
+    TextureDesc specularDesc;
+    specularDesc.width = 256;
+    specularDesc.height = 256;
+    specularDesc.format = TextureFormat::RGBA16Float;
+    specularDesc.content = TextureContent::Environment;
+    specularDesc.dimension = TextureDimension::TextureCube;
+    specularDesc.mipLevels = deriveIblBakeMipCount(specularDesc.width);
+    specularDesc.arrayLayers = 6;
+    writeBinaryFile(dir / "specular_prefilter.ktx2",
+                    makeKtx2Payload(specularDesc));
     writeTextFile(dir / "manifest.yaml",
                   m_parser.writeEnvironmentManifest(makeManifest(item)));
   }
@@ -213,8 +287,18 @@ public:
   void writeInvalidCache(const IblBakeItem &item, const std::string &reason) {
     const std::filesystem::path dir = itemDir(item);
     std::filesystem::create_directories(dir);
-    writeTextFile(dir / "diffuse_sh9.yaml", "payload\n");
-    writeTextFile(dir / "specular_prefilter.ktx2", "payload\n");
+    writeTextFile(dir / "diffuse_sh9.yaml",
+                  m_parser.writeSh9IrradiancePayload(sh9PayloadFixture()));
+    TextureDesc specularDesc;
+    specularDesc.width = 256;
+    specularDesc.height = 256;
+    specularDesc.format = TextureFormat::RGBA16Float;
+    specularDesc.content = TextureContent::Environment;
+    specularDesc.dimension = TextureDimension::TextureCube;
+    specularDesc.mipLevels = deriveIblBakeMipCount(specularDesc.width);
+    specularDesc.arrayLayers = 6;
+    writeBinaryFile(dir / "specular_prefilter.ktx2",
+                    makeKtx2Payload(specularDesc));
     EnvironmentIblBakeManifest manifest = makeManifest(item);
     manifest.sourceHash = "sha256:wrong-" + reason;
     writeTextFile(dir / "manifest.yaml",

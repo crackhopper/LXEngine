@@ -2,6 +2,7 @@
 
 #include "core/frame_graph/frame_graph.hpp"
 #include "core/frame_graph/render_input.hpp"
+#include "core/platform/types.hpp"
 
 #include <span>
 #include <string>
@@ -15,9 +16,16 @@ struct FrameGraphExecutionRequest final {
   std::span<const PreparedFramePassWork> preparedPasses;
 };
 
+struct FrameGraphExecutionPayload final {
+  std::string name;
+  std::string mediaType;
+  std::vector<u8> bytes;
+};
+
 struct FrameGraphExecutionResult final {
   bool ok = false;
   std::vector<std::string> diagnostics;
+  std::vector<FrameGraphExecutionPayload> outputs;
 };
 
 class FrameGraphExecutor {

@@ -14,6 +14,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_scene_bake_cache
   test_vulkan_post_process_builder
   test_scene_resource_upload_view_v2
+  test_vulkan_ibl_bake
   test_vulkan_offline_renderer
   test_vulkan_texture_format_mapping
 )
@@ -52,6 +53,7 @@ endforeach()
 if(TARGET ${LXE_EDITOR_LIB})
   target_link_libraries(test_lxe_editor_render_debug_dump PRIVATE ${LXE_EDITOR_LIB})
   target_link_libraries(test_scene_bake_cache PRIVATE ${LXE_EDITOR_LIB})
+  target_link_libraries(test_vulkan_ibl_bake PRIVATE ${LXE_EDITOR_LIB})
 endif()
 
 foreach(TEST_EXE
