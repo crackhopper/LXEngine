@@ -318,6 +318,15 @@ bool hasDiagnosticCode(const RenderInputDesc &desc,
                      });
 }
 
+bool hasDiagnosticMessage(const RenderInputDesc &desc,
+                          const std::string &message) {
+  return std::any_of(desc.diagnostics.begin(), desc.diagnostics.end(),
+                     [&](const RenderInputDiagnostic &diagnostic) {
+                       return diagnostic.message.find(message) !=
+                              std::string::npos;
+                     });
+}
+
 bool hasFatalPipelineDiagnostic(const RenderInputDesc &desc) {
   return hasDiagnosticCode(desc,
                            RenderInputDiagnosticCode::MissingShaderReflection) ||
@@ -1596,10 +1605,14 @@ ShaderResourceBinding makeEnvironmentLightingUboBinding() {
 
 void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
   Scene scene("EnvironmentCompilerScene");
-  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+  const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
       ResourceUri("memory://features/environment_lighting"),
       makeCompilerEnvironmentFeature());
+  scene.resources().setEnvironmentRuntimeState(
+      SceneEnvironmentRuntimeState{.feature = featureHandle,
+                                   .nodePresent = true,
+                                   .bakeRequested = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -1642,12 +1655,185 @@ void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
   }
 }
 
-void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
+void testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode() {
   Scene scene("EnvironmentCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
       ResourceUri("memory://features/environment_lighting"),
+      makeCompilerEnvironmentFeature());
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 45}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 46}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "missing environment node should produce one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "feature.environmentLighting must reject without environment node");
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MissingResource),
+           "missing environment node should report MissingResource");
+    EXPECT(hasDiagnosticMessage(
+               descs.front(),
+               "feature.environmentLighting requires a scene environment node"),
+           "missing environment node diagnostic should name required node");
+  }
+}
+
+void testRenderWorkCompilerRejectsMetadataOnlyEnvironmentFeature() {
+  Scene scene("EnvironmentCompilerScene");
+  const ResourceIdentityHandle metadataOnlyFeature =
+      scene.resources().loadOrGetResource(
+          SceneResourceType::RenderFeature,
+          ResourceUri("memory://features/node_environment.render-feature"));
+  EXPECT(metadataOnlyFeature.isValid(),
+         "metadata-only RenderFeature fixture should register");
+
+  [[maybe_unused]] const RenderFeatureHandle unrelatedFeature =
+      scene.resources().registerRenderFeature(
+      ResourceUri("memory://features/unrelated_environment_lighting"),
+      makeCompilerEnvironmentFeature());
+  scene.resources().setEnvironmentRuntimeState(
+      SceneEnvironmentRuntimeState{
+          .feature = RenderFeatureHandle{metadataOnlyFeature.index,
+                                         metadataOnlyFeature.generation},
+          .nodePresent = true,
+          .bakeRequested = true});
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 47}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 48}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "metadata-only environment feature should produce one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "metadata-only environment node feature must not be accepted");
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MissingResource),
+           "metadata-only environment node feature should report "
+           "MissingResource");
+    EXPECT(hasDiagnosticMessage(
+               descs.front(),
+               "feature.environmentLighting RenderFeature payload is "
+               "unresolved"),
+           "metadata-only environment node feature diagnostic should name "
+           "unresolved payload");
+  }
+}
+
+void testRenderWorkCompilerRejectsWrongLiveEnvironmentFeature() {
+  Scene scene("EnvironmentCompilerScene");
+  RenderFeature wrongFeature;
+  wrongFeature.name = "ToneMapping";
+  wrongFeature.feature = "toneMapping";
+  const RenderFeatureHandle wrongFeatureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/not_environment_lighting"),
+          std::move(wrongFeature));
+  EXPECT(wrongFeatureHandle.isValid(),
+         "wrong live RenderFeature fixture should register");
+
+  scene.resources().setEnvironmentRuntimeState(
+      SceneEnvironmentRuntimeState{.feature = wrongFeatureHandle,
+                                   .nodePresent = true,
+                                   .bakeRequested = true});
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
+                                         makeEnvironmentLightingUboBinding()},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 49}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 50}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "wrong live environment feature should produce one desc");
+  if (!descs.empty()) {
+    EXPECT(!descs.front().accepted(),
+           "wrong live environment node feature must not be accepted");
+    EXPECT(hasDiagnosticMessage(
+               descs.front(),
+               "scene environment node RenderFeature payload is not "
+               "environmentLighting"),
+           "wrong live environment node feature diagnostic should name the "
+           "feature mismatch");
+  }
+}
+
+void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
+  Scene scene("EnvironmentCompilerScene");
+  const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting"),
       makeCompilerEnvironmentFeature(/*includeColor=*/false));
+  scene.resources().setEnvironmentRuntimeState(
+      SceneEnvironmentRuntimeState{.feature = featureHandle,
+                                   .nodePresent = true,
+                                   .bakeRequested = false});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -1714,6 +1900,9 @@ int main() {
   testPassNameDoesNotCreateDefaultVisibilityWithoutCamera();
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
+  testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode();
+  testRenderWorkCompilerRejectsMetadataOnlyEnvironmentFeature();
+  testRenderWorkCompilerRejectsWrongLiveEnvironmentFeature();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   return g_failures == 0 ? 0 : 1;

@@ -129,6 +129,13 @@ struct PassFeatureData final {
   std::vector<PassFeatureSpecializationValue> specializationValues;
 };
 
+struct SceneEnvironmentRuntimeState final {
+  RenderFeatureHandle feature;
+  bool nodePresent = false;
+  bool bakeRequested = false;
+  u64 generation = 0;
+};
+
 /*
 @source_analysis.section SceneResourceTable 统一持有场景渲染资源
 `SceneResourceTable` 是 bindless-ready 资源模型的入口。它给长期资源分配带
@@ -259,6 +266,8 @@ public:
   findTexture(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
   findRenderFeatureByFeatureName(std::string_view feature) const;
+  [[nodiscard]] std::optional<RenderFeatureHandle>
+  findRenderFeatureByMetadataHandle(ResourceIdentityHandle handle) const;
   [[nodiscard]] const PassFeatureData *
   findPassFeatureDataByFeatureName(std::string_view feature) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
@@ -275,6 +284,10 @@ public:
   void registerEnvironmentLightingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef>
   getEnvironmentLightingResources() const;
+  void setEnvironmentRuntimeState(SceneEnvironmentRuntimeState state);
+  [[nodiscard]] std::optional<SceneEnvironmentRuntimeState>
+  environmentRuntimeState() const;
+  [[nodiscard]] bool hasEnvironmentNode() const;
   void registerToneMappingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef> getToneMappingResources() const;
   void registerBloomResources(const RenderFeature &feature);
@@ -430,6 +443,7 @@ private:
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
+  std::optional<SceneEnvironmentRuntimeState> m_environmentRuntimeState;
   ToneMappingDataUniquePtr m_toneMappingUbo;
   BloomDataUniquePtr m_bloomUbo;
   std::vector<PassFeatureData> m_passFeatureData;

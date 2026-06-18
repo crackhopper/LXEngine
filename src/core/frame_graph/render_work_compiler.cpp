@@ -649,20 +649,26 @@ void validateEnvironmentLightingFeatureBindings(
   }
 
   const SceneResourceTable &resources = context.realtimeScene().resources();
-  const auto featureHandle =
-      resources.findRenderFeatureByFeatureName("environmentLighting");
-  if (!featureHandle.has_value()) {
+  const auto environmentState = resources.environmentRuntimeState();
+  if (!environmentState.has_value() || !environmentState->nodePresent) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
-           "feature.environmentLighting has no live RenderFeature payload");
+           "feature.environmentLighting requires a scene environment node");
     return;
   }
-  const auto resolvedFeature = resources.resolve(*featureHandle);
+
+  const auto resolvedFeature = resources.resolve(environmentState->feature);
   if (!resolvedFeature.has_value()) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.environmentLighting RenderFeature payload is unresolved");
     return;
   }
   const RenderFeature &feature = resolvedFeature->get();
+  if (feature.feature != "environmentLighting") {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "scene environment node RenderFeature payload is not "
+           "environmentLighting");
+    return;
+  }
 
   const ShaderResourceBinding *skyboxMap =
       findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");

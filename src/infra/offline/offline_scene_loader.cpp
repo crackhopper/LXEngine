@@ -9,6 +9,8 @@
 #include "core/scene/light.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
 #include "infra/mesh_loader/obj_mesh_loader.hpp"
+#include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
+#include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/scene_asset/scene_material_loader.hpp"
 
@@ -230,6 +232,88 @@ resolveMaterialPath(const OfflineAssetResolver &resolver,
   });
 }
 
+[[nodiscard]] std::string
+joinSceneResourceDiagnostics(const std::vector<std::string> &diagnostics) {
+  std::string out;
+  for (const std::string &diagnostic : diagnostics) {
+    if (!out.empty()) {
+      out += "; ";
+    }
+    out += diagnostic;
+  }
+  return out;
+}
+
+[[nodiscard]] LX_core::ResourceUri resolveSceneResourceParserUri(
+    const OfflineAssetResolver &resolver, const LX_core::ResourceUri &uri) {
+  const std::string &text = uri.string();
+  if (text.empty() || text.rfind("assets://", 0) == 0 ||
+      text.rfind("file://", 0) == 0) {
+    return uri;
+  }
+  const std::filesystem::path path(text);
+  if (path.is_absolute()) {
+    return uri;
+  }
+  return LX_core::ResourceUri(resolver.resolve(text).generic_string());
+}
+
+void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
+                                    SceneResourceTable &table,
+                                    const SceneNodeDocument &node) {
+  if (!node.environment.has_value()) {
+    return;
+  }
+  if (table.hasEnvironmentNode()) {
+    throw std::runtime_error("scene contains multiple environment nodes");
+  }
+
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  const LX_core::ResourceUri featureUri =
+      resolveSceneResourceParserUri(resolver, node.environment->featureUri);
+  const auto parsed = registry.parse(
+      table, LX_core::SceneResourceType::RenderFeature, featureUri,
+      LX_infra::SceneResourceParseContext{
+          .ownerUri = LX_core::ResourceUri("offline-scene-node://" +
+                                           node.nodeName)});
+  if (!parsed.identity.isValid() ||
+      parsed.metadata.state == LX_core::ResourceState::Failed ||
+      !parsed.diagnostics.empty()) {
+    std::string message =
+        "environment node '" + node.nodeName +
+        "' failed to load RenderFeature '" +
+        node.environment->featureUri.string() + "'";
+    const std::string diagnostics =
+        joinSceneResourceDiagnostics(parsed.diagnostics);
+    if (!diagnostics.empty()) {
+      message += ": " + diagnostics;
+    }
+    throw std::runtime_error(message);
+  }
+
+  const auto featureHandle =
+      table.findRenderFeatureByMetadataHandle(parsed.identity);
+  if (!featureHandle.has_value()) {
+    throw std::runtime_error(
+        "environment node '" + node.nodeName +
+        "' RenderFeature did not register a live payload for '" +
+        node.environment->featureUri.string() + "'");
+  }
+  const auto resolvedFeature = table.resolve(*featureHandle);
+  if (!resolvedFeature.has_value() ||
+      resolvedFeature->get().feature != "environmentLighting") {
+    throw std::runtime_error(
+        "environment node '" + node.nodeName +
+        "' RenderFeature must provide feature environmentLighting");
+  }
+  table.setEnvironmentRuntimeState(LX_core::SceneEnvironmentRuntimeState{
+      .feature = *featureHandle,
+      .nodePresent = true,
+      .bakeRequested = node.environment->bake.enabled,
+  });
+}
+
 [[nodiscard]] CameraResource makeCameraResource(const SceneNodeDocument &node,
                                                 const Mat4f &world) {
   const Vec3f eye = transformPoint(world, Vec3f{0.0f, 0.0f, 0.0f});
@@ -357,6 +441,8 @@ void visitNode(const OfflineAssetResolver &resolver,
                LoadState &state) {
   const std::string path = joinPath(parentPath, node);
   const Mat4f world = parentWorld * node.transform.toMat4();
+
+  registerEnvironmentNodeFeature(resolver, state.loaded.table, node);
 
   if (node.camera.has_value() && !state.cameraLoaded &&
       (cameraPath.empty() || cameraPath == path)) {

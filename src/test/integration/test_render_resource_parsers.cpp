@@ -4,6 +4,7 @@
 #include "core/frame_graph/render_feature_shader_validation.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
+#include "infra/offline/offline_scene_loader.hpp"
 #include "infra/resource_parsers/render_feature_resource_parser.hpp"
 #include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
@@ -189,6 +190,13 @@ LX_core::ResourceUri writeTempRenderPathGraph(const std::string &fileName,
   std::ofstream file(path);
   file << contents;
   return LX_core::ResourceUri("file://" + path.generic_string());
+}
+
+void writeTextFile(const std::filesystem::path &path,
+                   const std::string &contents) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream file(path);
+  file << contents;
 }
 
 bool shaderHasCompiledPayload(const LX_core::ShaderResourceMetadata &shader) {
@@ -2079,6 +2087,247 @@ root:
          "object node should retain top-level bake.ibl.enabled");
 }
 
+void testOfflineSceneLoaderRegistersEnvironmentNodeFeatureFromFileUri() {
+  const LX_core::ResourceUri featureUri = writeTempRenderPathGraph(
+      "lxe_offline_environment_node_file_uri.render-feature.yaml", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: assets/env/khronos/neutral/ggx/specular.ktx2
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: EnvironmentLightingUBO
+    member: color
+    required: true
+  intensity:
+    kind: float
+    value: 1.0
+    binding: EnvironmentLightingUBO
+    member: intensity
+    required: true
+  rotation:
+    kind: float
+    value: 0.0
+    binding: EnvironmentLightingUBO
+    member: rotation
+    required: true
+)");
+
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("OfflineEnvironmentNode");
+  document.setGameplayCameraPath("/camera");
+  auto &root = document.mutableRootNode();
+  root.nodeName = "scene_root";
+  root.name = "";
+
+  LX_infra::scene_io::SceneNodeDocument environmentNode;
+  environmentNode.nodeName = "environment";
+  environmentNode.name = "environment";
+  environmentNode.environment = LX_core::SceneEnvironmentNode{
+      .featureUri = featureUri,
+      .bake = LX_core::SceneIblBakeMarker{.enabled = true},
+  };
+  root.children.push_back(std::move(environmentNode));
+
+  LX_infra::scene_io::SceneNodeDocument cameraNode;
+  cameraNode.nodeName = "camera";
+  cameraNode.name = "camera";
+  cameraNode.camera = LX_infra::scene_io::CameraNodeState{};
+  root.children.push_back(std::move(cameraNode));
+
+  LX_infra::scene_io::SceneNodeDocument objectNode;
+  objectNode.nodeName = "cube";
+  objectNode.name = "cube";
+  objectNode.meshUri = "builtin://lxe_editor/primitives/cube";
+  objectNode.materialUri = "assets/materials/pbr.material";
+  root.children.push_back(std::move(objectNode));
+
+  LX_infra::scene_io::SceneNodeDocument lightNode;
+  lightNode.nodeName = "sun";
+  lightNode.name = "sun";
+  lightNode.light = LX_infra::scene_io::LightNodeState{};
+  root.children.push_back(std::move(lightNode));
+
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver{std::filesystem::current_path()}};
+  const auto loaded = loader.load(document, "");
+  const auto state = loaded.table.environmentRuntimeState();
+  EXPECT(state.has_value() && state->nodePresent,
+         "offline loader should register environment node runtime state");
+  if (!state.has_value()) {
+    return;
+  }
+  EXPECT(state->bakeRequested,
+         "offline loader should preserve environment bake request");
+  const auto feature = loaded.table.resolve(state->feature);
+  EXPECT(feature.has_value(),
+         "offline loader environment state should point at live feature");
+  if (feature.has_value()) {
+    EXPECT(feature->get().feature == "environmentLighting",
+           "offline loader should bind environmentLighting feature payload");
+  }
+  EXPECT(loaded.table.metadata(state->feature).uri == featureUri,
+         "offline loader should bind the feature handle returned for the node "
+         "file URI");
+}
+
+void testOfflineSceneLoaderResolvesCacheEnvironmentFeatureUri() {
+  const std::filesystem::path cacheFeaturePath =
+      std::filesystem::current_path() / ".asset_cache" /
+      "test/offline_environment_cache.render-feature.yaml";
+  writeTextFile(cacheFeaturePath, R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: assets/env/khronos/neutral/ggx/specular.ktx2
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: EnvironmentLightingUBO
+    member: color
+    required: true
+  intensity:
+    kind: float
+    value: 1.0
+    binding: EnvironmentLightingUBO
+    member: intensity
+    required: true
+  rotation:
+    kind: float
+    value: 0.0
+    binding: EnvironmentLightingUBO
+    member: rotation
+    required: true
+)");
+
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("OfflineCacheEnvironmentNode");
+  document.setGameplayCameraPath("/camera");
+  auto &root = document.mutableRootNode();
+  root.nodeName = "scene_root";
+  root.name = "";
+
+  LX_infra::scene_io::SceneNodeDocument environmentNode;
+  environmentNode.nodeName = "environment";
+  environmentNode.name = "environment";
+  environmentNode.environment = LX_core::SceneEnvironmentNode{
+      .featureUri = LX_core::ResourceUri(
+          "cache://test/offline_environment_cache.render-feature.yaml"),
+      .bake = LX_core::SceneIblBakeMarker{.enabled = false},
+  };
+  root.children.push_back(std::move(environmentNode));
+
+  LX_infra::scene_io::SceneNodeDocument cameraNode;
+  cameraNode.nodeName = "camera";
+  cameraNode.name = "camera";
+  cameraNode.camera = LX_infra::scene_io::CameraNodeState{};
+  root.children.push_back(std::move(cameraNode));
+
+  LX_infra::scene_io::SceneNodeDocument objectNode;
+  objectNode.nodeName = "cube";
+  objectNode.name = "cube";
+  objectNode.meshUri = "builtin://lxe_editor/primitives/cube";
+  objectNode.materialUri = "assets/materials/pbr.material";
+  root.children.push_back(std::move(objectNode));
+
+  LX_infra::scene_io::SceneNodeDocument lightNode;
+  lightNode.nodeName = "sun";
+  lightNode.name = "sun";
+  lightNode.light = LX_infra::scene_io::LightNodeState{};
+  root.children.push_back(std::move(lightNode));
+
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver{std::filesystem::current_path()}};
+  const auto loaded = loader.load(document, "");
+  const auto state = loaded.table.environmentRuntimeState();
+  EXPECT(state.has_value() && state->nodePresent,
+         "offline loader should register cache environment node state");
+  if (!state.has_value()) {
+    return;
+  }
+  EXPECT(!state->bakeRequested,
+         "offline loader should preserve disabled cache bake request");
+  EXPECT(loaded.table.metadata(state->feature).uri ==
+             LX_core::ResourceUri(cacheFeaturePath.generic_string()),
+         "offline loader should resolve cache:// feature URI before parsing");
+}
+
+void testOfflineSceneLoaderRejectsMultipleEnvironmentNodes() {
+  const LX_core::ResourceUri featureUri = writeTempRenderPathGraph(
+      "lxe_offline_multiple_environment_nodes.render-feature.yaml", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentLighting
+feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: assets/env/khronos/neutral/ggx/specular.ktx2
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+)");
+
+  LX_infra::scene_io::SceneDocument document;
+  document.setSceneName("MultipleEnvironmentNodes");
+  document.setGameplayCameraPath("/camera");
+  auto &root = document.mutableRootNode();
+  root.nodeName = "scene_root";
+  root.name = "";
+
+  for (int i = 0; i < 2; ++i) {
+    LX_infra::scene_io::SceneNodeDocument environmentNode;
+    environmentNode.nodeName = "environment_" + std::to_string(i);
+    environmentNode.name = environmentNode.nodeName;
+    environmentNode.environment = LX_core::SceneEnvironmentNode{
+        .featureUri = featureUri,
+        .bake = LX_core::SceneIblBakeMarker{.enabled = false},
+    };
+    root.children.push_back(std::move(environmentNode));
+  }
+
+  LX_infra::scene_io::SceneNodeDocument cameraNode;
+  cameraNode.nodeName = "camera";
+  cameraNode.name = "camera";
+  cameraNode.camera = LX_infra::scene_io::CameraNodeState{};
+  root.children.push_back(std::move(cameraNode));
+
+  LX_infra::scene_io::SceneNodeDocument objectNode;
+  objectNode.nodeName = "cube";
+  objectNode.name = "cube";
+  objectNode.meshUri = "builtin://lxe_editor/primitives/cube";
+  objectNode.materialUri = "assets/materials/pbr.material";
+  root.children.push_back(std::move(objectNode));
+
+  LX_infra::offline::OfflineSceneLoader loader{
+      LX_infra::offline::OfflineAssetResolver{std::filesystem::current_path()}};
+  expectThrowsContaining(
+      [&] { (void)loader.load(document, ""); },
+      "scene contains multiple environment nodes",
+      "offline loader should reject multiple environment nodes");
+}
+
 void testSceneDocumentRejectsMaterialBakeMarker() {
   expectThrowsContaining(
       [] {
@@ -2337,6 +2586,9 @@ int main() {
   testParserAdapterLoadsEnvironmentFeatureTextureDependency();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   testSceneDocumentParsesEnvironmentNodeAndBakeMarkers();
+  testOfflineSceneLoaderRegistersEnvironmentNodeFeatureFromFileUri();
+  testOfflineSceneLoaderResolvesCacheEnvironmentFeatureUri();
+  testOfflineSceneLoaderRejectsMultipleEnvironmentNodes();
   testSceneDocumentRejectsMaterialBakeMarker();
   testSceneDocumentRejectsUnknownEnvironmentNodeField();
   testSceneDocumentRejectsIncompleteEnvironmentNode();

@@ -9,6 +9,8 @@
 #include "core/scene/light.hpp"
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/generic_material_loader.hpp"
+#include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
+#include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/resource_parsers/texture_resource_parser.hpp"
 #include "infra/scene_asset/gltf_scene_asset_loader.hpp"
 #include "infra/scene_asset/scene_material_loader.hpp"
@@ -321,6 +323,100 @@ resolveProjectAssetPath(const std::vector<std::filesystem::path> &assetRoots,
     return *projectPath;
   }
   return resolveRuntimePath(uri);
+}
+
+[[nodiscard]] LX_core::ResourceUri resolveSceneResourceParserUri(
+    const std::vector<std::filesystem::path> &assetRoots,
+    const LX_core::ResourceUri &uri) {
+  const std::string &text = uri.string();
+  if (text.empty() || text.rfind("assets://", 0) == 0 ||
+      text.rfind("file://", 0) == 0) {
+    return uri;
+  }
+  if (text.find("://") != std::string::npos) {
+    throw std::runtime_error(
+        "scene runtime environment feature URI uses unsupported scheme: " +
+        text);
+  }
+  const std::filesystem::path path(text);
+  if (path.is_absolute()) {
+    return uri;
+  }
+  if (const auto projectPath = resolveProjectAssetPath(assetRoots, path);
+      projectPath.has_value()) {
+    return LX_core::ResourceUri(projectPath->generic_string());
+  }
+  return uri;
+}
+
+[[nodiscard]] std::string
+joinSceneResourceDiagnostics(const std::vector<std::string> &diagnostics) {
+  std::string out;
+  for (const std::string &diagnostic : diagnostics) {
+    if (!out.empty()) {
+      out += "; ";
+    }
+    out += diagnostic;
+  }
+  return out;
+}
+
+void registerEnvironmentNodeFeature(
+    LX_core::SceneResourceTable &resourceTable,
+    const std::vector<std::filesystem::path> &assetRoots,
+    const SceneNodeDocument &nodeDocument) {
+  if (!nodeDocument.environment.has_value()) {
+    return;
+  }
+  if (resourceTable.hasEnvironmentNode()) {
+    throw std::runtime_error("scene contains multiple environment nodes");
+  }
+
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  const LX_core::ResourceUri featureUri = resolveSceneResourceParserUri(
+      assetRoots, nodeDocument.environment->featureUri);
+  const auto parsed = registry.parse(
+      resourceTable, LX_core::SceneResourceType::RenderFeature, featureUri,
+      LX_infra::SceneResourceParseContext{
+          .ownerUri = LX_core::ResourceUri("scene-node://" +
+                                           nodeDocument.nodeName)});
+  if (!parsed.identity.isValid() ||
+      parsed.metadata.state == LX_core::ResourceState::Failed ||
+      !parsed.diagnostics.empty()) {
+    std::string message =
+        "environment node '" + nodeDocument.nodeName +
+        "' failed to load RenderFeature '" +
+        nodeDocument.environment->featureUri.string() + "'";
+    const std::string diagnostics =
+        joinSceneResourceDiagnostics(parsed.diagnostics);
+    if (!diagnostics.empty()) {
+      message += ": " + diagnostics;
+    }
+    throw std::runtime_error(message);
+  }
+
+  const auto featureHandle =
+      resourceTable.findRenderFeatureByMetadataHandle(parsed.identity);
+  if (!featureHandle.has_value()) {
+    throw std::runtime_error(
+        "environment node '" + nodeDocument.nodeName +
+        "' RenderFeature did not register a live payload for '" +
+        nodeDocument.environment->featureUri.string() + "'");
+  }
+  const auto resolvedFeature = resourceTable.resolve(*featureHandle);
+  if (!resolvedFeature.has_value() ||
+      resolvedFeature->get().feature != "environmentLighting") {
+    throw std::runtime_error(
+        "environment node '" + nodeDocument.nodeName +
+        "' RenderFeature must provide feature environmentLighting");
+  }
+  resourceTable.setEnvironmentRuntimeState(
+      LX_core::SceneEnvironmentRuntimeState{
+          .feature = *featureHandle,
+          .nodePresent = true,
+          .bakeRequested = nodeDocument.environment->bake.enabled,
+      });
 }
 
 [[nodiscard]] LX_core::CombinedTextureSamplerSharedPtr
@@ -1401,6 +1497,9 @@ void buildSceneNodesRecursive(
     ++g_sceneLoadTimingStats->nodeCount;
   }
   const auto nodeBegin = SceneLoadClock::now();
+
+  registerEnvironmentNodeFeature(runtime->scene->resources(),
+                                 runtime->assetRoots, nodeDocument);
 
   LX_core::SceneNodeSharedPtr node;
   if (nodeDocument.camera.has_value()) {

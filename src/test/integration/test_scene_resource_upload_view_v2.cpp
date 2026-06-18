@@ -259,6 +259,34 @@ void testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap() {
          "missing environmentMap.uri must not create default SkyboxMap");
 }
 
+void testEnvironmentRuntimeStateTracksSceneEnvironmentNode() {
+  SceneResourceTable table;
+  EXPECT(!table.hasEnvironmentNode(), "new table has no environment node");
+  EXPECT(!table.environmentRuntimeState().has_value(),
+         "new table has no environment runtime state");
+
+  const RenderFeatureHandle featureHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting.render-feature"),
+      makeEnvironmentLightingFeature(ResourceUri("builtin:env/white_cube")));
+  EXPECT(featureHandle.isValid(), "environment feature should register");
+
+  table.setEnvironmentRuntimeState(
+      SceneEnvironmentRuntimeState{.feature = featureHandle,
+                                   .nodePresent = true,
+                                   .bakeRequested = true});
+
+  EXPECT(table.hasEnvironmentNode(),
+         "environment node state should be visible");
+  const auto state = table.environmentRuntimeState();
+  EXPECT(state.has_value(), "environment runtime state should be stored");
+  if (state.has_value()) {
+    EXPECT(state->feature == featureHandle,
+           "environment runtime state should retain feature handle");
+    EXPECT(state->bakeRequested,
+           "environment runtime state should retain bake request");
+  }
+}
+
 class TestShader final : public IShader {
 public:
   TestShader() {
@@ -1149,6 +1177,7 @@ int main() {
   testBuiltinDefaultTexturesAreStableSceneResources();
   testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap();
   testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap();
+  testEnvironmentRuntimeStateTracksSceneEnvironmentNode();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();

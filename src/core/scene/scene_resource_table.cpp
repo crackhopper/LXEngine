@@ -1211,6 +1211,19 @@ SceneResourceTable::findRenderFeatureByFeatureName(
   return std::nullopt;
 }
 
+std::optional<RenderFeatureHandle>
+SceneResourceTable::findRenderFeatureByMetadataHandle(
+    ResourceIdentityHandle handle) const {
+  for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
+    const auto &entry = m_renderFeatures[i];
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        entry.metadataHandle == handle) {
+      return RenderFeatureHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
+}
+
 const PassFeatureData *
 SceneResourceTable::findPassFeatureDataByFeatureName(
     std::string_view feature) const {
@@ -2054,6 +2067,29 @@ SceneResourceTable::getEnvironmentLightingResources() const {
     out.emplace_back(*m_environmentLightingUbo);
   }
   return out;
+}
+
+void SceneResourceTable::setEnvironmentRuntimeState(
+    SceneEnvironmentRuntimeState state) {
+  if (state.generation == 0) {
+    const u64 current =
+        m_environmentRuntimeState.has_value()
+            ? m_environmentRuntimeState->generation
+            : 0;
+    state.generation = nextGeneration(current);
+  }
+  m_environmentRuntimeState = state;
+  advanceUploadGeneration();
+}
+
+std::optional<SceneEnvironmentRuntimeState>
+SceneResourceTable::environmentRuntimeState() const {
+  return m_environmentRuntimeState;
+}
+
+bool SceneResourceTable::hasEnvironmentNode() const {
+  return m_environmentRuntimeState.has_value() &&
+         m_environmentRuntimeState->nodePresent;
 }
 
 void SceneResourceTable::registerToneMappingResources(
