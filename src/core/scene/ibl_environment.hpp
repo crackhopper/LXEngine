@@ -3,8 +3,11 @@
 #include "core/asset/texture.hpp"
 #include "core/math/vec.hpp"
 #include "core/rhi/gpu_resource.hpp"
+#include "core/scene/ibl_bake_manifest.hpp"
+#include "core/scene/scene_resource_handles.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace LX_core {
@@ -21,8 +24,7 @@ struct alignas(16) EnvironmentData final : public IGpuResource {
                            float ambientIntensity = 0.0f) {
     param.params = Vec4f{iblIntensity, prefilteredMipCount, 0.0f, 0.0f};
     param.ambientColorIntensity =
-        Vec4f{ambientColor.x, ambientColor.y, ambientColor.z,
-              ambientIntensity};
+        Vec4f{ambientColor.x, ambientColor.y, ambientColor.z, ambientIntensity};
   }
 
   void setParams(float iblIntensity, float prefilteredMipCount) {
@@ -88,8 +90,8 @@ struct alignas(16) ToneMappingData final : public IGpuResource {
   };
 
   void set(bool enabled, float exposure, Mode mode, float gamma) {
-    param.params = Vec4f{enabled ? 1.0f : 0.0f, exposure,
-                         static_cast<float>(mode), gamma};
+    param.params =
+        Vec4f{enabled ? 1.0f : 0.0f, exposure, static_cast<float>(mode), gamma};
     setDirty();
   }
 
@@ -141,6 +143,56 @@ struct IblEnvironmentResources {
   std::unique_ptr<IGpuResource> bakedPrefilteredRadianceCubemap;
   std::unique_ptr<IGpuResource> bakedBrdfLut;
   EnvironmentDataUniquePtr environmentUbo;
+};
+
+struct IblDiffuseShPayloadResource final {
+  Sh9IrradiancePayload payload;
+};
+
+struct IblTexturePayloadResource final {
+  CombinedTextureSamplerSharedPtr sampler;
+};
+
+struct ActiveIblEnvironmentResources final {
+  u64 generation = 0;
+  IblDiffuseShHandle diffuseSh;
+  IblSpecularPrefilteredCubemapHandle specularPrefilteredCubemap;
+  StandardPbrBrdfLutHandle standardPbrBrdfLut;
+};
+
+struct IblEnvironmentActivationPayload final {
+  u64 generation = 0;
+  Sh9IrradiancePayload diffuseSh;
+  CombinedTextureSamplerSharedPtr specularPrefilteredCubemap;
+  CombinedTextureSamplerSharedPtr standardPbrBrdfLut;
+};
+
+struct IblEnvironmentActivationResult final {
+  bool ok = false;
+  u64 generation = 0;
+  std::vector<std::string> diagnostics;
+  std::string message;
+
+  [[nodiscard]] static IblEnvironmentActivationResult
+  success(u64 activeGeneration) {
+    return IblEnvironmentActivationResult{
+        .ok = true, .generation = activeGeneration, .message = "activated"};
+  }
+
+  [[nodiscard]] static IblEnvironmentActivationResult
+  failure(std::vector<std::string> failureDiagnostics) {
+    std::string joined;
+    for (usize i = 0; i < failureDiagnostics.size(); ++i) {
+      if (i != 0u) {
+        joined += "; ";
+      }
+      joined += failureDiagnostics[i];
+    }
+    return IblEnvironmentActivationResult{
+        .diagnostics = std::move(failureDiagnostics),
+        .message = std::move(joined),
+    };
+  }
 };
 
 inline IblEnvironmentResources

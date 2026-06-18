@@ -1,8 +1,9 @@
 #pragma once
 
 #include "core/asset/material_contract_packer.hpp"
-#include "core/resource/resource_metadata.hpp"
 #include "core/asset/texture.hpp"
+#include "core/resource/resource_metadata.hpp"
+#include "core/scene/ibl_environment.hpp"
 #include "core/scene/scene_gpu_records.hpp"
 #include "core/scene/scene_resource_handles.hpp"
 #include "core/utils/string_table.hpp"
@@ -68,6 +69,27 @@ struct SceneResourceShaderUploadIndex final {
   u32 typedIndex = u32_max;
 };
 
+struct SceneResourceIblDiffuseShUploadIndex final {
+  IblDiffuseShHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct SceneResourceIblSpecularPrefilteredCubemapUploadIndex final {
+  IblSpecularPrefilteredCubemapHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct SceneResourceStandardPbrBrdfLutUploadIndex final {
+  StandardPbrBrdfLutHandle handle;
+  u32 typedIndex = u32_max;
+};
+
+struct SceneActiveIblUploadState final {
+  IblDiffuseShHandle diffuseSh;
+  IblSpecularPrefilteredCubemapHandle specularPrefilteredCubemap;
+  StandardPbrBrdfLutHandle standardPbrBrdfLut;
+};
+
 struct SceneSourceLocalMaterialStorageView final {
   StringID sourceSignature;
   ResourceUri sourceUri;
@@ -111,15 +133,19 @@ struct SceneResourceTableUploadView final {
       renderFeatureResources;
   std::span<const std::reference_wrapper<const ShaderResourceMetadata>>
       shaderResources;
+  std::span<const std::reference_wrapper<const IblDiffuseShPayloadResource>>
+      environmentDiffuseShPayloads;
+  std::span<const std::reference_wrapper<const CombinedTextureSampler>>
+      environmentSpecularPrefilteredCubemaps;
+  std::span<const std::reference_wrapper<const CombinedTextureSampler>>
+      standardPbrBrdfLuts;
   std::span<const SceneGpuRenderPathGraphRecord> renderPathGraphs;
   std::span<const SceneGpuRenderPathGraphPassRecord> renderPathGraphPasses;
-  std::span<const SceneGpuRenderPathGraphFeatureRecord>
-      renderPathGraphFeatures;
+  std::span<const SceneGpuRenderPathGraphFeatureRecord> renderPathGraphFeatures;
   std::span<const ResourceIdentityHandle> renderPathGraphShaders;
   std::span<const SceneResourceMeshUploadIndex> meshIndexByHandle;
   std::span<const SceneResourceMaterialUploadIndex> materialIndexByHandle;
-  std::span<const SceneResourceMaterialRefUploadIndex>
-      materialRefIndexByHandle;
+  std::span<const SceneResourceMaterialRefUploadIndex> materialRefIndexByHandle;
   std::span<const SceneResourceTextureUploadIndex> textureIndexByHandle;
   std::span<const SceneResourceObjectUploadIndex> objectIndexByHandle;
   std::span<const SceneResourceCameraUploadIndex> cameraIndexByHandle;
@@ -129,6 +155,14 @@ struct SceneResourceTableUploadView final {
   std::span<const SceneResourceRenderFeatureUploadIndex>
       renderFeatureIndexByHandle;
   std::span<const SceneResourceShaderUploadIndex> shaderIndexByHandle;
+  std::span<const SceneResourceIblDiffuseShUploadIndex>
+      iblDiffuseShIndexByHandle;
+  std::span<const SceneResourceIblSpecularPrefilteredCubemapUploadIndex>
+      iblSpecularPrefilteredCubemapIndexByHandle;
+  std::span<const SceneResourceStandardPbrBrdfLutUploadIndex>
+      standardPbrBrdfLutIndexByHandle;
+  u64 activeIblGeneration = 0;
+  SceneActiveIblUploadState activeIbl;
 };
 
 } // namespace LX_core

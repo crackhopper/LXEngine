@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/math/bounds.hpp"
-#include "core/math/mat.hpp"
 #include "core/asset/render_effect.hpp"
 #include "core/asset/shader.hpp"
+#include "core/math/bounds.hpp"
+#include "core/math/mat.hpp"
 #include "core/platform/types.hpp"
 #include "core/resource/resource_metadata.hpp"
 #include "core/rhi/descriptor_resource_ref.hpp"
@@ -181,14 +181,13 @@ public:
   registerRenderPathGraph(const ResourceUri &uri, RenderPathGraph graph);
   [[nodiscard]] RenderFeatureHandle
   registerRenderFeature(const ResourceUri &uri, RenderFeature feature);
-  [[nodiscard]] ShaderHandle
-  registerShaderResource(const ResourceUri &uri,
-                         std::vector<ResourceUri> sourceUris,
-                         IShaderSharedPtr payload,
-                         bool requiresMaterialSourceVariant = false);
-  void registerMaterialSourceShaderVariant(
-      const ResourceUri &shaderUri, StringID materialTypeVariant,
-      StringID renderPathNodeSignature, ShaderProgramSet shaderProgram);
+  [[nodiscard]] ShaderHandle registerShaderResource(
+      const ResourceUri &uri, std::vector<ResourceUri> sourceUris,
+      IShaderSharedPtr payload, bool requiresMaterialSourceVariant = false);
+  void registerMaterialSourceShaderVariant(const ResourceUri &shaderUri,
+                                           StringID materialTypeVariant,
+                                           StringID renderPathNodeSignature,
+                                           ShaderProgramSet shaderProgram);
   void forEachMaterialInstance(
       const std::function<void(MaterialHandle, const MaterialInstance &,
                                const ResourceUri &)> &callback) const;
@@ -263,7 +262,8 @@ public:
   texture(TextureHandle handle) const;
   [[nodiscard]] bool hasMesh(MeshHandle handle) const;
   [[nodiscard]] bool hasTexture(TextureHandle handle) const;
-  [[nodiscard]] std::optional<MeshHandle> findMesh(const ResourceUri &uri) const;
+  [[nodiscard]] std::optional<MeshHandle>
+  findMesh(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<TextureHandle>
   findTexture(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
@@ -279,6 +279,10 @@ public:
   buildSceneLightsUboResource(const std::vector<LightHandle> &lightHandles,
                               StringID pass) const;
   void setIblEnvironmentResources(IblEnvironmentResources resources);
+  [[nodiscard]] IblEnvironmentActivationResult
+  activateIblEnvironment(IblEnvironmentActivationPayload payload);
+  [[nodiscard]] std::optional<ActiveIblEnvironmentResources>
+  activeIblEnvironment() const;
   [[nodiscard]] const IblEnvironmentResources *
   getIblEnvironmentResourceSet() const;
   [[nodiscard]] IblEnvironmentResources *getMutableIblEnvironmentResources();
@@ -292,8 +296,8 @@ public:
   [[nodiscard]] bool hasEnvironmentNode() const;
   void addEnvironmentIblBakeRequest(RenderFeatureHandle feature);
   void setObjectIblBakeMarker(ObjectHandle handle, SceneIblBakeMarker marker);
-  [[nodiscard]] IblBakeItemCollection collectIblBakeItems(
-      ResourceUri bakeRenderPathUri = ResourceUri{}) const;
+  [[nodiscard]] IblBakeItemCollection
+  collectIblBakeItems(ResourceUri bakeRenderPathUri = ResourceUri{}) const;
   void registerToneMappingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef> getToneMappingResources() const;
   void registerBloomResources(const RenderFeature &feature);
@@ -317,6 +321,9 @@ public:
   [[nodiscard]] bool isAlive(RenderPathGraphHandle handle) const;
   [[nodiscard]] bool isAlive(RenderFeatureHandle handle) const;
   [[nodiscard]] bool isAlive(ShaderHandle handle) const;
+  [[nodiscard]] bool isAlive(IblDiffuseShHandle handle) const;
+  [[nodiscard]] bool isAlive(IblSpecularPrefilteredCubemapHandle handle) const;
+  [[nodiscard]] bool isAlive(StandardPbrBrdfLutHandle handle) const;
 
   [[nodiscard]] usize geometryStorageCount() const;
   [[nodiscard]] usize meshCount() const;
@@ -365,7 +372,8 @@ public:
                      RenderFeatureHandle dependencyHandle);
   void addDependency(RenderPathGraphHandle ownerHandle,
                      ShaderHandle dependencyHandle);
-  void addDependency(MaterialHandle ownerHandle, TextureHandle dependencyHandle);
+  void addDependency(MaterialHandle ownerHandle,
+                     TextureHandle dependencyHandle);
   void markDirty(ResourceIdentityHandle handle, std::string reason);
   void markDirty(TextureHandle handle, std::string reason);
   void markDirty(RenderFeatureHandle handle, std::string reason);
@@ -376,13 +384,15 @@ public:
   [[nodiscard]] const ResourceMetadata &metadata(TextureHandle handle) const;
   [[nodiscard]] const ResourceMetadata &
   metadata(RenderPathGraphHandle handle) const;
-  [[nodiscard]] const ResourceMetadata &metadata(RenderFeatureHandle handle) const;
+  [[nodiscard]] const ResourceMetadata &
+  metadata(RenderFeatureHandle handle) const;
   [[nodiscard]] const ResourceMetadata &metadata(ShaderHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   metadataHandle(RenderPathGraphHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   metadataHandle(RenderFeatureHandle handle) const;
-  [[nodiscard]] ResourceIdentityHandle metadataHandle(ShaderHandle handle) const;
+  [[nodiscard]] ResourceIdentityHandle
+  metadataHandle(ShaderHandle handle) const;
   [[nodiscard]] ResourceIdentityHandle
   internMaterialInstanceIdentity(const ResourceUri &sourceMaterialUri,
                                  std::string overrideHash);
@@ -440,6 +450,9 @@ private:
   constMetadata(ResourceIdentityHandle handle) const;
   [[nodiscard]] bool
   hasLiveTypedResourceMetadata(ResourceIdentityHandle handle) const;
+  [[nodiscard]] bool
+  validateActiveIblEnvironment(const ActiveIblEnvironmentResources &active,
+                               std::vector<std::string> &diagnostics) const;
 
   void advanceUploadGeneration();
   void advanceDescriptorResourceSelectionGeneration();
@@ -465,6 +478,11 @@ private:
   std::vector<Entry<RenderPathGraph>> m_renderPathGraphs;
   std::vector<Entry<RenderFeature>> m_renderFeatures;
   std::vector<Entry<ShaderResourceMetadata>> m_shaders;
+  std::vector<Entry<IblDiffuseShPayloadResource>> m_iblDiffuseShPayloads;
+  std::vector<Entry<IblTexturePayloadResource>>
+      m_iblSpecularPrefilteredCubemaps;
+  std::vector<Entry<IblTexturePayloadResource>> m_standardPbrBrdfLuts;
+  std::optional<ActiveIblEnvironmentResources> m_activeIblEnvironment;
   mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
@@ -509,6 +527,12 @@ private:
       m_gpuRenderFeatureResources;
   mutable std::vector<std::reference_wrapper<const ShaderResourceMetadata>>
       m_gpuShaderResources;
+  mutable std::vector<std::reference_wrapper<const IblDiffuseShPayloadResource>>
+      m_gpuIblDiffuseShPayloads;
+  mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
+      m_gpuIblSpecularPrefilteredCubemaps;
+  mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
+      m_gpuStandardPbrBrdfLuts;
   mutable std::vector<SceneGpuRenderPathGraphRecord> m_gpuRenderPathGraphs;
   mutable std::vector<SceneGpuRenderPathGraphPassRecord>
       m_gpuRenderPathGraphPasses;
@@ -530,6 +554,12 @@ private:
   mutable std::vector<SceneResourceRenderFeatureUploadIndex>
       m_gpuRenderFeatureIndexByHandle;
   mutable std::vector<SceneResourceShaderUploadIndex> m_gpuShaderIndexByHandle;
+  mutable std::vector<SceneResourceIblDiffuseShUploadIndex>
+      m_gpuIblDiffuseShIndexByHandle;
+  mutable std::vector<SceneResourceIblSpecularPrefilteredCubemapUploadIndex>
+      m_gpuIblSpecularPrefilteredCubemapIndexByHandle;
+  mutable std::vector<SceneResourceStandardPbrBrdfLutUploadIndex>
+      m_gpuStandardPbrBrdfLutIndexByHandle;
   std::vector<MaterialHandle> m_renderMaterialHandles;
   std::vector<ResourceMetadata> m_resourceMetadata;
   std::vector<u32> m_resourceMetadataGenerations;

@@ -1,9 +1,10 @@
 #include "core/asset/material_contract.hpp"
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
-#include "core/resource/resource_metadata.hpp"
 #include "core/asset/render_effect.hpp"
+#include "core/resource/resource_metadata.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/scene/ibl_bake_manifest.hpp"
 #include "core/scene/scene_resource_table.hpp"
 
 #include <algorithm>
@@ -32,11 +33,9 @@ struct TestVertex final {
   Vec3f position;
 
   static VertexLayout getLayout() {
-    return VertexLayout(
-        std::vector<VertexLayoutItem>{
-            VertexLayoutItem{"position", 0, DataType::Float3,
-                             sizeof(Vec3f), 0}},
-        sizeof(TestVertex));
+    return VertexLayout(std::vector<VertexLayoutItem>{VertexLayoutItem{
+                            "position", 0, DataType::Float3, sizeof(Vec3f), 0}},
+                        sizeof(TestVertex));
   }
 };
 
@@ -49,9 +48,8 @@ MeshBufferUniquePtr makeTriangleMesh() {
   auto indices = std::vector<u32>{0, 1, 2};
   auto vb = VertexBuffer<TestVertex>::create(std::move(vertices));
   auto ib = IndexBuffer::create(std::move(indices));
-  return MeshBuffer::create(
-             vb, ib,
-             BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
+  return MeshBuffer::create(vb, ib,
+                            BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}})
       ->cloneUnique();
 }
 
@@ -156,6 +154,57 @@ std::vector<ResourceUri> shaderSourceFixture() {
       ResourceUri("memory://shaders/surface_lit.vert"),
       ResourceUri("memory://shaders/surface_lit.frag"),
   };
+}
+
+Sh9IrradiancePayload sh9PayloadFixture(float scale = 1.0f) {
+  Sh9IrradiancePayload payload;
+  for (u32 i = 0; i < payload.coefficients.size(); ++i) {
+    const float value = scale * static_cast<float>(i + 1u);
+    payload.coefficients[i] = Vec3f{value, value + 0.25f, value + 0.5f};
+  }
+  return payload;
+}
+
+CombinedTextureSamplerSharedPtr makeTexturePayload(TextureDesc desc,
+                                                   StringID binding) {
+  auto sampler =
+      std::make_shared<CombinedTextureSampler>(std::make_shared<Texture>(
+          desc, std::vector<u8>(expectedTextureByteCount(desc), 0x7fu)));
+  sampler->setBindingName(binding);
+  return sampler;
+}
+
+CombinedTextureSamplerSharedPtr specularPrefilteredPayloadFixture() {
+  TextureDesc desc;
+  desc.width = 4;
+  desc.height = 4;
+  desc.format = TextureFormat::RGBA16Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.mipLevels = 3;
+  desc.arrayLayers = 6;
+  return makeTexturePayload(desc, StringID("PrefilteredEnvMap"));
+}
+
+CombinedTextureSamplerSharedPtr brdfLutPayloadFixture() {
+  TextureDesc desc;
+  desc.width = 256;
+  desc.height = 256;
+  desc.format = TextureFormat::RG16Float;
+  desc.content = TextureContent::Data;
+  desc.dimension = TextureDimension::Texture2D;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 1;
+  return makeTexturePayload(desc, StringID("BrdfLut"));
+}
+
+IblEnvironmentActivationPayload iblActivationPayloadFixture(u64 generation) {
+  IblEnvironmentActivationPayload payload;
+  payload.generation = generation;
+  payload.diffuseSh = sh9PayloadFixture();
+  payload.specularPrefilteredCubemap = specularPrefilteredPayloadFixture();
+  payload.standardPbrBrdfLut = brdfLutPayloadFixture();
+  return payload;
 }
 
 void testBuiltinDefaultTexturesAreStableSceneResources() {
@@ -270,10 +319,8 @@ void testEnvironmentRuntimeStateTracksSceneEnvironmentNode() {
       makeEnvironmentLightingFeature(ResourceUri("builtin:env/white_cube")));
   EXPECT(featureHandle.isValid(), "environment feature should register");
 
-  table.setEnvironmentRuntimeState(
-      SceneEnvironmentRuntimeState{.feature = featureHandle,
-                                   .nodePresent = true,
-                                   .bakeRequested = true});
+  table.setEnvironmentRuntimeState(SceneEnvironmentRuntimeState{
+      .feature = featureHandle, .nodePresent = true, .bakeRequested = true});
 
   EXPECT(table.hasEnvironmentNode(),
          "environment node state should be visible");
@@ -285,6 +332,73 @@ void testEnvironmentRuntimeStateTracksSceneEnvironmentNode() {
     EXPECT(state->bakeRequested,
            "environment runtime state should retain bake request");
   }
+}
+
+void testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady() {
+  SceneResourceTable table;
+
+  const IblEnvironmentActivationResult first =
+      table.activateIblEnvironment(iblActivationPayloadFixture(7));
+  EXPECT(first.ok, "complete IBL activation payload should succeed");
+
+  const SceneResourceTableUploadView firstView = table.buildUploadView();
+  EXPECT(firstView.activeIblGeneration == 7,
+         "upload view should expose active IBL generation");
+  EXPECT(firstView.activeIbl.diffuseSh.isValid(),
+         "active upload view should expose diffuse SH handle");
+  EXPECT(firstView.activeIbl.specularPrefilteredCubemap.isValid(),
+         "active upload view should expose specular cubemap handle");
+  EXPECT(firstView.activeIbl.standardPbrBrdfLut.isValid(),
+         "active upload view should expose standard-pbr BRDF LUT handle");
+  EXPECT(firstView.environmentDiffuseShPayloads.size() == 1,
+         "diffuse SH payload should be a live typed upload record");
+  EXPECT(firstView.environmentSpecularPrefilteredCubemaps.size() == 1,
+         "specular prefiltered cubemap should be a live typed upload record");
+  EXPECT(firstView.standardPbrBrdfLuts.size() == 1,
+         "standard-pbr BRDF LUT should be a live typed upload record");
+
+  IblEnvironmentActivationPayload missingBrdf = iblActivationPayloadFixture(8);
+  missingBrdf.standardPbrBrdfLut.reset();
+  const IblEnvironmentActivationResult failed =
+      table.activateIblEnvironment(std::move(missingBrdf));
+  EXPECT(!failed.ok,
+         "activation missing standard-pbr BRDF LUT payload should fail");
+
+  const SceneResourceTableUploadView afterFailed = table.buildUploadView();
+  EXPECT(afterFailed.activeIblGeneration == 7,
+         "failed activation must preserve old active IBL generation");
+  EXPECT(afterFailed.activeIbl.diffuseSh == firstView.activeIbl.diffuseSh,
+         "failed activation must preserve old diffuse SH handle");
+  EXPECT(afterFailed.activeIbl.specularPrefilteredCubemap ==
+             firstView.activeIbl.specularPrefilteredCubemap,
+         "failed activation must preserve old specular cubemap handle");
+  EXPECT(afterFailed.activeIbl.standardPbrBrdfLut ==
+             firstView.activeIbl.standardPbrBrdfLut,
+         "failed activation must preserve old BRDF LUT handle");
+}
+
+void testIblActivationRejectsMetadataOnlyPayloads() {
+  SceneResourceTable table;
+  ResourceMetadata metadataOnlySpecular;
+  metadataOnlySpecular.type = SceneResourceType::Texture;
+  metadataOnlySpecular.uri =
+      ResourceUri("memory://bakes/specular_prefilter.ktx2");
+  metadataOnlySpecular.state = ResourceState::Ready;
+  const ResourceIdentityHandle metadataHandle =
+      table.internResourceMetadata(std::move(metadataOnlySpecular));
+
+  IblEnvironmentActivationPayload payload;
+  payload.generation = 1;
+  payload.diffuseSh = sh9PayloadFixture();
+  payload.standardPbrBrdfLut = brdfLutPayloadFixture();
+  const IblEnvironmentActivationResult result =
+      table.activateIblEnvironment(std::move(payload));
+
+  EXPECT(metadataHandle.isValid(), "metadata-only texture should be interned");
+  EXPECT(!result.ok,
+         "metadata-only texture records must not satisfy IBL activation");
+  EXPECT(table.buildUploadView().activeIblGeneration == 0,
+         "failed metadata-only activation must not publish a generation");
 }
 
 class TestShader final : public IShader {
@@ -375,12 +489,15 @@ void testOverrideIdentityUsesStableHash() {
   SceneResourceTable table;
   const ResourceIdentityHandle base = table.internMaterialInstanceIdentity(
       ResourceUri("assets/materials/base.material"), "");
-  const ResourceIdentityHandle firstOverride = table.internMaterialInstanceIdentity(
-      ResourceUri("assets/materials/base.material"), "override-a");
-  const ResourceIdentityHandle sameOverride = table.internMaterialInstanceIdentity(
-      ResourceUri("assets/materials/base.material"), "override-a");
-  const ResourceIdentityHandle otherOverride = table.internMaterialInstanceIdentity(
-      ResourceUri("assets/materials/base.material"), "override-b");
+  const ResourceIdentityHandle firstOverride =
+      table.internMaterialInstanceIdentity(
+          ResourceUri("assets/materials/base.material"), "override-a");
+  const ResourceIdentityHandle sameOverride =
+      table.internMaterialInstanceIdentity(
+          ResourceUri("assets/materials/base.material"), "override-a");
+  const ResourceIdentityHandle otherOverride =
+      table.internMaterialInstanceIdentity(
+          ResourceUri("assets/materials/base.material"), "override-b");
 
   EXPECT(base.isValid(), "base material identity should be valid");
   EXPECT(!(base == firstOverride),
@@ -405,8 +522,8 @@ void testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
 
   RenderPathGraph graph;
   graph.name = "Forward";
@@ -421,9 +538,8 @@ void testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
   table.addDependency(renderer, graphHandle);
   table.addDependency(camera, graphHandle);
 
@@ -442,8 +558,7 @@ void testRenderPathGraphResourceGraphExportsFeatureAndShaderDependencies() {
     if (ownerIndex == u32_max || dependencyIndex == u32_max) {
       return false;
     }
-    const auto &dependencies =
-        exported.resources[ownerIndex].dependencyHandles;
+    const auto &dependencies = exported.resources[ownerIndex].dependencyHandles;
     return std::find(dependencies.begin(), dependencies.end(),
                      exported.handles[dependencyIndex]) != dependencies.end();
   };
@@ -466,8 +581,8 @@ void testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
   EXPECT(featureHandle.isValid(), "feature fixture should be registered");
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
 
@@ -484,17 +599,16 @@ void testUploadViewExportsRenderPathGraphPassFeatureAndShaderIndices() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
 
   const SceneResourceTableUploadView view = table.buildUploadView();
-  const auto graphIt = std::find_if(
-      view.renderPathGraphIndexByHandle.begin(),
-      view.renderPathGraphIndexByHandle.end(),
-      [&](const SceneResourceRenderPathGraphUploadIndex &entry) {
-        return entry.handle == graphHandle;
-      });
+  const auto graphIt =
+      std::find_if(view.renderPathGraphIndexByHandle.begin(),
+                   view.renderPathGraphIndexByHandle.end(),
+                   [&](const SceneResourceRenderPathGraphUploadIndex &entry) {
+                     return entry.handle == graphHandle;
+                   });
   EXPECT(graphIt != view.renderPathGraphIndexByHandle.end(),
          "upload view should map RenderPathGraphHandle to typed graph index");
   EXPECT(graphIt != view.renderPathGraphIndexByHandle.end() &&
@@ -553,8 +667,7 @@ void testUploadViewGroupsSourceLocalMaterialsWithSameSignature() {
          "same source storage should cover both material records");
   EXPECT(view.sourceMaterialRecords.size() == 2,
          "source-local record span should contain both material records");
-  EXPECT(view.draws.size() == 2 &&
-             view.draws[0].materialIndex == u32_max &&
+  EXPECT(view.draws.size() == 2 && view.draws[0].materialIndex == u32_max &&
              view.draws[1].materialIndex == u32_max,
          "source-contract draws should not point at legacy material records");
   EXPECT(view.draws.size() == 2 &&
@@ -654,8 +767,7 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
          "source-contract materials should not create legacy material records");
   EXPECT(view.materialRefs.size() == 3,
          "source-contract draws should preserve one material ref per draw");
-  EXPECT(view.draws.size() == 3,
-         "legacy draw span should preserve all draws");
+  EXPECT(view.draws.size() == 3, "legacy draw span should preserve all draws");
   EXPECT(view.draws.size() == 3 && view.draws[0].materialIndex == u32_max &&
              view.draws[1].materialIndex == u32_max &&
              view.draws[2].materialIndex == u32_max,
@@ -703,9 +815,9 @@ void testUploadViewRejectsSourceSignatureStorageLayoutConflict() {
   const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
   const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
 
-  MaterialContractReflection first = makeMaterialContract(
-      "memory://materials/conflict.contract.glsl", "matte",
-      "shared-reflect-v1");
+  MaterialContractReflection first =
+      makeMaterialContract("memory://materials/conflict.contract.glsl", "matte",
+                           "shared-reflect-v1");
   first.storageFields.push_back(makeStorageField("baseColor", "Kd"));
 
   MaterialContractReflection second = first;
@@ -727,9 +839,9 @@ void testUploadViewRejectsSourceSignatureStorageLayoutConflict() {
 void testUploadViewRejectsMaterialSourceSignatureMismatch() {
   SceneResourceTable table;
   const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
-  MaterialContractReflection contract = makeMaterialContract(
-      "memory://materials/signature.contract.glsl", "matte",
-      "signature-reflect-v1");
+  MaterialContractReflection contract =
+      makeMaterialContract("memory://materials/signature.contract.glsl",
+                           "matte", "signature-reflect-v1");
   contract.storageFields.push_back(makeStorageField("baseColor", "Kd"));
 
   auto material = makeSourceMaterial(contract);
@@ -746,13 +858,13 @@ void testUploadViewRejectsMaterialSourceSignatureMismatch() {
 void testUploadViewRejectsUnresolvedExplicitTextureSlot() {
   SceneResourceTable table;
   const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
-  MaterialContractReflection contract = makeMaterialContract(
-      "memory://materials/textured.contract.glsl", "matte",
-      "textured-reflect-v1");
+  MaterialContractReflection contract =
+      makeMaterialContract("memory://materials/textured.contract.glsl", "matte",
+                           "textured-reflect-v1");
   contract.parameters.push_back(MaterialContractParameter{
       "Kd", true, {MaterialContractParameterKind::Texture}});
-  contract.storageFields.push_back(makeTextureSlotField("baseColorTexture",
-                                                        "Kd"));
+  contract.storageFields.push_back(
+      makeTextureSlotField("baseColorTexture", "Kd"));
 
   auto material = makeSourceMaterial(contract);
   MaterialParameterEnvelope kdTexture;
@@ -773,8 +885,8 @@ void testUploadViewRejectsUnresolvedExplicitTextureSlot() {
 void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
   SceneResourceTable table;
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
 
   RenderPathGraph graph;
@@ -792,9 +904,8 @@ void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
 
   bool rejected = false;
   try {
-    const RenderPathGraphHandle graphHandle =
-        table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                      std::move(graph));
+    const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+        ResourceUri("memory://graphs/forward"), std::move(graph));
     (void)graphHandle;
   } catch (const std::invalid_argument &error) {
     rejected = std::string(error.what()).find("missing RenderFeature") !=
@@ -810,8 +921,8 @@ void testRenderPathGraphRegistrationRejectsMissingFeatureResource() {
 void testRenderPathGraphRegistrationRejectsSceneInputWithoutGeometry() {
   SceneResourceTable table;
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
 
   RenderPathGraph graph;
@@ -875,9 +986,8 @@ void testFailedShaderMetadataDoesNotSatisfyRenderPathGraphDependency() {
 
   bool rejected = false;
   try {
-    const RenderPathGraphHandle graphHandle =
-        table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                      std::move(graph));
+    const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+        ResourceUri("memory://graphs/forward"), std::move(graph));
     (void)graphHandle;
   } catch (const std::invalid_argument &error) {
     rejected =
@@ -903,8 +1013,8 @@ void testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/source_only.shader"),
-      shaderSourceFixture(), nullptr);
+      ResourceUri("memory://shaders/source_only.shader"), shaderSourceFixture(),
+      nullptr);
 
   RenderPathGraph graph;
   graph.name = "Forward";
@@ -921,17 +1031,15 @@ void testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency() {
 
   bool rejected = false;
   try {
-    const RenderPathGraphHandle graphHandle =
-        table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                      std::move(graph));
+    const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+        ResourceUri("memory://graphs/forward"), std::move(graph));
     (void)graphHandle;
   } catch (const std::invalid_argument &error) {
     const std::string message = error.what();
     rejected = message.find("memory://graphs/forward") != std::string::npos &&
                message.find("memory://shaders/source_only.shader") !=
                    std::string::npos &&
-               message.find("compiled/reflected payload") !=
-                   std::string::npos;
+               message.find("compiled/reflected payload") != std::string::npos;
   }
 
   EXPECT(featureHandle.isValid(), "feature fixture should be registered");
@@ -945,8 +1053,8 @@ void testSourceResolvedShaderWithoutPayloadDoesNotSatisfyGraphDependency() {
 void testUploadViewRejectsSourceResolvedShaderWithoutPayload() {
   SceneResourceTable table;
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/source_only.shader"),
-      shaderSourceFixture(), nullptr);
+      ResourceUri("memory://shaders/source_only.shader"), shaderSourceFixture(),
+      nullptr);
 
   bool rejected = false;
   try {
@@ -955,8 +1063,7 @@ void testUploadViewRejectsSourceResolvedShaderWithoutPayload() {
     const std::string message = error.what();
     rejected = message.find("memory://shaders/source_only.shader") !=
                    std::string::npos &&
-               message.find("compiled/reflected payload") !=
-                   std::string::npos;
+               message.find("compiled/reflected payload") != std::string::npos;
   }
 
   EXPECT(shaderHandle.isValid(),
@@ -976,8 +1083,8 @@ void testUploadViewRejectsReleasedRenderPathGraphFeatureDependency() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
 
   RenderPathGraph graph;
@@ -993,9 +1100,8 @@ void testUploadViewRejectsReleasedRenderPathGraphFeatureDependency() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
   table.release(featureHandle);
 
   bool rejected = false;
@@ -1022,8 +1128,8 @@ void testUploadViewRejectsReleasedRenderPathGraphShaderDependency() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
   EXPECT(featureHandle.isValid(), "feature fixture should be registered");
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
 
@@ -1040,9 +1146,8 @@ void testUploadViewRejectsReleasedRenderPathGraphShaderDependency() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
   table.release(shaderHandle);
 
   bool rejected = false;
@@ -1069,8 +1174,8 @@ void testExportRejectsReleasedRenderPathGraphDependencies() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
 
   RenderPathGraph graph;
   graph.name = "Forward";
@@ -1085,9 +1190,8 @@ void testExportRejectsReleasedRenderPathGraphDependencies() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
   EXPECT(featureHandle.isValid(), "feature fixture should be registered");
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
   EXPECT(graphHandle.isValid(), "graph fixture should be registered");
@@ -1116,8 +1220,8 @@ void testExportRejectsFailedRenderPathGraphShaderDependency() {
       ResourceUri("memory://features/shadow.render-feature"),
       std::move(feature));
   const ShaderHandle shaderHandle = table.registerShaderResource(
-      ResourceUri("memory://shaders/surface_lit.shader"),
-      shaderSourceFixture(), shaderPayloadFixture());
+      ResourceUri("memory://shaders/surface_lit.shader"), shaderSourceFixture(),
+      shaderPayloadFixture());
 
   RenderPathGraph graph;
   graph.name = "Forward";
@@ -1132,9 +1236,8 @@ void testExportRejectsFailedRenderPathGraphShaderDependency() {
   requireSceneRenderableGeometry(pass);
   graph.passes.push_back(pass);
 
-  const RenderPathGraphHandle graphHandle =
-      table.registerRenderPathGraph(ResourceUri("memory://graphs/forward"),
-                                    std::move(graph));
+  const RenderPathGraphHandle graphHandle = table.registerRenderPathGraph(
+      ResourceUri("memory://graphs/forward"), std::move(graph));
   EXPECT(featureHandle.isValid(), "feature fixture should be registered");
   EXPECT(shaderHandle.isValid(), "shader fixture should be registered");
   EXPECT(graphHandle.isValid(), "graph fixture should be registered");
@@ -1178,6 +1281,8 @@ int main() {
   testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap();
   testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap();
   testEnvironmentRuntimeStateTracksSceneEnvironmentNode();
+  testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady();
+  testIblActivationRejectsMetadataOnlyPayloads();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();

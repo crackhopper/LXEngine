@@ -15,6 +15,7 @@ enum class TextureFormat {
   RGB8,
   RGB8Srgb,
   R8,
+  RG16Float,
   RGBA16Float,
   RGBA32Float,
 };
@@ -73,6 +74,8 @@ inline usize textureBytesPerPixel(TextureFormat format) {
     return 3;
   case TextureFormat::R8:
     return 1;
+  case TextureFormat::RG16Float:
+    return 4;
   case TextureFormat::RGBA16Float:
     return 8;
   case TextureFormat::RGBA32Float:

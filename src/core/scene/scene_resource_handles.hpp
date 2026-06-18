@@ -23,5 +23,8 @@ struct ObjectHandle final : ResourceHandleBase {};
 struct RenderPathGraphHandle final : ResourceHandleBase {};
 struct RenderFeatureHandle final : ResourceHandleBase {};
 struct ShaderHandle final : ResourceHandleBase {};
+struct IblDiffuseShHandle final : ResourceHandleBase {};
+struct IblSpecularPrefilteredCubemapHandle final : ResourceHandleBase {};
+struct StandardPbrBrdfLutHandle final : ResourceHandleBase {};
 
 } // namespace LX_core

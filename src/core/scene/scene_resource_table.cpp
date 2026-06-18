@@ -14,8 +14,8 @@
 #include <cstring>
 #include <iostream>
 #include <optional>
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -122,6 +122,62 @@ hasResolvedMaterialSourceVariantPayload(const ShaderResourceMetadata &shader) {
   return false;
 }
 
+void appendDiagnostic(std::vector<std::string> &diagnostics,
+                      std::string message) {
+  diagnostics.push_back(std::move(message));
+}
+
+[[nodiscard]] bool hasLiveIblTexturePayload(
+    const IblTexturePayloadResource &resource, StringID expectedBinding,
+    TextureDimension expectedDimension, TextureFormat expectedFormat,
+    std::string_view label, std::vector<std::string> &diagnostics) {
+  if (!resource.sampler) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload is missing live sampler");
+    return false;
+  }
+  if (resource.sampler->getType() != ResourceType::CombinedImageSampler) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload is not a sampled image");
+    return false;
+  }
+  if (resource.sampler->getBindingName() != expectedBinding) {
+    appendDiagnostic(diagnostics, std::string(label) +
+                                      " payload has wrong descriptor binding");
+    return false;
+  }
+  const TextureSharedPtr texture = resource.sampler->texture();
+  if (!texture) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload has no live texture");
+    return false;
+  }
+  const TextureDesc &desc = texture->desc();
+  if (desc.dimension != expectedDimension) {
+    appendDiagnostic(diagnostics, std::string(label) +
+                                      " payload has wrong texture dimension");
+    return false;
+  }
+  if (desc.format != expectedFormat) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload has wrong texture format");
+    return false;
+  }
+  if (desc.width == 0 || desc.height == 0 || desc.mipLevels == 0 ||
+      desc.arrayLayers == 0 || texture->size() == 0) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload has empty texture data");
+    return false;
+  }
+  if (expectedDimension == TextureDimension::TextureCube &&
+      desc.arrayLayers != 6) {
+    appendDiagnostic(diagnostics,
+                     std::string(label) + " payload cubemap must have 6 faces");
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] bool
 isShaderDependencyResolved(const ShaderResourceMetadata &shader) {
   if (!shader.sourceResolved || shader.sourceUris.empty()) {
@@ -169,7 +225,8 @@ makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a,
   return std::make_unique<CombinedTextureSampler>(std::move(texture));
 }
 
-[[nodiscard]] CombinedTextureSamplerSharedPtr makeBuiltinWhiteEnvironmentCube() {
+[[nodiscard]] CombinedTextureSamplerSharedPtr
+makeBuiltinWhiteEnvironmentCube() {
   TextureDesc desc;
   desc.width = 1;
   desc.height = 1;
@@ -197,8 +254,7 @@ makeSolidDefaultTexture(u8 r, u8 g, u8 b, u8 a,
 }
 
 [[nodiscard]] Vec3f parseFeatureVec3(const RenderFeatureParameter &parameter,
-                                     Vec3f fallback = Vec3f{1.0f, 1.0f,
-                                                            1.0f}) {
+                                     Vec3f fallback = Vec3f{1.0f, 1.0f, 1.0f}) {
   if (parameter.value.empty()) {
     return fallback;
   }
@@ -239,8 +295,9 @@ parseToneMappingMode(const RenderFeatureParameter *parameter) {
   return parameter->value == "true" || parameter->value == "1";
 }
 
-[[nodiscard]] u32 parsePassFeatureBoolValue(
-    const RenderFeatureParameter &parameter, const std::string &parameterName) {
+[[nodiscard]] u32
+parsePassFeatureBoolValue(const RenderFeatureParameter &parameter,
+                          const std::string &parameterName) {
   if (parameter.value == "true") {
     return 1u;
   }
@@ -695,23 +752,21 @@ void SceneResourceTable::registerPassFeatureSpecializationData(
     if (parameter.volatileRuntime) {
       continue;
     }
-    const auto constant = std::find_if(
-        constants.begin(), constants.end(),
-        [&](const ShaderSpecializationConstantInfo &candidate) {
-          return candidate.name == name;
-        });
+    const auto constant =
+        std::find_if(constants.begin(), constants.end(),
+                     [&](const ShaderSpecializationConstantInfo &candidate) {
+                       return candidate.name == name;
+                     });
     if (constant == constants.end()) {
       throw std::invalid_argument(
-          "pass-level RenderFeature '" + feature.feature +
-          "' parameter '" + name +
-          "' has no reflected shader specialization constant");
+          "pass-level RenderFeature '" + feature.feature + "' parameter '" +
+          name + "' has no reflected shader specialization constant");
     }
 
     if (constant->type != ShaderSpecializationValueType::Bool) {
       throw std::invalid_argument(
-          "pass-level RenderFeature '" + feature.feature +
-          "' parameter '" + name +
-          "' is not a supported bool specialization constant");
+          "pass-level RenderFeature '" + feature.feature + "' parameter '" +
+          name + "' is not a supported bool specialization constant");
     }
 
     data.specializationValues.push_back(PassFeatureSpecializationValue{
@@ -729,11 +784,11 @@ void SceneResourceTable::registerPassFeatureSpecializationData(
               return a.parameterName < b.parameterName;
             });
 
-  const auto existing = std::find_if(
-      m_passFeatureData.begin(), m_passFeatureData.end(),
-      [&](const PassFeatureData &candidate) {
-        return candidate.featureName == data.featureName;
-      });
+  const auto existing =
+      std::find_if(m_passFeatureData.begin(), m_passFeatureData.end(),
+                   [&](const PassFeatureData &candidate) {
+                     return candidate.featureName == data.featureName;
+                   });
   if (existing != m_passFeatureData.end()) {
     *existing = std::move(data);
   } else {
@@ -1318,8 +1373,7 @@ SceneResourceTable::findRenderFeatureByMetadataHandle(
   return std::nullopt;
 }
 
-const PassFeatureData *
-SceneResourceTable::findPassFeatureDataByFeatureName(
+const PassFeatureData *SceneResourceTable::findPassFeatureDataByFeatureName(
     std::string_view feature) const {
   const auto it = std::find_if(
       m_passFeatureData.begin(), m_passFeatureData.end(),
@@ -1391,7 +1445,8 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
   if (handle.isValid()) {
     m_renderFeatures[handle.index].metadataHandle =
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
-    registerEnvironmentLightingResources(*m_renderFeatures[handle.index].resource);
+    registerEnvironmentLightingResources(
+        *m_renderFeatures[handle.index].resource);
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
     registerBloomResources(*m_renderFeatures[handle.index].resource);
   }
@@ -1649,18 +1704,18 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
     if (!feature.shader.has_value() || feature.shader->uri.empty()) {
       throw std::invalid_argument("RenderPathGraph '" + uri.string() +
                                   "' references pass-level RenderFeature '" +
-                                  feature.feature +
-                                  "' without a shader URI");
+                                  feature.feature + "' without a shader URI");
     }
-    const ShaderHandle shaderHandle = findShaderHandleByUri(feature.shader->uri);
+    const ShaderHandle shaderHandle =
+        findShaderHandleByUri(feature.shader->uri);
     if (!shaderHandle.isValid()) {
       throw std::invalid_argument(missingRenderPathGraphDependencyMessage(
           uri, "Shader", feature.shader->uri));
     }
     const auto resolvedShader = resolve(shaderHandle);
     if (!resolvedShader.has_value() || !resolvedShader->get().payload) {
-      throw std::invalid_argument(missingShaderPayloadMessage(
-          uri, feature.shader->uri));
+      throw std::invalid_argument(
+          missingShaderPayloadMessage(uri, feature.shader->uri));
     }
     registerPassFeatureSpecializationData(feature,
                                           *resolvedShader->get().payload);
@@ -1813,8 +1868,7 @@ void SceneResourceTable::release(RenderFeatureHandle handle) {
   }
   m_environmentIblBakeRequests.erase(
       std::remove(m_environmentIblBakeRequests.begin(),
-                  m_environmentIblBakeRequests.end(),
-                  handle),
+                  m_environmentIblBakeRequests.end(), handle),
       m_environmentIblBakeRequests.end());
   release<RenderFeature, RenderFeatureHandle>(m_renderFeatures, handle);
   advanceFeatureGeneration();
@@ -2097,6 +2151,137 @@ void SceneResourceTable::setIblEnvironmentResources(
   markBakedResourceDirty();
 }
 
+bool SceneResourceTable::validateActiveIblEnvironment(
+    const ActiveIblEnvironmentResources &active,
+    std::vector<std::string> &diagnostics) const {
+  bool ok = true;
+  const auto diffuse =
+      resolveConst<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
+          m_iblDiffuseShPayloads, active.diffuseSh);
+  if (!diffuse.has_value()) {
+    appendDiagnostic(diagnostics,
+                     "environment diffuse SH payload is missing live typed "
+                     "resource");
+    ok = false;
+  } else {
+    const IblBakeValidationResult validation =
+        validateIblBakePayload(diffuse->get().payload);
+    if (!validation.ok) {
+      ok = false;
+      for (const std::string &diagnostic : validation.diagnostics) {
+        appendDiagnostic(diagnostics,
+                         "environment diffuse SH payload: " + diagnostic);
+      }
+    }
+  }
+
+  const auto specular = resolveConst<IblTexturePayloadResource,
+                                     IblSpecularPrefilteredCubemapHandle>(
+      m_iblSpecularPrefilteredCubemaps, active.specularPrefilteredCubemap);
+  if (!specular.has_value()) {
+    appendDiagnostic(diagnostics,
+                     "environment specular prefiltered cubemap payload is "
+                     "missing live typed resource");
+    ok = false;
+  } else if (!hasLiveIblTexturePayload(
+                 specular->get(), StringID("PrefilteredEnvMap"),
+                 TextureDimension::TextureCube, TextureFormat::RGBA16Float,
+                 "environment specular prefiltered cubemap", diagnostics)) {
+    ok = false;
+  }
+
+  const auto brdf =
+      resolveConst<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+          m_standardPbrBrdfLuts, active.standardPbrBrdfLut);
+  if (!brdf.has_value()) {
+    appendDiagnostic(diagnostics,
+                     "standard-pbr BRDF LUT payload is missing live typed "
+                     "resource");
+    ok = false;
+  } else if (!hasLiveIblTexturePayload(brdf->get(), StringID("BrdfLut"),
+                                       TextureDimension::Texture2D,
+                                       TextureFormat::RG16Float,
+                                       "standard-pbr BRDF LUT", diagnostics)) {
+    ok = false;
+  }
+
+  return ok;
+}
+
+IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
+    IblEnvironmentActivationPayload payload) {
+  const u64 activeGeneration =
+      payload.generation != 0
+          ? payload.generation
+          : nextGeneration(m_activeIblEnvironment.has_value()
+                               ? m_activeIblEnvironment->generation
+                               : 0);
+
+  auto diffuseResource = std::make_unique<IblDiffuseShPayloadResource>();
+  diffuseResource->payload = std::move(payload.diffuseSh);
+  const IblDiffuseShHandle diffuseHandle =
+      add<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
+          m_iblDiffuseShPayloads, std::move(diffuseResource));
+
+  IblSpecularPrefilteredCubemapHandle specularHandle;
+  if (payload.specularPrefilteredCubemap) {
+    payload.specularPrefilteredCubemap->setBindingName(
+        StringID("PrefilteredEnvMap"));
+    auto specularResource = std::make_unique<IblTexturePayloadResource>();
+    specularResource->sampler = std::move(payload.specularPrefilteredCubemap);
+    specularHandle =
+        add<IblTexturePayloadResource, IblSpecularPrefilteredCubemapHandle>(
+            m_iblSpecularPrefilteredCubemaps, std::move(specularResource));
+  }
+
+  StandardPbrBrdfLutHandle brdfHandle;
+  if (payload.standardPbrBrdfLut) {
+    payload.standardPbrBrdfLut->setBindingName(StringID("BrdfLut"));
+    auto brdfResource = std::make_unique<IblTexturePayloadResource>();
+    brdfResource->sampler = std::move(payload.standardPbrBrdfLut);
+    brdfHandle = add<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+        m_standardPbrBrdfLuts, std::move(brdfResource));
+  }
+
+  const ActiveIblEnvironmentResources candidate{
+      .generation = activeGeneration,
+      .diffuseSh = diffuseHandle,
+      .specularPrefilteredCubemap = specularHandle,
+      .standardPbrBrdfLut = brdfHandle,
+  };
+
+  std::vector<std::string> diagnostics;
+  if (!validateActiveIblEnvironment(candidate, diagnostics)) {
+    release<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
+        m_iblDiffuseShPayloads, diffuseHandle);
+    release<IblTexturePayloadResource, IblSpecularPrefilteredCubemapHandle>(
+        m_iblSpecularPrefilteredCubemaps, specularHandle);
+    release<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+        m_standardPbrBrdfLuts, brdfHandle);
+    return IblEnvironmentActivationResult::failure(std::move(diagnostics));
+  }
+
+  const std::optional<ActiveIblEnvironmentResources> oldActive =
+      m_activeIblEnvironment;
+  m_activeIblEnvironment = candidate;
+  if (oldActive.has_value()) {
+    release<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
+        m_iblDiffuseShPayloads, oldActive->diffuseSh);
+    release<IblTexturePayloadResource, IblSpecularPrefilteredCubemapHandle>(
+        m_iblSpecularPrefilteredCubemaps,
+        oldActive->specularPrefilteredCubemap);
+    release<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+        m_standardPbrBrdfLuts, oldActive->standardPbrBrdfLut);
+  }
+  markBakedResourceDirty();
+  return IblEnvironmentActivationResult::success(activeGeneration);
+}
+
+std::optional<ActiveIblEnvironmentResources>
+SceneResourceTable::activeIblEnvironment() const {
+  return m_activeIblEnvironment;
+}
+
 const IblEnvironmentResources *
 SceneResourceTable::getIblEnvironmentResourceSet() const {
   if (!m_iblEnvironmentResources.has_value()) {
@@ -2116,6 +2301,22 @@ SceneResourceTable::getMutableIblEnvironmentResources() {
 std::vector<GpuResourceRef>
 SceneResourceTable::getIblEnvironmentResources() const {
   std::vector<GpuResourceRef> out;
+  if (m_activeIblEnvironment.has_value()) {
+    const auto specular = resolveConst<IblTexturePayloadResource,
+                                       IblSpecularPrefilteredCubemapHandle>(
+        m_iblSpecularPrefilteredCubemaps,
+        m_activeIblEnvironment->specularPrefilteredCubemap);
+    if (specular.has_value() && specular->get().sampler) {
+      out.emplace_back(*specular->get().sampler);
+    }
+    const auto brdf =
+        resolveConst<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+            m_standardPbrBrdfLuts, m_activeIblEnvironment->standardPbrBrdfLut);
+    if (brdf.has_value() && brdf->get().sampler) {
+      out.emplace_back(*brdf->get().sampler);
+    }
+    return out;
+  }
   const auto *resources = getIblEnvironmentResourceSet();
   if (resources == nullptr) {
     return out;
@@ -2205,10 +2406,9 @@ SceneResourceTable::getEnvironmentLightingResources() const {
 void SceneResourceTable::setEnvironmentRuntimeState(
     SceneEnvironmentRuntimeState state) {
   if (state.generation == 0) {
-    const u64 current =
-        m_environmentRuntimeState.has_value()
-            ? m_environmentRuntimeState->generation
-            : 0;
+    const u64 current = m_environmentRuntimeState.has_value()
+                            ? m_environmentRuntimeState->generation
+                            : 0;
     state.generation = nextGeneration(current);
   }
   m_environmentRuntimeState = state;
@@ -2256,8 +2456,8 @@ findEnvironmentMapParameter(const RenderFeature &feature) {
   return it == feature.parameters.end() ? nullptr : &it->second;
 }
 
-[[nodiscard]] bool containsEnvironmentKey(
-    const std::vector<IblBakeItem> &items, const EnvironmentIblBakeKey &key) {
+[[nodiscard]] bool containsEnvironmentKey(const std::vector<IblBakeItem> &items,
+                                          const EnvironmentIblBakeKey &key) {
   return std::any_of(items.begin(), items.end(), [&](const IblBakeItem &item) {
     if (item.kind != IblBakeItemKind::EnvironmentLight) {
       return false;
@@ -2280,8 +2480,8 @@ findEnvironmentMapParameter(const RenderFeature &feature) {
 
 } // namespace
 
-IblBakeItemCollection SceneResourceTable::collectIblBakeItems(
-    ResourceUri bakeRenderPathUri) const {
+IblBakeItemCollection
+SceneResourceTable::collectIblBakeItems(ResourceUri bakeRenderPathUri) const {
   IblBakeItemCollection collection;
   BakeItemId nextItemId = 1;
 
@@ -2390,7 +2590,8 @@ void SceneResourceTable::registerToneMappingResources(
   markDescriptorUploadDirty();
 }
 
-std::vector<GpuResourceRef> SceneResourceTable::getToneMappingResources() const {
+std::vector<GpuResourceRef>
+SceneResourceTable::getToneMappingResources() const {
   std::vector<GpuResourceRef> out;
   if (m_toneMappingUbo) {
     out.emplace_back(*m_toneMappingUbo);
@@ -2517,6 +2718,23 @@ bool SceneResourceTable::isAlive(RenderFeatureHandle handle) const {
 
 bool SceneResourceTable::isAlive(ShaderHandle handle) const {
   return isAlive<ShaderResourceMetadata, ShaderHandle>(m_shaders, handle);
+}
+
+bool SceneResourceTable::isAlive(IblDiffuseShHandle handle) const {
+  return isAlive<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
+      m_iblDiffuseShPayloads, handle);
+}
+
+bool SceneResourceTable::isAlive(
+    IblSpecularPrefilteredCubemapHandle handle) const {
+  return isAlive<IblTexturePayloadResource,
+                 IblSpecularPrefilteredCubemapHandle>(
+      m_iblSpecularPrefilteredCubemaps, handle);
+}
+
+bool SceneResourceTable::isAlive(StandardPbrBrdfLutHandle handle) const {
+  return isAlive<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+      m_standardPbrBrdfLuts, handle);
 }
 
 usize SceneResourceTable::geometryStorageCount() const {
@@ -2680,6 +2898,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .renderPathGraphResources = m_gpuRenderPathGraphResources,
         .renderFeatureResources = m_gpuRenderFeatureResources,
         .shaderResources = m_gpuShaderResources,
+        .environmentDiffuseShPayloads = m_gpuIblDiffuseShPayloads,
+        .environmentSpecularPrefilteredCubemaps =
+            m_gpuIblSpecularPrefilteredCubemaps,
+        .standardPbrBrdfLuts = m_gpuStandardPbrBrdfLuts,
         .renderPathGraphs = m_gpuRenderPathGraphs,
         .renderPathGraphPasses = m_gpuRenderPathGraphPasses,
         .renderPathGraphFeatures = m_gpuRenderPathGraphFeatures,
@@ -2694,6 +2916,25 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .renderPathGraphIndexByHandle = m_gpuRenderPathGraphIndexByHandle,
         .renderFeatureIndexByHandle = m_gpuRenderFeatureIndexByHandle,
         .shaderIndexByHandle = m_gpuShaderIndexByHandle,
+        .iblDiffuseShIndexByHandle = m_gpuIblDiffuseShIndexByHandle,
+        .iblSpecularPrefilteredCubemapIndexByHandle =
+            m_gpuIblSpecularPrefilteredCubemapIndexByHandle,
+        .standardPbrBrdfLutIndexByHandle =
+            m_gpuStandardPbrBrdfLutIndexByHandle,
+        .activeIblGeneration =
+            m_activeIblEnvironment.has_value()
+                ? m_activeIblEnvironment->generation
+                : 0,
+        .activeIbl = m_activeIblEnvironment.has_value()
+                         ? SceneActiveIblUploadState{
+                               .diffuseSh = m_activeIblEnvironment->diffuseSh,
+                               .specularPrefilteredCubemap =
+                                   m_activeIblEnvironment
+                                       ->specularPrefilteredCubemap,
+                               .standardPbrBrdfLut =
+                                   m_activeIblEnvironment->standardPbrBrdfLut,
+                           }
+                         : SceneActiveIblUploadState{},
     };
   };
 
@@ -2715,6 +2956,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuRenderPathGraphResources.clear();
   m_gpuRenderFeatureResources.clear();
   m_gpuShaderResources.clear();
+  m_gpuIblDiffuseShPayloads.clear();
+  m_gpuIblSpecularPrefilteredCubemaps.clear();
+  m_gpuStandardPbrBrdfLuts.clear();
   m_gpuRenderPathGraphs.clear();
   m_gpuRenderPathGraphPasses.clear();
   m_gpuRenderPathGraphFeatures.clear();
@@ -2729,6 +2973,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
   m_gpuRenderPathGraphIndexByHandle.clear();
   m_gpuRenderFeatureIndexByHandle.clear();
   m_gpuShaderIndexByHandle.clear();
+  m_gpuIblDiffuseShIndexByHandle.clear();
+  m_gpuIblSpecularPrefilteredCubemapIndexByHandle.clear();
+  m_gpuStandardPbrBrdfLutIndexByHandle.clear();
 
   const auto registerBuiltinUploadTexture =
       [this](const ResourceUri &uri) -> u32 {
@@ -2842,6 +3089,68 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
         .handle = ShaderHandle{i, entry.generation},
         .typedIndex = typedIndex,
     });
+  }
+
+  if (m_activeIblEnvironment.has_value()) {
+    std::vector<std::string> diagnostics;
+    if (!validateActiveIblEnvironment(*m_activeIblEnvironment, diagnostics)) {
+      std::string message = "active IBL environment is not upload-ready";
+      for (const std::string &diagnostic : diagnostics) {
+        message += "; ";
+        message += diagnostic;
+      }
+      throw std::logic_error(message);
+    }
+  }
+
+  m_gpuIblDiffuseShPayloads.reserve(aliveCount(m_iblDiffuseShPayloads));
+  for (u32 i = 0; i < m_iblDiffuseShPayloads.size(); ++i) {
+    const auto &entry = m_iblDiffuseShPayloads[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const u32 typedIndex = static_cast<u32>(m_gpuIblDiffuseShPayloads.size());
+    m_gpuIblDiffuseShPayloads.push_back(std::cref(*entry.resource));
+    m_gpuIblDiffuseShIndexByHandle.push_back(
+        SceneResourceIblDiffuseShUploadIndex{
+            .handle = IblDiffuseShHandle{i, entry.generation},
+            .typedIndex = typedIndex,
+        });
+  }
+
+  m_gpuIblSpecularPrefilteredCubemaps.reserve(
+      aliveCount(m_iblSpecularPrefilteredCubemaps));
+  for (u32 i = 0; i < m_iblSpecularPrefilteredCubemaps.size(); ++i) {
+    const auto &entry = m_iblSpecularPrefilteredCubemaps[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource ||
+        !entry.resource->sampler) {
+      continue;
+    }
+    const u32 typedIndex =
+        static_cast<u32>(m_gpuIblSpecularPrefilteredCubemaps.size());
+    m_gpuIblSpecularPrefilteredCubemaps.push_back(
+        std::cref(*entry.resource->sampler));
+    m_gpuIblSpecularPrefilteredCubemapIndexByHandle.push_back(
+        SceneResourceIblSpecularPrefilteredCubemapUploadIndex{
+            .handle = IblSpecularPrefilteredCubemapHandle{i, entry.generation},
+            .typedIndex = typedIndex,
+        });
+  }
+
+  m_gpuStandardPbrBrdfLuts.reserve(aliveCount(m_standardPbrBrdfLuts));
+  for (u32 i = 0; i < m_standardPbrBrdfLuts.size(); ++i) {
+    const auto &entry = m_standardPbrBrdfLuts[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource ||
+        !entry.resource->sampler) {
+      continue;
+    }
+    const u32 typedIndex = static_cast<u32>(m_gpuStandardPbrBrdfLuts.size());
+    m_gpuStandardPbrBrdfLuts.push_back(std::cref(*entry.resource->sampler));
+    m_gpuStandardPbrBrdfLutIndexByHandle.push_back(
+        SceneResourceStandardPbrBrdfLutUploadIndex{
+            .handle = StandardPbrBrdfLutHandle{i, entry.generation},
+            .typedIndex = typedIndex,
+        });
   }
 
   const auto findFeatureHandleByUri =

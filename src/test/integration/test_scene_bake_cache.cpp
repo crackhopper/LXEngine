@@ -1,16 +1,16 @@
 #include "core/asset/material_instance.hpp"
-#include "core/scene/ibl_bake_service.hpp"
-#include "core/scene/ibl_bake_manifest.hpp"
 #include "core/scene/ibl_bake_keys.hpp"
+#include "core/scene/ibl_bake_manifest.hpp"
+#include "core/scene/ibl_bake_service.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "infra/resource_parsers/ibl_bake_manifest_parser.hpp"
 #include "editor/commands/command_bus.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/runtime/scene_runtime.hpp"
-#include "infra/resource_parsers/ibl_bake_manifest_parser.hpp"
 
-#include <cstdlib>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -82,6 +82,57 @@ MaterialInstanceUniquePtr makeBakeMaterial(const std::string &type,
   return material;
 }
 
+Sh9IrradiancePayload sh9PayloadFixture(float scale = 1.0f) {
+  Sh9IrradiancePayload payload;
+  for (u32 i = 0; i < payload.coefficients.size(); ++i) {
+    const float value = scale * static_cast<float>(i + 1u);
+    payload.coefficients[i] = Vec3f{value, value + 0.25f, value + 0.5f};
+  }
+  return payload;
+}
+
+CombinedTextureSamplerSharedPtr makeTexturePayload(TextureDesc desc,
+                                                   StringID binding) {
+  auto sampler =
+      std::make_shared<CombinedTextureSampler>(std::make_shared<Texture>(
+          desc, std::vector<u8>(expectedTextureByteCount(desc), 0x7fu)));
+  sampler->setBindingName(binding);
+  return sampler;
+}
+
+CombinedTextureSamplerSharedPtr specularPrefilteredPayloadFixture() {
+  TextureDesc desc;
+  desc.width = 4;
+  desc.height = 4;
+  desc.format = TextureFormat::RGBA16Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.mipLevels = 3;
+  desc.arrayLayers = 6;
+  return makeTexturePayload(desc, StringID("PrefilteredEnvMap"));
+}
+
+CombinedTextureSamplerSharedPtr brdfLutPayloadFixture() {
+  TextureDesc desc;
+  desc.width = 256;
+  desc.height = 256;
+  desc.format = TextureFormat::RG16Float;
+  desc.content = TextureContent::Data;
+  desc.dimension = TextureDimension::Texture2D;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 1;
+  return makeTexturePayload(desc, StringID("BrdfLut"));
+}
+
+IblEnvironmentActivationPayload iblActivationPayloadFixture(u64 generation) {
+  IblEnvironmentActivationPayload payload;
+  payload.generation = generation;
+  payload.diffuseSh = sh9PayloadFixture();
+  payload.specularPrefilteredCubemap = specularPrefilteredPayloadFixture();
+  payload.standardPbrBrdfLut = brdfLutPayloadFixture();
+  return payload;
+}
+
 ObjectHandle registerBakeObject(SceneResourceTable &table,
                                 MaterialHandle material) {
   ObjectResource object;
@@ -115,8 +166,7 @@ std::filesystem::path repoRootForTest() {
   return root;
 }
 
-void writeTextFile(const std::filesystem::path &path,
-                   const std::string &text) {
+void writeTextFile(const std::filesystem::path &path, const std::string &text) {
   std::ofstream out(path);
   if (!out) {
     std::cerr << "[FAIL] unable to write " << path << '\n';
@@ -136,10 +186,11 @@ IblBakeItem makeEnvironmentBakeItem(BakeItemId id = 1) {
   return IblBakeItem{
       .id = id,
       .kind = IblBakeItemKind::EnvironmentLight,
-      .key = EnvironmentIblBakeKey{
-          .environmentMapUri = ResourceUri("memory://env/service.hdr"),
-          .sourceHash = "sha256:env-service",
-      },
+      .key =
+          EnvironmentIblBakeKey{
+              .environmentMapUri = ResourceUri("memory://env/service.hdr"),
+              .sourceHash = "sha256:env-service",
+          },
       .bakeRenderPathUri = ResourceUri(
           "assets/render_paths/bake_environment_ibl.render-path.yaml"),
   };
@@ -159,8 +210,7 @@ public:
                   m_parser.writeEnvironmentManifest(makeManifest(item)));
   }
 
-  void writeInvalidCache(const IblBakeItem &item,
-                         const std::string &reason) {
+  void writeInvalidCache(const IblBakeItem &item, const std::string &reason) {
     const std::filesystem::path dir = itemDir(item);
     std::filesystem::create_directories(dir);
     writeTextFile(dir / "diffuse_sh9.yaml", "payload\n");
@@ -237,8 +287,7 @@ public:
   }
 
   [[nodiscard]] IblBakeCacheWriteResult
-  write(const IblBakeItem &item,
-        const FrameGraphExecutionResult &) override {
+  write(const IblBakeItem &item, const FrameGraphExecutionResult &) override {
     ++writeCount;
     if (failWrites) {
       return IblBakeCacheWriteResult::failure("cache write failed by test");
@@ -327,8 +376,30 @@ public:
   int dispatchCount = 0;
 };
 
-std::optional<IblBakeJobStatus>
-waitForStoppedJob(IblBakeJobService &service, BakeJobId job) {
+class TableActivationSink final : public IblBakeActivationSink {
+public:
+  explicit TableActivationSink(SceneResourceTable &table) : m_table(table) {}
+
+  [[nodiscard]] IblBakeActivationResult
+  activate(std::span<const IblBakeItem>) override {
+    ++activateCount;
+    IblEnvironmentActivationResult activated =
+        m_table.activateIblEnvironment(std::move(nextPayload));
+    if (!activated.ok) {
+      return IblBakeActivationResult::failure(activated.message);
+    }
+    return IblBakeActivationResult::success("activated");
+  }
+
+  IblEnvironmentActivationPayload nextPayload;
+  int activateCount = 0;
+
+private:
+  SceneResourceTable &m_table;
+};
+
+std::optional<IblBakeJobStatus> waitForStoppedJob(IblBakeJobService &service,
+                                                  BakeJobId job) {
   for (int i = 0; i < 200; ++i) {
     const auto status = service.status(job);
     if (status.has_value() && !status->running) {
@@ -362,10 +433,8 @@ bool phasesContainInOrder(const std::vector<IblBakeJobEvent> &events,
 
 void testEventSequenceIsMonotonic() {
   IblBakeEventQueue queue;
-  const IblBakeJobEvent first =
-      queue.push(IblBakeJobEvent{.job = 7,
-                                 .phase = IblBakeJobPhase::Queued,
-                                 .message = "queued"});
+  const IblBakeJobEvent first = queue.push(IblBakeJobEvent{
+      .job = 7, .phase = IblBakeJobPhase::Queued, .message = "queued"});
   const IblBakeJobEvent second =
       queue.push(IblBakeJobEvent{.job = 7,
                                  .phase = IblBakeJobPhase::CacheCheck,
@@ -563,6 +632,45 @@ void testIblBakeServiceActivationRequiresDispatcher() {
   std::filesystem::remove_all(root);
 }
 
+void testIblBakeServiceFailedActivationPreservesActiveSceneIblGeneration() {
+  const std::filesystem::path root =
+      makeTempDir("ibl_service_failed_activation_preserves_generation");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeValidCache(item);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  auto dispatcher = std::make_shared<FakeActivationDispatcher>();
+  SceneResourceTable table;
+  const IblEnvironmentActivationResult initial =
+      table.activateIblEnvironment(iblActivationPayloadFixture(11));
+  expect(initial.ok, "initial table activation should succeed");
+
+  auto activation = std::make_shared<TableActivationSink>(table);
+  activation->nextPayload = iblActivationPayloadFixture(12);
+  activation->nextPayload.standardPbrBrdfLut.reset();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+      .activation = activation,
+      .activationDispatcher = dispatcher,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "failed-activation test should start");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(),
+         "failed-activation test should report final status");
+  expect(status->phase == IblBakeJobPhase::ActivationFailed,
+         "invalid table activation should fail the job activation phase");
+  expect(activation->activateCount == 1,
+         "service should dispatch the table-backed activation sink");
+  expect(table.buildUploadView().activeIblGeneration == 11,
+         "failed service activation must preserve active scene IBL "
+         "generation");
+  std::filesystem::remove_all(root);
+}
+
 void testIblBakeServiceForceIgnoresValidCacheWhenIdle() {
   const std::filesystem::path root = makeTempDir("ibl_service_force");
   const IblBakeItem item = makeEnvironmentBakeItem();
@@ -754,7 +862,8 @@ void testStandardPbrMaterialBakeItemsAreDeduplicated() {
       std::unordered_map<std::string, std::string>{{"brdfModel", "custom"}});
   const ObjectHandle firstObject = registerBakeObject(table, first);
   const ObjectHandle secondObject = registerBakeObject(table, second);
-  table.setObjectIblBakeMarker(firstObject, SceneIblBakeMarker{.enabled = true});
+  table.setObjectIblBakeMarker(firstObject,
+                               SceneIblBakeMarker{.enabled = true});
   table.setObjectIblBakeMarker(secondObject,
                                SceneIblBakeMarker{.enabled = true});
 
@@ -777,10 +886,10 @@ void testReleasedObjectMarkerDoesNotLeakToReusedSlot() {
   SceneResourceTable table;
   const MaterialHandle material = table.registerMaterialInstance(
       ResourceUri("memory://materials/standard"),
-      makeBakeMaterial("standard-pbr", "memory://materials/standard",
-                       "hash"));
+      makeBakeMaterial("standard-pbr", "memory://materials/standard", "hash"));
   const ObjectHandle firstObject = registerBakeObject(table, material);
-  table.setObjectIblBakeMarker(firstObject, SceneIblBakeMarker{.enabled = true});
+  table.setObjectIblBakeMarker(firstObject,
+                               SceneIblBakeMarker{.enabled = true});
   table.release(firstObject);
 
   const ObjectHandle secondObject = registerBakeObject(table, material);
@@ -939,8 +1048,8 @@ void testIblManifestDerivesMipCount() {
 
 void testEnvironmentManifestRejectsUnknownField() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseEnvironmentManifest(
-      ResourceUri("memory://env-manifest"), R"(
+  const auto parsed =
+      parser.parseEnvironmentManifest(ResourceUri("memory://env-manifest"), R"(
 schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
@@ -971,8 +1080,8 @@ unexpected: true
 
 void testEnvironmentManifestRejectsWrongMipCount() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseEnvironmentManifest(
-      ResourceUri("memory://env-manifest"), R"(
+  const auto parsed =
+      parser.parseEnvironmentManifest(ResourceUri("memory://env-manifest"), R"(
 schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
@@ -1002,8 +1111,8 @@ outputs:
 
 void testSh9PayloadRejectsEightCoefficients() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseSh9IrradiancePayload(
-      ResourceUri("memory://diffuse-sh9"), R"(
+  const auto parsed =
+      parser.parseSh9IrradiancePayload(ResourceUri("memory://diffuse-sh9"), R"(
 schema: lxe.sh9.v1
 space: world
 basis: real-sh
@@ -1022,15 +1131,14 @@ coefficients:
 
   expect(!parsed.payload.has_value(),
          "SH9 payload with eight coefficients should reject");
-  expect(diagnosticsContain(parsed.diagnostics,
-                            "coefficients must contain 9"),
+  expect(diagnosticsContain(parsed.diagnostics, "coefficients must contain 9"),
          "SH9 coefficient diagnostic should explain required count");
 }
 
 void testSh9PayloadRejectsWrongLayout() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseSh9IrradiancePayload(
-      ResourceUri("memory://diffuse-sh9"), R"(
+  const auto parsed =
+      parser.parseSh9IrradiancePayload(ResourceUri("memory://diffuse-sh9"), R"(
 schema: lxe.sh9.v1
 space: world
 basis: real-sh
@@ -1056,8 +1164,8 @@ coefficients:
 
 void testSh9PayloadRejectsNonNumericCoefficient() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseSh9IrradiancePayload(
-      ResourceUri("memory://diffuse-sh9"), R"(
+  const auto parsed =
+      parser.parseSh9IrradiancePayload(ResourceUri("memory://diffuse-sh9"), R"(
 schema: lxe.sh9.v1
 space: world
 basis: real-sh
@@ -1123,8 +1231,8 @@ void testEnvironmentManifestRejectsWrongSourceHashAgainstExpectedKey() {
 
 void testEnvironmentManifestRejectsMissingPayloadFiles() {
   LX_infra::IblBakeManifestParser parser;
-  const auto parsed = parser.parseEnvironmentManifest(
-      ResourceUri("memory://env-manifest"), R"(
+  const auto parsed =
+      parser.parseEnvironmentManifest(ResourceUri("memory://env-manifest"), R"(
 schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
@@ -1234,6 +1342,7 @@ int main() {
   testIblBakeServiceCacheHitSkipsGpuBakeAndActivates();
   testIblBakeServiceInvalidCacheRebakesAndWritesCache();
   testIblBakeServiceActivationRequiresDispatcher();
+  testIblBakeServiceFailedActivationPreservesActiveSceneIblGeneration();
   testIblBakeServiceForceIgnoresValidCacheWhenIdle();
   testIblBakeServiceRestartsAfterCompletedWorker();
   testIblBakeServiceRejectsDuplicateRunningJob();
