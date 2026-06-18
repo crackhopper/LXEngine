@@ -1300,6 +1300,18 @@ FramePass makeSurfaceLightingFullscreenPass(const char *name,
   return pass;
 }
 
+void addSurfaceLightingBakeFacts(FramePass &pass, bool environmentBake,
+                                 bool materialIblBake) {
+  if (environmentBake) {
+    pass.reads.push_back(
+        FrameGraphRead::sampled(StringID("scene.environmentBake"), StringID{}));
+  }
+  if (materialIblBake) {
+    pass.reads.push_back(
+        FrameGraphRead::sampled(StringID("scene.materialIblBake"), StringID{}));
+  }
+}
+
 RenderWorkBuildContext::PassPreparationFacts
 makeSurfaceLightingPassFacts(const FramePass &pass,
                              const IShaderSharedPtr &shader) {
@@ -1575,7 +1587,8 @@ void testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred(
   forwardNode.stage = RenderPassStage::Raster;
   forwardNode.dispatch = RenderPassDispatch::Fullscreen;
   forwardNode.input.kind = RenderPassInputKind::FullscreenTriangle;
-  forwardNode.sources = {"feature.surfaceLighting"};
+  forwardNode.sources = {"feature.surfaceLighting", "scene.environmentBake",
+                         "scene.materialIblBake"};
   graph.passes.push_back(forwardNode);
   RenderPassNode deferredNode = forwardNode;
   deferredNode.id = "DeferredLighting";
@@ -1599,6 +1612,8 @@ void testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred(
       makeSurfaceLightingFullscreenPass("Forward", forwardShaderUri);
   FramePass deferredPass =
       makeSurfaceLightingFullscreenPass("DeferredLighting", deferredShaderUri);
+  addSurfaceLightingBakeFacts(forwardPass, true, true);
+  addSurfaceLightingBakeFacts(deferredPass, true, true);
 
   RenderWorkBuildContext::RealtimeOptions options;
   options.passPreparationFacts.push_back(
@@ -1689,6 +1704,88 @@ void testRenderWorkCompilerRejectsSurfaceLightingUboWithoutFeatureRead() {
          "feature.surfaceLighting read");
   EXPECT(hasDiagnosticMessage(descs.front(), "feature.surfaceLighting"),
          "diagnostic should name missing feature.surfaceLighting read");
+}
+
+void testRenderWorkCompilerRejectsIblSurfaceLightingWithoutEnvironmentBake() {
+  const ResourceUri featureUri("memory://features/surface_lighting");
+  const ResourceUri shaderUri("memory://shaders/surface_without_environment");
+  auto shader = makeSurfaceLightingShader(91);
+
+  Scene scene("SurfaceLightingMissingEnvironmentBakeScene");
+  [[maybe_unused]] const ShaderHandle shaderHandle =
+      scene.resources().registerShaderResource(
+          shaderUri, std::vector<ResourceUri>{shaderUri}, shader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          featureUri, makeCompilerSurfaceLightingFeature());
+
+  FramePass pass = makeSurfaceLightingFullscreenPass("Forward", shaderUri);
+  addSurfaceLightingBakeFacts(pass, false, true);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(
+      makeSurfaceLightingPassFacts(pass, shader));
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "IBL-enabled surfaceLighting pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "IBL-enabled surfaceLighting should require scene.environmentBake");
+  EXPECT(hasDiagnosticCode(descs.front(),
+                           RenderInputDiagnosticCode::MissingResource),
+         "missing environment bake fact should report missing resource");
+  EXPECT(hasDiagnosticMessage(descs.front(), "scene.environmentBake"),
+         "diagnostic should name missing scene.environmentBake");
+}
+
+void testRenderWorkCompilerRejectsIblSurfaceLightingWithoutMaterialIblBake() {
+  const ResourceUri featureUri("memory://features/surface_lighting");
+  const ResourceUri shaderUri("memory://shaders/surface_without_material_ibl");
+  auto shader = makeSurfaceLightingShader(101);
+
+  Scene scene("SurfaceLightingMissingMaterialBakeScene");
+  [[maybe_unused]] const ShaderHandle shaderHandle =
+      scene.resources().registerShaderResource(
+          shaderUri, std::vector<ResourceUri>{shaderUri}, shader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          featureUri, makeCompilerSurfaceLightingFeature());
+
+  FramePass pass = makeSurfaceLightingFullscreenPass("Forward", shaderUri);
+  addSurfaceLightingBakeFacts(pass, true, false);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(
+      makeSurfaceLightingPassFacts(pass, shader));
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "IBL-enabled surfaceLighting pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "IBL-enabled surfaceLighting should require scene.materialIblBake");
+  EXPECT(hasDiagnosticCode(descs.front(),
+                           RenderInputDiagnosticCode::MissingResource),
+         "missing material IBL bake fact should report missing resource");
+  EXPECT(hasDiagnosticMessage(descs.front(), "scene.materialIblBake"),
+         "diagnostic should name missing scene.materialIblBake");
 }
 
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
@@ -3105,6 +3202,8 @@ int main() {
   testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization();
   testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred();
   testRenderWorkCompilerRejectsSurfaceLightingUboWithoutFeatureRead();
+  testRenderWorkCompilerRejectsIblSurfaceLightingWithoutEnvironmentBake();
+  testRenderWorkCompilerRejectsIblSurfaceLightingWithoutMaterialIblBake();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();

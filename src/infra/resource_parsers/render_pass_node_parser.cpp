@@ -155,6 +155,8 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "material.bsdf",
       "scene.camera",
       "scene.lights",
+      "scene.environmentBake",
+      "scene.materialIblBake",
       "shadow.main",
       "hdr.color",
       "depth.main",

@@ -7,6 +7,8 @@ features:
     uri: effects/tone_mapping.render-feature.yaml
   environmentLighting:
     uri: effects/environment_lighting.render-feature.yaml
+  surfaceLighting:
+    uri: effects/surface_lighting.render-feature.yaml
 
 passes:
   - id: Shadow
@@ -111,6 +113,9 @@ passes:
       - gbuffer.material
       - depth.main
       - feature.toneMapping
+      - feature.surfaceLighting
+      - scene.environmentBake
+      - scene.materialIblBake
     targets: [swapchain.color]
     renderState:
       cullMode: None

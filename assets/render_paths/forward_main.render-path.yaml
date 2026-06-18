@@ -11,6 +11,8 @@ features:
     uri: effects/tone_mapping.render-feature.yaml
   environmentLighting:
     uri: effects/environment_lighting.render-feature.yaml
+  surfaceLighting:
+    uri: effects/surface_lighting.render-feature.yaml
   bloom:
     uri: effects/bloom.render-feature.yaml
 
@@ -81,6 +83,9 @@ passes:
       - feature.forwardPass
       - feature.skybox
       - feature.environmentLighting
+      - feature.surfaceLighting
+      - scene.environmentBake
+      - scene.materialIblBake
       - feature.toneMapping
     targets: [hdr.color, depth.main]
     renderState:

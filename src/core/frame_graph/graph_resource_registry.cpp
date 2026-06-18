@@ -46,6 +46,8 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
            "scene.lights",
            "scene.bvh",
            "scene.environment",
+           "scene.environmentBake",
+           "scene.materialIblBake",
            "bake.environment.source",
            "bake.material.source",
        }) {

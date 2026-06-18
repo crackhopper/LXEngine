@@ -39,6 +39,29 @@ int g_failures = 0;
     }                                                                          \
   } while (0)
 
+bool renderPathGraphHasFeature(const LX_core::RenderPathGraph &graph,
+                               const std::string &slot) {
+  return std::any_of(
+      graph.features.begin(), graph.features.end(),
+      [&](const LX_core::RenderPathFeatureDependency &dependency) {
+        return dependency.slot == slot;
+      });
+}
+
+bool renderPassHasSource(const LX_core::RenderPassNode &pass,
+                         const std::string &source) {
+  return std::find(pass.sources.begin(), pass.sources.end(), source) !=
+         pass.sources.end();
+}
+
+bool renderPathGraphHasPass(const LX_core::RenderPathGraph &graph,
+                            const std::string &passId) {
+  return std::any_of(graph.passes.begin(), graph.passes.end(),
+                     [&](const LX_core::RenderPassNode &pass) {
+                       return pass.id == passId;
+                     });
+}
+
 class FakeShader final : public LX_core::IShader {
 public:
   std::vector<LX_core::ShaderStageCode> stages;
@@ -1460,19 +1483,17 @@ void testDefaultRenderPathGraphAssetParses() {
          "default forward graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Forward,
          "default forward graph should use Forward render path");
-  EXPECT(graph.features.size() == 5,
+  EXPECT(graph.features.size() == 6,
          "default forward graph should reference all forward feature assets");
   for (const char *slot : {"forwardPass", "skybox", "environmentLighting",
-                           "toneMapping", "bloom"}) {
-    const auto it = std::find_if(
-        graph.features.begin(), graph.features.end(),
-        [&](const LX_core::RenderPathFeatureDependency &dependency) {
-          return dependency.slot == slot;
-        });
-    EXPECT(it != graph.features.end(),
+                           "surfaceLighting", "toneMapping", "bloom"}) {
+    EXPECT(renderPathGraphHasFeature(graph, slot),
            std::string("default forward graph should reference feature.") +
                slot);
   }
+  EXPECT(!renderPathGraphHasPass(graph, "ForwardIblLighting"),
+         "default forward graph should keep IBL inline instead of adding a "
+         "ForwardIblLighting pass");
   EXPECT(graph.passes.size() == 4,
          "default forward graph should declare Shadow, Forward, Bloom, and "
          "DebugOverlay passes");
@@ -1486,12 +1507,13 @@ void testDefaultRenderPathGraphAssetParses() {
                graph.passes[1].input.material.types.end(),
            "default Forward pass should accept generated unlit texture room "
            "draws");
-    for (const char *source :
-         {"feature.forwardPass", "feature.skybox",
-          "feature.environmentLighting", "feature.toneMapping"}) {
-      EXPECT(std::find(graph.passes[1].sources.begin(),
-                       graph.passes[1].sources.end(),
-                       source) != graph.passes[1].sources.end(),
+    for (const char *source : {"feature.forwardPass", "feature.skybox",
+                               "feature.environmentLighting",
+                               "feature.surfaceLighting",
+                               "scene.environmentBake",
+                               "scene.materialIblBake",
+                               "feature.toneMapping"}) {
+      EXPECT(renderPassHasSource(graph.passes[1], source),
              std::string("default Forward pass should consume ") + source);
     }
     EXPECT(std::find(graph.passes[1].targets.begin(),
@@ -1552,6 +1574,10 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
          "default deferred graph should retain name");
   EXPECT(graph.renderPath == LX_core::RenderPath::Deferred,
          "default deferred graph should use Deferred render path");
+  EXPECT(renderPathGraphHasFeature(graph, "surfaceLighting"),
+         "default deferred graph should reference feature.surfaceLighting");
+  EXPECT(!renderPathGraphHasPass(graph, "ForwardIblLighting"),
+         "default deferred graph should not add a ForwardIblLighting pass");
   EXPECT(graph.passes.size() == 4,
          "default deferred graph should declare shadow, GBuffer, lighting, "
          "and debug overlay passes");
@@ -1562,11 +1588,14 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
                graph.passes[1].input.material.types.end(),
            "default deferred GBuffer pass should not accept environment-box "
            "until deferred background participates in the lighting pass");
-    EXPECT(std::find(graph.passes[2].sources.begin(),
-                     graph.passes[2].sources.end(),
-                     "feature.toneMapping") != graph.passes[2].sources.end(),
-           "default deferred lighting pass should consume toneMapping feature "
-           "directly");
+    for (const char *source : {"feature.toneMapping",
+                               "feature.surfaceLighting",
+                               "scene.environmentBake",
+                               "scene.materialIblBake"}) {
+      EXPECT(renderPassHasSource(graph.passes[2], source),
+             std::string("default DeferredLighting pass should consume ") +
+                 source);
+    }
     EXPECT(std::find(graph.passes[2].targets.begin(),
                      graph.passes[2].targets.end(),
                      "swapchain.color") != graph.passes[2].targets.end(),
@@ -1589,6 +1618,59 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
            "default deferred graph should run lighting after GBuffer");
     EXPECT(compiled.getPasses()[3].name == LX_core::StringID("DebugOverlay"),
            "default deferred graph should run debug overlay last");
+  }
+}
+
+void testSurfaceLightingRenderPathAssetsDeclareBakeFacts() {
+  struct ExpectedPass final {
+    const char *path;
+    const char *featurePass;
+  };
+  const ExpectedPass assets[] = {
+      {"assets/render_paths/forward_main.render-path.yaml", "Forward"},
+      {"assets/render_paths/deferred_main.render-path.yaml",
+       "DeferredLighting"},
+      {"assets/render_paths/deferred_bloom.render-path.yaml",
+       "DeferredLighting"},
+      {"assets/render_paths/debug_color_transfer.render-path.yaml",
+       "Forward"},
+  };
+
+  LX_infra::RenderPathGraphResourceParser parser;
+  for (const ExpectedPass &asset : assets) {
+    const auto parsed = parser.parse(asset.path, readTextFile(asset.path));
+    EXPECT(parsed.renderPathGraph.has_value(),
+           std::string(asset.path) + " should parse");
+    EXPECT(parsed.diagnostics.empty(),
+           std::string(asset.path) + " should not emit diagnostics");
+    if (!parsed.renderPathGraph.has_value()) {
+      continue;
+    }
+
+    const auto &graph = *parsed.renderPathGraph;
+    EXPECT(renderPathGraphHasFeature(graph, "surfaceLighting"),
+           std::string(asset.path) + " should declare feature.surfaceLighting");
+    EXPECT(!renderPathGraphHasPass(graph, "ForwardIblLighting"),
+           std::string(asset.path) +
+               " should not add a separate ForwardIblLighting pass");
+
+    const auto pass = std::find_if(
+        graph.passes.begin(), graph.passes.end(),
+        [&](const LX_core::RenderPassNode &candidate) {
+          return candidate.id == asset.featurePass;
+        });
+    if (pass == graph.passes.end()) {
+      EXPECT(false, std::string(asset.path) + " should contain pass " +
+                        asset.featurePass);
+      continue;
+    }
+    for (const char *source : {"feature.surfaceLighting",
+                               "scene.environmentBake",
+                               "scene.materialIblBake"}) {
+      EXPECT(renderPassHasSource(*pass, source),
+             std::string(asset.path) + " " + asset.featurePass +
+                 " should consume " + source);
+    }
   }
 }
 
@@ -1615,7 +1697,7 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    sources: [feature.surfaceLighting]
+    sources: [feature.surfaceLighting, scene.environmentBake, scene.materialIblBake]
     targets: [hdr.color]
     renderState:
       cullMode: None
@@ -1635,7 +1717,7 @@ passes:
           format: BGRA8Srgb
           samples: 1
           layers: 1
-    sources: [hdr.color, feature.surfaceLighting]
+    sources: [hdr.color, feature.surfaceLighting, scene.environmentBake, scene.materialIblBake]
     targets: [swapchain.color]
     renderState:
       cullMode: None
@@ -1647,8 +1729,8 @@ passes:
   EXPECT(parsed.renderPathGraph.has_value(),
          "render path graph should accept surfaceLighting feature sources");
   EXPECT(parsed.diagnostics.empty(),
-         "surfaceLighting graph sources should not emit unknown resource "
-         "diagnostics");
+         "surfaceLighting and IBL bake graph sources should not emit unknown "
+         "resource diagnostics");
   if (!parsed.renderPathGraph.has_value()) {
     return;
   }
@@ -1663,8 +1745,20 @@ passes:
       EXPECT(std::find(pass.sources.begin(), pass.sources.end(),
                        "feature.surfaceLighting") != pass.sources.end(),
              pass.id + " should consume feature.surfaceLighting");
+      EXPECT(renderPassHasSource(pass, "scene.environmentBake"),
+             pass.id + " should consume scene.environmentBake");
+      EXPECT(renderPassHasSource(pass, "scene.materialIblBake"),
+             pass.id + " should consume scene.materialIblBake");
     }
   }
+  const LX_core::FrameGraph frameGraph =
+      LX_core::buildFrameGraphFromRenderPathGraph(
+          graph, LX_core::GraphResourceRegistry::makeDefault());
+  const auto compiled =
+      frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
+  EXPECT(compiled.isValid(),
+         "surfaceLighting IBL bake facts should compile through the default "
+         "FrameGraph registry");
 }
 
 void testBakeRenderPathGraphAssetsParseAndCompile() {
@@ -3353,6 +3447,7 @@ int main() {
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
+  testSurfaceLightingRenderPathAssetsDeclareBakeFacts();
   testRenderPathGraphAcceptsSurfaceLightingFeatureSources();
   testBakeRenderPathGraphAssetsParseAndCompile();
   testBakeRenderPathGraphAssetsResolveShaderPayloads();

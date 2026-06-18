@@ -669,6 +669,15 @@ void validateBindingPlanCompleteness(RenderInputDesc &desc) {
       });
 }
 
+[[nodiscard]] bool passUsesSource(const FramePass &pass,
+                                  std::string_view sourceName) {
+  return std::any_of(
+      pass.reads.begin(), pass.reads.end(), [&](const FrameGraphRead &read) {
+        return GlobalStringTable::get().toDebugString(read.resource) ==
+               sourceName;
+      });
+}
+
 [[nodiscard]] const ShaderResourceBinding *
 findReflectedBinding(const std::vector<ShaderResourceBinding> &bindings,
                      std::string_view name) {
@@ -785,6 +794,58 @@ void validateSurfaceLightingFeatureRead(const FramePass &pass,
   }
   reject(desc, RenderInputDiagnosticCode::MissingResource,
          "reflected SurfaceLightingUBO requires feature.surfaceLighting read");
+}
+
+[[nodiscard]] bool featureBoolValue(const RenderFeatureParameter &parameter) {
+  return parameter.value == "true" || parameter.value == "1";
+}
+
+[[nodiscard]] bool surfaceLightingIblEnabled(
+    const RenderWorkBuildContext &context) {
+  if (!context.hasRealtimeScene()) {
+    return false;
+  }
+  const SceneResourceTable &resources = context.realtimeScene().resources();
+  const auto featureHandle =
+      resources.findRenderFeatureByFeatureName("surfaceLighting");
+  if (!featureHandle.has_value()) {
+    return false;
+  }
+  const auto feature = resources.resolve(*featureHandle);
+  if (!feature.has_value()) {
+    return false;
+  }
+  const auto enableIblLighting =
+      feature->get().parameters.find("enableIblLighting");
+  if (enableIblLighting == feature->get().parameters.end()) {
+    return false;
+  }
+  return featureBoolValue(enableIblLighting->second);
+}
+
+void validateSurfaceLightingIblBakeSources(
+    const FramePass &pass, const RenderWorkBuildContext &context,
+    RenderInputDesc &desc) {
+  if (findReflectedBinding(desc.pipelineBuildDesc.bindings,
+                           "SurfaceLightingUBO") == nullptr) {
+    return;
+  }
+  if (!passUsesFeature(pass, "feature.surfaceLighting")) {
+    return;
+  }
+  if (!surfaceLightingIblEnabled(context)) {
+    return;
+  }
+  if (!passUsesSource(pass, "scene.environmentBake")) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.surfaceLighting enableIblLighting=true requires "
+           "scene.environmentBake source");
+  }
+  if (!passUsesSource(pass, "scene.materialIblBake")) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.surfaceLighting enableIblLighting=true requires "
+           "scene.materialIblBake source for standard-pbr");
+  }
 }
 
 [[nodiscard]] bool hasDiagnosticCode(const RenderInputDesc &desc,
@@ -1267,6 +1328,9 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     }
     if (desc.accepted()) {
       validateSurfaceLightingFeatureRead(pass, desc);
+    }
+    if (desc.accepted()) {
+      validateSurfaceLightingIblBakeSources(pass, context, desc);
     }
     if (desc.accepted()) {
       validateBakeSourcePayloads(pass, desc);
