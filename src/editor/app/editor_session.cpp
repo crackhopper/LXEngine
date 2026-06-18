@@ -1500,6 +1500,13 @@ void LxeEditorSession::rebuildBindings(
                             std::reference_wrapper<LX_core::IblBakeJobService>> {
                 return m_iblBakeJobs;
               },
+          .bakeEventLine =
+              [this](std::string_view line) {
+                if (m_consolePanel) {
+                  m_consolePanel->appendSystemLine(line);
+                }
+                std::cerr << line << '\n';
+              },
       });
   registerRenderDebugCommand(*m_commandBus, m_renderDebugCommandHooks);
 
