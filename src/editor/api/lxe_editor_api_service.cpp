@@ -714,6 +714,8 @@ std::string LxeEditorApiService::sceneNodeAspectName(
     return "renderable_structure";
   case LX_core::SceneNodeAspect::CameraProperties:
     return "cameraProperties";
+  case LX_core::SceneNodeAspect::CameraSelection:
+    return "cameraSelection";
   case LX_core::SceneNodeAspect::LightProperties:
     return "lightProperties";
   }

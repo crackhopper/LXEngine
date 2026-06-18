@@ -657,6 +657,10 @@ void SceneResourceTable::markBakedResourceDirty() {
   markDescriptorResourceSelectionDirty();
 }
 
+void SceneResourceTable::markCameraSelectionDirty() {
+  markDescriptorResourceSelectionDirty();
+}
+
 void SceneResourceTable::markLightRuntimeDirty() {
   markDescriptorResourceSelectionDirty();
 }

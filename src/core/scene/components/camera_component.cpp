@@ -147,27 +147,27 @@ void CameraComponent::applyProjectionState(
 
 void CameraComponent::setTarget(RenderTarget target) {
   m_target = std::move(target);
-  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraSelection);
 }
 
 void CameraComponent::setTarget(std::optional<RenderTarget> target) {
   m_target = std::move(target);
-  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraSelection);
 }
 
 void CameraComponent::clearTarget() {
   m_target.reset();
-  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraSelection);
 }
 
 void CameraComponent::setCullingMask(const VisibilityLayerMask mask) {
   m_cullingMask = mask;
-  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraSelection);
 }
 
 void CameraComponent::setActive(const bool active) {
   m_active = active;
-  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraProperties);
+  notifyOwnerRuntimeAspectChange(SceneNodeAspect::CameraSelection);
 }
 
 Vec3f CameraComponent::getEyePosition() const {

@@ -459,6 +459,7 @@ bool InspectorPanel::shouldInvalidateForEvent(const SceneEvent &event) const {
         aspect == SceneNodeAspect::Visibility ||
         aspect == SceneNodeAspect::RenderableStructure ||
         aspect == SceneNodeAspect::CameraProperties ||
+        aspect == SceneNodeAspect::CameraSelection ||
         aspect == SceneNodeAspect::LightProperties) {
       return true;
     }

@@ -190,6 +190,7 @@ bool sceneNodeAspectChangesPreparedStructure(const SceneNodeAspect aspect) {
   case SceneNodeAspect::Transform:
   case SceneNodeAspect::Visibility:
   case SceneNodeAspect::CameraProperties:
+  case SceneNodeAspect::CameraSelection:
   case SceneNodeAspect::LightProperties:
     return false;
   }
@@ -871,8 +872,12 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
     const_cast<SceneNode &>(*this).rebuildValidatedCache();
   } else if (aspect == SceneNodeAspect::Transform ||
              aspect == SceneNodeAspect::Visibility ||
-             aspect == SceneNodeAspect::CameraProperties) {
+             aspect == SceneNodeAspect::CameraProperties ||
+             aspect == SceneNodeAspect::CameraSelection) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
+    if (aspect == SceneNodeAspect::CameraSelection) {
+      scene->resources().markCameraSelectionDirty();
+    }
     if (aspect == SceneNodeAspect::Transform && scene->getLight(*this)) {
       scene->resources().markLightRuntimeDirty();
     }

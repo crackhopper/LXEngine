@@ -27,6 +27,7 @@ enum class SceneNodeAspect {
   Visibility,
   RenderableStructure,
   CameraProperties,
+  CameraSelection,
   LightProperties,
 };
 

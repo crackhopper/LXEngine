@@ -332,6 +332,7 @@ public:
   [[nodiscard]] u64 uploadGeneration() const;
   void markFeatureRuntimeDirty();
   void markBakedResourceDirty();
+  void markCameraSelectionDirty();
   void markLightRuntimeDirty();
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
   // Returned spans are backed by this table's cached GPU record storage.

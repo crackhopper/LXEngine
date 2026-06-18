@@ -2228,6 +2228,63 @@ void testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges() {
          "scene runtime node generation should advance on removal");
 }
 
+void testCameraMembershipChangesDirtyDescriptorSelectionOnly() {
+  auto scene = Scene::create("camera_membership_dirty");
+  auto cameraNode = SceneNode::create("camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to test node");
+  scene->addCamera(cameraNode);
+
+  const u64 beforeActiveRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeActiveSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeActiveDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  const u64 beforeActiveVolatile = scene->resources().volatileUploadGeneration();
+  camera->get().setActive(false);
+  EXPECT(scene->runtimeNodeGeneration() == beforeActiveRuntime,
+         "camera active changes should not advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeActiveSelection + 1,
+         "camera active changes should rebuild scene-level camera descriptors");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeActiveDescriptor + 1,
+         "camera active changes should rebuild descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() ==
+             beforeActiveVolatile + 1,
+         "camera active changes should still refresh the camera UBO payload");
+
+  const u64 beforeTargetRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeTargetSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeTargetDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  camera->get().setTarget(
+      RenderTarget{ImageFormat::RGBA8, ImageFormat::D24UnormS8, 1});
+  EXPECT(scene->runtimeNodeGeneration() == beforeTargetRuntime,
+         "camera target changes should not advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeTargetSelection + 1,
+         "camera target changes should rebuild scene-level camera descriptors");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeTargetDescriptor + 1,
+         "camera target changes should rebuild descriptor upload plans");
+
+  const u64 beforeMaskRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeMaskSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeMaskDescriptor = scene->resources().descriptorUploadGeneration();
+  camera->get().setCullingMask(Layer_Default);
+  EXPECT(scene->runtimeNodeGeneration() == beforeMaskRuntime,
+         "camera culling mask changes should not advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeMaskSelection + 1,
+         "camera culling mask changes should rebuild render input selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeMaskDescriptor + 1,
+         "camera culling mask changes should rebuild descriptor upload plans");
+}
+
 void testAttachedRenderableComponentLifecycleSyncsResources() {
   auto scene = Scene::create("component_lifecycle");
   auto node = SceneNode::create("attached_mesh_component");
@@ -2475,6 +2532,7 @@ int main() {
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   testSceneResourceTableTracksSplitRenderGenerations();
   testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges();
+  testCameraMembershipChangesDirtyDescriptorSelectionOnly();
   testAttachedRenderableComponentLifecycleSyncsResources();
   testAttachedMeshReplacementReleasesOldSceneResources();
   testAttachedMaterialReplacementReleasesOldMaterialTextures();
