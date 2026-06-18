@@ -52,7 +52,6 @@ struct LxeEditorCommandContext final {
       std::function<LX_core::CommandResult(std::string_view modeName)>;
   using IblBakeJobServiceFn = std::function<
       std::optional<std::reference_wrapper<LX_core::IblBakeJobService>>()>;
-  using BakeEventLineFn = std::function<void(std::string_view)>;
 
   LX_core::EditorState &editorState;
   LX_core::Scene &scene;
@@ -83,14 +82,10 @@ struct LxeEditorCommandContext final {
   RealtimeRenderRunFn realtimeRenderRun;
   RealtimeRenderModeFn realtimeRenderMode;
   IblBakeJobServiceFn iblBakeJobs;
-  BakeEventLineFn bakeEventLine;
 };
 
 void registerBakeCommands(LX_core::CommandBus &bus,
                           LX_core::IblBakeJobService &service);
-void registerBakeCommands(
-    LX_core::CommandBus &bus, LX_core::IblBakeJobService &service,
-    LxeEditorCommandContext::BakeEventLineFn bakeEventLine);
 
 void registerLxeEditorCommands(LX_core::CommandBus &bus,
                                const LxeEditorCommandContext &context);

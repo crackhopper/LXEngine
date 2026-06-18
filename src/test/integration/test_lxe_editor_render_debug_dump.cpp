@@ -11,11 +11,14 @@
 #include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -23,6 +26,21 @@ namespace {
 
 bool contains(const std::string &haystack, const std::string &needle) {
   return haystack.find(needle) != std::string::npos;
+}
+
+usize countOccurrences(const std::string &haystack,
+                       const std::string &needle) {
+  usize count = 0;
+  usize offset = 0;
+  while (!needle.empty()) {
+    offset = haystack.find(needle, offset);
+    if (offset == std::string::npos) {
+      break;
+    }
+    ++count;
+    offset += needle.size();
+  }
+  return count;
 }
 
 int fail(const std::string &message) {
@@ -52,6 +70,32 @@ std::filesystem::path repoRootForTest() {
     return root.parent_path();
   }
   return root;
+}
+
+void expectJsonObject(const std::string &json, const std::string &context) {
+  expect(json.size() >= 2 && json.front() == '{' && json.back() == '}',
+         context + " should be a JSON object: " + json);
+}
+
+void expectJsonFieldString(const std::string &json, const std::string &field,
+                           const std::string &value,
+                           const std::string &context) {
+  expect(contains(json, "\"" + field + "\":\"" + value + "\""),
+         context + " should include string field " + field + "=" + value +
+             ": " + json);
+}
+
+void expectJsonFieldBool(const std::string &json, const std::string &field,
+                         bool value, const std::string &context) {
+  expect(contains(json,
+                  "\"" + field + "\":" + std::string(value ? "true" : "false")),
+         context + " should include bool field " + field + ": " + json);
+}
+
+void expectJsonFieldNumber(const std::string &json, const std::string &field,
+                           u64 value, const std::string &context) {
+  expect(contains(json, "\"" + field + "\":" + std::to_string(value)),
+         context + " should include numeric field " + field + ": " + json);
 }
 
 LX_core::IblBakeItem makeCommandBakeItem() {
@@ -153,7 +197,40 @@ private:
   std::shared_ptr<BlockingCacheStore> m_cache;
 };
 
-void testBakeCommandsReturnStructuredJsonAndPipeObservedEvents() {
+std::optional<LX_core::IblBakeJobStatus>
+waitForStoppedJob(LX_core::IblBakeJobService &service, LX_core::BakeJobId job) {
+  for (int i = 0; i < 200; ++i) {
+    const auto status = service.status(job);
+    if (status.has_value() && !status->running) {
+      return status;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return service.status(job);
+}
+
+void appendBakeEventsToConsoleAndLog(
+    LX_core::IblBakeJobService &service, LX_core::ConsolePanel &console,
+    u64 &lastSequence) {
+  const std::vector<LX_core::IblBakeJobEvent> events =
+      service.events(lastSequence);
+  for (const LX_core::IblBakeJobEvent &event : events) {
+    std::ostringstream line;
+    line << "[lxe_editor] bake job " << event.job << ' '
+         << LX_core::iblBakeJobPhaseName(event.phase) << " progress="
+         << std::fixed << std::setprecision(2) << event.progress
+         << " seq=" << event.sequence;
+    if (!event.message.empty()) {
+      line << " message=" << event.message;
+    }
+    const std::string text = line.str();
+    console.appendSystemLine(text);
+    std::cerr << text << '\n';
+    lastSequence = event.sequence;
+  }
+}
+
+void testBakeCommandsReturnStructuredJsonWithoutEventSideEffects() {
   LX_core::CommandBus bus;
   LX_core::ConsolePanel console(bus);
   const std::filesystem::path logPath =
@@ -167,54 +244,60 @@ void testBakeCommandsReturnStructuredJsonAndPipeObservedEvents() {
       .cacheStore = cache,
       .executor = std::make_shared<FakeFrameGraphExecutor>(),
   });
-  std::vector<std::string> observedBakeLines;
   BlockingCacheReleaseGuard cacheGuard(cache);
-  LX_demo::lxe_editor::registerBakeCommands(
-      bus, service, [&](std::string_view line) {
-        observedBakeLines.emplace_back(line);
-        console.appendSystemLine(line);
-        std::cerr << line << '\n';
-      });
+  LX_demo::lxe_editor::registerBakeCommands(bus, service);
 
   {
     LX_demo::lxe_editor::ScopedEditorLogFile scopedLog(logPath);
     const LX_core::CommandResult usage = bus.dispatch("bake job status");
     expect(!usage.ok, "missing status id should fail");
-    expect(contains(usage.structured, "\"ok\":false"),
-           "usage error should expose error JSON");
-    expect(contains(usage.structured, "\"usage\":\"bake job status <id>\""),
-           "usage error JSON should include command usage");
+    expectJsonObject(usage.structured, "usage error JSON");
+    expectJsonFieldBool(usage.structured, "ok", false, "usage error JSON");
+    expectJsonFieldString(usage.structured, "usage", "bake job status <id>",
+                          "usage error JSON");
 
     const LX_core::CommandResult start = bus.dispatch("bake ibl start");
     expect(start.ok, "bake ibl start should succeed");
-    expect(contains(start.structured, "\"command\":\"bake ibl start\""),
-           "start JSON should name the command");
-    expect(contains(start.structured, "\"job\":1"),
-           "start JSON should include job id");
+    expectJsonObject(start.structured, "start JSON");
+    expectJsonFieldString(start.structured, "command", "bake ibl start",
+                          "start JSON");
+    expectJsonFieldNumber(start.structured, "job", 1, "start JSON");
     expect(contains(start.structured, "\"phase\":\""),
-           "start JSON should include current phase");
-    expect(contains(start.structured, "\"progress\":0"),
-           "start JSON should include progress");
+           "start JSON should include current phase: " + start.structured);
     expect(contains(start.structured, "\"sequence\":{\"first\":1,\"last\":"),
-           "start JSON should include observed sequence range");
+           "start JSON should include observed sequence range: " +
+               start.structured);
+    expect(contains(start.structured, "\"statusSequence\":"),
+           "start JSON should expose status sequence separately: " +
+               start.structured);
 
     expect(cache->waitUntilCheckEntered(),
            "duplicate test should reach blocking cache check");
     const LX_core::CommandResult duplicate = bus.dispatch("bake ibl start");
     expect(!duplicate.ok, "duplicate start should fail while job is running");
-    expect(contains(duplicate.structured, "\"alreadyRunning\":true"),
-           "duplicate JSON should report the running job");
-    expect(contains(duplicate.structured, "\"job\":1"),
-           "duplicate JSON should include running job id");
+    expectJsonObject(duplicate.structured, "duplicate JSON");
+    expectJsonFieldBool(duplicate.structured, "alreadyRunning", true,
+                        "duplicate JSON");
+    expectJsonFieldNumber(duplicate.structured, "job", 1, "duplicate JSON");
+
+    const LX_core::CommandResult force = bus.dispatch("bake ibl start --force");
+    expect(!force.ok, "force start should fail while job is running");
+    expectJsonObject(force.structured, "force rejection JSON");
+    expectJsonFieldBool(force.structured, "alreadyRunning", true,
+                        "force rejection JSON");
+    expectJsonFieldBool(force.structured, "rejected", true,
+                        "force rejection JSON");
+    expectJsonFieldNumber(force.structured, "job", 1, "force rejection JSON");
 
     const LX_core::CommandResult status = bus.dispatch("bake job status 1");
     expect(status.ok, "bake job status should succeed");
-    expect(contains(status.structured, "\"command\":\"bake job status\""),
-           "status JSON should name the command");
-    expect(contains(status.structured, "\"phase\":\"cache-check\""),
-           "status JSON should include current phase");
-    expect(contains(status.structured, "\"sequence\""),
-           "status JSON should include sequence range");
+    expectJsonObject(status.structured, "status JSON");
+    expectJsonFieldString(status.structured, "command", "bake job status",
+                          "status JSON");
+    expectJsonFieldString(status.structured, "phase", "cache-check",
+                          "status JSON");
+    expect(contains(status.structured, "\"statusSequence\":"),
+           "status JSON should include status sequence: " + status.structured);
 
     const LX_core::CommandResult logs = bus.dispatch("bake job logs 1 1");
     expect(logs.ok, "bake job logs since sequence should succeed");
@@ -231,26 +314,82 @@ void testBakeCommandsReturnStructuredJsonAndPipeObservedEvents() {
            "cancel JSON should name the command");
     expect(contains(cancel.structured, "\"phase\":\"cancel-pending\""),
            "cancel JSON should include cancel phase");
+    expect(contains(cancel.structured, "\"statusSequence\":"),
+           "cancel JSON should expose status sequence separately: " +
+               cancel.structured);
 
-    expect(!observedBakeLines.empty(),
-           "observed bake events should be piped through callback");
-    expect(contains(console.displayedText(), "bake job 1 queued"),
-           "console history should include observed bake phase line");
+    expect(!contains(console.displayedText(), "[lxe_editor] bake job 1"),
+           "commands should not pipe bake events into console directly");
   }
 
   const std::string logText = readTextFile(logPath);
   std::filesystem::remove(logPath);
   cacheGuard.releaseNow();
   (void)service.status(1);
-  expect(contains(logText, "bake job 1 queued"),
-         "editor log should include observed bake phase line");
+  expect(!contains(logText, "[lxe_editor] bake job 1"),
+         "commands should not pipe bake events into editor log directly");
+}
+
+void testBakeEventCursorAndSessionStylePumpAreMonotonic() {
+  LX_core::CommandBus bus;
+  LX_core::ConsolePanel console(bus);
+  auto cache = std::make_shared<BlockingCacheStore>();
+  cache->blockNextCheck();
+  LX_core::IblBakeJobService service(LX_core::IblBakeJobServiceConfig{
+      .items = {makeCommandBakeItem()},
+      .cacheStore = cache,
+      .executor = std::make_shared<FakeFrameGraphExecutor>(),
+  });
+  LX_demo::lxe_editor::registerBakeCommands(bus, service);
+  BlockingCacheReleaseGuard cacheGuard(cache);
+
+  const LX_core::IblBakeStartResult start = service.start(false);
+  expect(start.ok, "cursor test should start bake job");
+  u64 lastSequence = 0;
+  appendBakeEventsToConsoleAndLog(service, console, lastSequence);
+  expect(lastSequence >= 1, "first pump should emit queued event");
+
+  expect(cache->waitUntilCheckEntered(),
+         "cursor test should reach blocking cache check");
+  appendBakeEventsToConsoleAndLog(service, console, lastSequence);
+  const u64 cacheCheckSequence = lastSequence;
+  expect(contains(console.displayedText(), "bake job 1 cache-check"),
+         "second pump should emit async cache-check phase");
+  appendBakeEventsToConsoleAndLog(service, console, lastSequence);
+  expect(lastSequence == cacheCheckSequence,
+         "empty pump should preserve last emitted sequence");
+  expect(service.events(lastSequence).empty(),
+         "events cursor should not repeat events at the last sequence");
+
+  (void)bus.dispatch("bake job logs 1 0");
+  (void)bus.dispatch("bake job logs 1 0");
+  appendBakeEventsToConsoleAndLog(service, console, lastSequence);
+  expect(countOccurrences(console.displayedText(), "bake job 1 queued") == 1,
+         "repeated log queries should not duplicate pumped queued line");
+  expect(countOccurrences(console.displayedText(), "bake job 1 cache-check") ==
+             1,
+         "repeated log queries should not duplicate pumped cache-check line");
+
+  cacheGuard.releaseNow();
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value() && !status->running,
+         "cursor test job should stop after release");
+  const std::vector<LX_core::IblBakeJobEvent> later =
+      service.events(lastSequence);
+  expect(!later.empty(), "events cursor should return later async phases");
+  for (const LX_core::IblBakeJobEvent &event : later) {
+    lastSequence = event.sequence;
+  }
+  expect(service.events(lastSequence).empty(),
+         "events cursor should not repeat final async phases");
 }
 
 } // namespace
 
 int main() {
   try {
-    testBakeCommandsReturnStructuredJsonAndPipeObservedEvents();
+    testBakeCommandsReturnStructuredJsonWithoutEventSideEffects();
+    testBakeEventCursorAndSessionStylePumpAreMonotonic();
   } catch (const std::exception &error) {
     return fail(error.what());
   }

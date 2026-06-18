@@ -163,6 +163,7 @@ private:
   EditorDataDocument m_editorData;
   RecordingController m_recording;
   LX_core::IblBakeJobService m_iblBakeJobs;
+  u64 m_lastEmittedBakeEventSequence = 0;
   DisplayCommandHooks m_displayCommandHooks;
   RenderDebugCommandHooks m_renderDebugCommandHooks;
   RealtimeRenderProfileHooks m_realtimeRenderProfileHooks;

@@ -112,6 +112,25 @@ defaultDumpPathForTarget(std::string_view targetName) {
   return out;
 }
 
+[[nodiscard]] std::string formatBakeEventLine(
+    const LX_core::IblBakeJobEvent &event) {
+  std::ostringstream oss;
+  oss << "[lxe_editor] bake job " << event.job << ' '
+      << LX_core::iblBakeJobPhaseName(event.phase) << " progress="
+      << std::fixed << std::setprecision(2) << event.progress
+      << " seq=" << event.sequence;
+  if (event.item != 0u) {
+    oss << " item=" << event.item;
+  }
+  if (!event.message.empty()) {
+    oss << " message=" << event.message;
+  }
+  if (!event.fix.empty()) {
+    oss << " fix=" << event.fix;
+  }
+  return oss.str();
+}
+
 [[nodiscard]] LX_core::CommandResult makeCommandError(std::string message) {
   return LX_core::CommandResult{false, std::move(message), {}};
 }
@@ -707,6 +726,17 @@ void LxeEditorSession::pollCommandHistory(LX_core::gpu::EngineLoop &loop) {
   if (!m_commandBus) {
     return;
   }
+  const std::vector<LX_core::IblBakeJobEvent> bakeEvents =
+      m_iblBakeJobs.events(m_lastEmittedBakeEventSequence);
+  for (const LX_core::IblBakeJobEvent &event : bakeEvents) {
+    const std::string line = formatBakeEventLine(event);
+    if (m_consolePanel) {
+      m_consolePanel->appendSystemLine(line);
+    }
+    std::cerr << line << '\n';
+    m_lastEmittedBakeEventSequence = event.sequence;
+  }
+
   const auto &history = m_commandBus->history();
   while (m_lastObservedHistoryIndex < history.size()) {
     const auto &entry = history[m_lastObservedHistoryIndex++];
@@ -1499,13 +1529,6 @@ void LxeEditorSession::rebuildBindings(
               [this]() -> std::optional<
                             std::reference_wrapper<LX_core::IblBakeJobService>> {
                 return m_iblBakeJobs;
-              },
-          .bakeEventLine =
-              [this](std::string_view line) {
-                if (m_consolePanel) {
-                  m_consolePanel->appendSystemLine(line);
-                }
-                std::cerr << line << '\n';
               },
       });
   registerRenderDebugCommand(*m_commandBus, m_renderDebugCommandHooks);

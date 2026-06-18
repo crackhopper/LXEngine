@@ -136,6 +136,7 @@ eventsJson(const std::vector<LX_core::IblBakeJobEvent> &events) {
   if (includeSequence) {
     oss << ",\"sequence\":" << sequenceRangeJson(status.lastSequence);
   }
+  oss << ",\"statusSequence\":" << status.lastSequence;
   oss << ",\"latestFix\":" << latestFixJson(eventsForFix)
       << ",\"message\":" << jsonString(status.message);
   return oss.str();
@@ -193,39 +194,8 @@ eventsJson(const std::vector<LX_core::IblBakeJobEvent> &events) {
   return LX_core::CommandResult{false, std::move(message), structured.str()};
 }
 
-[[nodiscard]] std::string
-formatBakeEventLine(const LX_core::IblBakeJobEvent &event) {
-  std::ostringstream oss;
-  oss << "[lxe_editor] bake job " << event.job << ' '
-      << LX_core::iblBakeJobPhaseName(event.phase) << " progress="
-      << std::fixed << std::setprecision(2) << event.progress
-      << " seq=" << event.sequence;
-  if (event.item != 0u) {
-    oss << " item=" << event.item;
-  }
-  if (!event.message.empty()) {
-    oss << " message=" << event.message;
-  }
-  if (!event.fix.empty()) {
-    oss << " fix=" << event.fix;
-  }
-  return oss.str();
-}
-
-void emitBakeEvents(
-    const LxeEditorCommandContext::BakeEventLineFn &bakeEventLine,
-    const std::vector<LX_core::IblBakeJobEvent> &events) {
-  if (!bakeEventLine) {
-    return;
-  }
-  for (const LX_core::IblBakeJobEvent &event : events) {
-    bakeEventLine(formatBakeEventLine(event));
-  }
-}
-
 [[nodiscard]] LX_core::CommandResult
 handleBakeCommand(LX_core::IblBakeJobService &service,
-                  const LxeEditorCommandContext::BakeEventLineFn &bakeEventLine,
                   const std::vector<std::string> &args) {
   if ((args.size() == 2 || args.size() == 3) && args[0] == "ibl" &&
       args[1] == "start") {
@@ -260,7 +230,6 @@ handleBakeCommand(LX_core::IblBakeJobService &service,
     }
     const std::vector<LX_core::IblBakeJobEvent> events =
         service.logs(started.job, 0);
-    emitBakeEvents(bakeEventLine, events);
     const auto status = service.status(started.job);
     if (!status.has_value()) {
       return makeBakeCommandError("bake job not found " +
@@ -330,7 +299,6 @@ handleBakeCommand(LX_core::IblBakeJobService &service,
     }
     const std::vector<LX_core::IblBakeJobEvent> events =
         service.logs(*job, since);
-    emitBakeEvents(bakeEventLine, events);
     const std::string text = formatBakeJobLogs(events);
     return makeEditorCommandOk(
         text, commandEventsJson("bake job logs", *status, events, since));
@@ -357,7 +325,6 @@ handleBakeCommand(LX_core::IblBakeJobService &service,
     }
     const std::vector<LX_core::IblBakeJobEvent> events =
         service.logs(*job, since);
-    emitBakeEvents(bakeEventLine, events);
     const auto status = service.status(*job);
     if (!status.has_value()) {
       return makeBakeCommandError("bake job not found " +
@@ -382,19 +349,12 @@ handleBakeCommand(LX_core::IblBakeJobService &service,
 
 void registerBakeCommands(LX_core::CommandBus &bus,
                           LX_core::IblBakeJobService &service) {
-  registerBakeCommands(bus, service, {});
-}
-
-void registerBakeCommands(
-    LX_core::CommandBus &bus, LX_core::IblBakeJobService &service,
-    LxeEditorCommandContext::BakeEventLineFn bakeEventLine) {
   bus.registerHandler(
       "bake",
       "bake ibl start [--force] | bake job status <id> | "
       "bake job logs <id> [since] | bake job cancel <id>",
-      [&service, bakeEventLine = std::move(bakeEventLine)](
-          std::vector<std::string> args) {
-        return handleBakeCommand(service, bakeEventLine, args);
+      [&service](std::vector<std::string> args) {
+        return handleBakeCommand(service, args);
       });
 }
 
@@ -409,7 +369,7 @@ void registerLxeEditorCommands(LX_core::CommandBus &bus,
   if (context.iblBakeJobs) {
     const auto service = context.iblBakeJobs();
     if (service.has_value()) {
-      registerBakeCommands(bus, service->get(), context.bakeEventLine);
+      registerBakeCommands(bus, service->get());
     }
   }
 }

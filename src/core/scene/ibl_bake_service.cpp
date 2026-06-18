@@ -22,8 +22,12 @@ namespace {
                                        std::to_string(job)};
 }
 
-[[nodiscard]] IblBakeStartResult makeRejected(std::string message) {
-  return IblBakeStartResult{.rejected = true, .message = std::move(message)};
+[[nodiscard]] IblBakeStartResult makeRejectedRunning(BakeJobId job,
+                                                     std::string message) {
+  return IblBakeStartResult{.alreadyRunning = true,
+                            .rejected = true,
+                            .job = job,
+                            .message = std::move(message)};
 }
 
 [[nodiscard]] std::string joinDiagnostics(
@@ -137,7 +141,8 @@ IblBakeStartResult IblBakeJobService::startBake(bool force) {
     std::unique_lock lock(m_mutex);
     if (m_runningJob.has_value()) {
       if (force) {
-        return makeRejected("bake job already running; cancel it first");
+        return makeRejectedRunning(*m_runningJob,
+                                   "bake job already running; cancel it first");
       }
       return makeAlreadyRunning(*m_runningJob);
     }
@@ -221,6 +226,10 @@ IblBakeJobService::status(BakeJobId job) const {
     return std::nullopt;
   }
   return it->second;
+}
+
+std::vector<IblBakeJobEvent> IblBakeJobService::events(u64 since) const {
+  return m_events.drainSince(since);
 }
 
 std::vector<IblBakeJobEvent> IblBakeJobService::logs(BakeJobId job,

@@ -1,5 +1,7 @@
 #include "editor/commands/lxe_editor_command_helpers.hpp"
 
+#include <iomanip>
+#include <sstream>
 #include <utility>
 
 namespace LX_demo::lxe_editor {
@@ -17,7 +19,8 @@ LX_core::CommandResult makeEditorCommandError(std::string message) {
 std::string editorCommandJsonEscape(std::string_view text) {
   std::string out;
   out.reserve(text.size());
-  for (const char c : text) {
+  std::ostringstream escapedControl;
+  for (const unsigned char c : text) {
     switch (c) {
     case '\\':
       out += "\\\\";
@@ -35,7 +38,15 @@ std::string editorCommandJsonEscape(std::string_view text) {
       out += "\\t";
       break;
     default:
-      out.push_back(c);
+      if (c < 0x20u) {
+        escapedControl.str({});
+        escapedControl.clear();
+        escapedControl << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                       << static_cast<int>(c);
+        out += escapedControl.str();
+      } else {
+        out.push_back(static_cast<char>(c));
+      }
       break;
     }
   }

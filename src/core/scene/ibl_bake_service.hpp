@@ -127,6 +127,7 @@ public:
   [[nodiscard]] IblBakeStartResult startBake(bool force = false);
   [[nodiscard]] IblBakeCancelResult cancel(BakeJobId job);
   [[nodiscard]] std::optional<IblBakeJobStatus> status(BakeJobId job) const;
+  [[nodiscard]] std::vector<IblBakeJobEvent> events(u64 since) const;
   [[nodiscard]] std::vector<IblBakeJobEvent> logs(BakeJobId job,
                                                   u64 since) const;
 
