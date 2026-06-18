@@ -882,9 +882,7 @@ static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
   if (!expectBinding(bindings, "CameraUBO", ShaderPropertyType::UniformBuffer,
                      0, 0) ||
       !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
-                     0) ||
-      !expectBinding(bindings, "EnvironmentUBO",
-                     ShaderPropertyType::UniformBuffer, 2, 0)) {
+                     0)) {
     std::cerr << "  FAIL: skybox background bindings mismatch\n";
     return false;
   }
@@ -1244,11 +1242,12 @@ static bool testForwardMaterialTypeAbi(const std::filesystem::path &shaderDir) {
   return true;
 }
 
-static bool testPbrIblContract(const std::filesystem::path &shaderDir,
-                               const std::filesystem::path &vertPath,
-                               const std::filesystem::path &fragPath) {
+static bool testPbrRuntimeLightingContract(
+    const std::filesystem::path &shaderDir,
+    const std::filesystem::path &vertPath,
+    const std::filesystem::path &fragPath) {
   std::cout << "\n========================================\n";
-  std::cout << "  Test: PBR IBL contract\n";
+  std::cout << "  Test: PBR runtime lighting contract\n";
   std::cout << "========================================\n";
 
   std::string fragSource;
@@ -1281,52 +1280,21 @@ static bool testPbrIblContract(const std::filesystem::path &shaderDir,
   }
 
   auto compileResult =
-      ShaderCompiler::compileProgram(
-          vertPath, fragPath,
-          withMaterialContractSource({{"HAS_IBL", true}}));
+      ShaderCompiler::compileProgram(vertPath, fragPath,
+                                     withMaterialContractSource());
   if (!compileResult.success) {
     std::cerr << "  COMPILE FAILED: " << compileResult.errorMessage << "\n";
     return false;
   }
 
   const auto bindings = ShaderReflector::reflect(compileResult.stages);
-  const auto findBinding = [&](const std::string &name) {
-    return std::find_if(
-        bindings.begin(), bindings.end(),
-        [&](const auto &binding) { return binding.name == name; });
-  };
-
-  const auto irradiance = findBinding("IrradianceMap");
-  const auto prefiltered = findBinding("PrefilteredEnvMap");
-  const auto brdf = findBinding("BrdfLut");
-  const auto environment = findBinding("EnvironmentUBO");
-  if (irradiance == bindings.end() ||
-      irradiance->type != ShaderPropertyType::TextureCube ||
-      irradiance->set != 3 || irradiance->binding != 0) {
-    std::cerr << "  FAIL: IrradianceMap TextureCube set=3 binding=0 missing\n";
-    return false;
-  }
-  if (prefiltered == bindings.end() ||
-      prefiltered->type != ShaderPropertyType::TextureCube ||
-      prefiltered->set != 3 || prefiltered->binding != 1) {
-    std::cerr
-        << "  FAIL: PrefilteredEnvMap TextureCube set=3 binding=1 missing\n";
-    return false;
-  }
-  if (brdf == bindings.end() || brdf->type != ShaderPropertyType::Texture2D ||
-      brdf->set != 3 || brdf->binding != 2) {
-    std::cerr << "  FAIL: BrdfLut Texture2D set=3 binding=2 missing\n";
-    return false;
-  }
-  if (environment == bindings.end() ||
-      environment->type != ShaderPropertyType::UniformBuffer ||
-      environment->set != 3 || environment->binding != 3 ||
-      environment->size != 32) {
-    std::cerr << "  FAIL: EnvironmentUBO set=3 binding=3 size=32 missing\n";
+  if (!hasBinding(bindings, "LightUBO", ShaderPropertyType::UniformBuffer, 2,
+                  0)) {
+    std::cerr << "  FAIL: LightUBO set=2 binding=0 missing\n";
     return false;
   }
 
-  std::cout << "  PASS: PBR outputs HDR and reflects IBL bindings\n";
+  std::cout << "  PASS: PBR outputs HDR and reflects direct lighting binding\n";
   return true;
 }
 
@@ -1485,12 +1453,55 @@ testPbrFragmentAppliesConstantEnvironmentLight(
   }
   if (source.find("environment.ambientColorIntensity") == std::string::npos) {
     std::cerr << "  FAIL: pbr.frag should source ambient lighting from "
-                 "EnvironmentUBO\n";
+                 "the environment uniform\n";
     return false;
   }
 
   std::cout << "  PASS: PBR fragment applies constant environment light\n";
   return true;
+}
+
+static bool
+testIblFormulaUsesSharedCommon(const std::filesystem::path &shaderDir) {
+  std::cout << "  Test: IBL formula uses shared common\n";
+  const auto shaderSource = [&](const std::filesystem::path &relativePath) {
+    return readTextFile(shaderDir / relativePath);
+  };
+  const auto expect = [](bool condition, const std::string &message) {
+    if (!condition) {
+      std::cerr << "  FAIL: " << message << "\n";
+      return false;
+    }
+    return true;
+  };
+
+  bool passed = true;
+  const std::string forwardSource =
+      shaderSource("render_paths/Forward/pbr.frag");
+  const std::string deferredSource =
+      shaderSource("render_paths/Deferred/deferred_lighting.frag");
+
+  passed &= expect(
+      forwardSource.find("evaluateIblStandardPbr(") != std::string::npos,
+      "Forward should call common IBL helper");
+  passed &= expect(
+      forwardSource.find("textureLod(PrefilteredEnvMap") == std::string::npos, // named-negative-ibl-formula-audit
+      "Forward must not inline prefiltered env formula");
+  passed &= expect(forwardSource.find("texture(BrdfLut") == std::string::npos, // named-negative-ibl-formula-audit
+                   "Forward must not inline BRDF LUT formula");
+  passed &= expect(
+      deferredSource.find("common/ibl_lighting.glsl") != std::string::npos,
+      "Deferred should include common IBL helper");
+  passed &= expect(
+      deferredSource.find("textureLod(PrefilteredEnvMap") == std::string::npos, // named-negative-ibl-formula-audit
+      "Deferred must not inline prefiltered env formula");
+  passed &= expect(deferredSource.find("texture(BrdfLut") == std::string::npos, // named-negative-ibl-formula-audit
+                   "Deferred must not inline BRDF LUT formula");
+
+  if (passed) {
+    std::cout << "  PASS: Forward and Deferred use shared IBL formula\n";
+  }
+  return passed;
 }
 
 static bool
@@ -1753,13 +1764,15 @@ int main(int argc, char *argv[]) {
           withMaterialContractSource(
               {{"HAS_NORMAL_MAP", true}, {"HAS_METALLIC_ROUGHNESS", true}})))
     ++failures;
-  if (!testPbrIblContract(shaderDir, vertPath, fragPath))
+  if (!testPbrRuntimeLightingContract(shaderDir, vertPath, fragPath))
     ++failures;
   if (!testPbrFragmentUsesSharedCommon(fragPath))
     ++failures;
   if (!testPbrFragmentAppliesDirectionalLightIntensity(fragPath))
     ++failures;
   if (!testPbrFragmentAppliesConstantEnvironmentLight(fragPath))
+    ++failures;
+  if (!testIblFormulaUsesSharedCommon(shaderDir))
     ++failures;
   if (!testShadowDepthOnlyUsesSceneDrawRecords(shaderDir))
     ++failures;

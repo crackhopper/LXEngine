@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -30,6 +31,36 @@ bool fileContains(const std::filesystem::path &path,
     return false;
   }
   return readText(path).find(needle) != std::string::npos;
+}
+
+struct LegacyTokenAudit final {
+  std::string token;
+  std::vector<std::string> allowedPathSubstrings;
+};
+
+struct LegacyTokenLineMarkerAllowance final {
+  std::string pathSubstring;
+  std::string marker;
+};
+
+bool pathAllowed(const std::string &relativePath,
+                 const std::vector<std::string> &allowedPathSubstrings) {
+  return std::any_of(allowedPathSubstrings.begin(),
+                     allowedPathSubstrings.end(),
+                     [&](const std::string &needle) {
+                       return relativePath.find(needle) != std::string::npos;
+                     });
+}
+
+bool lineMarkerAllowed(
+    const std::string &relativePath, const std::string &line,
+    const std::vector<LegacyTokenLineMarkerAllowance> &allowances) {
+  return std::any_of(allowances.begin(), allowances.end(),
+                     [&](const LegacyTokenLineMarkerAllowance &allowance) {
+                       return relativePath.find(allowance.pathSubstring) !=
+                                  std::string::npos &&
+                              line.find(allowance.marker) != std::string::npos;
+                     });
 }
 
 std::vector<std::filesystem::path>
@@ -74,6 +105,66 @@ void expectNoHits(const std::vector<std::filesystem::path> &hits,
     std::cerr << "  " << hit.generic_string() << '\n';
   }
   ++g_failures;
+}
+
+bool isAuditedTextFile(const std::filesystem::path &path) {
+  const std::string ext = path.extension().string();
+  return ext == ".cpp" || ext == ".hpp" || ext == ".h" || ext == ".frag" ||
+         ext == ".vert" || ext == ".comp" || ext == ".glsl" ||
+         ext == ".yaml" || ext == ".yml" || ext == ".md" || ext == ".txt" ||
+         path.filename() == "CMakeLists.txt";
+}
+
+void expectNoDisallowedLegacyTokens(
+    const std::filesystem::path &sourceRoot,
+    const std::vector<LegacyTokenAudit> &audits,
+    const std::vector<LegacyTokenLineMarkerAllowance> &lineMarkerAllowances) {
+  const std::vector<std::filesystem::path> roots{
+      sourceRoot / "src", sourceRoot / "assets", sourceRoot / "docs",
+      sourceRoot / "notes"};
+
+  for (const auto &audit : audits) {
+    std::vector<std::string> violations;
+    for (const auto &root : roots) {
+      if (!std::filesystem::exists(root)) {
+        continue;
+      }
+      for (const auto &entry :
+           std::filesystem::recursive_directory_iterator(root)) {
+        if (!entry.is_regular_file() || !isAuditedTextFile(entry.path())) {
+          continue;
+        }
+
+        std::ifstream in(entry.path());
+        std::string line;
+        std::size_t lineNumber = 0;
+        while (std::getline(in, line)) {
+          ++lineNumber;
+          if (line.find(audit.token) == std::string::npos) {
+            continue;
+          }
+          const auto relative = entry.path().lexically_relative(sourceRoot);
+          const std::string relativePath = relative.generic_string();
+          const std::string diagnosticLine =
+              relativePath + ":" + std::to_string(lineNumber) + ": " + line;
+          if (!pathAllowed(relativePath, audit.allowedPathSubstrings) &&
+              !lineMarkerAllowed(relativePath, line, lineMarkerAllowances)) {
+            violations.push_back(diagnosticLine);
+          }
+        }
+      }
+    }
+
+    if (!violations.empty()) {
+      std::sort(violations.begin(), violations.end());
+      std::cerr << "[FAIL] legacy IBL token '" << audit.token
+                << "' is only allowed in named negative audits/docs\n";
+      for (const auto &violation : violations) {
+        std::cerr << "  " << violation << '\n';
+      }
+      ++g_failures;
+    }
+  }
 }
 
 } // namespace
@@ -124,6 +215,36 @@ int main() {
                                 "SceneTreePanel", "ViewportOverlay",
                                 "GizmoAdapter"}),
                "src/core must not mention editor application classes");
+
+  const std::vector<LegacyTokenAudit> audits = {
+      {"bakeStaticEnvironment", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"IblBakeRenderer", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"HAS_IBL", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"EnvironmentUBO", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"PrefilteredEnvMap", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"BrdfLut", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"iblIntensity", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"ForwardIblLighting", // named-negative-legacy-token-audit
+       {"notes/requirements", "docs/superpowers"}},
+      {"feature.surfaceLighting", // named-negative-legacy-token-audit
+       {"docs/superpowers"}},
+      {"feature.iblLighting", // named-negative-legacy-token-audit
+       {"docs/superpowers"}},
+  };
+  const std::vector<LegacyTokenLineMarkerAllowance> lineMarkerAllowances = {
+      {"src/test/integration/test_lxe_editor_source_boundary.cpp",
+       "named-negative-legacy-token-audit"},
+      {"src/test/integration/test_shader_compiler.cpp",
+       "named-negative-ibl-formula-audit"},
+  };
+  expectNoDisallowedLegacyTokens(sourceRoot, audits, lineMarkerAllowances);
 
   if (g_failures != 0) {
     std::cerr << g_failures << " editor source boundary checks failed\n";
