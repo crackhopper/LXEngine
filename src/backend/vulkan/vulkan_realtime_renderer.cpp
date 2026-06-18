@@ -1079,6 +1079,26 @@ void writeDebugImageFile(const std::filesystem::path &path, u32 width,
 
 namespace LX_core::backend {
 
+PreparedRenderStateCacheDecision evaluatePreparedRenderStateCache(
+    const PreparedRenderStateCacheSnapshot &current,
+    const PreparedRenderStateKey &nextKey, const u64 nextUploadGeneration) {
+  PreparedRenderStateCacheDecision decision;
+  const bool structuralDirty = !current.valid || current.key != nextKey;
+  const bool uploadDirty =
+      structuralDirty || current.uploadGeneration != nextUploadGeneration;
+
+  decision.rebuildFrameGraph = structuralDirty;
+  decision.rebuildRenderInputs = structuralDirty;
+  decision.rebuildDescriptorUploadPlans = uploadDirty;
+  decision.syncUploadPlans = uploadDirty;
+  decision.nextSnapshot = PreparedRenderStateCacheSnapshot{
+      .valid = true,
+      .key = nextKey,
+      .uploadGeneration = nextUploadGeneration,
+  };
+  return decision;
+}
+
 namespace {
 
 constexpr u32 kMaxFramesInFlight = 3;
@@ -1230,9 +1250,11 @@ public:
   void shutdown() { destroy(); }
   void setPostProcessSettings(const VulkanPostProcessSettings &settings) {
     m_postProcessSettings = settings;
+    invalidatePreparedRenderState();
   }
   void setLiveRenderView(std::optional<LX_core::gpu::LiveRenderView> view) {
     m_liveRenderView = std::move(view);
+    invalidatePreparedRenderState();
   }
   [[nodiscard]] LX_core::gpu::LiveRenderSubmissionStats
   liveRenderSubmissionStats() const {
@@ -1256,21 +1278,14 @@ public:
     return m_foundation->commandBufferManager();
   }
 
-  void syncRenderUploadPlan(
-      const std::vector<std::unique_ptr<LX_core::RenderInput>> &inputs,
-      const std::vector<LX_core::RenderInputDesc> &descs) {
-    const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(inputs, descs);
+  void syncRenderUploadPlan(const LX_core::RenderUploadPlan &uploadPlan) {
     for (const auto &resource : uploadPlan.resources) {
       resourceManager().syncResource(commandBufferManager(), resource);
     }
   }
 
   [[nodiscard]] bool uploadPlanRequiresSharedHostBufferSync(
-      const std::vector<std::unique_ptr<LX_core::RenderInput>> &inputs,
-      const std::vector<LX_core::RenderInputDesc> &descs) const {
-    const LX_core::RenderUploadPlan uploadPlan =
-        LX_core::buildRenderUploadPlan(inputs, descs);
+      const LX_core::RenderUploadPlan &uploadPlan) const {
     for (const auto &resource : uploadPlan.resources) {
       if (isDirtyHostBufferResource(resource)) {
         return true;
@@ -1437,16 +1452,56 @@ public:
   struct PreparedRenderPassInputs final {
     std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
     std::vector<LX_core::RenderInputDesc> descs;
+    LX_core::RenderUploadPlan uploadPlan;
+    bool uploadPlanValid = false;
   };
 
-  [[nodiscard]] PreparedRenderPassInputs prepareRenderPassInputs(
-      const LX_core::FramePass &pass,
-      const LX_core::RenderWorkBuildContext &context) const {
+  [[nodiscard]] PreparedRenderPassInputs
+  prepareRenderPassInputs(const LX_core::FramePass &pass,
+                          const LX_core::RenderWorkBuildContext &context) {
     LX_core::RenderWorkCompiler compiler;
     PreparedRenderPassInputs prepared;
     compiler.buildInputs(pass, context, prepared.inputs);
+    ++m_preparedRenderWorkDiagnostics.renderInputBuildCount;
     prepared.descs = compiler.prepare(pass, context, prepared.inputs);
+    ++m_preparedRenderWorkDiagnostics.renderInputPrepareCount;
     return prepared;
+  }
+
+  void rebuildPreparedRenderPassInputs() {
+    m_preparedCompiledPassInputs.clear();
+    m_preparedCompiledPassInputs.resize(m_compiledFrameGraph.getPasses().size());
+    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
+    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
+      const LX_core::CompiledFrameGraphPass &compiledPass =
+          compiledPasses[passIndex];
+      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+        continue;
+      }
+      const LX_core::FramePass &pass =
+          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
+      const LX_core::RenderWorkBuildContext context =
+          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
+      m_preparedCompiledPassInputs[passIndex] =
+          prepareRenderPassInputs(pass, context);
+    }
+  }
+
+  void rebuildPreparedUploadPlans() {
+    for (PreparedRenderPassInputs &prepared : m_preparedCompiledPassInputs) {
+      prepared.uploadPlan =
+          LX_core::buildRenderUploadPlan(prepared.inputs, prepared.descs);
+      prepared.uploadPlanValid = true;
+      ++m_preparedRenderWorkDiagnostics.descriptorUploadPlanBuildCount;
+    }
+  }
+
+  [[nodiscard]] const PreparedRenderPassInputs *
+  preparedInputsForCompiledPass(usize passIndex) const {
+    if (passIndex >= m_preparedCompiledPassInputs.size()) {
+      return nullptr;
+    }
+    return &m_preparedCompiledPassInputs[passIndex];
   }
 
   void recordDiagnostic(const LX_core::RenderInputDesc &desc) const {
@@ -1463,45 +1518,65 @@ public:
     }
   }
 
-  void syncCompiledFramePassUploadPlans() {
-    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
-      const LX_core::CompiledFrameGraphPass &compiledPass =
-          compiledPasses[passIndex];
-      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+  [[nodiscard]] bool preparedUploadGenerationDirty() const {
+    if (!m_scene || !m_preparedUploadGeneration.has_value()) {
+      return true;
+    }
+    return *m_preparedUploadGeneration !=
+           m_scene->resources().uploadGeneration();
+  }
+
+  void syncPreparedFramePassUploadPlans() {
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
+      if (!prepared.uploadPlanValid) {
         continue;
       }
-      const LX_core::FramePass &pass =
-          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-      PreparedRenderPassInputs prepared =
-          prepareRenderPassInputs(pass, context);
-      syncRenderUploadPlan(prepared.inputs, prepared.descs);
+      syncRenderUploadPlan(prepared.uploadPlan);
     }
+    if (m_scene) {
+      m_preparedUploadGeneration = m_scene->resources().uploadGeneration();
+    }
+    ++m_preparedRenderWorkDiagnostics.uploadPlanSyncCount;
   }
 
   [[nodiscard]] bool
-  compiledFramePassUploadPlansRequireSharedHostBufferSync() const {
-    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
-      const LX_core::CompiledFrameGraphPass &compiledPass =
-          compiledPasses[passIndex];
-      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
+  preparedFramePassUploadPlansRequireSharedHostBufferSync() const {
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
+      if (!prepared.uploadPlanValid) {
         continue;
       }
-      const LX_core::FramePass &pass =
-          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-      PreparedRenderPassInputs prepared =
-          prepareRenderPassInputs(pass, context);
-      if (uploadPlanRequiresSharedHostBufferSync(prepared.inputs,
-                                                 prepared.descs)) {
+      if (uploadPlanRequiresSharedHostBufferSync(prepared.uploadPlan)) {
         return true;
       }
     }
     return false;
+  }
+
+  void syncDirtyVolatilePreparedResources() {
+    std::unordered_set<LX_core::ResourceCacheIdentity> synced;
+    bool syncedAny = false;
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
+      if (!prepared.uploadPlanValid) {
+        continue;
+      }
+      for (const LX_core::GpuResourceRef &resource :
+           prepared.uploadPlan.resources) {
+        if (!isDirtyHostBufferResource(resource)) {
+          continue;
+        }
+        if (!synced.insert(resource.getBackendCacheIdentity()).second) {
+          continue;
+        }
+        resourceManager().syncResource(commandBufferManager(), resource);
+        syncedAny = true;
+      }
+    }
+    if (syncedAny) {
+      ++m_preparedRenderWorkDiagnostics.volatileUploadSyncCount;
+    }
   }
 
   /// REQ-009: derive the real swapchain RenderTarget from the Vulkan device's
@@ -1514,6 +1589,66 @@ public:
     t.depthFormat = toImageFormat(device().getDepthFormat());
     t.sampleCount = 1;
     return t;
+  }
+
+  [[nodiscard]] PreparedRenderStateKey
+  makePreparedRenderStateKey(LX_core::RenderTargetDesc target) const {
+    if (!m_scene) {
+      return PreparedRenderStateKey{.target = std::move(target)};
+    }
+    const LX_core::SceneResourceTable &resources = m_scene->resources();
+    return PreparedRenderStateKey{
+        .graphGeneration = resources.graphGeneration(),
+        .resourceGeneration = resources.resourceGeneration(),
+        .featureGeneration = resources.featureGeneration(),
+        .target = std::move(target),
+    };
+  }
+
+  [[nodiscard]] PreparedRenderStateCacheSnapshot
+  preparedRenderStateSnapshot() const {
+    if (!m_preparedRenderStateKey.has_value() || !m_scene) {
+      return {};
+    }
+    return PreparedRenderStateCacheSnapshot{
+        .valid = true,
+        .key = *m_preparedRenderStateKey,
+        .uploadGeneration = m_preparedUploadGeneration.value_or(
+            m_scene->resources().uploadGeneration()),
+    };
+  }
+
+  [[nodiscard]] PreparedRenderStateCacheDecision
+  evaluateCurrentPreparedRenderState() const {
+    const LX_core::RenderTargetDesc target = makeSwapchainTarget().toDesc();
+    const u64 uploadGeneration =
+        m_scene ? m_scene->resources().uploadGeneration() : 0;
+    return evaluatePreparedRenderStateCache(
+        preparedRenderStateSnapshot(), makePreparedRenderStateKey(target),
+        uploadGeneration);
+  }
+
+  [[nodiscard]] bool preparedRenderStateStructuralDirty() const {
+    return evaluateCurrentPreparedRenderState().rebuildFrameGraph;
+  }
+
+  void invalidatePreparedRenderState() {
+    m_preparedRenderStateKey.reset();
+    m_preparedUploadGeneration.reset();
+    m_preparedCompiledPassInputs.clear();
+  }
+
+  void syncPreparedUploadPlansIfGenerationDirty(
+      bool waitForSharedHostBuffers) {
+    if (!m_scene || !preparedUploadGenerationDirty()) {
+      return;
+    }
+    rebuildPreparedUploadPlans();
+    if (waitForSharedHostBuffers && m_swapchain &&
+        preparedFramePassUploadPlansRequireSharedHostBufferSync()) {
+      m_swapchain->waitForAllFrames();
+    }
+    syncPreparedFramePassUploadPlans();
   }
 
   void bakeSceneIblEnvironmentIfNeeded() {
@@ -1546,6 +1681,7 @@ public:
     resources->bakedIrradianceCubemap = std::move(baked.irradiance);
     resources->bakedPrefilteredRadianceCubemap = std::move(baked.prefiltered);
     resources->bakedBrdfLut = std::move(baked.brdfLut);
+    m_scene->resources().markBakedResourceDirty();
   }
 
   void initScene(SceneSharedPtr _scene) {
@@ -1554,6 +1690,7 @@ public:
       m_swapchain->waitForAllFrames();
     }
     m_scene = _scene;
+    invalidatePreparedRenderState();
 
     const LX_core::RenderTarget swapchainTarget = makeSwapchainTarget();
     const auto swapchainDesc = swapchainTarget.toDesc();
@@ -1771,6 +1908,7 @@ public:
     rebuildShadowCascadeUboSnapshots();
 
     m_compiledFrameGraph = m_frameGraph.compile();
+    ++m_preparedRenderWorkDiagnostics.frameGraphCompileCount;
     if (!m_compiledFrameGraph.isValid()) {
       throw std::runtime_error(m_compiledFrameGraph.errorText());
     }
@@ -1778,7 +1916,11 @@ public:
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
 
-    syncCompiledFramePassUploadPlans();
+    rebuildPreparedRenderPassInputs();
+    rebuildPreparedUploadPlans();
+    m_preparedRenderStateKey = makePreparedRenderStateKey(swapchainDesc);
+    m_preparedUploadGeneration.reset();
+    syncPreparedFramePassUploadPlans();
     resourceManager().collectGarbage();
 
     // Explicit pipeline preparation happens only after scene resources,
@@ -1794,17 +1936,27 @@ public:
 
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     resourceManager().beginFrame(currentFrameIndex);
-    bool requiresSharedBufferSync =
-        compiledFramePassUploadPlansRequireSharedHostBufferSync();
 
-    if (requiresSharedBufferSync) {
+    if (m_scene && preparedRenderStateStructuralDirty()) {
+      initScene(m_scene);
+      return;
+    }
+
+    syncPreparedUploadPlansIfGenerationDirty(
+        /*waitForSharedHostBuffers=*/true);
+
+    if (m_swapchain &&
+        preparedFramePassUploadPlansRequireSharedHostBufferSync()) {
       // These buffers are single shared allocations, not per-frame slices.
       // Wait until every in-flight frame that could still read them has
       // completed before overwriting their contents from the CPU.
       m_swapchain->waitForAllFrames();
     }
-
-    syncCompiledFramePassUploadPlans();
+    // Narrow volatile-data hook: runtime camera/light/shadow UBOs may update
+    // without changing graph/resource/feature generations. Sync only dirty
+    // host buffers from the already-prepared upload plans; do not rebuild
+    // structural render inputs for this path.
+    syncDirtyVolatilePreparedResources();
     resourceManager().collectGarbage();
   }
 
@@ -1821,6 +1973,11 @@ public:
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
       return;
     }
+    if (m_scene && preparedRenderStateStructuralDirty()) {
+      initScene(m_scene);
+    }
+    syncPreparedUploadPlansIfGenerationDirty(
+        /*waitForSharedHostBuffers=*/true);
 
     const VkExtent2D extent = m_swapchain->getExtent();
     m_currentLiveStats = {};
@@ -1952,15 +2109,9 @@ public:
 
   [[nodiscard]] usize frameGraphItemCount() const {
     usize total = 0;
-    if (m_scene) {
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContext();
-      LX_core::RenderWorkCompiler compiler;
-      for (const LX_core::FramePass &pass : m_frameGraph.getPasses()) {
-        std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
-        compiler.buildInputs(pass, context, inputs);
-        total += inputs.size();
-      }
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
+      total += prepared.inputs.size();
     }
     return total;
   }
@@ -1985,6 +2136,11 @@ public:
 
   [[nodiscard]] usize initSceneCallCount() const {
     return m_initSceneCallCount;
+  }
+
+  [[nodiscard]] PreparedRenderWorkDiagnostics
+  preparedRenderWorkDiagnostics() const {
+    return m_preparedRenderWorkDiagnostics;
   }
 
   VulkanFrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
@@ -2191,6 +2347,10 @@ public:
           basePassPreparationFacts;
       std::vector<LX_core::DescriptorResourceList>
           compiledPassDescriptorResources;
+      std::optional<PreparedRenderStateKey> preparedRenderStateKey;
+      std::optional<u64> preparedUploadGeneration;
+      std::vector<PreparedRenderPassInputs> preparedCompiledPassInputs;
+      PreparedRenderWorkDiagnostics preparedRenderWorkDiagnostics;
       std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
           offscreenFramebuffers;
       std::optional<LX_core::gpu::LiveRenderView> liveRenderView;
@@ -2205,6 +2365,13 @@ public:
             std::move(basePassPreparationFacts);
         renderer.m_compiledPassDescriptorResources =
             std::move(compiledPassDescriptorResources);
+        renderer.m_preparedRenderStateKey = std::move(preparedRenderStateKey);
+        renderer.m_preparedUploadGeneration =
+            std::move(preparedUploadGeneration);
+        renderer.m_preparedCompiledPassInputs =
+            std::move(preparedCompiledPassInputs);
+        renderer.m_preparedRenderWorkDiagnostics =
+            preparedRenderWorkDiagnostics;
         renderer.m_offscreenFramebuffers = std::move(offscreenFramebuffers);
         renderer.m_liveRenderView = std::move(liveRenderView);
         renderer.m_currentLiveStats = currentLiveStats;
@@ -2220,6 +2387,14 @@ public:
                        std::move(m_basePassPreparationFacts),
                    .compiledPassDescriptorResources =
                        std::move(m_compiledPassDescriptorResources),
+                   .preparedRenderStateKey =
+                       std::move(m_preparedRenderStateKey),
+                   .preparedUploadGeneration =
+                       std::move(m_preparedUploadGeneration),
+                   .preparedCompiledPassInputs =
+                       std::move(m_preparedCompiledPassInputs),
+                   .preparedRenderWorkDiagnostics =
+                       m_preparedRenderWorkDiagnostics,
                    .offscreenFramebuffers = std::move(m_offscreenFramebuffers),
                    .liveRenderView = std::move(m_liveRenderView),
                    .currentLiveStats = m_currentLiveStats,
@@ -2300,13 +2475,18 @@ public:
       LX_core::syncFramePassAttachmentContractsWithTarget(pass);
     }
     m_compiledFrameGraph = m_frameGraph.compile();
+    ++m_preparedRenderWorkDiagnostics.frameGraphCompileCount;
     if (!m_compiledFrameGraph.isValid()) {
       throw std::runtime_error(m_compiledFrameGraph.errorText());
     }
     attachFrameGraphSampledResources();
     resetOffscreenFramebuffers();
     resourceManager().clearFrameGraphAttachments();
-    syncCompiledFramePassUploadPlans();
+    rebuildPreparedRenderPassInputs();
+    rebuildPreparedUploadPlans();
+    m_preparedRenderStateKey.reset();
+    m_preparedUploadGeneration.reset();
+    syncPreparedFramePassUploadPlans();
 
     for (usize passIndex = 0;
          passIndex < m_compiledFrameGraph.getPasses().size(); ++passIndex) {
@@ -2316,11 +2496,13 @@ public:
       }
       const LX_core::FramePass &pass =
           m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-      PreparedRenderPassInputs prepared = prepareRenderPassInputs(pass, context);
-      debugInfo.drawItemCount += static_cast<u32>(prepared.inputs.size());
-      for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      const PreparedRenderPassInputs *prepared =
+          preparedInputsForCompiledPass(passIndex);
+      if (prepared == nullptr) {
+        continue;
+      }
+      debugInfo.drawItemCount += static_cast<u32>(prepared->inputs.size());
+      for (const LX_core::RenderInputDesc &desc : prepared->descs) {
         if (desc.accepted()) {
           debugInfo.pipelineIdentity.push_back(
               makePipelineIdentityDebug(pass, desc));
@@ -2462,18 +2644,20 @@ private:
       return;
     }
 
-    const auto &pass = m_frameGraph.getPasses()[sourcePassIndex];
-    const LX_core::RenderWorkBuildContext context =
-        makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-    PreparedRenderPassInputs prepared = prepareRenderPassInputs(pass, context);
-    syncRenderUploadPlan(prepared.inputs, prepared.descs);
-    for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+    (void)sourcePassIndex;
+    const PreparedRenderPassInputs *prepared =
+        preparedInputsForCompiledPass(passIndex);
+    if (prepared == nullptr) {
+      return;
+    }
+    for (const LX_core::RenderInputDesc &desc : prepared->descs) {
       recordLiveDescStats(desc);
       if (!desc.accepted()) {
         recordDiagnostic(desc);
         continue;
       }
-      const LX_core::RenderInput &input = *prepared.inputs.at(desc.inputIndex);
+      const LX_core::RenderInput &input =
+          *prepared->inputs.at(desc.inputIndex);
       auto pipeline = resourceManager().getOrCreatePipeline(desc);
       ++m_currentLiveStats.descPipelineLookupCount;
       cmd.bindPipeline(pipeline);
@@ -2700,20 +2884,8 @@ private:
         pipelineDescs.push_back(std::move(desc));
       }
     };
-    const auto &compiledPasses = m_compiledFrameGraph.getPasses();
-    const auto &graphPasses = m_frameGraph.getPasses();
-    for (usize passIndex = 0; passIndex < compiledPasses.size(); ++passIndex) {
-      const LX_core::CompiledFrameGraphPass &compiledPass =
-          compiledPasses[passIndex];
-      if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
-        continue;
-      }
-      const LX_core::FramePass &pass =
-          m_frameGraph.getPasses()[compiledPass.sourcePassIndex];
-      const LX_core::RenderWorkBuildContext context =
-          makeRealtimeRenderWorkContextForCompiledPass(passIndex);
-      PreparedRenderPassInputs prepared =
-          prepareRenderPassInputs(pass, context);
+    for (const PreparedRenderPassInputs &prepared :
+         m_preparedCompiledPassInputs) {
       for (const LX_core::RenderInputDesc &desc : prepared.descs) {
         if (desc.accepted()) {
           appendPipelineDesc(desc.pipelineBuildDesc);
@@ -3383,6 +3555,10 @@ private:
       m_basePassPreparationFacts{};
   std::vector<LX_core::DescriptorResourceList>
       m_compiledPassDescriptorResources{};
+  std::optional<PreparedRenderStateKey> m_preparedRenderStateKey;
+  std::optional<u64> m_preparedUploadGeneration;
+  std::vector<PreparedRenderPassInputs> m_preparedCompiledPassInputs;
+  PreparedRenderWorkDiagnostics m_preparedRenderWorkDiagnostics;
   std::vector<std::vector<std::unique_ptr<VulkanFrameBuffer>>>
       m_offscreenFramebuffers;
   u32 m_frameIndex = 0;
@@ -3467,6 +3643,11 @@ usize VulkanRealtimeRenderer::frameGraphAttachmentCount() const {
 
 usize VulkanRealtimeRenderer::initSceneCallCount() const {
   return p_impl->initSceneCallCount();
+}
+
+PreparedRenderWorkDiagnostics
+VulkanRealtimeRenderer::preparedRenderWorkDiagnostics() const {
+  return p_impl->preparedRenderWorkDiagnostics();
 }
 
 VulkanFrameGraphAttachmentDumpResult

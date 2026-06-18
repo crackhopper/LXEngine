@@ -323,6 +323,12 @@ public:
   [[nodiscard]] usize renderPathGraphCount() const;
   [[nodiscard]] usize renderFeatureCount() const;
   [[nodiscard]] usize shaderCount() const;
+  [[nodiscard]] u64 graphGeneration() const;
+  [[nodiscard]] u64 resourceGeneration() const;
+  [[nodiscard]] u64 featureGeneration() const;
+  [[nodiscard]] u64 uploadGeneration() const;
+  void markFeatureRuntimeDirty();
+  void markBakedResourceDirty();
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
   // Returned spans are backed by this table's cached GPU record storage.
   // The view is valid until the next mutating SceneResourceTable call or the
@@ -425,6 +431,9 @@ private:
   hasLiveTypedResourceMetadata(ResourceIdentityHandle handle) const;
 
   void advanceUploadGeneration();
+  void advanceGraphGeneration();
+  void advanceResourceGeneration();
+  void advanceFeatureGeneration();
   void registerPassFeatureSpecializationData(const RenderFeature &feature,
                                              const IShader &shader);
 
@@ -451,6 +460,9 @@ private:
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
       std::make_unique<SceneLightsData>();
   u64 m_generation = 0;
+  u64 m_graphGeneration = 0;
+  u64 m_resourceGeneration = 0;
+  u64 m_featureGeneration = 0;
   mutable std::vector<Vec4f> m_gpuPositions;
   mutable std::vector<SceneGpuAttributeStreamRecord> m_gpuAttributeStreams;
   mutable std::vector<Vec4f> m_gpuAttributeValues;

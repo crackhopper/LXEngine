@@ -584,6 +584,40 @@ void SceneResourceTable::advanceUploadGeneration() {
   m_generation = nextGeneration(m_generation);
 }
 
+void SceneResourceTable::advanceGraphGeneration() {
+  m_graphGeneration = nextGeneration(m_graphGeneration);
+}
+
+void SceneResourceTable::advanceResourceGeneration() {
+  m_resourceGeneration = nextGeneration(m_resourceGeneration);
+}
+
+void SceneResourceTable::advanceFeatureGeneration() {
+  m_featureGeneration = nextGeneration(m_featureGeneration);
+}
+
+u64 SceneResourceTable::graphGeneration() const { return m_graphGeneration; }
+
+u64 SceneResourceTable::resourceGeneration() const {
+  return m_resourceGeneration;
+}
+
+u64 SceneResourceTable::featureGeneration() const {
+  return m_featureGeneration;
+}
+
+u64 SceneResourceTable::uploadGeneration() const { return m_generation; }
+
+void SceneResourceTable::markFeatureRuntimeDirty() {
+  advanceFeatureGeneration();
+  advanceUploadGeneration();
+}
+
+void SceneResourceTable::markBakedResourceDirty() {
+  advanceResourceGeneration();
+  advanceUploadGeneration();
+}
+
 void SceneResourceTable::registerPassFeatureSpecializationData(
     const RenderFeature &feature, const IShader &shader) {
   if (feature.level != RenderFeatureLevel::Pass) {
@@ -937,15 +971,20 @@ void SceneResourceTable::markDirty(ResourceIdentityHandle handle,
 
 void SceneResourceTable::markDirty(TextureHandle handle, std::string reason) {
   markDirty(metadataHandleFor(handle), std::move(reason));
+  advanceResourceGeneration();
+  advanceUploadGeneration();
 }
 
 void SceneResourceTable::markDirty(RenderFeatureHandle handle,
                                    std::string reason) {
   markDirty(metadataHandleFor(handle), std::move(reason));
+  markFeatureRuntimeDirty();
 }
 
 void SceneResourceTable::markDirty(ShaderHandle handle, std::string reason) {
   markDirty(metadataHandleFor(handle), std::move(reason));
+  advanceResourceGeneration();
+  advanceUploadGeneration();
 }
 
 const ResourceMetadata &
@@ -1051,6 +1090,7 @@ GeometryStorageHandle
 SceneResourceTable::registerGeometryStorage(GeometryStorageUniquePtr storage) {
   auto handle = add<GeometryStorage, GeometryStorageHandle>(m_geometryStorage,
                                                             std::move(storage));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1069,6 +1109,7 @@ MeshHandle SceneResourceTable::registerMesh(MeshBufferUniquePtr mesh) {
     mesh = mesh->cloneUniqueWithGeometryHandle(storageHandle);
   }
   auto handle = add<MeshBuffer, MeshHandle>(m_meshes, std::move(mesh));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1113,6 +1154,7 @@ SceneResourceTable::registerMaterial(MaterialInstanceUniquePtr material) {
       });
   auto handle =
       add<MaterialInstance, MaterialHandle>(m_materials, std::move(material));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1145,6 +1187,7 @@ SceneResourceTable::registerTexture(CombinedTextureSamplerUniquePtr texture) {
   }
   auto handle = add<CombinedTextureSampler, TextureHandle>(m_textures,
                                                            std::move(texture));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1238,6 +1281,7 @@ SceneResourceTable::findPassFeatureDataByFeatureName(
 
 LightHandle SceneResourceTable::registerLight(LightBaseUniquePtr light) {
   auto handle = add<LightBase, LightHandle>(m_lights, std::move(light));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1245,6 +1289,7 @@ LightHandle SceneResourceTable::registerLight(LightBaseUniquePtr light) {
 SkeletonHandle
 SceneResourceTable::registerSkeleton(std::unique_ptr<Skeleton> skeleton) {
   auto handle = add<Skeleton, SkeletonHandle>(m_skeletons, std::move(skeleton));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1252,6 +1297,7 @@ SceneResourceTable::registerSkeleton(std::unique_ptr<Skeleton> skeleton) {
 ObjectHandle SceneResourceTable::registerObject(ObjectResource object) {
   auto handle = add<ObjectResource, ObjectHandle>(
       m_objects, std::make_unique<ObjectResource>(std::move(object)));
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1269,6 +1315,7 @@ CameraHandle SceneResourceTable::registerCamera(CameraResource camera) {
   }
   ubo->param = cameraParam;
   ubo->setDirty();
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1300,6 +1347,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
     registerBloomResources(*m_renderFeatures[handle.index].resource);
   }
+  advanceFeatureGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1330,6 +1378,7 @@ ShaderHandle SceneResourceTable::registerShaderResource(
         stored.state = shaderMetadataState(*entry.resource);
         stored.dependencies = entry.resource->sourceUris;
         stored.diagnostics.clear();
+        advanceResourceGeneration();
         advanceUploadGeneration();
       }
       return ShaderHandle{i, entry.generation};
@@ -1362,6 +1411,7 @@ ShaderHandle SceneResourceTable::registerShaderResource(
     stored.dependencies = m_shaders[handle.index].resource->sourceUris;
     stored.diagnostics.clear();
   }
+  advanceResourceGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1402,6 +1452,7 @@ void SceneResourceTable::registerMaterialSourceShaderVariant(
 
     ResourceMetadata &stored = mutableMetadata(entry.metadataHandle);
     stored.state = shaderMetadataState(*entry.resource);
+    advanceResourceGeneration();
     advanceUploadGeneration();
     return;
   }
@@ -1581,6 +1632,7 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
   for (const ShaderHandle shaderHandle : shaderHandles) {
     addDependency(handle, shaderHandle);
   }
+  advanceGraphGeneration();
   advanceUploadGeneration();
   return handle;
 }
@@ -1592,6 +1644,7 @@ void SceneResourceTable::updateObject(ObjectHandle handle,
     return;
   }
   resolved->get() = std::move(object);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1615,6 +1668,7 @@ void SceneResourceTable::release(GeometryStorageHandle handle) {
     return;
   }
   release<GeometryStorage, GeometryStorageHandle>(m_geometryStorage, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1623,6 +1677,7 @@ void SceneResourceTable::release(MeshHandle handle) {
     return;
   }
   release<MeshBuffer, MeshHandle>(m_meshes, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1631,6 +1686,7 @@ void SceneResourceTable::release(MaterialHandle handle) {
     return;
   }
   release<MaterialInstance, MaterialHandle>(m_materials, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1639,6 +1695,7 @@ void SceneResourceTable::release(TextureHandle handle) {
     return;
   }
   release<CombinedTextureSampler, TextureHandle>(m_textures, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1647,6 +1704,7 @@ void SceneResourceTable::release(LightHandle handle) {
     return;
   }
   release<LightBase, LightHandle>(m_lights, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1655,6 +1713,7 @@ void SceneResourceTable::release(SkeletonHandle handle) {
     return;
   }
   release<Skeleton, SkeletonHandle>(m_skeletons, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1663,6 +1722,7 @@ void SceneResourceTable::release(ObjectHandle handle) {
     return;
   }
   release<ObjectResource, ObjectHandle>(m_objects, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1674,6 +1734,7 @@ void SceneResourceTable::release(CameraHandle handle) {
   if (handle.index < m_cameraUbos.size()) {
     m_cameraUbos[handle.index].reset();
   }
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1682,6 +1743,7 @@ void SceneResourceTable::release(RenderPathGraphHandle handle) {
     return;
   }
   release<RenderPathGraph, RenderPathGraphHandle>(m_renderPathGraphs, handle);
+  advanceGraphGeneration();
   advanceUploadGeneration();
 }
 
@@ -1690,6 +1752,7 @@ void SceneResourceTable::release(RenderFeatureHandle handle) {
     return;
   }
   release<RenderFeature, RenderFeatureHandle>(m_renderFeatures, handle);
+  advanceFeatureGeneration();
   advanceUploadGeneration();
 }
 
@@ -1698,6 +1761,7 @@ void SceneResourceTable::release(ShaderHandle handle) {
     return;
   }
   release<ShaderResourceMetadata, ShaderHandle>(m_shaders, handle);
+  advanceResourceGeneration();
   advanceUploadGeneration();
 }
 
@@ -1965,6 +2029,7 @@ void SceneResourceTable::setIblEnvironmentResources(
     IblEnvironmentResources resources) {
   m_iblEnvironmentResources =
       completeIblEnvironmentResources(std::move(resources));
+  markBakedResourceDirty();
 }
 
 const IblEnvironmentResources *
@@ -2082,7 +2147,7 @@ void SceneResourceTable::setEnvironmentRuntimeState(
     state.generation = nextGeneration(current);
   }
   m_environmentRuntimeState = state;
-  advanceUploadGeneration();
+  markFeatureRuntimeDirty();
 }
 
 std::optional<SceneEnvironmentRuntimeState>

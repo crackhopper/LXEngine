@@ -2016,6 +2016,52 @@ void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
   }
 }
 
+void testSceneResourceTableTracksSplitRenderGenerations() {
+  SceneResourceTable table;
+  const u64 graph0 = table.graphGeneration();
+  const u64 resource0 = table.resourceGeneration();
+  const u64 feature0 = table.featureGeneration();
+  const u64 upload0 = table.uploadGeneration();
+
+  table.markFeatureRuntimeDirty();
+  EXPECT(table.graphGeneration() == graph0,
+         "feature runtime dirty should not change graph generation");
+  EXPECT(table.resourceGeneration() == resource0,
+         "feature runtime dirty should not change resource generation");
+  EXPECT(table.featureGeneration() == feature0 + 1,
+         "feature runtime dirty should advance feature generation");
+  EXPECT(table.uploadGeneration() == upload0 + 1,
+         "feature runtime dirty should keep upload generation semantics");
+
+  const u64 featureDirtyUpload = table.uploadGeneration();
+  table.markBakedResourceDirty();
+  EXPECT(table.graphGeneration() == graph0,
+         "baked resource dirty should not change graph generation");
+  EXPECT(table.resourceGeneration() == resource0 + 1,
+         "baked resource dirty should advance resource generation");
+  EXPECT(table.featureGeneration() == feature0 + 1,
+         "baked resource dirty should not change feature generation");
+  EXPECT(table.uploadGeneration() == featureDirtyUpload + 1,
+         "baked resource dirty should keep upload generation semantics");
+
+  const u64 beforeCameraResource = table.resourceGeneration();
+  const u64 beforeCameraUpload = table.uploadGeneration();
+  const CameraHandle camera = table.registerCamera(CameraResource{});
+  EXPECT(camera.isValid(), "registerCamera should produce a live handle");
+  EXPECT(table.resourceGeneration() == beforeCameraResource + 1,
+         "registerCamera should advance resource generation");
+  EXPECT(table.uploadGeneration() == beforeCameraUpload + 1,
+         "registerCamera should advance upload generation");
+
+  const u64 afterCameraRegisterResource = table.resourceGeneration();
+  const u64 afterCameraRegisterUpload = table.uploadGeneration();
+  table.updateCamera(camera, CameraResource{});
+  EXPECT(table.resourceGeneration() == afterCameraRegisterResource,
+         "updateCamera should leave structural resource generation unchanged");
+  EXPECT(table.uploadGeneration() == afterCameraRegisterUpload + 1,
+         "updateCamera should still advance upload generation");
+}
+
 } // namespace
 
 int main() {
@@ -2051,5 +2097,6 @@ int main() {
   testRenderWorkCompilerRejectsWrongLiveEnvironmentFeature();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
+  testSceneResourceTableTracksSplitRenderGenerations();
   return g_failures == 0 ? 0 : 1;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/offline/offline_render_profile.hpp"
+#include "core/frame_graph/render_target.hpp"
 #include "core/rhi/renderer.hpp"
 #include "vulkan_renderer_types.hpp"
 #include <filesystem>
@@ -12,6 +13,51 @@
 #include <vector>
 
 namespace LX_core::backend {
+
+struct PreparedRenderStateKey final {
+  u64 graphGeneration = 0;
+  u64 resourceGeneration = 0;
+  u64 featureGeneration = 0;
+  RenderTargetDesc target;
+
+  [[nodiscard]] bool operator==(const PreparedRenderStateKey &rhs) const {
+    return graphGeneration == rhs.graphGeneration &&
+           resourceGeneration == rhs.resourceGeneration &&
+           featureGeneration == rhs.featureGeneration && target == rhs.target;
+  }
+
+  [[nodiscard]] bool operator!=(const PreparedRenderStateKey &rhs) const {
+    return !(*this == rhs);
+  }
+};
+
+struct PreparedRenderStateCacheSnapshot final {
+  bool valid = false;
+  PreparedRenderStateKey key;
+  u64 uploadGeneration = 0;
+};
+
+struct PreparedRenderStateCacheDecision final {
+  bool rebuildFrameGraph = false;
+  bool rebuildRenderInputs = false;
+  bool rebuildDescriptorUploadPlans = false;
+  bool syncUploadPlans = false;
+  PreparedRenderStateCacheSnapshot nextSnapshot;
+};
+
+struct PreparedRenderWorkDiagnostics final {
+  u64 frameGraphCompileCount = 0;
+  u64 renderInputBuildCount = 0;
+  u64 renderInputPrepareCount = 0;
+  u64 descriptorUploadPlanBuildCount = 0;
+  u64 uploadPlanSyncCount = 0;
+  u64 volatileUploadSyncCount = 0;
+};
+
+[[nodiscard]] PreparedRenderStateCacheDecision
+evaluatePreparedRenderStateCache(
+    const PreparedRenderStateCacheSnapshot &current,
+    const PreparedRenderStateKey &nextKey, u64 nextUploadGeneration);
 
 class VulkanRealtimeRenderer final : public gpu::Renderer {
 public:
@@ -38,6 +84,8 @@ public:
   [[nodiscard]] std::vector<std::string> compiledFrameGraphPassNames() const;
   [[nodiscard]] usize frameGraphAttachmentCount() const;
   [[nodiscard]] usize initSceneCallCount() const;
+  [[nodiscard]] PreparedRenderWorkDiagnostics
+  preparedRenderWorkDiagnostics() const;
 
   VulkanFrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
       std::string_view attachmentName,
