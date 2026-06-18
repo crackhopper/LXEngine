@@ -2531,6 +2531,32 @@ void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
          "light transform should refresh descriptor upload plans");
 }
 
+void testDirectionalLightNodeTransformRefreshesDirectionalUbo() {
+  auto scene = Scene::create("directional_light_transform_ubo");
+  auto lightNode = SceneNode::create("directional_light_transform");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<DirectionalLight>());
+  auto light = scene->getDirectionalLight(*lightNode);
+  EXPECT(light.has_value(), "attached directional light should be resolvable");
+  if (!light.has_value()) {
+    return;
+  }
+
+  light->get().setSupportedPasses({Pass_Forward});
+  light->get().getDirectionalUBO().clearDirty();
+  lightNode->setRotation(Quatf::fromAxisAngle(Vec3f{0.0f, 1.0f, 0.0f},
+                                              1.57079632679f));
+
+  const Vec3f expectedDirection = light->get().getDirection();
+  const Vec4f uboDirection = light->get().getDirectionalUBO().param.dir;
+  EXPECT(approxEqual(uboDirection.x, expectedDirection.x) &&
+             approxEqual(uboDirection.y, expectedDirection.y) &&
+             approxEqual(uboDirection.z, expectedDirection.z),
+         "directional light transform should refresh the per-light UBO direction");
+  EXPECT(light->get().getDirectionalUBO().isDirty(),
+         "directional light transform should mark the per-light UBO dirty");
+}
+
 void testParentTransformSyncsDescendantRuntimeResources() {
   auto scene = Scene::create("parent_transform_dirty");
   auto parent = SceneNode::create("parent");
@@ -2714,6 +2740,7 @@ int main() {
   testLightPassMembershipDirtiesDescriptorSelectionOnly();
   testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection();
   testLightNodeTransformDirtiesDescriptorSelectionOnly();
+  testDirectionalLightNodeTransformRefreshesDirectionalUbo();
   testParentTransformSyncsDescendantRuntimeResources();
   testHierarchyChangeSyncsRuntimeResources();
   testParentTransformDoesNotRegisterUnattachedDescendants();

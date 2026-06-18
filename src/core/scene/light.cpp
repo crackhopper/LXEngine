@@ -443,6 +443,13 @@ void DirectionalLight::detachFromSceneNode() {
   m_node.reset();
 }
 
+void DirectionalLight::syncRuntimeDataFromSceneNodeTransform() {
+  const Vec3f resolved = getDirection();
+  m_ubo->param.dir = Vec4f{resolved.x, resolved.y, resolved.z, 0.0f};
+  updateShadowViewProjection();
+  m_ubo->setDirty();
+}
+
 bool DirectionalLight::supportsPass(const StringID pass) const {
   return m_supportedPasses.find(pass) != m_supportedPasses.end();
 }

@@ -46,6 +46,7 @@ public:
   /// not render mesh geometry, but the editor can use this to draw and pick the
   /// light through the owning node instead of adding runtime helper children.
   virtual BoundingBox getDebugLocalBounds() const { return {}; }
+  virtual void syncRuntimeDataFromSceneNodeTransform() {}
 };
 
 using LightBaseSharedPtr = std::shared_ptr<LightBase>;
@@ -172,6 +173,7 @@ public:
   void attachToSceneNode(const std::weak_ptr<Scene> &scene,
                          const std::weak_ptr<SceneNode> &node) override;
   void detachFromSceneNode() override;
+  void syncRuntimeDataFromSceneNodeTransform() override;
 
   GpuResourceRef getUBO() const override { return GpuResourceRef{*m_ubo}; }
   [[nodiscard]] std::unique_ptr<LightBase> cloneUnique() const override;

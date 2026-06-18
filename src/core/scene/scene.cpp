@@ -1229,7 +1229,8 @@ void Scene::syncNodeResourceSubtreeRuntimeState(SceneNode &node) const {
     return;
   }
   syncNodeResourceState(node);
-  if (getLight(node)) {
+  if (auto light = const_cast<Scene *>(this)->getLight(node)) {
+    light->get().syncRuntimeDataFromSceneNodeTransform();
     m_resources.markLightRuntimeDirty();
   }
   for (const auto &child : node.getChildren()) {
