@@ -1336,6 +1336,117 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
   }
 }
 
+void testBakeRenderPathGraphAssetsParseAndCompile() {
+  struct BakeAsset final {
+    const char *path;
+    const char *name;
+    std::size_t passCount;
+    std::size_t payloadCount;
+  };
+  const BakeAsset assets[] = {
+      {"assets/render_paths/bake_environment_ibl.render-path.yaml",
+       "EnvironmentIblBake", 3, 3},
+      {"assets/render_paths/bake_standard_pbr_brdf_lut.render-path.yaml",
+       "StandardPbrBrdfLutBake", 1, 1},
+  };
+
+  LX_infra::RenderPathGraphResourceParser parser;
+  for (const BakeAsset &asset : assets) {
+    const auto parsed =
+        parser.parse(asset.path, readTextFile(asset.path));
+    if (!parsed.diagnostics.empty()) {
+      for (const std::string &diagnostic : parsed.diagnostics) {
+        std::cerr << "[diag] " << diagnostic << '\n';
+      }
+    }
+    EXPECT(parsed.renderPathGraph.has_value(),
+           std::string(asset.path) + " should parse");
+    EXPECT(parsed.diagnostics.empty(),
+           std::string(asset.path) + " should not emit diagnostics");
+    if (!parsed.renderPathGraph.has_value()) {
+      continue;
+    }
+
+    const auto &graph = *parsed.renderPathGraph;
+    EXPECT(graph.name == asset.name,
+           std::string(asset.path) + " should retain graph name");
+    EXPECT(graph.renderPath == LX_core::RenderPath::OfflineRT,
+           std::string(asset.path) + " should use OfflineRT domain");
+    EXPECT(graph.passes.size() == asset.passCount,
+           std::string(asset.path) + " should retain bake pass count");
+    std::size_t payloadCount = 0;
+    for (const LX_core::RenderPassNode &pass : graph.passes) {
+      payloadCount += pass.payloads.size();
+      EXPECT(!pass.payloads.empty(),
+             std::string(asset.path) +
+                 " every bake pass should declare payload outputs");
+    }
+    EXPECT(payloadCount == asset.payloadCount,
+           std::string(asset.path) + " should retain payload count");
+
+    const LX_core::FrameGraph frameGraph =
+        LX_core::buildFrameGraphFromRenderPathGraph(
+            graph, LX_core::GraphResourceRegistry::makeDefault());
+    const auto compiled =
+        frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
+    EXPECT(compiled.isValid(),
+           std::string(asset.path) +
+               " should compile into a bake FrameGraph plan");
+    if (compiled.isValid()) {
+      std::size_t compiledPayloadCount = 0;
+      for (const LX_core::CompiledFrameGraphPass &pass :
+           compiled.getPasses()) {
+        compiledPayloadCount += pass.payloads.size();
+      }
+      EXPECT(compiledPayloadCount == asset.payloadCount,
+             std::string(asset.path) +
+                 " compiled graph should retain payload contracts");
+      if (std::string(asset.name) == "StandardPbrBrdfLutBake" &&
+          !compiled.getPasses().empty()) {
+        const auto colorFormats = compiled.getPasses().front().target.getColorFormats();
+        EXPECT(!colorFormats.empty() &&
+                   colorFormats.front() == LX_core::ImageFormat::RG16Float,
+               "BRDF LUT compiled target should retain RG16Float format");
+      }
+    }
+  }
+}
+
+void testBakeRenderPathGraphAssetsResolveShaderPayloads() {
+  struct BakeAsset final {
+    const char *path;
+    std::size_t shaderCount;
+  };
+  const BakeAsset assets[] = {
+      {"assets/render_paths/bake_environment_ibl.render-path.yaml", 3},
+      {"assets/render_paths/bake_standard_pbr_brdf_lut.render-path.yaml", 1},
+  };
+
+  for (const BakeAsset &asset : assets) {
+    LX_infra::SceneResourceParserRegistry registry;
+    LX_infra::registerRenderResourceParsers(registry);
+    LX_core::SceneResourceTable table;
+
+    const auto parsed = registry.parse(
+        table, LX_core::SceneResourceType::RenderPathGraph,
+        LX_core::ResourceUri(asset.path), LX_infra::SceneResourceParseContext{});
+
+    if (!parsed.diagnostics.empty()) {
+      for (const std::string &diagnostic : parsed.diagnostics) {
+        std::cerr << "[diag] " << diagnostic << '\n';
+      }
+    }
+    EXPECT(parsed.diagnostics.empty(),
+           std::string(asset.path) +
+               " should resolve bake shader dependencies");
+    EXPECT(parsed.identity.isValid(),
+           std::string(asset.path) + " should register render path graph");
+    EXPECT(table.shaderCount() == asset.shaderCount,
+           std::string(asset.path) +
+               " should register one typed shader per bake pass");
+  }
+}
+
 void testRenderFeatureRejectsRenderFlowFields() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse("memory://bad-feature", R"(
@@ -1688,6 +1799,138 @@ passes:
          "diagnostic should include empty sources field");
   EXPECT(hasDiagnosticContaining(parsed, "passes.EmptyTargets.targets"),
          "diagnostic should include empty targets field");
+}
+
+void testBakeRenderPathGraphRejectsMissingPayloadDeclaration() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bake-missing-payload", R"(
+schema: lxe.render-path-graph.v1
+name: BakeMissingPayload
+renderPath: OfflineRT
+passes:
+  - id: BakeEnvironmentDiffuse
+    stage: compute
+    dispatch: compute
+    shader: render_paths/Bake/environment_diffuse_sh9
+    input:
+      kind: compute-dispatch
+    sources: [bake.environment.cubemap]
+    targets: [bake.environment.diffuse_sh9]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "bake graph without payload declaration should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "payload"),
+         "diagnostic should name missing bake payload declaration");
+}
+
+void testBakeRenderPathGraphRejectsPayloadMissingFormat() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bake-payload-missing-format", R"(
+schema: lxe.render-path-graph.v1
+name: BakePayloadMissingFormat
+renderPath: OfflineRT
+passes:
+  - id: BakeEnvironmentDiffuse
+    stage: compute
+    dispatch: compute
+    shader: render_paths/Bake/environment_diffuse_sh9
+    input:
+      kind: compute-dispatch
+    sources: [bake.environment.cubemap]
+    targets: [bake.environment.diffuse_sh9]
+    payloads:
+      - name: diffuse_sh9
+        target: bake.environment.diffuse_sh9
+        kind: sh9
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "bake payload without format should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "payloads[0].format"),
+         "diagnostic should name missing bake payload format");
+}
+
+void testBakeRenderPathGraphRejectsPayloadWithoutTarget() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bake-payload-without-target", R"(
+schema: lxe.render-path-graph.v1
+name: BakePayloadWithoutTarget
+renderPath: OfflineRT
+passes:
+  - id: BakeEnvironmentDiffuse
+    stage: compute
+    dispatch: compute
+    shader: render_paths/Bake/environment_diffuse_sh9
+    input:
+      kind: compute-dispatch
+    sources: [bake.environment.cubemap]
+    targets: [bake.environment.diffuse_sh9]
+    payloads:
+      - name: diffuse_sh9
+        format: SH9RgbFloat
+        kind: sh9
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "bake payload without target should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "payloads[0].target"),
+         "diagnostic should name missing bake payload target");
+}
+
+void testBakeRenderPathGraphRejectsPayloadTargetFormatMismatch() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bake-payload-format-mismatch", R"(
+schema: lxe.render-path-graph.v1
+name: BakePayloadFormatMismatch
+renderPath: OfflineRT
+passes:
+  - id: BakeMaterialBrdf
+    stage: raster
+    dispatch: fullscreen
+    shader: render_paths/Bake/standard_pbr_brdf_lut
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: bake.material.brdf_lut
+          format: RG16Float
+          samples: 1
+          layers: 1
+    sources: [bake.material.source]
+    targets: [bake.material.brdf_lut]
+    payloads:
+      - name: brdf_lut
+        target: bake.material.brdf_lut
+        format: SH9RgbFloat
+        kind: sh9
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "bake payload target with wrong format/kind should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "payloads[0]"),
+         "diagnostic should name mismatched bake payload");
 }
 
 void testRenderPathGraphRejectsUnparsedAllowedLookingFields() {
@@ -2775,6 +3018,8 @@ int main() {
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
+  testBakeRenderPathGraphAssetsParseAndCompile();
+  testBakeRenderPathGraphAssetsResolveShaderPayloads();
   testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget();
   testParserAdapterRejectsManualGammaOnSrgbForwardTarget();
   testRenderFeatureRejectsRenderFlowFields();
@@ -2783,6 +3028,10 @@ int main() {
   testRenderFeatureRejectsUnknownParameterField();
   testEnvironmentLightingFeatureRejectsMissingEnvironmentMapUri();
   testRenderPathGraphRejectsEmptyPassContracts();
+  testBakeRenderPathGraphRejectsMissingPayloadDeclaration();
+  testBakeRenderPathGraphRejectsPayloadMissingFormat();
+  testBakeRenderPathGraphRejectsPayloadWithoutTarget();
+  testBakeRenderPathGraphRejectsPayloadTargetFormatMismatch();
   testRenderPathGraphRejectsUnparsedAllowedLookingFields();
   testLegacyRenderEffectSchemaIsRejectedByNewParser();
   testParserAdapterRejectsMissingGraphShaderDependency();

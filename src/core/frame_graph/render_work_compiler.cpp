@@ -568,6 +568,80 @@ descriptorBindingName(const DescriptorResourceRef &descriptor) {
   }
 }
 
+[[nodiscard]] std::string resourceNameText(StringID id) {
+  if (id.id == 0) {
+    return {};
+  }
+  return GlobalStringTable::get().toDebugString(id);
+}
+
+[[nodiscard]] bool isBakeGraphSource(std::string_view resourceName) {
+  return resourceName.rfind("bake.", 0) == 0;
+}
+
+[[nodiscard]] bool isFrameGraphPlaceholderResource(
+    const DescriptorResourceRef &descriptor) {
+  if (!descriptor.isResource() || !descriptor.resource().isValid()) {
+    return false;
+  }
+  return dynamic_cast<const FrameGraphSampledResource *>(
+             &descriptor.resource().get()) != nullptr;
+}
+
+[[nodiscard]] const DescriptorResourceRef *
+findDescriptorForBinding(const DescriptorResourceList &descriptors,
+                         StringID bindingName) {
+  const auto it = std::find_if(
+      descriptors.begin(), descriptors.end(),
+      [bindingName](const DescriptorResourceRef &descriptor) {
+        const auto descriptorName = descriptorBindingName(descriptor);
+        return descriptorName.has_value() && *descriptorName == bindingName;
+      });
+  return it == descriptors.end() ? nullptr : &*it;
+}
+
+void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
+  for (const FrameGraphRead &read : pass.reads) {
+    const std::string sourceName = resourceNameText(read.resource);
+    if (!isBakeGraphSource(sourceName)) {
+      continue;
+    }
+    if (read.bindingName.id == 0) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "bake source '" + sourceName +
+                 "' requires a named typed payload binding");
+      continue;
+    }
+    const DescriptorResourceRef *descriptor =
+        findDescriptorForBinding(desc.bindingPlan.descriptors,
+                                 read.bindingName);
+    if (descriptor == nullptr || !descriptor->isResource() ||
+        !descriptor->resource().isValid() ||
+        isFrameGraphPlaceholderResource(*descriptor)) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "bake source '" + sourceName +
+                 "' requires a live typed payload resource");
+    }
+  }
+}
+
+void validateBakeOutputPayloads(const FramePass &pass,
+                                const RenderInput &input,
+                                RenderInputDesc &desc) {
+  if (pass.payloads.empty()) {
+    return;
+  }
+  if (pass.input.kind != RenderPassInputKind::ComputeDispatch) {
+    return;
+  }
+  const auto *compute = dynamic_cast<const RenderComputeInput *>(&input);
+  if (compute == nullptr || !compute->readbackResource.has_value() ||
+      compute->readbackResource->id == 0) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "bake compute payload requires a typed readback payload");
+  }
+}
+
 void validateBindingPlanCompleteness(RenderInputDesc &desc) {
   for (const ShaderResourceBinding &binding :
        desc.pipelineBuildDesc.bindings) {
@@ -1184,6 +1258,12 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     }
     if (desc.accepted()) {
       validateEnvironmentLightingFeatureBindings(pass, context, desc);
+    }
+    if (desc.accepted()) {
+      validateBakeSourcePayloads(pass, desc);
+    }
+    if (desc.accepted()) {
+      validateBakeOutputPayloads(pass, input, desc);
     }
     if (desc.accepted()) {
       validateBindingPlanCompleteness(desc);

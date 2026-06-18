@@ -269,6 +269,8 @@ LX_core::ImageFormat toImageFormat(VkFormat format) {
     return LX_core::ImageFormat::RGBA8Srgb;
   case VK_FORMAT_R8G8B8A8_UNORM:
     return LX_core::ImageFormat::RGBA8;
+  case VK_FORMAT_R16G16_SFLOAT:
+    return LX_core::ImageFormat::RG16Float;
   case VK_FORMAT_R16G16B16A16_SFLOAT:
     return LX_core::ImageFormat::RGBA16Float;
   case VK_FORMAT_R8_UNORM:
@@ -295,6 +297,8 @@ VkFormat toVkFormat(LX_core::ImageFormat format) {
     return VK_FORMAT_R8G8B8A8_UNORM;
   case LX_core::ImageFormat::RGBA8Srgb:
     return VK_FORMAT_R8G8B8A8_SRGB;
+  case LX_core::ImageFormat::RG16Float:
+    return VK_FORMAT_R16G16_SFLOAT;
   case LX_core::ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case LX_core::ImageFormat::BGRA8:

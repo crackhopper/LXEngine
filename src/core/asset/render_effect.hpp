@@ -79,6 +79,13 @@ struct RenderPathAttachmentContract final {
       RenderPathAttachmentUsage::ColorAttachmentWrite;
 };
 
+struct RenderPathPayloadContract final {
+  std::string name;
+  std::string target;
+  std::string format;
+  std::string kind;
+};
+
 struct RenderPassNode final {
   std::string id;
   ResourceUri shaderUri;
@@ -89,6 +96,7 @@ struct RenderPassNode final {
   std::vector<RenderPathAttachmentContract> attachments;
   std::vector<std::string> sources;
   std::vector<std::string> targets;
+  std::vector<RenderPathPayloadContract> payloads;
   RenderState renderState;
   std::optional<std::string> writeMode;
 };

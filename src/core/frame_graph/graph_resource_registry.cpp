@@ -24,6 +24,10 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
            "debug.final.unorm_manual_srgb",
            "debug.ramp.srgb",
            "debug.ramp.unorm_manual_srgb",
+           "bake.environment.cubemap",
+           "bake.environment.diffuse_sh9",
+           "bake.environment.specular_prefilter",
+           "bake.material.brdf_lut",
            "shadow.main",
            "shadow.cascade0",
            "shadow.cascade1",
@@ -42,6 +46,8 @@ GraphResourceRegistry GraphResourceRegistry::makeDefault() {
            "scene.lights",
            "scene.bvh",
            "scene.environment",
+           "bake.environment.source",
+           "bake.material.source",
        }) {
     registry.registerImportedResource(name);
   }

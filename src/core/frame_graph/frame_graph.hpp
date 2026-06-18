@@ -73,6 +73,7 @@ struct FramePass {
   RenderPassInputContract input;
   std::optional<RenderPathNodeRenderingMode> renderingMode;
   std::vector<RenderPathAttachmentContract> attachments;
+  std::vector<RenderPathPayloadContract> payloads;
   RenderState renderState;
   StringID renderPathNodeSignature;
 };
@@ -87,6 +88,7 @@ struct CompiledFrameGraphPass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  std::vector<RenderPathPayloadContract> payloads;
   usize sourcePassIndex = 0;
 };
 

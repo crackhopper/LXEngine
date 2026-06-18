@@ -165,6 +165,12 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "debug.final.unorm_manual_srgb",
       "debug.ramp.srgb",
       "debug.ramp.unorm_manual_srgb",
+      "bake.environment.source",
+      "bake.environment.cubemap",
+      "bake.environment.diffuse_sh9",
+      "bake.environment.specular_prefilter",
+      "bake.material.source",
+      "bake.material.brdf_lut",
       "gbuffer.albedoAlpha",
       "gbuffer.albedo",
       "gbuffer.normalRoughness",
@@ -229,7 +235,8 @@ bool rejectUnsupportedFields(const YAML::Node &node,
     const std::string key = it->first.as<std::string>();
     if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
         key == "rendering" || key == "input" || key == "sources" ||
-        key == "targets" || key == "renderState" || key == "writeMode") {
+        key == "targets" || key == "payloads" || key == "renderState" ||
+        key == "writeMode") {
       continue;
     }
     if (key == "enginePass") {
@@ -691,6 +698,9 @@ parseImageFormat(const YAML::Node &node, RenderPassNodeParseResult &result,
   if (value == "RGBA8Srgb" || value == "RGBA8_SRGB") {
     return LX_core::ImageFormat::RGBA8Srgb;
   }
+  if (value == "RG16F" || value == "RG16Float") {
+    return LX_core::ImageFormat::RG16Float;
+  }
   if (value == "RGBA16F" || value == "RGBA16Float") {
     return LX_core::ImageFormat::RGBA16Float;
   }
@@ -833,6 +843,125 @@ void validateResourceVocabulary(const std::vector<std::string> &resources,
   }
 }
 
+[[nodiscard]] bool isBakeResourceName(const std::string &name) {
+  return name.rfind("bake.", 0) == 0;
+}
+
+[[nodiscard]] bool passUsesBakeResources(const std::vector<std::string> &sources,
+                                         const std::vector<std::string> &targets) {
+  return std::any_of(sources.begin(), sources.end(), isBakeResourceName) ||
+         std::any_of(targets.begin(), targets.end(), isBakeResourceName);
+}
+
+[[nodiscard]] bool isKnownBakePayloadFormat(const std::string &format) {
+  return format == "RGBA16Float" || format == "RG16Float" ||
+         format == "SH9RgbFloat";
+}
+
+[[nodiscard]] bool isKnownBakePayloadKind(const std::string &kind) {
+  return kind == "cubemap" || kind == "sh9" || kind == "texture2d";
+}
+
+[[nodiscard]] bool bakePayloadMatchesTarget(
+    const LX_core::RenderPathPayloadContract &payload) {
+  if (payload.target == "bake.environment.cubemap" ||
+      payload.target == "bake.environment.specular_prefilter") {
+    return payload.format == "RGBA16Float" && payload.kind == "cubemap";
+  }
+  if (payload.target == "bake.environment.diffuse_sh9") {
+    return payload.format == "SH9RgbFloat" && payload.kind == "sh9";
+  }
+  if (payload.target == "bake.material.brdf_lut") {
+    return payload.format == "RG16Float" && payload.kind == "texture2d";
+  }
+  return true;
+}
+
+std::vector<LX_core::RenderPathPayloadContract>
+parsePayloadContracts(const YAML::Node &node,
+                      const std::vector<std::string> &targets,
+                      RenderPassNodeParseResult &result,
+                      const std::string &field) {
+  std::vector<LX_core::RenderPathPayloadContract> payloads;
+  if (!node) {
+    return payloads;
+  }
+  if (!node.IsSequence()) {
+    addDiagnostic(result, field, "payloads must be a sequence");
+    return payloads;
+  }
+  payloads.reserve(node.size());
+  for (std::size_t i = 0; i < node.size(); ++i) {
+    const YAML::Node payloadNode = node[i];
+    const std::string prefix = field + "[" + std::to_string(i) + "]";
+    if (!payloadNode || !payloadNode.IsMap()) {
+      addDiagnostic(result, prefix, "payload must be a map");
+      continue;
+    }
+    bool valid = true;
+    for (auto it = payloadNode.begin(); it != payloadNode.end(); ++it) {
+      if (!it->first.IsScalar()) {
+        addDiagnostic(result, prefix,
+                      "payload field names must be scalar strings");
+        valid = false;
+        continue;
+      }
+      const std::string key = it->first.as<std::string>();
+      if (key == "name" || key == "target" || key == "format" ||
+          key == "kind") {
+        continue;
+      }
+      addDiagnostic(result, prefix + "." + key,
+                    "unsupported payload contract field");
+      valid = false;
+    }
+    valid &= requireField(payloadNode["name"], result, prefix + ".name");
+    valid &= requireField(payloadNode["target"], result, prefix + ".target");
+    valid &= requireField(payloadNode["format"], result, prefix + ".format");
+    valid &= requireField(payloadNode["kind"], result, prefix + ".kind");
+    if (!valid) {
+      continue;
+    }
+    LX_core::RenderPathPayloadContract payload;
+    payload.name = payloadNode["name"].as<std::string>();
+    payload.target = payloadNode["target"].as<std::string>();
+    payload.format = payloadNode["format"].as<std::string>();
+    payload.kind = payloadNode["kind"].as<std::string>();
+    if (payload.name.empty()) {
+      addDiagnostic(result, prefix + ".name", "must not be empty");
+      valid = false;
+    }
+    if (payload.target.empty()) {
+      addDiagnostic(result, prefix + ".target", "must not be empty");
+      valid = false;
+    }
+    if (std::find(targets.begin(), targets.end(), payload.target) ==
+        targets.end()) {
+      addDiagnostic(result, prefix + ".target",
+                    "payload target must be listed in targets");
+      valid = false;
+    }
+    if (!isKnownBakePayloadFormat(payload.format)) {
+      addDiagnostic(result, prefix + ".format",
+                    "unknown bake payload format");
+      valid = false;
+    }
+    if (!isKnownBakePayloadKind(payload.kind)) {
+      addDiagnostic(result, prefix + ".kind", "unknown bake payload kind");
+      valid = false;
+    }
+    if (valid && !bakePayloadMatchesTarget(payload)) {
+      addDiagnostic(result, prefix,
+                    "bake payload format/kind does not match target");
+      valid = false;
+    }
+    if (valid) {
+      payloads.push_back(std::move(payload));
+    }
+  }
+  return payloads;
+}
+
 } // namespace
 
 RenderPassNodeParseResult
@@ -902,9 +1031,19 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   std::vector<std::string> targets = parseStringList(node["targets"]);
   validateResourceVocabulary(sources, result, fieldPrefix + ".sources");
   validateResourceVocabulary(targets, result, fieldPrefix + ".targets");
-  auto attachments =
-      parseAttachmentContracts(node["rendering"]["attachments"], result,
-                               fieldPrefix + ".rendering.attachments");
+  const bool bakePass = passUsesBakeResources(sources, targets);
+  if (bakePass && (!node["payloads"] || node["payloads"].size() == 0)) {
+    addDiagnostic(result, fieldPrefix + ".payloads",
+                  "bake pass requires payload declaration");
+  }
+  auto payloads = parsePayloadContracts(node["payloads"], targets, result,
+                                        fieldPrefix + ".payloads");
+  const YAML::Node rendering = node["rendering"];
+  std::vector<LX_core::RenderPathAttachmentContract> attachments;
+  if (rendering) {
+    attachments = parseAttachmentContracts(
+        rendering["attachments"], result, fieldPrefix + ".rendering.attachments");
+  }
   validateAttachmentUsageAgainstTargets(attachments, targets, result,
                                         fieldPrefix);
   if (!result.diagnostics.empty()) {
@@ -921,6 +1060,7 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   pass.attachments = std::move(attachments);
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
+  pass.payloads = std::move(payloads);
   pass.renderState = *renderState;
   if (const auto writeMode = node["writeMode"]) {
     pass.writeMode = writeMode.as<std::string>();

@@ -94,7 +94,8 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   std::vector<StringID> fields;
   fields.reserve(14 + pass.input.object.renderClasses.size() +
                  pass.input.material.types.size() + pass.reads.size() +
-                 pass.writes.size() + pass.attachments.size());
+                 pass.writes.size() + pass.attachments.size() +
+                 pass.payloads.size());
   fields.push_back(
       StringID("pass=" + GlobalStringTable::get().toDebugString(pass.name)));
   fields.push_back(StringID("shader=" + pass.shaderUri.string()));
@@ -139,6 +140,12 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   }
   for (const RenderPathAttachmentContract &attachment : pass.attachments) {
     fields.push_back(framePassAttachmentSignature(attachment));
+  }
+  for (const RenderPathPayloadContract &payload : pass.payloads) {
+    fields.push_back(StringID("payload:name=" + payload.name +
+                              ";target=" + payload.target +
+                              ";format=" + payload.format +
+                              ";kind=" + payload.kind));
   }
 
   return GlobalStringTable::get().compose(TypeTag::RenderPathNode, fields);
@@ -393,7 +400,8 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
   for (const usize passIndex : sorted) {
     const auto &pass = m_passes[passIndex];
     out.m_passes.push_back(CompiledFrameGraphPass{
-        pass.name, pass.target, pass.reads, pass.writes, passIndex});
+        pass.name, pass.target, pass.reads, pass.writes, pass.payloads,
+        passIndex});
   }
 
   return out;

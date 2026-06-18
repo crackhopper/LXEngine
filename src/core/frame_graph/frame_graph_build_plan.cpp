@@ -19,6 +19,15 @@ FrameGraphResourceRef makeWriteRef(const std::string &target) {
 
 StringID bindingNameForSource(const RenderPassNode &node,
                               const std::string &source) {
+  if (source == "bake.environment.source") {
+    return StringID("BakeEnvironmentSource");
+  }
+  if (source == "bake.environment.cubemap") {
+    return StringID("BakeEnvironmentCubemap");
+  }
+  if (source == "bake.material.source") {
+    return StringID("BakeMaterialSource");
+  }
   if (source == "depth.main") {
     for (const auto &attachment : node.attachments) {
       if (attachment.target == source &&
@@ -67,6 +76,38 @@ StringID bindingNameForSource(const RenderPassNode &node,
     }
   }
   return {};
+}
+
+[[nodiscard]] RenderTargetDesc
+makeTargetDescFromAttachments(const RenderPassNode &node) {
+  RenderTargetDesc desc;
+  desc.role = std::find(node.targets.begin(), node.targets.end(),
+                        "swapchain.color") != node.targets.end()
+                  ? RenderTargetRole::Swapchain
+                  : RenderTargetRole::Offscreen;
+  desc.colorFormat = std::nullopt;
+  desc.colorFormats.clear();
+  desc.depthFormat = std::nullopt;
+  desc.sampleCount = 1;
+  desc.layerCount = 1;
+
+  bool firstAttachment = true;
+  for (const RenderPathAttachmentContract &attachment : node.attachments) {
+    if (firstAttachment) {
+      desc.sampleCount = static_cast<u8>(attachment.samples);
+      desc.layerCount = attachment.layers;
+      firstAttachment = false;
+    }
+    if (attachment.depth) {
+      desc.depthFormat = attachment.format;
+      continue;
+    }
+    desc.colorFormats.push_back(attachment.format);
+  }
+  if (!desc.colorFormats.empty()) {
+    desc.colorFormat = desc.colorFormats.front();
+  }
+  return desc;
 }
 
 [[nodiscard]] bool containsName(const std::vector<std::string> &names,
@@ -127,6 +168,7 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
                         u32 stableOrder) {
   FramePass pass;
   pass.name = StringID(node.id);
+  pass.target = makeTargetDescFromAttachments(node);
   pass.phase = phase;
   pass.stableOrder = stableOrder;
   pass.reads.reserve(node.sources.size());
@@ -145,6 +187,7 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.input = node.input;
   pass.renderingMode = node.renderingMode;
   pass.attachments = node.attachments;
+  pass.payloads = node.payloads;
   pass.renderState = node.renderState;
   pass.renderPathNodeSignature = getRenderPathNodeSignature(node);
   return pass;
@@ -168,6 +211,13 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
   }
   if (const auto inputError = validateRenderPassInputContract(node)) {
     throw std::invalid_argument(prefix + " " + *inputError);
+  }
+  for (const RenderPathPayloadContract &payload : node.payloads) {
+    if (!containsName(node.targets, payload.target)) {
+      throw std::invalid_argument(prefix + " payload '" + payload.name +
+                                  "' target '" + payload.target +
+                                  "' is not listed in targets");
+    }
   }
   validateAttachmentResourceFlow(graphAsset, node);
 }

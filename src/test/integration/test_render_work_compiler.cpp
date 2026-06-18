@@ -812,6 +812,111 @@ void testComputeDescUsesPreparedPassFacts() {
          "compute stats should count accepted dispatch");
 }
 
+void testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload() {
+  FramePass pass;
+  pass.name = StringID("CustomBakeSourcePass");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = ResourceUri("render_paths/Bake/environment_to_cubemap");
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("bake.environment.cubemap"), StringID("BakeEnvironmentCubemap")));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{
+          makeTextureCubeBinding("BakeEnvironmentCubemap")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 41}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 42}},
+      });
+  FrameGraphSampledResource metadataOnlySource(
+      StringID("bake.environment.cubemap"), StringID("BakeEnvironmentCubemap"));
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("bake.environment.variant");
+  passFacts.shaderProgram.shaderName = "render_paths/Bake/environment_to_cubemap";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.descriptorResources.emplace_back(metadataOnlySource);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("MetadataOnlyBakeSourceScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "bake source pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "metadata-only bake source payload should reject desc");
+  EXPECT(hasDiagnosticCode(descs.front(),
+                           RenderInputDiagnosticCode::MissingResource),
+         "metadata-only bake source should report missing resource");
+  EXPECT(hasDiagnosticMessage(descs.front(), "typed payload"),
+         "metadata-only bake source diagnostic should require typed payload");
+}
+
+void testRenderWorkCompilerRejectsBakeComputePayloadWithoutReadback() {
+  FramePass pass;
+  pass.name = StringID("CustomBakeComputePayload");
+  pass.stage = RenderPassStage::Compute;
+  pass.dispatch = RenderPassDispatch::Compute;
+  pass.input.kind = RenderPassInputKind::ComputeDispatch;
+  pass.shaderUri = ResourceUri("render_paths/Bake/environment_diffuse_sh9");
+  pass.payloads.push_back(RenderPathPayloadContract{
+      .name = "diffuse_sh9",
+      .target = "bake.environment.diffuse_sh9",
+      .format = "SH9RgbFloat",
+      .kind = "sh9",
+  });
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Compute,
+                          std::vector<u32>{0x07230203, 43}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("bake.compute.payload.variant");
+  passFacts.shaderProgram.shaderName =
+      "render_paths/Bake/environment_diffuse_sh9";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("BakeComputeMissingReadbackScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "bake compute pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "bake compute payload without readback should reject desc");
+  EXPECT(hasDiagnosticCode(descs.front(),
+                           RenderInputDiagnosticCode::MissingResource),
+         "missing bake compute output should report missing resource");
+  EXPECT(hasDiagnosticMessage(descs.front(), "readback"),
+         "missing bake compute output diagnostic should name readback payload");
+}
+
 void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
   auto renderable = std::make_shared<ValidatedRenderable>(Pass_Forward);
   Scene scene("CompilerScene");
@@ -2709,6 +2814,8 @@ int main() {
   testComputeInputWithoutShaderFactsIsRejected();
   testFullscreenDescUsesPreparedPassFactsAndGraphReads();
   testComputeDescUsesPreparedPassFacts();
+  testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload();
+  testRenderWorkCompilerRejectsBakeComputePayloadWithoutReadback();
   testSceneRenderableValidatedShaderFactsPreparePipelineDesc();
   testSceneRenderableIncludesCameraSceneResourceBinding();
   testSceneRenderableRejectsUnresolvedRequiredBinding();

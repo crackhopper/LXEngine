@@ -86,6 +86,8 @@ VkFormat imageFormatToVk(ImageFormat format) {
     return VK_FORMAT_R8G8B8A8_UNORM;
   case ImageFormat::RGBA8Srgb:
     return VK_FORMAT_R8G8B8A8_SRGB;
+  case ImageFormat::RG16Float:
+    return VK_FORMAT_R16G16_SFLOAT;
   case ImageFormat::RGBA16Float:
     return VK_FORMAT_R16G16B16A16_SFLOAT;
   case ImageFormat::BGRA8:
