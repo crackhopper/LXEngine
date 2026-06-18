@@ -2,14 +2,8 @@
 
 #include "core/scene/ibl_bake_types.hpp"
 
-#include <atomic>
-#include <memory>
 #include <mutex>
-#include <optional>
-#include <string>
 #include <string_view>
-#include <thread>
-#include <unordered_map>
 #include <vector>
 
 namespace LX_core {
@@ -27,66 +21,6 @@ private:
   mutable std::mutex m_mutex;
   u64 m_nextSequence = 1;
   std::vector<IblBakeJobEvent> m_events;
-};
-
-struct IblBakeJobStatus final {
-  BakeJobId job = 0;
-  IblBakeJobPhase phase = IblBakeJobPhase::Queued;
-  float progress = 0.0f;
-  bool running = false;
-  bool cancelRequested = false;
-  u64 lastSequence = 0;
-  std::string message;
-};
-
-struct IblBakeStartResult final {
-  bool ok = false;
-  bool alreadyRunning = false;
-  bool rejected = false;
-  BakeJobId job = 0;
-  std::string message;
-};
-
-struct IblBakeCancelResult final {
-  bool ok = false;
-  bool notFound = false;
-  BakeJobId job = 0;
-  std::string message;
-};
-
-class IblBakeJobService final {
-public:
-  IblBakeJobService() = default;
-  ~IblBakeJobService();
-
-  IblBakeJobService(const IblBakeJobService &) = delete;
-  IblBakeJobService &operator=(const IblBakeJobService &) = delete;
-
-  [[nodiscard]] IblBakeStartResult start(bool force);
-  [[nodiscard]] IblBakeCancelResult cancel(BakeJobId job);
-  [[nodiscard]] std::optional<IblBakeJobStatus> status(BakeJobId job) const;
-  [[nodiscard]] std::vector<IblBakeJobEvent> logs(BakeJobId job,
-                                                  u64 since) const;
-
-private:
-  struct RunningJobState final {
-    explicit RunningJobState(BakeJobId jobId) : job(jobId) {}
-    BakeJobId job = 0;
-    std::atomic_bool cancelRequested = false;
-  };
-
-  void joinIdleWorker();
-  void requestWorkerStop();
-  void runWorker(std::shared_ptr<RunningJobState> state);
-  IblBakeJobEvent publish(IblBakeJobEvent event);
-
-  mutable std::mutex m_mutex;
-  IblBakeEventQueue m_events;
-  BakeJobId m_nextJob = 1;
-  std::optional<BakeJobId> m_runningJob;
-  std::shared_ptr<RunningJobState> m_runningState;
-  std::unordered_map<BakeJobId, IblBakeJobStatus> m_status;
-  std::thread m_worker;
 };
 
 } // namespace LX_core

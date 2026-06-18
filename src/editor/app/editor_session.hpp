@@ -4,7 +4,7 @@
 #include "core/gpu/engine_loop.hpp"
 #include "core/platform/types.hpp"
 #include "core/rhi/live_render_view.hpp"
-#include "core/scene/ibl_bake_job.hpp"
+#include "core/scene/ibl_bake_service.hpp"
 #include "editor/app/editor_config_state.hpp"
 #include "editor/app/editor_data_state.hpp"
 #include "editor/app/editor_scene_state.hpp"

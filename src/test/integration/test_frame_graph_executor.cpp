@@ -1,11 +1,15 @@
 #include "backend/vulkan/vulkan_frame_graph_executor.hpp"
 
 #include "core/frame_graph/frame_graph_executor.hpp"
+#include "core/scene/ibl_bake_service.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace LX_core;
@@ -72,6 +76,65 @@ PreparedFramePassWork makePreparedWork(StringID passName = StringID("Forward")) 
   work.inputs.push_back(std::move(input));
   work.descs.push_back(makeAcceptedDesc(passName));
   return work;
+}
+
+IblBakeItem makeBakeServiceItem() {
+  return IblBakeItem{
+      .id = 1,
+      .kind = IblBakeItemKind::EnvironmentLight,
+      .key = EnvironmentIblBakeKey{
+          .environmentMapUri = ResourceUri("memory://env/executor-test.hdr"),
+          .sourceHash = "sha256:executor-test",
+      },
+      .bakeRenderPathUri = ResourceUri(
+          "assets/render_paths/bake_environment_ibl.render-path.yaml"),
+  };
+}
+
+class InterfaceProbeCacheStore final : public IblBakeCacheStore {
+public:
+  [[nodiscard]] IblBakeCacheCheckResult
+  check(const IblBakeItem &) override {
+    ++checkCount;
+    return IblBakeCacheCheckResult::missing("manifest missing");
+  }
+
+  [[nodiscard]] IblBakeCacheWriteResult
+  write(const IblBakeItem &,
+        const FrameGraphExecutionResult &) override {
+    ++writeCount;
+    return IblBakeCacheWriteResult::success();
+  }
+
+  int checkCount = 0;
+  int writeCount = 0;
+};
+
+class InterfaceProbeFrameGraphExecutor final : public FrameGraphExecutor {
+public:
+  [[nodiscard]] FrameGraphExecutionResult
+  execute(const FrameGraphExecutionRequest &request) override {
+    ++executeCount;
+    sawRequest = true;
+    sawGraph = request.graph != nullptr;
+    return FrameGraphExecutionResult{.ok = true};
+  }
+
+  int executeCount = 0;
+  bool sawRequest = false;
+  bool sawGraph = false;
+};
+
+std::optional<IblBakeJobStatus>
+waitForStoppedJob(IblBakeJobService &service, BakeJobId job) {
+  for (int i = 0; i < 200; ++i) {
+    const auto status = service.status(job);
+    if (status.has_value() && !status->running) {
+      return status;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return service.status(job);
 }
 
 void expectRejects(const FrameGraphExecutionResult &result,
@@ -304,6 +367,32 @@ void testExecutorUsesCompiledPassNames() {
   expect(result.ok, "executor should accept prepared work matched by pass name");
 }
 
+void testIblBakeJobServiceUsesFrameGraphExecutorInterface() {
+  auto cache = std::make_shared<InterfaceProbeCacheStore>();
+  auto executor = std::make_shared<InterfaceProbeFrameGraphExecutor>();
+  const IblBakeItem item = makeBakeServiceItem();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "service should start with interface executor");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "service should report final status");
+  expect(status->phase == IblBakeJobPhase::Complete,
+         "service should complete through interface executor");
+  expect(cache->checkCount == 1, "service should check cache before executor");
+  expect(executor->executeCount == 1,
+         "service should invoke FrameGraphExecutor interface");
+  expect(executor->sawRequest, "executor should receive execution request");
+  expect(!executor->sawGraph,
+         "service smoke should not depend on a concrete Vulkan graph");
+  expect(cache->writeCount == 1,
+         "service should write cache after interface executor succeeds");
+}
+
 } // namespace
 
 int main() {
@@ -321,5 +410,6 @@ int main() {
   testMismatchedPreparedPassRejected();
   testMismatchedPreparedTargetRejected();
   testExecutorUsesCompiledPassNames();
+  testIblBakeJobServiceUsesFrameGraphExecutorInterface();
   return 0;
 }

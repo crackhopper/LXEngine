@@ -1,7 +1,7 @@
 #include "core/asset/material_instance.hpp"
+#include "core/scene/ibl_bake_service.hpp"
 #include "core/scene/ibl_bake_manifest.hpp"
 #include "core/scene/ibl_bake_keys.hpp"
-#include "core/scene/ibl_bake_job.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "editor/commands/command_bus.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
@@ -9,11 +9,19 @@
 #include "infra/resource_parsers/ibl_bake_manifest_parser.hpp"
 
 #include <cstdlib>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 using namespace LX_core;
@@ -40,6 +48,17 @@ bool diagnosticsContain(const std::vector<std::string> &diagnostics,
     }
   }
   return false;
+}
+
+std::string joinDiagnostics(const std::vector<std::string> &diagnostics) {
+  std::string text;
+  for (usize i = 0; i < diagnostics.size(); ++i) {
+    if (i != 0u) {
+      text += "; ";
+    }
+    text += diagnostics[i];
+  }
+  return text;
 }
 
 std::string readTextFile(const std::filesystem::path &path) {
@@ -106,6 +125,241 @@ void writeTextFile(const std::filesystem::path &path,
   out << text;
 }
 
+std::filesystem::path makeTempDir(const std::string &name) {
+  const std::filesystem::path path = repoRootForTest() / (".tmp_" + name);
+  std::filesystem::remove_all(path);
+  std::filesystem::create_directories(path);
+  return path;
+}
+
+IblBakeItem makeEnvironmentBakeItem(BakeItemId id = 1) {
+  return IblBakeItem{
+      .id = id,
+      .kind = IblBakeItemKind::EnvironmentLight,
+      .key = EnvironmentIblBakeKey{
+          .environmentMapUri = ResourceUri("memory://env/service.hdr"),
+          .sourceHash = "sha256:env-service",
+      },
+      .bakeRenderPathUri = ResourceUri(
+          "assets/render_paths/bake_environment_ibl.render-path.yaml"),
+  };
+}
+
+class TempIblBakeCacheStore final : public IblBakeCacheStore {
+public:
+  explicit TempIblBakeCacheStore(std::filesystem::path root)
+      : m_root(std::move(root)) {}
+
+  void writeValidCache(const IblBakeItem &item) {
+    const std::filesystem::path dir = itemDir(item);
+    std::filesystem::create_directories(dir);
+    writeTextFile(dir / "diffuse_sh9.yaml", "payload\n");
+    writeTextFile(dir / "specular_prefilter.ktx2", "payload\n");
+    writeTextFile(dir / "manifest.yaml",
+                  m_parser.writeEnvironmentManifest(makeManifest(item)));
+  }
+
+  void writeInvalidCache(const IblBakeItem &item,
+                         const std::string &reason) {
+    const std::filesystem::path dir = itemDir(item);
+    std::filesystem::create_directories(dir);
+    writeTextFile(dir / "diffuse_sh9.yaml", "payload\n");
+    writeTextFile(dir / "specular_prefilter.ktx2", "payload\n");
+    EnvironmentIblBakeManifest manifest = makeManifest(item);
+    manifest.sourceHash = "sha256:wrong-" + reason;
+    writeTextFile(dir / "manifest.yaml",
+                  m_parser.writeEnvironmentManifest(manifest));
+  }
+
+  void blockNextCheck() {
+    std::lock_guard lock(m_mutex);
+    m_blockCheck = true;
+    m_checkEntered = false;
+    m_releaseCheck = false;
+  }
+
+  bool waitUntilCheckEntered() {
+    std::unique_lock lock(m_mutex);
+    return m_cv.wait_for(lock, std::chrono::seconds(2),
+                         [&] { return m_checkEntered; });
+  }
+
+  void releaseBlockedCheck() {
+    {
+      std::lock_guard lock(m_mutex);
+      m_releaseCheck = true;
+    }
+    m_cv.notify_all();
+  }
+
+  [[nodiscard]] IblBakeCacheCheckResult
+  check(const IblBakeItem &item) override {
+    {
+      std::unique_lock lock(m_mutex);
+      if (m_blockCheck) {
+        m_checkEntered = true;
+        m_cv.notify_all();
+        m_cv.wait(lock, [&] { return m_releaseCheck; });
+        m_blockCheck = false;
+      }
+    }
+
+    ++checkCount;
+    const std::filesystem::path dir = itemDir(item);
+    const std::filesystem::path manifest = dir / "manifest.yaml";
+    if (!std::filesystem::exists(manifest)) {
+      return IblBakeCacheCheckResult::missing("manifest missing");
+    }
+    const auto parsed = m_parser.parseEnvironmentManifest(
+        ResourceUri(manifest.generic_string()), readTextFile(manifest));
+    if (!parsed.manifest.has_value()) {
+      return IblBakeCacheCheckResult::invalid(
+          joinDiagnostics(parsed.diagnostics));
+    }
+    const auto *key = std::get_if<EnvironmentIblBakeKey>(&item.key);
+    if (key == nullptr) {
+      return IblBakeCacheCheckResult::invalid("environment key required");
+    }
+    const auto sourceValidation = validateIblBakeManifestSource(
+        *parsed.manifest, key->environmentMapUri, key->sourceHash);
+    if (!sourceValidation.ok) {
+      return IblBakeCacheCheckResult::invalid(
+          joinDiagnostics(sourceValidation.diagnostics));
+    }
+    const auto payloadValidation =
+        m_parser.validateEnvironmentPayloadFiles(manifest, *parsed.manifest);
+    if (!payloadValidation.ok) {
+      return IblBakeCacheCheckResult::invalid(
+          joinDiagnostics(payloadValidation.diagnostics));
+    }
+    return IblBakeCacheCheckResult::hit(
+        "valid manifest and environment payloads");
+  }
+
+  [[nodiscard]] IblBakeCacheWriteResult
+  write(const IblBakeItem &item,
+        const FrameGraphExecutionResult &) override {
+    ++writeCount;
+    if (failWrites) {
+      return IblBakeCacheWriteResult::failure("cache write failed by test");
+    }
+    writeValidCache(item);
+    return IblBakeCacheWriteResult::success();
+  }
+
+  int checkCount = 0;
+  int writeCount = 0;
+  bool failWrites = false;
+
+private:
+  [[nodiscard]] EnvironmentIblBakeManifest
+  makeManifest(const IblBakeItem &item) const {
+    const auto *key = std::get_if<EnvironmentIblBakeKey>(&item.key);
+    expect(key != nullptr, "temp cache store expects environment bake item");
+    EnvironmentIblBakeManifest manifest;
+    manifest.sourceUri = key->environmentMapUri;
+    manifest.sourceHash = key->sourceHash;
+    manifest.specularResolution = 256;
+    manifest.specularMips = deriveIblBakeMipCount(manifest.specularResolution);
+    manifest.diffuseFile = "diffuse_sh9.yaml";
+    manifest.specularFile = "specular_prefilter.ktx2";
+    return manifest;
+  }
+
+  [[nodiscard]] std::filesystem::path itemDir(const IblBakeItem &item) const {
+    return m_root / ("item-" + std::to_string(item.id));
+  }
+
+  std::filesystem::path m_root;
+  LX_infra::IblBakeManifestParser m_parser;
+  std::mutex m_mutex;
+  std::condition_variable m_cv;
+  bool m_blockCheck = false;
+  bool m_checkEntered = false;
+  bool m_releaseCheck = false;
+};
+
+class FakeFrameGraphExecutor final : public FrameGraphExecutor {
+public:
+  [[nodiscard]] FrameGraphExecutionResult
+  execute(const FrameGraphExecutionRequest &) override {
+    ++executeCount;
+    if (fail) {
+      return FrameGraphExecutionResult{.ok = false,
+                                       .diagnostics = {"gpu bake failed"}};
+    }
+    return FrameGraphExecutionResult{.ok = true};
+  }
+
+  int executeCount = 0;
+  bool fail = false;
+};
+
+class FakeActivationSink final : public IblBakeActivationSink {
+public:
+  [[nodiscard]] IblBakeActivationResult
+  activate(std::span<const IblBakeItem> items) override {
+    ++activateCount;
+    activatedItemIds.clear();
+    for (const IblBakeItem &item : items) {
+      activatedItemIds.push_back(item.id);
+    }
+    if (fail) {
+      return IblBakeActivationResult::failure("activation failed by test");
+    }
+    return IblBakeActivationResult::success("activated");
+  }
+
+  int activateCount = 0;
+  bool fail = false;
+  std::vector<BakeItemId> activatedItemIds;
+};
+
+class FakeActivationDispatcher final : public IblBakeActivationDispatcher {
+public:
+  [[nodiscard]] IblBakeActivationResult
+  dispatchActivation(IblBakeActivationSink &sink,
+                     std::span<const IblBakeItem> items) override {
+    ++dispatchCount;
+    return sink.activate(items);
+  }
+
+  int dispatchCount = 0;
+};
+
+std::optional<IblBakeJobStatus>
+waitForStoppedJob(IblBakeJobService &service, BakeJobId job) {
+  for (int i = 0; i < 200; ++i) {
+    const auto status = service.status(job);
+    if (status.has_value() && !status->running) {
+      return status;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return service.status(job);
+}
+
+bool logsContain(const std::vector<IblBakeJobEvent> &events,
+                 const std::string &needle) {
+  for (const IblBakeJobEvent &event : events) {
+    if (contains(event.message, needle)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool phasesContainInOrder(const std::vector<IblBakeJobEvent> &events,
+                          const std::vector<IblBakeJobPhase> &phases) {
+  usize phaseIndex = 0;
+  for (const IblBakeJobEvent &event : events) {
+    if (phaseIndex < phases.size() && event.phase == phases[phaseIndex]) {
+      ++phaseIndex;
+    }
+  }
+  return phaseIndex == phases.size();
+}
+
 void testEventSequenceIsMonotonic() {
   IblBakeEventQueue queue;
   const IblBakeJobEvent first =
@@ -127,11 +381,22 @@ void testEventSequenceIsMonotonic() {
 }
 
 void testRunningJobGuardRejectsForce() {
-  IblBakeJobService service;
+  const std::filesystem::path root = makeTempDir("ibl_running_guard");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->blockNextCheck();
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
 
   const IblBakeStartResult start = service.start(false);
   expect(start.ok, "start should return ok");
   expect(start.job != 0, "start should return job id");
+  expect(cache->waitUntilCheckEntered(),
+         "running guard should reach blocking cache check");
 
   const IblBakeStartResult second = service.start(false);
   expect(!second.ok, "duplicate start should not start a new job");
@@ -143,17 +408,33 @@ void testRunningJobGuardRejectsForce() {
   expect(forced.rejected, "force while running should report rejection");
   expect(contains(forced.message, "already running"),
          "force rejection should mention running job");
+  const IblBakeCancelResult cancelled = service.cancel(start.job);
+  expect(cancelled.ok, "running guard cleanup should cancel job");
+  cache->releaseBlockedCheck();
+  (void)waitForStoppedJob(service, start.job);
+  std::filesystem::remove_all(root);
 }
 
 void testBakeCommandsUseJobService() {
+  const std::filesystem::path root = makeTempDir("ibl_command_service");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->blockNextCheck();
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
   CommandBus bus;
-  IblBakeJobService service;
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
   registerBakeCommands(bus, service);
 
   const CommandResult start = bus.dispatch("bake ibl start");
   expect(start.ok, "bake ibl start should succeed");
   expect(contains(start.message, "started bake job 1"),
          "start command should return job id");
+  expect(cache->waitUntilCheckEntered(),
+         "command service should reach blocking cache check");
 
   const CommandResult forced = bus.dispatch("bake ibl start --force");
   expect(!forced.ok, "force start while running should fail");
@@ -176,6 +457,270 @@ void testBakeCommandsUseJobService() {
   expect(cancel.ok, "cancel command should succeed");
   expect(contains(cancel.message, "cancel pending"),
          "cancel command should report cancel pending");
+  cache->releaseBlockedCheck();
+  (void)waitForStoppedJob(service, 1);
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceCacheHitSkipsGpuBakeAndActivates() {
+  const std::filesystem::path root = makeTempDir("ibl_service_cache_hit");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeValidCache(item);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  auto activation = std::make_shared<FakeActivationSink>();
+  auto dispatcher = std::make_shared<FakeActivationDispatcher>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+      .activation = activation,
+      .activationDispatcher = dispatcher,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "cache-hit bake start should succeed");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "cache-hit job should report final status");
+  expect(status->phase == IblBakeJobPhase::Complete,
+         "cache-hit job should complete");
+  expect(executor->executeCount == 0, "cache hit should skip GPU bake");
+  expect(cache->writeCount == 0, "cache hit should not rewrite cache");
+  expect(dispatcher->dispatchCount == 1,
+         "cache hit should dispatch activation");
+  expect(activation->activateCount == 1, "cache hit should activate payloads");
+  expect(activation->activatedItemIds.size() == 1 &&
+             activation->activatedItemIds.front() == item.id,
+         "cache hit should activate cached item");
+  expect(logsContain(service.logs(start.job, 0), "cache hit"),
+         "cache-hit logs should record cache hit");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceInvalidCacheRebakesAndWritesCache() {
+  const std::filesystem::path root = makeTempDir("ibl_service_invalid_cache");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeInvalidCache(item, "manifest schema mismatch");
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  auto activation = std::make_shared<FakeActivationSink>();
+  auto dispatcher = std::make_shared<FakeActivationDispatcher>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+      .activation = activation,
+      .activationDispatcher = dispatcher,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "invalid-cache bake start should succeed");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "invalid-cache job should report final status");
+  expect(status->phase == IblBakeJobPhase::Complete,
+         "invalid-cache job should complete after rebake");
+  expect(executor->executeCount == 1,
+         "invalid cache should execute graph bake");
+  expect(cache->writeCount == 1, "invalid cache should be replaced");
+  const std::vector<IblBakeJobEvent> logs = service.logs(start.job, 0);
+  expect(logsContain(logs, "invalid cache: source.hash"),
+         "invalid cache log should include exact invalid reason");
+  expect(phasesContainInOrder(
+             logs, {IblBakeJobPhase::CacheCheck, IblBakeJobPhase::Filter,
+                    IblBakeJobPhase::WriteCache, IblBakeJobPhase::Activate,
+                    IblBakeJobPhase::Complete}),
+         "rebake job should move through cache-check, filter, write-cache, "
+         "activate, complete");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceActivationRequiresDispatcher() {
+  const std::filesystem::path root =
+      makeTempDir("ibl_service_activation_dispatcher_required");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeValidCache(item);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  auto activation = std::make_shared<FakeActivationSink>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+      .activation = activation,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "activation dispatcher test should start");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(),
+         "activation dispatcher test should report final status");
+  expect(status->phase == IblBakeJobPhase::ActivationFailed,
+         "activation sink without dispatcher should fail activation");
+  expect(activation->activateCount == 0,
+         "service must not call activation sink directly from worker");
+  expect(logsContain(service.logs(start.job, 0), "activation dispatcher"),
+         "activation failure should name missing dispatcher");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceForceIgnoresValidCacheWhenIdle() {
+  const std::filesystem::path root = makeTempDir("ibl_service_force");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeValidCache(item);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult start = service.startBake(true);
+  expect(start.ok, "force bake should start when idle");
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "force job should report final status");
+  expect(status->phase == IblBakeJobPhase::Complete,
+         "force job should complete");
+  expect(executor->executeCount == 1, "force should execute graph bake");
+  expect(cache->writeCount == 1, "force should rewrite cache");
+  expect(logsContain(service.logs(start.job, 0), "force rebake"),
+         "force job should log cache bypass");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceRestartsAfterCompletedWorker() {
+  const std::filesystem::path root = makeTempDir("ibl_service_restart");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->writeValidCache(item);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult first = service.startBake(false);
+  expect(first.ok, "first restart test job should start");
+  const auto firstStatus = waitForStoppedJob(service, first.job);
+  expect(firstStatus.has_value() &&
+             firstStatus->phase == IblBakeJobPhase::Complete,
+         "first restart test job should complete");
+
+  const IblBakeStartResult second = service.startBake(false);
+  expect(second.ok, "second restart test job should start after completion");
+  expect(second.job != first.job, "second restart test job should get new id");
+  const auto secondStatus = waitForStoppedJob(service, second.job);
+  expect(secondStatus.has_value() &&
+             secondStatus->phase == IblBakeJobPhase::Complete,
+         "second restart test job should complete");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceRejectsDuplicateRunningJob() {
+  const std::filesystem::path root =
+      makeTempDir("ibl_service_duplicate_running");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->blockNextCheck();
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "first blocking bake start should succeed");
+  expect(cache->waitUntilCheckEntered(),
+         "blocking cache check should be reached");
+
+  const IblBakeStartResult duplicate = service.startBake(false);
+  expect(!duplicate.ok, "duplicate start should not create another job");
+  expect(duplicate.alreadyRunning,
+         "duplicate start should report already running");
+  expect(duplicate.job == start.job,
+         "duplicate start should return running job id");
+
+  const IblBakeStartResult forced = service.startBake(true);
+  expect(!forced.ok, "force start should be rejected while running");
+  expect(forced.rejected, "force duplicate should report rejection");
+  expect(contains(forced.message, "already running"),
+         "force duplicate should explain running job");
+
+  cache->releaseBlockedCheck();
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "blocking job should finish after release");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceCancelStopsBeforeGpuBake() {
+  const std::filesystem::path root = makeTempDir("ibl_service_cancel");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  cache->blockNextCheck();
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult start = service.startBake(false);
+  expect(start.ok, "cancel test bake start should succeed");
+  expect(cache->waitUntilCheckEntered(),
+         "cancel test should reach blocking cache check");
+  const IblBakeCancelResult cancelled = service.cancel(start.job);
+  expect(cancelled.ok, "running bake should accept cancellation");
+  cache->releaseBlockedCheck();
+
+  const auto status = waitForStoppedJob(service, start.job);
+  expect(status.has_value(), "cancelled job should report final status");
+  expect(status->phase == IblBakeJobPhase::CancelPending,
+         "cancelled job should remain in cancel-pending phase");
+  expect(status->cancelRequested,
+         "cancelled job status should record cancellation");
+  expect(executor->executeCount == 0,
+         "cancel before filter should skip GPU bake");
+  expect(logsContain(service.logs(start.job, 0), "cancel"),
+         "cancelled job logs should include cancellation");
+  std::filesystem::remove_all(root);
+}
+
+void testIblBakeServiceExecutorFailureCanRetry() {
+  const std::filesystem::path root = makeTempDir("ibl_service_retry");
+  const IblBakeItem item = makeEnvironmentBakeItem();
+  auto cache = std::make_shared<TempIblBakeCacheStore>(root);
+  auto executor = std::make_shared<FakeFrameGraphExecutor>();
+  executor->fail = true;
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {item},
+      .cacheStore = cache,
+      .executor = executor,
+  });
+
+  const IblBakeStartResult failedStart = service.startBake(false);
+  expect(failedStart.ok, "failing bake should start");
+  const auto failed = waitForStoppedJob(service, failedStart.job);
+  expect(failed.has_value(), "failed job should report final status");
+  expect(failed->phase == IblBakeJobPhase::Failed,
+         "executor failure should fail job");
+  expect(executor->executeCount == 1,
+         "executor failure should execute graph once");
+  expect(cache->writeCount == 0, "failed executor should not write cache");
+  expect(logsContain(service.logs(failedStart.job, 0), "gpu bake failed"),
+         "failure logs should include executor diagnostic");
+
+  executor->fail = false;
+  const IblBakeStartResult retryStart = service.startBake(false);
+  expect(retryStart.ok, "retry after failure should start");
+  const auto retried = waitForStoppedJob(service, retryStart.job);
+  expect(retried.has_value(), "retry job should report final status");
+  expect(retried->phase == IblBakeJobPhase::Complete,
+         "retry should complete after executor recovers");
+  expect(executor->executeCount == 2, "retry should execute graph again");
+  expect(cache->writeCount == 1, "successful retry should write cache");
+  std::filesystem::remove_all(root);
 }
 
 void testSceneReferencedAssetsWithoutBakeMarkersProduceNoItems() {
@@ -686,6 +1231,14 @@ int main() {
   testEventSequenceIsMonotonic();
   testRunningJobGuardRejectsForce();
   testBakeCommandsUseJobService();
+  testIblBakeServiceCacheHitSkipsGpuBakeAndActivates();
+  testIblBakeServiceInvalidCacheRebakesAndWritesCache();
+  testIblBakeServiceActivationRequiresDispatcher();
+  testIblBakeServiceForceIgnoresValidCacheWhenIdle();
+  testIblBakeServiceRestartsAfterCompletedWorker();
+  testIblBakeServiceRejectsDuplicateRunningJob();
+  testIblBakeServiceCancelStopsBeforeGpuBake();
+  testIblBakeServiceExecutorFailureCanRetry();
   testSceneReferencedAssetsWithoutBakeMarkersProduceNoItems();
   testStandardPbrMaterialBakeItemsAreDeduplicated();
   testReleasedObjectMarkerDoesNotLeakToReusedSlot();

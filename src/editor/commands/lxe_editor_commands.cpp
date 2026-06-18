@@ -1,6 +1,6 @@
 #include "editor/commands/lxe_editor_commands.hpp"
 
-#include "core/scene/ibl_bake_job.hpp"
+#include "core/scene/ibl_bake_service.hpp"
 #include "editor/commands/lxe_editor_command_helpers.hpp"
 #include "editor/commands/register_lxe_editor_commands.hpp"
 
