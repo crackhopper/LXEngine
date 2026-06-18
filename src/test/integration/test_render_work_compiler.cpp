@@ -1648,6 +1648,49 @@ void testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred(
   expectSurfaceLightingDesc(deferredDescs.front(), "DeferredLighting");
 }
 
+void testRenderWorkCompilerRejectsSurfaceLightingUboWithoutFeatureRead() {
+  const ResourceUri featureUri("memory://features/surface_lighting");
+  const ResourceUri shaderUri("memory://shaders/surface_without_read");
+  auto shader = makeSurfaceLightingShader(81);
+
+  Scene scene("SurfaceLightingMissingReadCompilerScene");
+  [[maybe_unused]] const ShaderHandle shaderHandle =
+      scene.resources().registerShaderResource(
+          shaderUri, std::vector<ResourceUri>{shaderUri}, shader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          featureUri, makeCompilerSurfaceLightingFeature());
+
+  FramePass pass;
+  pass.name = StringID("Forward");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = shaderUri;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(
+      makeSurfaceLightingPassFacts(pass, shader));
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "surfaceLighting missing-read pass should produce one desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "SurfaceLightingUBO reflection should require "
+         "feature.surfaceLighting read");
+  EXPECT(hasDiagnosticMessage(descs.front(), "feature.surfaceLighting"),
+         "diagnostic should name missing feature.surfaceLighting read");
+}
+
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
   auto renderable =
       std::make_shared<MateriallessRenderable>("materialless_node");
@@ -3061,6 +3104,7 @@ int main() {
   testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection();
   testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization();
   testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred();
+  testRenderWorkCompilerRejectsSurfaceLightingUboWithoutFeatureRead();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();

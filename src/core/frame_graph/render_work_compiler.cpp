@@ -63,11 +63,10 @@ struct ComputePreparationFacts final {
   return StringID("render-input:unsupported:shader=" + pass.shaderUri.string());
 }
 
-[[nodiscard]] PipelineKey makePipelineKey(const FramePass &pass,
-                                          StringID pipelineVariantKey,
-                                          const std::vector<
-                                              ShaderSpecializationConstant>
-                                              &specializationConstants = {}) {
+[[nodiscard]] PipelineKey
+makePipelineKey(const FramePass &pass, StringID pipelineVariantKey,
+                const std::vector<ShaderSpecializationConstant>
+                    &specializationConstants = {}) {
   return PipelineKey::build(pipelineVariantKey,
                             getFramePassRenderPathNodeSignature(pass),
                             specializationConstants);
@@ -93,8 +92,9 @@ struct ComputePreparationFacts final {
   return shaderUriId(pass);
 }
 
-[[nodiscard]] StringID shaderVariantKeyFor(const FramePass &pass,
-                                           const ComputePreparationFacts &facts) {
+[[nodiscard]] StringID
+shaderVariantKeyFor(const FramePass &pass,
+                    const ComputePreparationFacts &facts) {
   if (facts.shaderInfo) {
     return facts.shaderProgram.getPipelineSignature();
   }
@@ -149,8 +149,7 @@ topologyFromResource(const GpuResourceRef &resource) {
   if (!resource.isValid()) {
     return std::nullopt;
   }
-  const auto *indexBuffer =
-      dynamic_cast<const IndexBuffer *>(&resource.get());
+  const auto *indexBuffer = dynamic_cast<const IndexBuffer *>(&resource.get());
   if (indexBuffer == nullptr) {
     return std::nullopt;
   }
@@ -182,8 +181,7 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
 }
 
 [[nodiscard]] PipelineBuildDesc makePipelineBuildDesc(
-    const FramePass &pass, PipelineKey key,
-    const DrawPreparationFacts &facts,
+    const FramePass &pass, PipelineKey key, const DrawPreparationFacts &facts,
     std::vector<ShaderSpecializationConstant> specializationConstants) {
   std::vector<ShaderStageCode> stages;
   std::vector<ShaderResourceBinding> bindings;
@@ -194,8 +192,8 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
 
   return PipelineBuildDesc::graphics(
       key, shaderVariantKeyFor(pass, facts), pass.target, std::move(stages),
-      std::move(bindings), facts.vertexLayout, facts.renderState, facts.topology,
-      pass.renderingMode, pass.attachments,
+      std::move(bindings), facts.vertexLayout, facts.renderState,
+      facts.topology, pass.renderingMode, pass.attachments,
       std::move(specializationConstants));
 }
 
@@ -209,9 +207,9 @@ filterVertexLayoutToShaderInputs(const VertexLayout &layout,
     stages = facts.shaderInfo->getAllStages();
     bindings = facts.shaderInfo->getReflectionBindings();
   }
-  return PipelineBuildDesc::compute(
-      key, shaderVariantKeyFor(pass, facts), std::move(stages),
-      std::move(bindings), std::move(specializationConstants));
+  return PipelineBuildDesc::compute(key, shaderVariantKeyFor(pass, facts),
+                                    std::move(stages), std::move(bindings),
+                                    std::move(specializationConstants));
 }
 
 [[nodiscard]] std::optional<std::string>
@@ -389,8 +387,8 @@ void applyPassPreparationFacts(
     facts.topology = pass.input.geometry->topology;
   }
 
-  DescriptorResourceList sceneDescriptorResources = buildSceneDescriptorResources(
-      SceneDescriptorResourceContext{
+  DescriptorResourceList sceneDescriptorResources =
+      buildSceneDescriptorResources(SceneDescriptorResourceContext{
           .scene = context.realtimeScene(),
           .renderable = data,
           .pass = pass.name,
@@ -422,9 +420,9 @@ collectComputePreparationFacts(const FramePass &pass,
       facts.shaderInfo = job.offlineShader;
       facts.shaderProgram.shaderName = job.offlineShader->getShaderName();
       facts.shaderProgram.shader = job.offlineShader;
-      facts.pipelineVariantKey = StringID(
-          "offline-primary-ray:" +
-          std::to_string(job.offlineShader->getProgramHash()));
+      facts.pipelineVariantKey =
+          StringID("offline-primary-ray:" +
+                   std::to_string(job.offlineShader->getProgramHash()));
     }
     offline::OfflineSceneStorageResources storageResources =
         offline::buildOfflineSceneStorageResources(job);
@@ -443,9 +441,8 @@ void fillPreparedFacts(const FramePass &pass,
       collectPassFeatureSpecializationConstants(pass, context);
   desc.pipelineKey =
       makePipelineKey(pass, facts.pipelineVariantKey, specializationConstants);
-  desc.pipelineBuildDesc =
-      makePipelineBuildDesc(pass, desc.pipelineKey, facts,
-                            specializationConstants);
+  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts,
+                                                 specializationConstants);
   desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
   desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
   desc.bindingPlan.descriptors = facts.descriptorResources;
@@ -474,9 +471,8 @@ void fillPreparedFacts(const FramePass &pass,
       collectPassFeatureSpecializationConstants(pass, context);
   desc.pipelineKey =
       makePipelineKey(pass, facts.pipelineVariantKey, specializationConstants);
-  desc.pipelineBuildDesc =
-      makePipelineBuildDesc(pass, desc.pipelineKey, facts,
-                            specializationConstants);
+  desc.pipelineBuildDesc = makePipelineBuildDesc(pass, desc.pipelineKey, facts,
+                                                 specializationConstants);
   desc.shaderVariantKey = desc.pipelineBuildDesc.shaderVariantKey;
   desc.reflectionIdentity = reflectionIdentityFor(facts.shaderInfo);
   desc.bindingPlan.descriptors = facts.descriptorResources;
@@ -527,22 +523,20 @@ descriptorBindingName(const DescriptorResourceRef &descriptor) {
   return descriptor.resource().getBindingName();
 }
 
-[[nodiscard]] bool isValidTextureArrayDescriptor(
-    const DescriptorResourceRef &descriptor) {
+[[nodiscard]] bool
+isValidTextureArrayDescriptor(const DescriptorResourceRef &descriptor) {
   if (!descriptor.isTextureArray() || descriptor.getBindingName().id == 0 ||
       descriptor.textures().empty()) {
     return false;
   }
-  return std::all_of(descriptor.textures().begin(),
-                     descriptor.textures().end(),
-                     [](const TextureSamplerRef &texture) {
-                       return texture.isValid();
-                     });
+  return std::all_of(
+      descriptor.textures().begin(), descriptor.textures().end(),
+      [](const TextureSamplerRef &texture) { return texture.isValid(); });
 }
 
-[[nodiscard]] bool descriptorMatchesBindingType(
-    const DescriptorResourceRef &descriptor,
-    const ShaderResourceBinding &binding) {
+[[nodiscard]] bool
+descriptorMatchesBindingType(const DescriptorResourceRef &descriptor,
+                             const ShaderResourceBinding &binding) {
   switch (binding.type) {
   case ShaderPropertyType::UniformBuffer:
     return descriptor.isResource() && descriptor.resource().isValid() &&
@@ -579,8 +573,8 @@ descriptorBindingName(const DescriptorResourceRef &descriptor) {
   return resourceName.rfind("bake.", 0) == 0;
 }
 
-[[nodiscard]] bool isFrameGraphPlaceholderResource(
-    const DescriptorResourceRef &descriptor) {
+[[nodiscard]] bool
+isFrameGraphPlaceholderResource(const DescriptorResourceRef &descriptor) {
   if (!descriptor.isResource() || !descriptor.resource().isValid()) {
     return false;
   }
@@ -612,9 +606,8 @@ void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
                  "' requires a named typed payload binding");
       continue;
     }
-    const DescriptorResourceRef *descriptor =
-        findDescriptorForBinding(desc.bindingPlan.descriptors,
-                                 read.bindingName);
+    const DescriptorResourceRef *descriptor = findDescriptorForBinding(
+        desc.bindingPlan.descriptors, read.bindingName);
     if (descriptor == nullptr || !descriptor->isResource() ||
         !descriptor->resource().isValid() ||
         isFrameGraphPlaceholderResource(*descriptor)) {
@@ -625,8 +618,7 @@ void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
   }
 }
 
-void validateBakeOutputPayloads(const FramePass &pass,
-                                const RenderInput &input,
+void validateBakeOutputPayloads(const FramePass &pass, const RenderInput &input,
                                 RenderInputDesc &desc) {
   if (pass.payloads.empty()) {
     return;
@@ -643,11 +635,11 @@ void validateBakeOutputPayloads(const FramePass &pass,
 }
 
 void validateBindingPlanCompleteness(RenderInputDesc &desc) {
-  for (const ShaderResourceBinding &binding :
-       desc.pipelineBuildDesc.bindings) {
+  for (const ShaderResourceBinding &binding : desc.pipelineBuildDesc.bindings) {
     const StringID bindingName(binding.name);
     const auto descriptorIt = std::find_if(
-        desc.bindingPlan.descriptors.begin(), desc.bindingPlan.descriptors.end(),
+        desc.bindingPlan.descriptors.begin(),
+        desc.bindingPlan.descriptors.end(),
         [bindingName](const DescriptorResourceRef &descriptor) {
           const auto descriptorName = descriptorBindingName(descriptor);
           return descriptorName.has_value() && *descriptorName == bindingName;
@@ -670,19 +662,20 @@ void validateBindingPlanCompleteness(RenderInputDesc &desc) {
 
 [[nodiscard]] bool passUsesFeature(const FramePass &pass,
                                    std::string_view featureSource) {
-  return std::any_of(pass.reads.begin(), pass.reads.end(),
-                     [&](const FrameGraphRead &read) {
-                       return GlobalStringTable::get().toDebugString(
-                                  read.resource) == featureSource;
-                     });
+  return std::any_of(
+      pass.reads.begin(), pass.reads.end(), [&](const FrameGraphRead &read) {
+        return GlobalStringTable::get().toDebugString(read.resource) ==
+               featureSource;
+      });
 }
 
 [[nodiscard]] const ShaderResourceBinding *
 findReflectedBinding(const std::vector<ShaderResourceBinding> &bindings,
                      std::string_view name) {
-  const auto it = std::find_if(
-      bindings.begin(), bindings.end(),
-      [&](const ShaderResourceBinding &binding) { return binding.name == name; });
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [&](const ShaderResourceBinding &binding) {
+                                 return binding.name == name;
+                               });
   return it == bindings.end() ? nullptr : &*it;
 }
 
@@ -758,9 +751,8 @@ void validateEnvironmentLightingFeatureBindings(
     }
   }
 
-  const ShaderResourceBinding *ubo =
-      findReflectedBinding(desc.pipelineBuildDesc.bindings,
-                           "EnvironmentLightingUBO");
+  const ShaderResourceBinding *ubo = findReflectedBinding(
+      desc.pipelineBuildDesc.bindings, "EnvironmentLightingUBO");
   if (ubo == nullptr) {
     return;
   }
@@ -782,6 +774,19 @@ void validateEnvironmentLightingFeatureBindings(
   }
 }
 
+void validateSurfaceLightingFeatureRead(const FramePass &pass,
+                                        RenderInputDesc &desc) {
+  if (findReflectedBinding(desc.pipelineBuildDesc.bindings,
+                           "SurfaceLightingUBO") == nullptr) {
+    return;
+  }
+  if (passUsesFeature(pass, "feature.surfaceLighting")) {
+    return;
+  }
+  reject(desc, RenderInputDiagnosticCode::MissingResource,
+         "reflected SurfaceLightingUBO requires feature.surfaceLighting read");
+}
+
 [[nodiscard]] bool hasDiagnosticCode(const RenderInputDesc &desc,
                                      RenderInputDiagnosticCode code) {
   return std::any_of(desc.diagnostics.begin(), desc.diagnostics.end(),
@@ -791,9 +796,10 @@ void validateEnvironmentLightingFeatureBindings(
 }
 
 [[nodiscard]] bool hasFatalPipelineDiagnostic(const RenderInputDesc &desc) {
-  return hasDiagnosticCode(desc,
-                           RenderInputDiagnosticCode::MissingShaderReflection) ||
-         hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts);
+  return hasDiagnosticCode(
+             desc, RenderInputDiagnosticCode::MissingShaderReflection) ||
+         hasDiagnosticCode(desc,
+                           RenderInputDiagnosticCode::MissingPipelineFacts);
 }
 
 void rejectFatalPipelineFacts(RenderInputDesc &desc) {
@@ -1258,6 +1264,9 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     }
     if (desc.accepted()) {
       validateEnvironmentLightingFeatureBindings(pass, context, desc);
+    }
+    if (desc.accepted()) {
+      validateSurfaceLightingFeatureRead(pass, desc);
     }
     if (desc.accepted()) {
       validateBakeSourcePayloads(pass, desc);

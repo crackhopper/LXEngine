@@ -1308,6 +1308,56 @@ parameters:
          "diagnostic should name wrong numeric value");
 }
 
+void testRenderFeatureRequiredBufferUsesUriNotValue() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-required-buffer", R"(
+schema: lxe.render-feature.v1
+name: BufferFeature
+feature: bufferFeature
+level: shader
+shader:
+  uri: features/buffer_feature
+parameters:
+  sampleBuffer:
+    kind: buffer
+    uri: assets/buffers/sample.bin
+    binding: SampleBuffer
+    required: true
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "required buffer parameter with uri should parse without value");
+  EXPECT(parsed.diagnostics.empty(),
+         "required buffer parameter with uri should not emit diagnostics");
+  if (parsed.renderFeature.has_value()) {
+    const auto &parameter = parsed.renderFeature->parameters.at("sampleBuffer");
+    EXPECT(parameter.uri == LX_core::ResourceUri("assets/buffers/sample.bin"),
+           "required buffer uri should be retained");
+    EXPECT(parameter.value.empty(),
+           "required buffer parameter should not need scalar value");
+  }
+
+  const auto missingUri =
+      parser.parse("memory://feature-required-buffer-missing-uri", R"(
+schema: lxe.render-feature.v1
+name: BufferFeature
+feature: bufferFeature
+level: shader
+shader:
+  uri: features/buffer_feature
+parameters:
+  sampleBuffer:
+    kind: buffer
+    binding: SampleBuffer
+    required: true
+)");
+
+  EXPECT(!missingUri.renderFeature.has_value(),
+         "required buffer parameter without uri should fail");
+  EXPECT(hasDiagnosticContaining(missingUri, "parameters.sampleBuffer.uri"),
+         "diagnostic should name missing buffer uri");
+}
+
 void testTextureResourceParserUsesDeclaredContentFormat() {
   LX_infra::TextureResourceParser parser;
   LX_core::SceneResourceTable colorTable;
@@ -1539,6 +1589,81 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
            "default deferred graph should run lighting after GBuffer");
     EXPECT(compiled.getPasses()[3].name == LX_core::StringID("DebugOverlay"),
            "default deferred graph should run debug overlay last");
+  }
+}
+
+void testRenderPathGraphAcceptsSurfaceLightingFeatureSources() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://surface-lighting-shared-graph", R"(
+schema: lxe.render-path-graph.v1
+name: SurfaceLightingSharedGraph
+renderPath: Forward
+features:
+  surfaceLighting:
+    uri: assets/effects/surface_lighting.render-feature.yaml
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: fullscreen
+    shader: render_paths/Forward/pbr
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+    sources: [feature.surfaceLighting]
+    targets: [hdr.color]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+  - id: DeferredLighting
+    stage: raster
+    dispatch: fullscreen
+    shader: render_paths/Deferred/deferred_lighting
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: swapchain.color
+          format: BGRA8Srgb
+          samples: 1
+          layers: 1
+    sources: [hdr.color, feature.surfaceLighting]
+    targets: [swapchain.color]
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "render path graph should accept surfaceLighting feature sources");
+  EXPECT(parsed.diagnostics.empty(),
+         "surfaceLighting graph sources should not emit unknown resource "
+         "diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
+    return;
+  }
+  const auto &graph = *parsed.renderPathGraph;
+  EXPECT(graph.features.size() == 1 &&
+             graph.features.front().slot == "surfaceLighting",
+         "graph should retain one surfaceLighting feature dependency");
+  EXPECT(graph.passes.size() == 2,
+         "graph should retain Forward and DeferredLighting passes");
+  if (graph.passes.size() == 2) {
+    for (const auto &pass : graph.passes) {
+      EXPECT(std::find(pass.sources.begin(), pass.sources.end(),
+                       "feature.surfaceLighting") != pass.sources.end(),
+             pass.id + " should consume feature.surfaceLighting");
+    }
   }
 }
 
@@ -3223,10 +3348,12 @@ int main() {
   testRenderFeatureAcceptsVolatilePassUniformField();
   testRenderFeatureRejectsMissingRequiredValue();
   testRenderFeatureRejectsWrongBoolAndNumericValueTypes();
+  testRenderFeatureRequiredBufferUsesUriNotValue();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
+  testRenderPathGraphAcceptsSurfaceLightingFeatureSources();
   testBakeRenderPathGraphAssetsParseAndCompile();
   testBakeRenderPathGraphAssetsResolveShaderPayloads();
   testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget();

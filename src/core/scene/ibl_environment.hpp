@@ -6,6 +6,7 @@
 #include "core/scene/ibl_bake_manifest.hpp"
 #include "core/scene/scene_resource_handles.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -113,6 +114,13 @@ struct alignas(16) SurfaceLightingData final : public IGpuResource {
 };
 
 using SurfaceLightingDataUniquePtr = std::unique_ptr<SurfaceLightingData>;
+
+static_assert(offsetof(SurfaceLightingData::Param, enableIblLighting) == 0);
+static_assert(offsetof(SurfaceLightingData::Param, diffuseIblIntensity) == 4);
+static_assert(offsetof(SurfaceLightingData::Param, specularIblIntensity) == 8);
+static_assert(offsetof(SurfaceLightingData::Param, environmentIblReady) == 12);
+static_assert(offsetof(SurfaceLightingData::Param, standardPbrIblReady) == 16);
+static_assert(sizeof(SurfaceLightingData::Param) == 32);
 
 struct alignas(16) ToneMappingData final : public IGpuResource {
   struct Param {

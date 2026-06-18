@@ -431,8 +431,7 @@ void validateRenderFeatureSchema(ParsedRenderFeatureResource &result,
       feature.shader.has_value() && !feature.shader->uri.empty();
   for (const auto &[name, parameter] : feature.parameters) {
     const std::string field = "parameters." + name;
-    if (parameter.kind == "textureCube" || parameter.kind == "texture2D" ||
-        parameter.kind == "texture3D") {
+    if (kindAllowsUri(parameter.kind)) {
       if (parameter.required && parameter.uri.empty()) {
         addDiagnostic(result, uri, field + ".uri", "missing required field");
       }

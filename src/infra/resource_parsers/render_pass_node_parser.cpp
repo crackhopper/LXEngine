@@ -2,8 +2,8 @@
 
 #include <yaml-cpp/yaml.h>
 
-#include <array>
 #include <algorithm>
+#include <array>
 #include <string>
 
 namespace LX_infra {
@@ -180,6 +180,7 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "feature.skybox",
       "feature.toneMapping",
       "feature.environmentLighting",
+      "feature.surfaceLighting",
       "feature.bloom",
       "bloom.threshold",
       "bloom.blur_h",
@@ -817,15 +818,13 @@ void validateAttachmentUsageAgainstTargets(
     const std::vector<std::string> &targets, RenderPassNodeParseResult &result,
     const std::string &fieldPrefix) {
   for (const auto &attachment : attachments) {
-    const bool inTargets =
-        std::find(targets.begin(), targets.end(), attachment.target) !=
-        targets.end();
+    const bool inTargets = std::find(targets.begin(), targets.end(),
+                                     attachment.target) != targets.end();
     if (attachment.attachmentUsage ==
             LX_core::RenderPathAttachmentUsage::DepthAttachmentReadOnly &&
         inTargets) {
       addDiagnostic(result,
-                    fieldPrefix + ".rendering.attachments." +
-                        attachment.target,
+                    fieldPrefix + ".rendering.attachments." + attachment.target,
                     "read-only depth attachment must not be listed in "
                     "targets");
     }
@@ -847,8 +846,9 @@ void validateResourceVocabulary(const std::vector<std::string> &resources,
   return name.rfind("bake.", 0) == 0;
 }
 
-[[nodiscard]] bool passUsesBakeResources(const std::vector<std::string> &sources,
-                                         const std::vector<std::string> &targets) {
+[[nodiscard]] bool
+passUsesBakeResources(const std::vector<std::string> &sources,
+                      const std::vector<std::string> &targets) {
   return std::any_of(sources.begin(), sources.end(), isBakeResourceName) ||
          std::any_of(targets.begin(), targets.end(), isBakeResourceName);
 }
@@ -862,8 +862,8 @@ void validateResourceVocabulary(const std::vector<std::string> &resources,
   return kind == "cubemap" || kind == "sh9" || kind == "texture2d";
 }
 
-[[nodiscard]] bool bakePayloadMatchesTarget(
-    const LX_core::RenderPathPayloadContract &payload) {
+[[nodiscard]] bool
+bakePayloadMatchesTarget(const LX_core::RenderPathPayloadContract &payload) {
   if (payload.target == "bake.environment.cubemap" ||
       payload.target == "bake.environment.specular_prefilter") {
     return payload.format == "RGBA16Float" && payload.kind == "cubemap";
@@ -877,11 +877,9 @@ void validateResourceVocabulary(const std::vector<std::string> &resources,
   return true;
 }
 
-std::vector<LX_core::RenderPathPayloadContract>
-parsePayloadContracts(const YAML::Node &node,
-                      const std::vector<std::string> &targets,
-                      RenderPassNodeParseResult &result,
-                      const std::string &field) {
+std::vector<LX_core::RenderPathPayloadContract> parsePayloadContracts(
+    const YAML::Node &node, const std::vector<std::string> &targets,
+    RenderPassNodeParseResult &result, const std::string &field) {
   std::vector<LX_core::RenderPathPayloadContract> payloads;
   if (!node) {
     return payloads;
@@ -942,8 +940,7 @@ parsePayloadContracts(const YAML::Node &node,
       valid = false;
     }
     if (!isKnownBakePayloadFormat(payload.format)) {
-      addDiagnostic(result, prefix + ".format",
-                    "unknown bake payload format");
+      addDiagnostic(result, prefix + ".format", "unknown bake payload format");
       valid = false;
     }
     if (!isKnownBakePayloadKind(payload.kind)) {
@@ -1041,8 +1038,9 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   const YAML::Node rendering = node["rendering"];
   std::vector<LX_core::RenderPathAttachmentContract> attachments;
   if (rendering) {
-    attachments = parseAttachmentContracts(
-        rendering["attachments"], result, fieldPrefix + ".rendering.attachments");
+    attachments =
+        parseAttachmentContracts(rendering["attachments"], result,
+                                 fieldPrefix + ".rendering.attachments");
   }
   validateAttachmentUsageAgainstTargets(attachments, targets, result,
                                         fieldPrefix);
