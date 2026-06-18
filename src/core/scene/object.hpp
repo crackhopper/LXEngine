@@ -99,7 +99,11 @@ public:
     componentRef.attachTo(*this);
     m_components.push_back(std::move(component));
     if (affectsRenderableStructure) {
-      rebuildValidatedCache();
+      if (getAttachedScene()) {
+        emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+      } else {
+        rebuildValidatedCache();
+      }
     }
     return std::ref(componentRef);
   }
@@ -139,10 +143,18 @@ public:
     }
 
     const bool affectsRenderableStructure = (*it)->affectsRenderableStructure();
+    const bool attachedToScene = static_cast<bool>(getAttachedScene());
+    if (affectsRenderableStructure && attachedToScene) {
+      releaseComponentResourcesBeforeRemoval(typeId);
+    }
     (*it)->detachFromOwner();
     m_components.erase(it);
     if (affectsRenderableStructure) {
-      rebuildValidatedCache();
+      if (attachedToScene) {
+        emitRuntimeNodeChanged(SceneNodeAspect::RenderableStructure);
+      } else {
+        rebuildValidatedCache();
+      }
     }
     return true;
   }
@@ -206,6 +218,7 @@ private:
   void removeFromParentChildrenList();
   void pruneExpiredChildren();
   void rebuildValidatedCache();
+  void releaseComponentResourcesBeforeRemoval(ComponentTypeId typeId);
   void clearComponents();
   void setParentInternal(const SharedPtr &parent, bool emitHierarchyEvent);
   void clearParentInternal(bool emitHierarchyEvent);

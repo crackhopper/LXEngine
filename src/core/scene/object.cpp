@@ -687,6 +687,74 @@ void SceneNode::clearComponents() {
   m_components.clear();
 }
 
+void SceneNode::releaseComponentResourcesBeforeRemoval(
+    const ComponentTypeId typeId) {
+  const auto scene = getAttachedScene();
+  if (!scene) {
+    return;
+  }
+  auto &resources = scene->resources();
+
+  if (typeId == componentTypeId<MeshComponent>()) {
+    auto meshComponent = getComponent<MeshComponent>();
+    if (!meshComponent.has_value()) {
+      return;
+    }
+    const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+    if (objectHandle.isValid()) {
+      resources.release(objectHandle);
+      meshComponent->get().setObjectHandle({});
+    }
+    const GeometryStorageHandle geometryHandle =
+        meshComponent->get().getGeometryStorageHandle();
+    if (geometryHandle.isValid()) {
+      resources.release(geometryHandle);
+      meshComponent->get().setGeometryStorageHandle({});
+    }
+    const MeshHandle meshHandle = meshComponent->get().getMeshHandle();
+    if (meshHandle.isValid()) {
+      resources.release(meshHandle);
+      meshComponent->get().setMeshHandle({});
+    }
+    return;
+  }
+
+  if (typeId == componentTypeId<MaterialComponent>()) {
+    if (auto meshComponent = getComponent<MeshComponent>()) {
+      const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+      if (objectHandle.isValid()) {
+        resources.release(objectHandle);
+        meshComponent->get().setObjectHandle({});
+      }
+    }
+    auto materialComponent = getComponent<MaterialComponent>();
+    if (!materialComponent.has_value()) {
+      return;
+    }
+    materialComponent->get().forEachMaterialHandle(
+        [&resources](const std::string &, MaterialHandle handle) {
+          if (handle.isValid()) {
+            resources.release(handle);
+          }
+        });
+    materialComponent->get().setMaterialHandle({});
+    return;
+  }
+
+  if (typeId == componentTypeId<SkeletonComponent>()) {
+    auto skeletonComponent = getComponent<SkeletonComponent>();
+    if (!skeletonComponent.has_value()) {
+      return;
+    }
+    const SkeletonHandle skeletonHandle =
+        skeletonComponent->get().getSkeletonHandle();
+    if (skeletonHandle.isValid()) {
+      resources.release(skeletonHandle);
+      skeletonComponent->get().setSkeletonHandle({});
+    }
+  }
+}
+
 void SceneNode::attachToScene(const std::weak_ptr<Scene> &scene) {
   m_scene = scene;
 }

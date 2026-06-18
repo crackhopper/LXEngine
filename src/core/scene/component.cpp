@@ -57,15 +57,7 @@ void IComponent::notifyOwnerRuntimeAspectChange(const SceneNodeAspect aspect) co
     return;
   }
 
-  if (const auto scene = ownerNode->get().getAttachedScene()) {
-    scene->events().emit(SceneEvent{
-        .domain = SceneEventDomain::Runtime,
-        .type = SceneEventType::SceneNodeChanged,
-        .path = ownerNode->get().getPath(),
-        .stableNodeName = ownerNode->get().getNodeName(),
-        .aspects = {aspect},
-    });
-  }
+  ownerNode->get().emitRuntimeNodeChanged(aspect);
 }
 
 } // namespace LX_core

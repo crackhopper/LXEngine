@@ -2160,14 +2160,91 @@ void testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges() {
   cameraNode->setTranslation(Vec3f{0.0f, 1.0f, 5.0f});
   EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
          "scene runtime node generation should not advance on camera transform changes");
+  const u64 beforeCameraPropertyVolatile =
+      scene->resources().volatileUploadGeneration();
+  const u64 beforeCameraPropertySelection =
+      scene->resources().descriptorResourceSelectionGeneration();
   camera->get().setFovY(60.0f);
   EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
          "scene runtime node generation should not advance on camera property changes");
+  EXPECT(scene->resources().volatileUploadGeneration() ==
+             beforeCameraPropertyVolatile + 1,
+         "camera property changes should dirty volatile camera upload data");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeCameraPropertySelection,
+         "camera property changes should not dirty descriptor resource selection");
 
   const u64 afterValueOnlyChanges = scene->runtimeNodeGeneration();
   scene->removeRenderable(child);
   EXPECT(scene->runtimeNodeGeneration() == afterValueOnlyChanges + 1,
          "scene runtime node generation should advance on removal");
+}
+
+void testAttachedRenderableComponentLifecycleSyncsResources() {
+  auto scene = Scene::create("component_lifecycle");
+  auto node = SceneNode::create("attached_mesh_component");
+  scene->addRenderable(node);
+
+  const u64 beforeAddRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeAddResource = scene->resources().resourceGeneration();
+  auto mesh = Mesh::create(
+      VertexBuffer<VertexPos>::create(
+          std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}}),
+      IndexBuffer::create({0, 1, 2}),
+      BoundingBox{{0, 0, 0}, {1, 1, 0}});
+  auto meshComponent = node->addComponent<MeshComponent>(mesh);
+  EXPECT(meshComponent.has_value(),
+         "attached node should accept renderable structure component");
+  EXPECT(scene->runtimeNodeGeneration() == beforeAddRuntime + 1,
+         "adding attached renderable structure should advance runtime node generation");
+  EXPECT(scene->resources().resourceGeneration() > beforeAddResource,
+         "adding attached mesh structure should sync scene mesh resources");
+  EXPECT(meshComponent->get().getMeshHandle().isValid(),
+         "attached mesh add should register a mesh resource");
+
+  const u64 beforeRemoveRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeRemoveResource = scene->resources().resourceGeneration();
+  const bool removed = node->removeComponent<MeshComponent>();
+  EXPECT(removed, "attached mesh component should be removable");
+  EXPECT(scene->runtimeNodeGeneration() == beforeRemoveRuntime + 1,
+         "removing attached renderable structure should advance runtime node generation");
+  EXPECT(scene->resources().resourceGeneration() > beforeRemoveResource,
+         "removing attached mesh structure should release scene mesh resources");
+  EXPECT(scene->resources().meshCount() == 0,
+         "removed attached mesh component should not leave a live mesh resource");
+  EXPECT(scene->resources().geometryStorageCount() == 0,
+         "removed attached mesh component should not leave live geometry storage");
+}
+
+void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
+  auto scene = Scene::create("light_dirty");
+  auto lightNode = SceneNode::create("point_light");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<PointLight>());
+  auto light = scene->getPointLight(*lightNode);
+  EXPECT(light.has_value(), "attached point light should be resolvable");
+  if (!light.has_value()) {
+    return;
+  }
+
+  const u64 beforeRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
+  light->get().setIntensity(2.0f);
+
+  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
+         "light property changes should not advance runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeSelection + 1,
+         "light property changes should refresh prepared descriptor resource selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeDescriptor + 1,
+         "light property changes should refresh descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
+         "point light aggregate updates should not use dirty-host-buffer-only generation");
 }
 
 } // namespace
@@ -2207,5 +2284,7 @@ int main() {
   testRenderWorkCompilerRejectsMissingEnvironmentUboMember();
   testSceneResourceTableTracksSplitRenderGenerations();
   testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges();
+  testAttachedRenderableComponentLifecycleSyncsResources();
+  testLightPropertyChangesDirtyDescriptorSelectionOnly();
   return g_failures == 0 ? 0 : 1;
 }

@@ -657,6 +657,10 @@ void SceneResourceTable::markBakedResourceDirty() {
   markDescriptorResourceSelectionDirty();
 }
 
+void SceneResourceTable::markLightRuntimeDirty() {
+  markDescriptorResourceSelectionDirty();
+}
+
 void SceneResourceTable::registerPassFeatureSpecializationData(
     const RenderFeature &feature, const IShader &shader) {
   if (feature.level != RenderFeatureLevel::Pass) {

@@ -96,6 +96,7 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
     return;
   }
 
+  scene->resources().markLightRuntimeDirty();
   scene->events().emit(SceneEvent{
       .domain = SceneEventDomain::Runtime,
       .type = SceneEventType::SceneNodeChanged,
