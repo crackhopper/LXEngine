@@ -3,6 +3,8 @@
 #include "core/frame_graph/render_work_compiler.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
+#include "core/asset/texture.hpp"
+#include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/scene.hpp"
 
@@ -366,6 +368,52 @@ bool hasResourceDependencyBindingName(const RenderInputDesc &desc,
                        return resource.isValid() &&
                               resource.getBindingName() == bindingName;
                      });
+}
+
+MeshSharedPtr makeSceneTriangleMesh(float extent = 1.0f) {
+  return Mesh::create(
+      VertexBuffer<VertexPos>::create(std::vector<VertexPos>{
+          {{0.0f, 0.0f, 0.0f}},
+          {{extent, 0.0f, 0.0f}},
+          {{0.0f, extent, 0.0f}},
+      }),
+      IndexBuffer::create({0, 1, 2}),
+      BoundingBox{{0.0f, 0.0f, 0.0f}, {extent, extent, 0.0f}});
+}
+
+MaterialInstanceSharedPtr makeSceneMaterial(const std::string &name) {
+  return MaterialInstance::create(MaterialTemplate::create(name));
+}
+
+MaterialInstanceSharedPtr makeTexturedSceneMaterial(const std::string &name) {
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{makeTextureBinding("BaseColorMap")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 91}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 92}},
+      });
+  ShaderProgramSet shaderProgram;
+  shaderProgram.shaderName = name + "_shader";
+  shaderProgram.shader = shader;
+
+  MaterialPassDefinition pass;
+  pass.shaderProgram = shaderProgram;
+  auto materialTemplate = MaterialTemplate::create(name);
+  materialTemplate->setPassDefinition(Pass_Forward, pass);
+  materialTemplate->rebuildMaterialInterface();
+
+  auto material = MaterialInstance::create(materialTemplate);
+  TextureDesc textureDesc;
+  textureDesc.width = 1;
+  textureDesc.height = 1;
+  textureDesc.format = TextureFormat::RGBA8;
+  auto texture = std::make_shared<Texture>(
+      textureDesc, std::vector<u8>{255, 255, 255, 255});
+  material->setTexture(StringID("BaseColorMap"),
+                       std::make_shared<CombinedTextureSampler>(texture));
+  return material;
 }
 
 void expectAcceptedDescHasBackendPipelineFacts(const RenderInputDesc &desc,
@@ -2216,6 +2264,96 @@ void testAttachedRenderableComponentLifecycleSyncsResources() {
          "removed attached mesh component should not leave live geometry storage");
 }
 
+void testAttachedMeshReplacementReleasesOldSceneResources() {
+  auto scene = Scene::create("mesh_replacement");
+  auto node = SceneNode::create("mesh_replace_node");
+  auto meshComponent = node->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto materialComponent =
+      node->addComponent<MaterialComponent>(makeSceneMaterial("matte"));
+  EXPECT(meshComponent.has_value(), "test node should have a mesh component");
+  EXPECT(materialComponent.has_value(),
+         "test node should have a material component");
+  scene->addRenderable(node);
+
+  const MeshHandle oldMesh = meshComponent->get().getMeshHandle();
+  const GeometryStorageHandle oldGeometry =
+      meshComponent->get().getGeometryStorageHandle();
+  const ObjectHandle oldObject = meshComponent->get().getObjectHandle();
+  EXPECT(oldMesh.isValid(), "initial mesh should be registered");
+  EXPECT(oldGeometry.isValid(), "initial geometry should be registered");
+  EXPECT(oldObject.isValid(), "initial object should be registered");
+  EXPECT(scene->resources().meshCount() == 1,
+         "initial scene should own one mesh");
+  EXPECT(scene->resources().geometryStorageCount() == 1,
+         "initial scene should own one geometry storage");
+  EXPECT(scene->resources().objectCount() == 1,
+         "initial scene should own one object");
+
+  meshComponent->get().setMesh(makeSceneTriangleMesh(2.0f));
+
+  EXPECT(!scene->resources().isAlive(oldMesh),
+         "mesh replacement should release the old mesh handle");
+  EXPECT(!scene->resources().isAlive(oldGeometry),
+         "mesh replacement should release the old geometry handle");
+  EXPECT(!scene->resources().isAlive(oldObject),
+         "mesh replacement should release the old object handle");
+  EXPECT(scene->resources().meshCount() == 1,
+         "mesh replacement should leave exactly one live mesh");
+  EXPECT(scene->resources().geometryStorageCount() == 1,
+         "mesh replacement should leave exactly one live geometry storage");
+  EXPECT(scene->resources().objectCount() == 1,
+         "mesh replacement should leave exactly one live object");
+  EXPECT(meshComponent->get().getMeshHandle().isValid(),
+         "mesh replacement should register a new mesh handle");
+  EXPECT(meshComponent->get().getObjectHandle().isValid(),
+         "mesh replacement should register a replacement object handle");
+}
+
+void testAttachedMaterialReplacementReleasesOldMaterialTextures() {
+  auto scene = Scene::create("material_replacement");
+  const usize baselineTextureCount = scene->resources().textureCount();
+  auto node = SceneNode::create("material_replace_node");
+  auto meshComponent = node->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto materialComponent = node->addComponent<MaterialComponent>(
+      makeTexturedSceneMaterial("first_textured"));
+  EXPECT(meshComponent.has_value(), "test node should have a mesh component");
+  EXPECT(materialComponent.has_value(),
+         "test node should have a material component");
+  scene->addRenderable(node);
+
+  const MaterialHandle oldMaterial =
+      materialComponent->get().getMaterialHandle();
+  const auto oldMaterialRef = scene->resources().resolve(oldMaterial);
+  EXPECT(oldMaterial.isValid(), "initial material should be registered");
+  EXPECT(oldMaterialRef.has_value(), "initial material should resolve");
+  const TextureHandle oldTexture =
+      oldMaterialRef.has_value()
+          ? oldMaterialRef->get().getTextureHandle(StringID("BaseColorMap"))
+          : TextureHandle{};
+  EXPECT(oldTexture.isValid(), "initial material texture should be registered");
+  EXPECT(scene->resources().materialCount() == 1,
+         "initial scene should own one material");
+  EXPECT(scene->resources().textureCount() == baselineTextureCount + 1,
+         "initial scene should own one material texture");
+  EXPECT(scene->resources().objectCount() == 1,
+         "initial scene should own one material-bound object");
+
+  materialComponent->get().setMaterialInstance(
+      makeTexturedSceneMaterial("second_textured"));
+
+  EXPECT(!scene->resources().isAlive(oldMaterial),
+         "material replacement should release the old material handle");
+  EXPECT(!scene->resources().isAlive(oldTexture),
+         "material replacement should release old table-owned material texture");
+  EXPECT(scene->resources().materialCount() == 1,
+         "material replacement should leave exactly one live material");
+  EXPECT(scene->resources().textureCount() == baselineTextureCount + 1,
+         "material replacement should leave exactly one live material texture");
+  EXPECT(scene->resources().objectCount() == 1,
+         "material replacement should update the existing object instead of "
+         "leaking another object");
+}
+
 void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
   auto scene = Scene::create("light_dirty");
   auto lightNode = SceneNode::create("point_light");
@@ -2245,6 +2383,59 @@ void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
          "light property changes should refresh descriptor upload plans");
   EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
          "point light aggregate updates should not use dirty-host-buffer-only generation");
+}
+
+void testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection() {
+  auto scene = Scene::create("directional_cascade_dirty");
+  auto cameraNode = SceneNode::create("camera");
+  auto camera = cameraNode->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera component should attach to test node");
+  scene->addCamera(cameraNode);
+
+  auto lightNode = SceneNode::create("directional_light");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<DirectionalLight>());
+  auto light = scene->getDirectionalLight(*lightNode);
+  EXPECT(light.has_value(), "attached directional light should resolve");
+  if (!light.has_value() || !camera.has_value()) {
+    return;
+  }
+
+  light->get().updateShadowCascadesForCamera(camera->get());
+  const u64 beforeRepeatSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeRepeatDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  light->get().updateShadowCascadesForCamera(camera->get());
+
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeRepeatSelection,
+         "steady directional cascade refresh should not rebuild render inputs");
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeRepeatDescriptor,
+         "steady directional cascade refresh should not rebuild descriptor upload plans");
+}
+
+void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
+  auto scene = Scene::create("light_transform_dirty");
+  auto lightNode = SceneNode::create("point_light_transform");
+  scene->addRenderable(lightNode);
+  scene->attachLight(lightNode, std::make_shared<PointLight>());
+
+  const u64 beforeRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor =
+      scene->resources().descriptorUploadGeneration();
+  lightNode->setTranslation(Vec3f{2.0f, 3.0f, 4.0f});
+
+  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
+         "light transform should not advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
+             beforeSelection + 1,
+         "light transform should refresh aggregate light descriptor selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor + 1,
+         "light transform should refresh descriptor upload plans");
 }
 
 } // namespace
@@ -2285,6 +2476,10 @@ int main() {
   testSceneResourceTableTracksSplitRenderGenerations();
   testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges();
   testAttachedRenderableComponentLifecycleSyncsResources();
+  testAttachedMeshReplacementReleasesOldSceneResources();
+  testAttachedMaterialReplacementReleasesOldMaterialTextures();
   testLightPropertyChangesDirtyDescriptorSelectionOnly();
+  testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection();
+  testLightNodeTransformDirtiesDescriptorSelectionOnly();
   return g_failures == 0 ? 0 : 1;
 }

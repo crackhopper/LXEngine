@@ -12,7 +12,6 @@ MaterialComponent::~MaterialComponent() {
 void MaterialComponent::setMaterialInstance(MaterialInstanceSharedPtr material) {
   unregisterPassStateListener();
   m_pendingMaterial = std::move(material);
-  m_materialHandle = {};
   registerPassStateListener();
   notifyOwnerStructuralChange();
 }

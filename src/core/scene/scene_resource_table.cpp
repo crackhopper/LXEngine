@@ -1194,6 +1194,7 @@ SceneResourceTable::registerMaterial(MaterialInstanceUniquePtr material) {
         const TextureHandle textureHandle =
             registerTexture(std::move(tableTexture));
         material->setTextureHandle(bindingName, textureHandle);
+        material->addOwnedTextureHandle(textureHandle);
       });
   auto handle =
       add<MaterialInstance, MaterialHandle>(m_materials, std::move(material));
@@ -1727,7 +1728,17 @@ void SceneResourceTable::release(MaterialHandle handle) {
   if (!isAlive(handle)) {
     return;
   }
+  std::vector<TextureHandle> ownedTextures;
+  m_materials[handle.index].resource->forEachOwnedTextureHandle(
+      [&ownedTextures](TextureHandle texture) {
+        if (texture.isValid()) {
+          ownedTextures.push_back(texture);
+        }
+      });
   release<MaterialInstance, MaterialHandle>(m_materials, handle);
+  for (const TextureHandle texture : ownedTextures) {
+    release(texture);
+  }
   advanceResourceGeneration();
   markDescriptorUploadDirty();
 }

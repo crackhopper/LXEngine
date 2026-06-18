@@ -367,7 +367,6 @@ void DirectionalLight::updateShadowCascadesForCamera(
 
   setActiveShadowCascade(0);
   m_ubo->setDirty();
-  emitLightPropertyChanged();
 }
 
 void DirectionalLight::restoreShadowCascadeStateFrom(

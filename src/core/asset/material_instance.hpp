@@ -117,6 +117,9 @@ public:
   [[nodiscard]] TextureHandle getTextureHandle(StringID bindingName) const;
   [[nodiscard]] CombinedTextureSamplerSharedPtr
   getTexture(StringID bindingName) const;
+  void addOwnedTextureHandle(TextureHandle handle);
+  void forEachOwnedTextureHandle(
+      const std::function<void(TextureHandle)> &callback) const;
   void forEachPendingTextureBinding(
       const std::function<void(
           StringID, const CombinedTextureSamplerSharedPtr &)> &callback) const;
@@ -206,6 +209,7 @@ private:
       m_pendingTextureBindingsByName;
   std::unordered_map<StringID, TextureHandle, StringID::Hash>
       m_textureHandlesByName;
+  std::vector<TextureHandle> m_ownedTextureHandles;
   // Structural pass participation state. This changes scene validation,
   // unlike ordinary parameter writes.
   std::unordered_set<StringID, StringID::Hash> m_enabledPasses;

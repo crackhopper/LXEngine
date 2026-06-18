@@ -294,6 +294,28 @@ MaterialInstance::getTexture(StringID bindingName) const {
   return it->second;
 }
 
+void MaterialInstance::addOwnedTextureHandle(TextureHandle handle) {
+  if (!handle.isValid()) {
+    return;
+  }
+  const auto exists =
+      std::find(m_ownedTextureHandles.begin(), m_ownedTextureHandles.end(),
+                handle);
+  if (exists == m_ownedTextureHandles.end()) {
+    m_ownedTextureHandles.push_back(handle);
+  }
+}
+
+void MaterialInstance::forEachOwnedTextureHandle(
+    const std::function<void(TextureHandle)> &callback) const {
+  if (!callback) {
+    return;
+  }
+  for (const TextureHandle handle : m_ownedTextureHandles) {
+    callback(handle);
+  }
+}
+
 void MaterialInstance::forEachPendingTextureBinding(
     const std::function<void(StringID, const CombinedTextureSamplerSharedPtr &)>
         &callback) const {

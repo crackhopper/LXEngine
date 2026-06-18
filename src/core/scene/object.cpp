@@ -873,6 +873,9 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
              aspect == SceneNodeAspect::Visibility ||
              aspect == SceneNodeAspect::CameraProperties) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
+    if (aspect == SceneNodeAspect::Transform && scene->getLight(*this)) {
+      scene->resources().markLightRuntimeDirty();
+    }
   }
 
   scene->events().emit(SceneEvent{
