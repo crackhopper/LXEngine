@@ -281,6 +281,7 @@ private:
   void registerNodeResources(SceneNode &node);
   void releaseNodeResources(SceneNode &node);
   void syncNodeResourceState(SceneNode &node) const;
+  void syncNodeResourceSubtreeRuntimeState(SceneNode &node) const;
   std::string m_sceneName;
   SceneNodeSharedPtr m_rootNode;
   std::vector<IRenderableSharedPtr> m_renderables;

@@ -871,15 +871,14 @@ void SceneNode::emitRuntimeNodeChanged(const SceneNodeAspect aspect) const {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
     const_cast<SceneNode &>(*this).rebuildValidatedCache();
   } else if (aspect == SceneNodeAspect::Transform ||
-             aspect == SceneNodeAspect::Visibility ||
+             aspect == SceneNodeAspect::Hierarchy) {
+    scene->syncNodeResourceSubtreeRuntimeState(const_cast<SceneNode &>(*this));
+  } else if (aspect == SceneNodeAspect::Visibility ||
              aspect == SceneNodeAspect::CameraProperties ||
              aspect == SceneNodeAspect::CameraSelection) {
     scene->syncNodeResourceState(const_cast<SceneNode &>(*this));
     if (aspect == SceneNodeAspect::CameraSelection) {
       scene->resources().markCameraSelectionDirty();
-    }
-    if (aspect == SceneNodeAspect::Transform && scene->getLight(*this)) {
-      scene->resources().markLightRuntimeDirty();
     }
   }
 

@@ -9,6 +9,7 @@
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -368,6 +369,10 @@ bool hasResourceDependencyBindingName(const RenderInputDesc &desc,
                        return resource.isValid() &&
                               resource.getBindingName() == bindingName;
                      });
+}
+
+bool approxEqual(float lhs, float rhs, float epsilon = 0.0001f) {
+  return std::abs(lhs - rhs) <= epsilon;
 }
 
 MeshSharedPtr makeSceneTriangleMesh(float extent = 1.0f) {
@@ -2495,6 +2500,144 @@ void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
          "light transform should refresh descriptor upload plans");
 }
 
+void testParentTransformSyncsDescendantRuntimeResources() {
+  auto scene = Scene::create("parent_transform_dirty");
+  auto parent = SceneNode::create("parent");
+  scene->addRenderable(parent);
+
+  auto meshChild = SceneNode::create("mesh_child");
+  auto meshComponent =
+      meshChild->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto materialComponent =
+      meshChild->addComponent<MaterialComponent>(makeSceneMaterial("matte"));
+  EXPECT(meshComponent.has_value(), "mesh child should have mesh component");
+  EXPECT(materialComponent.has_value(),
+         "mesh child should have material component");
+  meshChild->setParent(parent);
+  scene->addRenderable(meshChild);
+
+  auto cameraChild = SceneNode::create("camera_child");
+  auto camera = cameraChild->addComponent<CameraComponent>();
+  EXPECT(camera.has_value(), "camera child should have camera component");
+  cameraChild->setParent(parent);
+  scene->addCamera(cameraChild);
+
+  auto lightChild = SceneNode::create("light_child");
+  lightChild->setParent(parent);
+  scene->addRenderable(lightChild);
+  scene->attachLight(lightChild, std::make_shared<PointLight>());
+
+  const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+  EXPECT(objectHandle.isValid(), "mesh child should have an object handle");
+
+  const u64 beforeRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
+  const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
+  parent->setTranslation(Vec3f{4.0f, 5.0f, 6.0f});
+
+  const auto object = scene->resources().resolve(objectHandle);
+  EXPECT(object.has_value(), "mesh child object should still resolve");
+  const Vec3f objectTranslation =
+      object.has_value()
+          ? Transform::fromMat4(object->get().objectToWorld).translation
+          : Vec3f{};
+
+  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
+         "parent transform should not advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
+             beforeSelection,
+         "parent transform should refresh descendant object/light descriptor selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
+         "parent transform should refresh descendant descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() > beforeVolatile,
+         "parent transform should refresh descendant camera UBO data");
+  EXPECT(approxEqual(objectTranslation.x, 4.0f) &&
+             approxEqual(objectTranslation.y, 5.0f) &&
+             approxEqual(objectTranslation.z, 6.0f),
+         "parent transform should update descendant object world transform");
+}
+
+void testHierarchyChangeSyncsRuntimeResources() {
+  auto scene = Scene::create("hierarchy_dirty");
+  auto firstParent = SceneNode::create("first_parent");
+  firstParent->setTranslation(Vec3f{1.0f, 0.0f, 0.0f});
+  auto secondParent = SceneNode::create("second_parent");
+  secondParent->setTranslation(Vec3f{8.0f, 0.0f, 0.0f});
+  scene->addRenderable(firstParent);
+  scene->addRenderable(secondParent);
+
+  auto child = SceneNode::create("hierarchy_child");
+  auto meshComponent = child->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto materialComponent =
+      child->addComponent<MaterialComponent>(makeSceneMaterial("matte"));
+  EXPECT(meshComponent.has_value(), "hierarchy child should have mesh component");
+  EXPECT(materialComponent.has_value(),
+         "hierarchy child should have material component");
+  child->setParent(firstParent);
+  scene->addRenderable(child);
+
+  const ObjectHandle objectHandle = meshComponent->get().getObjectHandle();
+  EXPECT(objectHandle.isValid(), "hierarchy child should have object handle");
+
+  const u64 beforeRuntime = scene->runtimeNodeGeneration();
+  const u64 beforeSelection =
+      scene->resources().descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
+  child->setParent(secondParent);
+
+  const auto object = scene->resources().resolve(objectHandle);
+  EXPECT(object.has_value(), "hierarchy child object should still resolve");
+  const Vec3f objectTranslation =
+      object.has_value()
+          ? Transform::fromMat4(object->get().objectToWorld).translation
+          : Vec3f{};
+
+  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime + 1,
+         "hierarchy changes should advance structural runtime node generation");
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
+             beforeSelection,
+         "hierarchy changes should refresh descendant object descriptor selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
+         "hierarchy changes should refresh descriptor upload plans");
+  EXPECT(approxEqual(objectTranslation.x, 8.0f) &&
+             approxEqual(objectTranslation.y, 0.0f) &&
+             approxEqual(objectTranslation.z, 0.0f),
+         "hierarchy changes should update object world transform");
+}
+
+void testParentTransformDoesNotRegisterUnattachedDescendants() {
+  auto scene = Scene::create("unattached_descendant");
+  auto parent = SceneNode::create("parent");
+  scene->addRenderable(parent);
+
+  auto unattachedChild = SceneNode::create("unattached_child");
+  auto meshComponent =
+      unattachedChild->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto materialComponent = unattachedChild->addComponent<MaterialComponent>(
+      makeSceneMaterial("unattached"));
+  EXPECT(meshComponent.has_value(),
+         "unattached child should have mesh component");
+  EXPECT(materialComponent.has_value(),
+         "unattached child should have material component");
+  unattachedChild->setParent(parent);
+
+  const usize beforeMeshCount = scene->resources().meshCount();
+  const usize beforeMaterialCount = scene->resources().materialCount();
+  const usize beforeObjectCount = scene->resources().objectCount();
+  parent->setTranslation(Vec3f{1.0f, 2.0f, 3.0f});
+
+  EXPECT(scene->resources().meshCount() == beforeMeshCount,
+         "parent transform should not register unattached child mesh resources");
+  EXPECT(scene->resources().materialCount() == beforeMaterialCount,
+         "parent transform should not register unattached child materials");
+  EXPECT(scene->resources().objectCount() == beforeObjectCount,
+         "parent transform should not register unattached child objects");
+  EXPECT(!meshComponent->get().getMeshHandle().isValid(),
+         "unattached child should not receive a scene mesh handle");
+}
+
 } // namespace
 
 int main() {
@@ -2539,5 +2682,8 @@ int main() {
   testLightPropertyChangesDirtyDescriptorSelectionOnly();
   testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection();
   testLightNodeTransformDirtiesDescriptorSelectionOnly();
+  testParentTransformSyncsDescendantRuntimeResources();
+  testHierarchyChangeSyncsRuntimeResources();
+  testParentTransformDoesNotRegisterUnattachedDescendants();
   return g_failures == 0 ? 0 : 1;
 }

@@ -1223,4 +1223,20 @@ void Scene::syncNodeResourceState(SceneNode &node) const {
   }
 }
 
+void Scene::syncNodeResourceSubtreeRuntimeState(SceneNode &node) const {
+  const auto attachedScene = node.getAttachedScene();
+  if (!attachedScene || attachedScene.get() != this) {
+    return;
+  }
+  syncNodeResourceState(node);
+  if (getLight(node)) {
+    m_resources.markLightRuntimeDirty();
+  }
+  for (const auto &child : node.getChildren()) {
+    if (child) {
+      syncNodeResourceSubtreeRuntimeState(*child);
+    }
+  }
+}
+
 } // namespace LX_core
