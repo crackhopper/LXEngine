@@ -1,10 +1,12 @@
 #include "core/asset/material_instance.hpp"
+#include "core/scene/ibl_bake_manifest.hpp"
 #include "core/scene/ibl_bake_keys.hpp"
 #include "core/scene/ibl_bake_job.hpp"
 #include "core/scene/scene_resource_table.hpp"
 #include "editor/commands/command_bus.hpp"
 #include "editor/commands/lxe_editor_commands.hpp"
 #include "editor/runtime/scene_runtime.hpp"
+#include "infra/resource_parsers/ibl_bake_manifest_parser.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -28,6 +30,26 @@ void expect(bool condition, const char *message) {
 
 bool contains(const std::string &text, const std::string &needle) {
   return text.find(needle) != std::string::npos;
+}
+
+bool diagnosticsContain(const std::vector<std::string> &diagnostics,
+                        const std::string &needle) {
+  for (const std::string &diagnostic : diagnostics) {
+    if (contains(diagnostic, needle)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string readTextFile(const std::filesystem::path &path) {
+  std::ifstream in(path);
+  if (!in) {
+    std::cerr << "[FAIL] unable to read " << path << '\n';
+    std::exit(1);
+  }
+  return std::string(std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>());
 }
 
 MaterialInstanceUniquePtr makeBakeMaterial(const std::string &type,
@@ -365,6 +387,299 @@ void testUnsupportedMaterialTypeProducesWarning() {
          "unsupported material warning should explain type rejection");
 }
 
+void testIblManifestDerivesMipCount() {
+  expect(deriveIblBakeMipCount(256) == 9,
+         "256px IBL bake should derive 9 mip levels");
+}
+
+void testEnvironmentManifestRejectsUnknownField() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseEnvironmentManifest(
+      ResourceUri("memory://env-manifest"), R"(
+schema: lxe.environment-ibl-bake.v1
+source:
+  uri: memory://env/source.hdr
+  hash: sha256:env
+bake:
+  diffuse:
+    basis: sh9
+  specular:
+    format: RGBA16Float
+    resolution: 256
+    mips: 9
+    roughness: alpha-squared
+    layout: cubemap
+    faces: 6
+outputs:
+  diffuse:
+    file: diffuse_sh9.yaml
+  specular:
+    file: specular_prefilter.ktx2
+unexpected: true
+)");
+
+  expect(!parsed.manifest.has_value(),
+         "unknown environment manifest field should reject manifest");
+  expect(diagnosticsContain(parsed.diagnostics, "unexpected"),
+         "unknown environment manifest diagnostic should name field");
+}
+
+void testEnvironmentManifestRejectsWrongMipCount() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseEnvironmentManifest(
+      ResourceUri("memory://env-manifest"), R"(
+schema: lxe.environment-ibl-bake.v1
+source:
+  uri: memory://env/source.hdr
+  hash: sha256:env
+bake:
+  diffuse:
+    basis: sh9
+  specular:
+    format: RGBA16Float
+    resolution: 256
+    mips: 8
+    roughness: alpha-squared
+    layout: cubemap
+    faces: 6
+outputs:
+  diffuse:
+    file: diffuse_sh9.yaml
+  specular:
+    file: specular_prefilter.ktx2
+)");
+
+  expect(!parsed.manifest.has_value(),
+         "wrong environment manifest mip count should reject manifest");
+  expect(diagnosticsContain(parsed.diagnostics, "bake.specular.mips"),
+         "wrong mip diagnostic should name bake.specular.mips");
+}
+
+void testSh9PayloadRejectsEightCoefficients() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseSh9IrradiancePayload(
+      ResourceUri("memory://diffuse-sh9"), R"(
+schema: lxe.sh9.v1
+space: world
+basis: real-sh
+order: 2
+layout: rgb-interleaved
+coefficients:
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+)");
+
+  expect(!parsed.payload.has_value(),
+         "SH9 payload with eight coefficients should reject");
+  expect(diagnosticsContain(parsed.diagnostics,
+                            "coefficients must contain 9"),
+         "SH9 coefficient diagnostic should explain required count");
+}
+
+void testSh9PayloadRejectsWrongLayout() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseSh9IrradiancePayload(
+      ResourceUri("memory://diffuse-sh9"), R"(
+schema: lxe.sh9.v1
+space: world
+basis: real-sh
+order: 2
+layout: bgr-interleaved
+coefficients:
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+)");
+
+  expect(!parsed.payload.has_value(),
+         "SH9 payload with wrong layout should reject");
+  expect(diagnosticsContain(parsed.diagnostics, "layout"),
+         "SH9 wrong layout diagnostic should name layout");
+}
+
+void testSh9PayloadRejectsNonNumericCoefficient() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseSh9IrradiancePayload(
+      ResourceUri("memory://diffuse-sh9"), R"(
+schema: lxe.sh9.v1
+space: world
+basis: real-sh
+order: 2
+layout: rgb-interleaved
+coefficients:
+  - [not-a-number, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+  - [0.0, 0.0, 0.0]
+)");
+
+  expect(!parsed.payload.has_value(),
+         "SH9 payload with non-numeric coefficient should reject");
+  expect(diagnosticsContain(parsed.diagnostics, "coefficients[0]"),
+         "SH9 non-numeric coefficient diagnostic should name coefficient");
+}
+
+void testMaterialManifestRejectsWrongBrdfSize() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseMaterialManifest(
+      ResourceUri("memory://material-manifest"), R"(
+schema: lxe.material-ibl-bake.v1
+material:
+  uri: memory://materials/standard-pbr.material
+  type: standard-pbr
+  hash: sha256:material
+bake:
+  brdf:
+    model: ggx-smith
+    format: RG16Float
+    size: 128
+outputs:
+  brdf:
+    file: brdf_lut.ktx2
+)");
+
+  expect(!parsed.manifest.has_value(),
+         "wrong material BRDF size should reject manifest");
+  expect(diagnosticsContain(parsed.diagnostics, "brdf.size"),
+         "wrong BRDF size diagnostic should name brdf.size");
+}
+
+void testEnvironmentManifestRejectsWrongSourceHashAgainstExpectedKey() {
+  EnvironmentIblBakeManifest manifest;
+  manifest.sourceUri = ResourceUri("memory://env/source.hdr");
+  manifest.sourceHash = "sha256:old";
+  manifest.diffuseFile = "diffuse_sh9.yaml";
+  manifest.specularFile = "specular_prefilter.ktx2";
+
+  const auto result = validateIblBakeManifestSource(
+      manifest, ResourceUri("memory://env/source.hdr"), "sha256:new");
+
+  expect(!result.ok, "environment manifest wrong source hash should reject");
+  expect(diagnosticsContain(result.diagnostics, "source.hash"),
+         "wrong environment source hash diagnostic should name source.hash");
+}
+
+void testEnvironmentManifestRejectsMissingPayloadFiles() {
+  LX_infra::IblBakeManifestParser parser;
+  const auto parsed = parser.parseEnvironmentManifest(
+      ResourceUri("memory://env-manifest"), R"(
+schema: lxe.environment-ibl-bake.v1
+source:
+  uri: memory://env/source.hdr
+  hash: sha256:env
+bake:
+  diffuse:
+    basis: sh9
+  specular:
+    format: RGBA16Float
+    resolution: 256
+    mips: 9
+    roughness: alpha-squared
+    layout: cubemap
+    faces: 6
+outputs:
+  diffuse:
+    file: missing_diffuse_sh9.yaml
+  specular:
+    file: missing_specular_prefilter.ktx2
+)");
+  expect(parsed.manifest.has_value(),
+         "manifest with referenced payload files should parse before payload "
+         "existence validation");
+
+  const auto result = parser.validateEnvironmentPayloadFiles(
+      repoRootForTest() / ".tmp_env_manifest.yaml", *parsed.manifest);
+
+  expect(!result.ok,
+         "environment manifest with missing payload files should reject");
+  expect(diagnosticsContain(result.diagnostics, "outputs.diffuse.file"),
+         "missing diffuse payload diagnostic should name output field");
+}
+
+void testAtomicEnvironmentManifestCommitKeepsOldFileOnInvalidManifest() {
+  const std::filesystem::path path =
+      repoRootForTest() / ".tmp_invalid_ibl_manifest.yaml";
+  writeTextFile(path, "old-manifest");
+
+  LX_infra::IblBakeManifestParser parser;
+  EnvironmentIblBakeManifest manifest;
+  manifest.sourceUri = ResourceUri("memory://env/source.hdr");
+  manifest.sourceHash = "sha256:env";
+  manifest.specularResolution = 256;
+  manifest.specularMips = 8;
+  manifest.diffuseFile = "diffuse_sh9.yaml";
+  manifest.specularFile = "specular_prefilter.ktx2";
+
+  const auto result = parser.writeEnvironmentManifestAtomically(path, manifest);
+
+  expect(!result.ok, "invalid environment manifest should not be committed");
+  expect(readTextFile(path) == "old-manifest",
+         "invalid atomic manifest commit should keep old file");
+  std::filesystem::remove(path);
+}
+
+void testAtomicEnvironmentManifestCommitWritesValidManifest() {
+  const std::filesystem::path path =
+      repoRootForTest() / ".tmp_valid_ibl_manifest.yaml";
+  const std::filesystem::path tempPath =
+      path.parent_path() / (path.filename().generic_string() + ".tmp");
+  std::filesystem::remove(path);
+  std::filesystem::remove(tempPath);
+
+  LX_infra::IblBakeManifestParser parser;
+  EnvironmentIblBakeManifest manifest;
+  manifest.sourceUri = ResourceUri("memory://env/source.hdr");
+  manifest.sourceHash = "sha256:env";
+  manifest.specularResolution = 256;
+  manifest.specularMips = deriveIblBakeMipCount(manifest.specularResolution);
+  manifest.diffuseFile = "diffuse_sh9.yaml";
+  manifest.specularFile = "specular_prefilter.ktx2";
+
+  const auto result = parser.writeEnvironmentManifestAtomically(path, manifest);
+
+  expect(result.ok, "valid environment manifest should be committed");
+  expect(contains(readTextFile(path), "lxe.environment-ibl-bake.v1"),
+         "valid atomic commit should write manifest contents");
+  expect(!std::filesystem::exists(tempPath),
+         "successful atomic manifest commit should not leave temp file");
+  std::filesystem::remove(path);
+}
+
+void testAtomicManifestCommitCleansTempOnRenameFailure() {
+  const std::filesystem::path path =
+      repoRootForTest() / ".tmp_ibl_manifest_target_dir";
+  const std::filesystem::path tempPath =
+      path.parent_path() / (path.filename().generic_string() + ".tmp");
+  std::filesystem::remove_all(path);
+  std::filesystem::remove(tempPath);
+  std::filesystem::create_directory(path);
+
+  LX_infra::IblBakeManifestParser parser;
+  const auto result = parser.writeAtomically(path, "manifest");
+
+  expect(!result.ok, "atomic commit to existing directory should fail");
+  expect(!std::filesystem::exists(tempPath),
+         "failed atomic manifest rename should remove temp file");
+  std::filesystem::remove_all(path);
+}
+
 } // namespace
 
 int main() {
@@ -379,5 +694,17 @@ int main() {
   testSameEnvironmentSourceIsDeduplicatedAcrossFeatures();
   testSameEnvironmentUriWithDifferentHashProducesDistinctItems();
   testUnsupportedMaterialTypeProducesWarning();
+  testIblManifestDerivesMipCount();
+  testEnvironmentManifestRejectsUnknownField();
+  testEnvironmentManifestRejectsWrongMipCount();
+  testSh9PayloadRejectsEightCoefficients();
+  testSh9PayloadRejectsWrongLayout();
+  testSh9PayloadRejectsNonNumericCoefficient();
+  testMaterialManifestRejectsWrongBrdfSize();
+  testEnvironmentManifestRejectsWrongSourceHashAgainstExpectedKey();
+  testEnvironmentManifestRejectsMissingPayloadFiles();
+  testAtomicEnvironmentManifestCommitKeepsOldFileOnInvalidManifest();
+  testAtomicEnvironmentManifestCommitWritesValidManifest();
+  testAtomicManifestCommitCleansTempOnRenameFailure();
   return 0;
 }

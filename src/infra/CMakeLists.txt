@@ -359,6 +359,7 @@ set(INFRA_SOURCES
     material_loader/material_resource_parser.cpp
     material_loader/pbrt_material_defaults.cpp
     resource_parsers/mesh_resource_parser.cpp
+    resource_parsers/ibl_bake_manifest_parser.cpp
     resource_parsers/material_source_variant_resolver.cpp
     resource_parsers/render_feature_resource_parser.cpp
     resource_parsers/render_pass_node_parser.cpp
