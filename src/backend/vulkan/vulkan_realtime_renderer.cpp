@@ -41,6 +41,7 @@
 #include "details/render_objects/render_pass.hpp"
 #include "details/render_objects/swapchain.hpp"
 #include "details/resource_manager.hpp"
+#include "vulkan_frame_graph_executor.hpp"
 #include "vulkan_post_process_builder.hpp"
 #include "vulkan_renderer_foundation.hpp"
 #include <algorithm>
@@ -1465,8 +1466,7 @@ public:
   }
 
   struct PreparedRenderPassInputs final {
-    std::vector<std::unique_ptr<LX_core::RenderInput>> inputs;
-    std::vector<LX_core::RenderInputDesc> descs;
+    LX_core::PreparedFramePassWork work;
     LX_core::RenderUploadPlan uploadPlan;
     bool uploadPlanValid = false;
   };
@@ -1476,9 +1476,10 @@ public:
                           const LX_core::RenderWorkBuildContext &context) {
     LX_core::RenderWorkCompiler compiler;
     PreparedRenderPassInputs prepared;
-    compiler.buildInputs(pass, context, prepared.inputs);
+    prepared.work.passName = pass.name;
+    compiler.buildInputs(pass, context, prepared.work.inputs);
     ++m_preparedRenderWorkDiagnostics.renderInputBuildCount;
-    prepared.descs = compiler.prepare(pass, context, prepared.inputs);
+    prepared.work.descs = compiler.prepare(pass, context, prepared.work.inputs);
     ++m_preparedRenderWorkDiagnostics.renderInputPrepareCount;
     return prepared;
   }
@@ -1504,8 +1505,8 @@ public:
 
   void rebuildPreparedUploadPlans() {
     for (PreparedRenderPassInputs &prepared : m_preparedCompiledPassInputs) {
-      prepared.uploadPlan =
-          LX_core::buildRenderUploadPlan(prepared.inputs, prepared.descs);
+      prepared.uploadPlan = LX_core::buildRenderUploadPlan(
+          prepared.work.inputs, prepared.work.descs);
       prepared.uploadPlanValid = true;
       ++m_preparedRenderWorkDiagnostics.descriptorUploadPlanBuildCount;
     }
@@ -2187,7 +2188,7 @@ public:
     usize total = 0;
     for (const PreparedRenderPassInputs &prepared :
          m_preparedCompiledPassInputs) {
-      total += prepared.inputs.size();
+      total += prepared.work.inputs.size();
     }
     return total;
   }
@@ -2590,8 +2591,9 @@ public:
       if (prepared == nullptr) {
         continue;
       }
-      debugInfo.drawItemCount += static_cast<u32>(prepared->inputs.size());
-      for (const LX_core::RenderInputDesc &desc : prepared->descs) {
+      debugInfo.drawItemCount +=
+          static_cast<u32>(prepared->work.inputs.size());
+      for (const LX_core::RenderInputDesc &desc : prepared->work.descs) {
         if (desc.accepted()) {
           debugInfo.pipelineIdentity.push_back(
               makePipelineIdentityDebug(pass, desc));
@@ -2727,34 +2729,36 @@ private:
     if (passIndex >= m_compiledFrameGraph.getPasses().size()) {
       return;
     }
-    const usize sourcePassIndex =
-        m_compiledFrameGraph.getPasses()[passIndex].sourcePassIndex;
-    if (sourcePassIndex >= m_frameGraph.getPasses().size()) {
+    const LX_core::CompiledFrameGraphPass &compiledPass =
+        m_compiledFrameGraph.getPasses()[passIndex];
+    if (compiledPass.sourcePassIndex >= m_frameGraph.getPasses().size()) {
       return;
     }
 
-    (void)sourcePassIndex;
     const PreparedRenderPassInputs *prepared =
         preparedInputsForCompiledPass(passIndex);
     if (prepared == nullptr) {
       return;
     }
-    for (const LX_core::RenderInputDesc &desc : prepared->descs) {
-      recordLiveDescStats(desc);
-      if (!desc.accepted()) {
-        recordDiagnostic(desc);
-        continue;
-      }
-      const LX_core::RenderInput &input =
-          *prepared->inputs.at(desc.inputIndex);
-      auto pipeline = resourceManager().getOrCreatePipeline(desc);
-      ++m_currentLiveStats.descPipelineLookupCount;
-      cmd.bindPipeline(pipeline);
-      cmd.bindResources(resourceManager(), pipeline, input, desc);
-      ++m_currentLiveStats.descBoundInputCount;
-      cmd.executeRenderInput(input, desc);
-      ++m_currentLiveStats.descExecutedInputCount;
-    }
+    const detail::VulkanPreparedFramePassRecordStats stats =
+        detail::recordPreparedFramePassWork(
+            VulkanFrameGraphExecutionTarget{.resourceManager =
+                                                &resourceManager(),
+                                            .commandBuffer = &cmd},
+            compiledPass, prepared->work,
+            detail::VulkanPreparedFramePassRecordHooks{
+                .observeDesc =
+                    [this](const LX_core::RenderInputDesc &desc) {
+                      recordLiveDescStats(desc);
+                    },
+                .observeRejectedDesc =
+                    [this](const LX_core::RenderInputDesc &desc) {
+                      recordDiagnostic(desc);
+                    },
+            });
+    m_currentLiveStats.descPipelineLookupCount += stats.pipelineLookupCount;
+    m_currentLiveStats.descBoundInputCount += stats.boundInputCount;
+    m_currentLiveStats.descExecutedInputCount += stats.executedInputCount;
   }
 
   void addFullscreenMaterialItem(LX_core::StringID pass,
@@ -2975,7 +2979,7 @@ private:
     };
     for (const PreparedRenderPassInputs &prepared :
          m_preparedCompiledPassInputs) {
-      for (const LX_core::RenderInputDesc &desc : prepared.descs) {
+      for (const LX_core::RenderInputDesc &desc : prepared.work.descs) {
         if (desc.accepted()) {
           appendPipelineDesc(desc.pipelineBuildDesc);
         }

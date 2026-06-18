@@ -6,6 +6,7 @@
 #include "core/rhi/descriptor_resource_ref.hpp"
 #include "core/scene/object.hpp"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -124,6 +125,12 @@ struct RenderInputDesc final {
   [[nodiscard]] bool accepted() const {
     return status == RenderInputStatus::Accepted;
   }
+};
+
+struct PreparedFramePassWork final {
+  StringID passName;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  std::vector<RenderInputDesc> descs;
 };
 
 } // namespace LX_core

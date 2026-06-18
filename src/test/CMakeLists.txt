@@ -4,6 +4,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_bindless_indirect_contract
   test_bindless_validation_contract
   test_gltf_scene_asset_loader
+  test_frame_graph_executor
   test_lxe_editor_render_debug_dump
   test_lxe_editor_source_boundary
   test_material_source_variant_pipeline
