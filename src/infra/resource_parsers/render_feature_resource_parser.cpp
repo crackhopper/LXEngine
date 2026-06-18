@@ -37,6 +37,97 @@ std::string nodeToStoredValue(const YAML::Node &node) {
   return node.as<std::string>();
 }
 
+bool validateNumericScalar(ParsedRenderFeatureResource &result,
+                           const LX_core::ResourceUri &uri,
+                           const YAML::Node &node, const std::string &field) {
+  if (!node || !node.IsScalar()) {
+    addDiagnostic(result, uri, field, "must be a numeric scalar");
+    return false;
+  }
+  try {
+    (void)node.as<double>();
+  } catch (const YAML::Exception &) {
+    addDiagnostic(result, uri, field, "must be a numeric scalar");
+    return false;
+  }
+  return true;
+}
+
+bool validateIntegerScalar(ParsedRenderFeatureResource &result,
+                           const LX_core::ResourceUri &uri,
+                           const YAML::Node &node, const std::string &field,
+                           bool unsignedOnly) {
+  if (!node || !node.IsScalar()) {
+    addDiagnostic(result, uri, field, "must be an integer scalar");
+    return false;
+  }
+  try {
+    if (unsignedOnly) {
+      (void)node.as<unsigned long long>();
+    } else {
+      (void)node.as<long long>();
+    }
+  } catch (const YAML::Exception &) {
+    addDiagnostic(result, uri, field, "must be an integer scalar");
+    return false;
+  }
+  return true;
+}
+
+bool validateVec3Value(ParsedRenderFeatureResource &result,
+                       const LX_core::ResourceUri &uri, const YAML::Node &node,
+                       const std::string &field) {
+  if (!node || !node.IsSequence() || node.size() != 3) {
+    addDiagnostic(result, uri, field,
+                  "must be a sequence of three numeric scalars");
+    return false;
+  }
+  for (usize i = 0; i < node.size(); ++i) {
+    if (!validateNumericScalar(result, uri, node[i],
+                               field + "[" + std::to_string(i) + "]")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validateParameterValue(ParsedRenderFeatureResource &result,
+                            const LX_core::ResourceUri &uri,
+                            const YAML::Node &node, const std::string &field,
+                            const std::string &kind) {
+  if (kind == "bool") {
+    if (!node || !node.IsScalar()) {
+      addDiagnostic(result, uri, field, "must be a boolean");
+      return false;
+    }
+    const std::string value = node.as<std::string>();
+    if (value == "true" || value == "false") {
+      return true;
+    }
+    addDiagnostic(result, uri, field, "expected true or false");
+    return false;
+  }
+  if (kind == "float") {
+    return validateNumericScalar(result, uri, node, field);
+  }
+  if (kind == "integer") {
+    return validateIntegerScalar(result, uri, node, field, false);
+  }
+  if (kind == "u32" || kind == "uint") {
+    return validateIntegerScalar(result, uri, node, field, true);
+  }
+  if (kind == "vec3") {
+    return validateVec3Value(result, uri, node, field);
+  }
+  if (kind == "enum") {
+    if (!node || !node.IsScalar()) {
+      addDiagnostic(result, uri, field, "must be a scalar string");
+      return false;
+    }
+  }
+  return true;
+}
+
 bool parseBoolScalar(ParsedRenderFeatureResource &result,
                      const LX_core::ResourceUri &uri, const YAML::Node &node,
                      const std::string &field) {
@@ -53,13 +144,14 @@ bool parseBoolScalar(ParsedRenderFeatureResource &result,
 }
 
 bool kindAllowsUri(const std::string &kind) {
-  return kind == "textureCube" || kind == "texture2D" ||
-         kind == "texture3D" || kind == "buffer";
+  return kind == "textureCube" || kind == "texture2D" || kind == "texture3D" ||
+         kind == "buffer";
 }
 
-std::vector<std::string> parseScalarStringSequence(
-    ParsedRenderFeatureResource &result, const LX_core::ResourceUri &uri,
-    const YAML::Node &node, const std::string &field) {
+std::vector<std::string>
+parseScalarStringSequence(ParsedRenderFeatureResource &result,
+                          const LX_core::ResourceUri &uri,
+                          const YAML::Node &node, const std::string &field) {
   std::vector<std::string> values;
   if (!node || !node.IsSequence()) {
     addDiagnostic(result, uri, field, "must be a sequence");
@@ -67,8 +159,7 @@ std::vector<std::string> parseScalarStringSequence(
   }
   for (usize i = 0; i < node.size(); ++i) {
     if (!node[i].IsScalar()) {
-      addDiagnostic(result, uri, field,
-                    "all entries must be scalar strings");
+      addDiagnostic(result, uri, field, "all entries must be scalar strings");
       return {};
     }
     values.push_back(node[i].as<std::string>());
@@ -137,10 +228,9 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       }
       const std::string key = parameterField->first.as<std::string>();
       if (key == "kind" || key == "value" || key == "uri" ||
-          key == "sourceHash" ||
-          key == "valueType" || key == "binding" || key == "member" ||
-          key == "required" || key == "volatile" || key == "allowedValues" ||
-          key == "requiredWhen") {
+          key == "sourceHash" || key == "valueType" || key == "binding" ||
+          key == "member" || key == "required" || key == "volatile" ||
+          key == "allowedValues" || key == "requiredWhen") {
         continue;
       }
       addDiagnostic(result, uri, field + "." + key,
@@ -154,9 +244,8 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
     parameter.kind = parameterNode["kind"].as<std::string>();
     if (parameterNode["volatile"]) {
       const usize diagnosticCount = result.diagnostics.size();
-      parameter.volatileRuntime =
-          parseBoolScalar(result, uri, parameterNode["volatile"],
-                          field + ".volatile");
+      parameter.volatileRuntime = parseBoolScalar(
+          result, uri, parameterNode["volatile"], field + ".volatile");
       if (result.diagnostics.size() != diagnosticCount) {
         continue;
       }
@@ -173,14 +262,12 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       addDiagnostic(result, uri, field + ".specialization",
                     "volatile parameter must not define specialization");
     }
-    if (parameter.volatileRuntime &&
-        parameterNode["specializationConstant"]) {
+    if (parameter.volatileRuntime && parameterNode["specializationConstant"]) {
       addDiagnostic(
           result, uri, field + ".specializationConstant",
           "volatile parameter must not define specializationConstant");
     }
-    if (parameter.volatileRuntime &&
-        parameterNode["specializationConstants"]) {
+    if (parameter.volatileRuntime && parameterNode["specializationConstants"]) {
       addDiagnostic(
           result, uri, field + ".specializationConstants",
           "volatile parameter must not define specializationConstants");
@@ -193,6 +280,12 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       continue;
     }
     if (parameterNode["value"]) {
+      const usize diagnosticCount = result.diagnostics.size();
+      validateParameterValue(result, uri, parameterNode["value"],
+                             field + ".value", parameter.kind);
+      if (result.diagnostics.size() != diagnosticCount) {
+        continue;
+      }
       parameter.value = nodeToStoredValue(parameterNode["value"]);
     }
     if (parameterNode["uri"]) {
@@ -227,9 +320,8 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
       parameter.member = parameterNode["member"].as<std::string>();
     }
     if (parameterNode["required"]) {
-      parameter.required =
-          parseBoolScalar(result, uri, parameterNode["required"],
-                          field + ".required");
+      parameter.required = parseBoolScalar(
+          result, uri, parameterNode["required"], field + ".required");
       if (!result.diagnostics.empty()) {
         continue;
       }
@@ -245,8 +337,7 @@ void parseRenderFeatureParameters(ParsedRenderFeatureResource &result,
     if (parameterNode["requiredWhen"]) {
       const YAML::Node requiredWhen = parameterNode["requiredWhen"];
       if (!requiredWhen.IsMap()) {
-        addDiagnostic(result, uri, field + ".requiredWhen",
-                      "must be a map");
+        addDiagnostic(result, uri, field + ".requiredWhen", "must be a map");
         continue;
       }
       for (auto requiredWhenField = requiredWhen.begin();
@@ -336,8 +427,8 @@ parseRenderFeatureShaderContract(ParsedRenderFeatureResource &result,
 void validateRenderFeatureSchema(ParsedRenderFeatureResource &result,
                                  const LX_core::ResourceUri &uri,
                                  const LX_core::RenderFeature &feature) {
-  const bool hasShaderUri = feature.shader.has_value() &&
-                            !feature.shader->uri.empty();
+  const bool hasShaderUri =
+      feature.shader.has_value() && !feature.shader->uri.empty();
   for (const auto &[name, parameter] : feature.parameters) {
     const std::string field = "parameters." + name;
     if (parameter.kind == "textureCube" || parameter.kind == "texture2D" ||
@@ -345,6 +436,9 @@ void validateRenderFeatureSchema(ParsedRenderFeatureResource &result,
       if (parameter.required && parameter.uri.empty()) {
         addDiagnostic(result, uri, field + ".uri", "missing required field");
       }
+    } else if (parameter.required && !parameter.volatileRuntime &&
+               parameter.value.empty()) {
+      addDiagnostic(result, uri, field + ".value", "missing required field");
     }
     if (!parameter.binding.empty() || !parameter.member.empty()) {
       if (!hasShaderUri) {
@@ -417,8 +511,9 @@ void parseRenderFeature(ParsedRenderFeatureResource &result,
 
 } // namespace
 
-ParsedRenderFeatureResource RenderFeatureResourceParser::parse(
-    const LX_core::ResourceUri &uri, std::string_view yamlText) const {
+ParsedRenderFeatureResource
+RenderFeatureResourceParser::parse(const LX_core::ResourceUri &uri,
+                                   std::string_view yamlText) const {
   ParsedRenderFeatureResource result;
   YAML::Node root;
   try {

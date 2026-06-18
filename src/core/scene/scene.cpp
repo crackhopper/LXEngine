@@ -128,10 +128,9 @@ void appendRealtimeSceneGpuMaterialResources(
                                 copyBytes(uploadView.materials));
   appendRenderStorageDescriptor(out, resources, StringID("SceneMaterialRefs"),
                                 copyBytes(uploadView.materialRefs));
-  appendRenderStorageDescriptor(out, resources,
-                                StringID("SceneSourceMaterialRecords"),
-                                copySourceMaterialRecordBytes(
-                                    uploadView.sourceMaterialRecords));
+  appendRenderStorageDescriptor(
+      out, resources, StringID("SceneSourceMaterialRecords"),
+      copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords));
   appendRenderStorageDescriptor(out, resources, StringID("SceneDraws"),
                                 copyBytes(uploadView.draws));
   out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));
@@ -386,6 +385,12 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       out.emplace_back(resource.get());
     }
   }
+  for (const GpuResourceRef &resource :
+       m_resources.getSurfaceLightingResources()) {
+    if (resource.isValid()) {
+      out.emplace_back(resource.get());
+    }
+  }
   for (const GpuResourceRef &resource : m_resources.getToneMappingResources()) {
     if (resource.isValid()) {
       out.emplace_back(resource.get());
@@ -437,6 +442,12 @@ Scene::getSceneLevelResources(StringID pass,
   }
   for (const GpuResourceRef &resource :
        m_resources.getEnvironmentLightingResources()) {
+    if (resource.isValid()) {
+      out.emplace_back(resource.get());
+    }
+  }
+  for (const GpuResourceRef &resource :
+       m_resources.getSurfaceLightingResources()) {
     if (resource.isValid()) {
       out.emplace_back(resource.get());
     }

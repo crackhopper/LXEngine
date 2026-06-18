@@ -1434,6 +1434,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         metadata->type == SceneResourceType::RenderFeature &&
         metadata->uri == uri) {
       registerEnvironmentLightingResources(*entry.resource);
+      registerSurfaceLightingResources(*entry.resource);
       registerToneMappingResources(*entry.resource);
       registerBloomResources(*entry.resource);
       return RenderFeatureHandle{i, entry.generation};
@@ -1447,6 +1448,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
     registerEnvironmentLightingResources(
         *m_renderFeatures[handle.index].resource);
+    registerSurfaceLightingResources(*m_renderFeatures[handle.index].resource);
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
     registerBloomResources(*m_renderFeatures[handle.index].resource);
   }
@@ -2383,6 +2385,45 @@ SceneResourceTable::getEnvironmentLightingResources() const {
   }
   if (m_environmentLightingUbo) {
     out.emplace_back(*m_environmentLightingUbo);
+  }
+  return out;
+}
+
+void SceneResourceTable::registerSurfaceLightingResources(
+    const RenderFeature &feature) {
+  if (feature.feature != "surfaceLighting") {
+    return;
+  }
+
+  auto ubo = std::make_unique<SurfaceLightingData>();
+  const auto *enableIblLighting =
+      findFeatureParameter(feature, "enableIblLighting");
+  const auto *diffuseIblIntensity =
+      findFeatureParameter(feature, "diffuseIblIntensity");
+  const auto *specularIblIntensity =
+      findFeatureParameter(feature, "specularIblIntensity");
+  const auto *environmentIblReady =
+      findFeatureParameter(feature, "environmentIblReady");
+  const auto *standardPbrIblReady =
+      findFeatureParameter(feature, "standardPbrIblReady");
+  ubo->set(parseFeatureBool(enableIblLighting, false),
+           diffuseIblIntensity != nullptr
+               ? parseFeatureFloat(*diffuseIblIntensity, 1.0f)
+               : 1.0f,
+           specularIblIntensity != nullptr
+               ? parseFeatureFloat(*specularIblIntensity, 1.0f)
+               : 1.0f,
+           parseFeatureBool(environmentIblReady, false),
+           parseFeatureBool(standardPbrIblReady, false));
+  m_surfaceLightingUbo = std::move(ubo);
+  markDescriptorUploadDirty();
+}
+
+std::vector<GpuResourceRef>
+SceneResourceTable::getSurfaceLightingResources() const {
+  std::vector<GpuResourceRef> out;
+  if (m_surfaceLightingUbo) {
+    out.emplace_back(*m_surfaceLightingUbo);
   }
   return out;
 }

@@ -290,6 +290,8 @@ public:
   void registerEnvironmentLightingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef>
   getEnvironmentLightingResources() const;
+  void registerSurfaceLightingResources(const RenderFeature &feature);
+  [[nodiscard]] std::vector<GpuResourceRef> getSurfaceLightingResources() const;
   void setEnvironmentRuntimeState(SceneEnvironmentRuntimeState state);
   [[nodiscard]] std::optional<SceneEnvironmentRuntimeState>
   environmentRuntimeState() const;
@@ -487,6 +489,7 @@ private:
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
+  SurfaceLightingDataUniquePtr m_surfaceLightingUbo;
   std::optional<SceneEnvironmentRuntimeState> m_environmentRuntimeState;
   std::vector<RenderFeatureHandle> m_environmentIblBakeRequests;
   std::vector<std::optional<SceneIblBakeMarker>> m_objectIblBakeMarkers;

@@ -1,9 +1,9 @@
-#include "core/frame_graph/render_input.hpp"
+#include "core/asset/texture.hpp"
 #include "core/frame_graph/frame_graph.hpp"
+#include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_work_compiler.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
-#include "core/asset/texture.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/scene.hpp"
@@ -60,10 +60,10 @@ template <typename T>
 concept HasTopology = requires(T value) { value.topology; };
 
 template <typename T>
-concept HasDescriptorResources = requires(T value) { value.descriptorResources; };
+concept HasDescriptorResources =
+    requires(T value) { value.descriptorResources; };
 
-ShaderResourceBinding makeUniformBinding(std::string name,
-                                         u32 binding = 0) {
+ShaderResourceBinding makeUniformBinding(std::string name, u32 binding = 0) {
   return ShaderResourceBinding{std::move(name),
                                0,
                                binding,
@@ -76,15 +76,9 @@ ShaderResourceBinding makeUniformBinding(std::string name,
 }
 
 ShaderResourceBinding makeTextureBinding(std::string name, u32 binding = 0) {
-  return ShaderResourceBinding{std::move(name),
-                               0,
-                               binding,
-                               ShaderPropertyType::Texture2D,
-                               1,
-                               0,
-                               0,
-                               ShaderStage::Fragment,
-                               {}};
+  return ShaderResourceBinding{
+      std::move(name),       0, binding, ShaderPropertyType::Texture2D, 1, 0, 0,
+      ShaderStage::Fragment, {}};
 }
 
 ShaderResourceBinding makeTextureCubeBinding(std::string name,
@@ -151,10 +145,7 @@ public:
   }
   IShaderSharedPtr getShaderInfo() const override { return nullptr; }
   StringID getPipelineSignature(StringID pass) const override { return pass; }
-  bool supportsPass
-  (StringID) const override {
-    return m_passSupported;
-  }
+  bool supportsPass(StringID) const override { return m_passSupported; }
   VisibilityLayerMask getVisibilityLayerMask() const override {
     return VisibilityMask_All;
   }
@@ -207,11 +198,11 @@ public:
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   findBinding(u32 set, u32 binding) const override {
-    const auto it = std::find_if(
-        m_bindings.begin(), m_bindings.end(),
-        [&](const ShaderResourceBinding &candidate) {
-          return candidate.set == set && candidate.binding == binding;
-        });
+    const auto it = std::find_if(m_bindings.begin(), m_bindings.end(),
+                                 [&](const ShaderResourceBinding &candidate) {
+                                   return candidate.set == set &&
+                                          candidate.binding == binding;
+                                 });
     if (it == m_bindings.end()) {
       return std::nullopt;
     }
@@ -219,11 +210,10 @@ public:
   }
   std::optional<std::reference_wrapper<const ShaderResourceBinding>>
   findBinding(const std::string &name) const override {
-    const auto it = std::find_if(
-        m_bindings.begin(), m_bindings.end(),
-        [&](const ShaderResourceBinding &candidate) {
-          return candidate.name == name;
-        });
+    const auto it = std::find_if(m_bindings.begin(), m_bindings.end(),
+                                 [&](const ShaderResourceBinding &candidate) {
+                                   return candidate.name == name;
+                                 });
     if (it == m_bindings.end()) {
       return std::nullopt;
     }
@@ -241,12 +231,11 @@ private:
 
 class ValidatedRenderable final : public IRenderable {
 public:
-  explicit ValidatedRenderable(
-      StringID pass, std::string variantValue = "1",
-      std::string materialTypeSignatureName =
-          "validated.renderable.material.type",
-      std::string nodeName = "validated_renderable",
-      std::vector<ShaderResourceBinding> bindings = {})
+  explicit ValidatedRenderable(StringID pass, std::string variantValue = "1",
+                               std::string materialTypeSignatureName =
+                                   "validated.renderable.material.type",
+                               std::string nodeName = "validated_renderable",
+                               std::vector<ShaderResourceBinding> bindings = {})
       : m_pass(pass), m_nodeName(std::move(nodeName)),
         m_debugId(StringID("debug." + m_nodeName)) {
     m_vertexBuffer = VertexBuffer<VertexPos>::create(
@@ -256,8 +245,7 @@ public:
 
     m_bindings = std::move(bindings);
     m_stages = {
-        ShaderStageCode{ShaderStage::Vertex,
-                        std::vector<u32>{0x07230203, 11}},
+        ShaderStageCode{ShaderStage::Vertex, std::vector<u32>{0x07230203, 11}},
         ShaderStageCode{ShaderStage::Fragment,
                         std::vector<u32>{0x07230203, 12}},
     };
@@ -277,7 +265,8 @@ public:
     m_data.indexBuffer = GpuResourceRef{*m_indexBuffer};
     m_data.renderState.cullMode = CullMode::Front;
     m_data.renderState.depthTestEnable = false;
-    m_data.materialTypeSignature = StringID(std::move(materialTypeSignatureName));
+    m_data.materialTypeSignature =
+        StringID(std::move(materialTypeSignatureName));
     m_data.materialTypeVariant = m_shaderProgram.getPipelineSignature();
   }
 
@@ -347,9 +336,10 @@ bool hasDiagnosticMessage(const RenderInputDesc &desc,
 }
 
 bool hasFatalPipelineDiagnostic(const RenderInputDesc &desc) {
-  return hasDiagnosticCode(desc,
-                           RenderInputDiagnosticCode::MissingShaderReflection) ||
-         hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts);
+  return hasDiagnosticCode(
+             desc, RenderInputDiagnosticCode::MissingShaderReflection) ||
+         hasDiagnosticCode(desc,
+                           RenderInputDiagnosticCode::MissingPipelineFacts);
 }
 
 bool hasDescriptorBindingName(const RenderInputDesc &desc,
@@ -363,12 +353,11 @@ bool hasDescriptorBindingName(const RenderInputDesc &desc,
 
 bool hasResourceDependencyBindingName(const RenderInputDesc &desc,
                                       StringID bindingName) {
-  return std::any_of(desc.resourceDependencies.begin(),
-                     desc.resourceDependencies.end(),
-                     [bindingName](const GpuResourceRef &resource) {
-                       return resource.isValid() &&
-                              resource.getBindingName() == bindingName;
-                     });
+  return std::any_of(
+      desc.resourceDependencies.begin(), desc.resourceDependencies.end(),
+      [bindingName](const GpuResourceRef &resource) {
+        return resource.isValid() && resource.getBindingName() == bindingName;
+      });
 }
 
 bool approxEqual(float lhs, float rhs, float epsilon = 0.0001f) {
@@ -376,14 +365,13 @@ bool approxEqual(float lhs, float rhs, float epsilon = 0.0001f) {
 }
 
 MeshSharedPtr makeSceneTriangleMesh(float extent = 1.0f) {
-  return Mesh::create(
-      VertexBuffer<VertexPos>::create(std::vector<VertexPos>{
-          {{0.0f, 0.0f, 0.0f}},
-          {{extent, 0.0f, 0.0f}},
-          {{0.0f, extent, 0.0f}},
-      }),
-      IndexBuffer::create({0, 1, 2}),
-      BoundingBox{{0.0f, 0.0f, 0.0f}, {extent, extent, 0.0f}});
+  return Mesh::create(VertexBuffer<VertexPos>::create(std::vector<VertexPos>{
+                          {{0.0f, 0.0f, 0.0f}},
+                          {{extent, 0.0f, 0.0f}},
+                          {{0.0f, extent, 0.0f}},
+                      }),
+                      IndexBuffer::create({0, 1, 2}),
+                      BoundingBox{{0.0f, 0.0f, 0.0f}, {extent, extent, 0.0f}});
 }
 
 MaterialInstanceSharedPtr makeSceneMaterial(const std::string &name) {
@@ -414,8 +402,8 @@ MaterialInstanceSharedPtr makeTexturedSceneMaterial(const std::string &name) {
   textureDesc.width = 1;
   textureDesc.height = 1;
   textureDesc.format = TextureFormat::RGBA8;
-  auto texture = std::make_shared<Texture>(
-      textureDesc, std::vector<u8>{255, 255, 255, 255});
+  auto texture = std::make_shared<Texture>(textureDesc,
+                                           std::vector<u8>{255, 255, 255, 255});
   material->setTexture(StringID("BaseColorMap"),
                        std::make_shared<CombinedTextureSampler>(texture));
   return material;
@@ -500,7 +488,8 @@ void testDescStatusDefaultsAndStats() {
   EXPECT(desc.diagnostics.front().code ==
              RenderInputDiagnosticCode::MissingPipelineFacts,
          "desc diagnostic code should round-trip");
-  EXPECT(desc.stats.compilerInputCount == 2, "desc stats should carry compiler input count");
+  EXPECT(desc.stats.compilerInputCount == 2,
+         "desc stats should carry compiler input count");
   EXPECT(desc.stats.acceptedInputCount == 1,
          "desc stats should carry accepted compiler input count");
   EXPECT(desc.stats.rejectedInputCount == 1,
@@ -587,9 +576,10 @@ void testFullscreenTriangleBuildsOneInputAndDesc() {
   if (!descs.empty()) {
     EXPECT(!descs.front().accepted(),
            "fullscreen input without shader facts should be rejected");
-    EXPECT(hasDiagnosticCode(descs.front(),
-                             RenderInputDiagnosticCode::MissingShaderReflection),
-           "fullscreen rejection should report missing shader reflection");
+    EXPECT(
+        hasDiagnosticCode(descs.front(),
+                          RenderInputDiagnosticCode::MissingShaderReflection),
+        "fullscreen rejection should report missing shader reflection");
     EXPECT(hasDiagnosticCode(descs.front(),
                              RenderInputDiagnosticCode::MissingPipelineFacts),
            "fullscreen rejection should report missing pipeline facts");
@@ -692,8 +682,9 @@ void testComputeInputWithoutShaderFactsIsRejected() {
   EXPECT(hasDiagnosticCode(desc,
                            RenderInputDiagnosticCode::MissingShaderReflection),
          "compute rejection should report missing shader reflection");
-  EXPECT(hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts),
-         "compute rejection should report missing pipeline facts");
+  EXPECT(
+      hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingPipelineFacts),
+      "compute rejection should report missing pipeline facts");
   EXPECT(desc.stats.acceptedInputCount == 0,
          "stats should count no accepted compute input");
   EXPECT(desc.stats.rejectedInputCount == 1,
@@ -819,8 +810,9 @@ void testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload() {
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
   pass.shaderUri = ResourceUri("render_paths/Bake/environment_to_cubemap");
-  pass.reads.push_back(FrameGraphRead::sampled(
-      StringID("bake.environment.cubemap"), StringID("BakeEnvironmentCubemap")));
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("bake.environment.cubemap"),
+                              StringID("BakeEnvironmentCubemap")));
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{
@@ -836,7 +828,8 @@ void testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload() {
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
   passFacts.pipelineVariantKey = StringID("bake.environment.variant");
-  passFacts.shaderProgram.shaderName = "render_paths/Bake/environment_to_cubemap";
+  passFacts.shaderProgram.shaderName =
+      "render_paths/Bake/environment_to_cubemap";
   passFacts.shaderProgram.shader = shader;
   passFacts.shaderInfo = shader;
   passFacts.descriptorResources.emplace_back(metadataOnlySource);
@@ -948,7 +941,8 @@ void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
     return;
   }
 
-  const auto *draw = dynamic_cast<const RenderDrawInput *>(inputs.front().get());
+  const auto *draw =
+      dynamic_cast<const RenderDrawInput *>(inputs.front().get());
   EXPECT(draw != nullptr, "validated renderable input should be draw input");
   if (draw == nullptr) {
     return;
@@ -1071,9 +1065,10 @@ void testSceneRenderableRejectsUnresolvedRequiredBinding() {
   const auto &desc = descs.front();
   EXPECT(!desc.accepted(),
          "desc with unresolved reflected binding should be rejected");
-  EXPECT(hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingBinding) ||
-             hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingResource),
-         "unresolved binding rejection should report binding/resource diagnostic");
+  EXPECT(
+      hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingBinding) ||
+          hasDiagnosticCode(desc, RenderInputDiagnosticCode::MissingResource),
+      "unresolved binding rejection should report binding/resource diagnostic");
 }
 
 void testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature() {
@@ -1133,10 +1128,10 @@ void testPipelineKeyIncludesGenericPassSpecializationValue() {
   auto makeDesc = [&](std::vector<ShaderSpecializationConstant> constants) {
     const PipelineKey key =
         PipelineKey::build(materialVariant, renderPathNode, constants);
-    return PipelineBuildDesc::graphics(
-        key, materialVariant, RenderTargetDesc{}, {}, {}, VertexLayout{},
-        RenderState{}, PrimitiveTopology::TriangleList, std::nullopt, {},
-        std::move(constants));
+    return PipelineBuildDesc::graphics(key, materialVariant, RenderTargetDesc{},
+                                       {}, {}, VertexLayout{}, RenderState{},
+                                       PrimitiveTopology::TriangleList,
+                                       std::nullopt, {}, std::move(constants));
   };
 
   std::vector<ShaderSpecializationConstant> disabledConstants = {
@@ -1214,6 +1209,110 @@ RenderFeature makeCompilerPassFeatureWithVolatileRuntimeField() {
   return feature;
 }
 
+RenderFeature makeCompilerSurfaceLightingFeature() {
+  RenderFeature feature;
+  feature.name = "SurfaceLighting";
+  feature.feature = "surfaceLighting";
+  feature.level = RenderFeatureLevel::Shader;
+  feature.shader = RenderFeatureShaderContract{
+      .uri = ResourceUri("features/surface_lighting"),
+  };
+  feature.parameters["enableIblLighting"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "true",
+      .binding = "SurfaceLightingUBO",
+      .member = "enableIblLighting",
+      .required = true,
+  };
+  feature.parameters["diffuseIblIntensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "SurfaceLightingUBO",
+      .member = "diffuseIblIntensity",
+      .required = true,
+  };
+  feature.parameters["specularIblIntensity"] = RenderFeatureParameter{
+      .kind = "float",
+      .value = "1.0",
+      .binding = "SurfaceLightingUBO",
+      .member = "specularIblIntensity",
+      .required = true,
+  };
+  feature.parameters["environmentIblReady"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "false",
+      .binding = "SurfaceLightingUBO",
+      .member = "environmentIblReady",
+      .required = true,
+  };
+  feature.parameters["standardPbrIblReady"] = RenderFeatureParameter{
+      .kind = "bool",
+      .value = "false",
+      .binding = "SurfaceLightingUBO",
+      .member = "standardPbrIblReady",
+      .required = true,
+  };
+  return feature;
+}
+
+std::vector<ShaderResourceBinding> makeSurfaceLightingBindings() {
+  return {
+      ShaderResourceBinding{
+          .name = "SurfaceLightingUBO",
+          .set = 4,
+          .binding = 2,
+          .type = ShaderPropertyType::UniformBuffer,
+          .members = {StructMemberInfo{"enableIblLighting",
+                                       ShaderPropertyType::Int, 0, 4},
+                      StructMemberInfo{"diffuseIblIntensity",
+                                       ShaderPropertyType::Float, 4, 4},
+                      StructMemberInfo{"specularIblIntensity",
+                                       ShaderPropertyType::Float, 8, 4},
+                      StructMemberInfo{"environmentIblReady",
+                                       ShaderPropertyType::Int, 12, 4},
+                      StructMemberInfo{"standardPbrIblReady",
+                                       ShaderPropertyType::Int, 16, 4}},
+      },
+  };
+}
+
+IShaderSharedPtr makeSurfaceLightingShader(u32 programHashSeed) {
+  return std::make_shared<FakeShader>(
+      makeSurfaceLightingBindings(),
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, programHashSeed}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, programHashSeed + 1}},
+      });
+}
+
+FramePass makeSurfaceLightingFullscreenPass(const char *name,
+                                            ResourceUri shaderUri) {
+  FramePass pass;
+  pass.name = StringID(name);
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = std::move(shaderUri);
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("feature.surfaceLighting"), StringID{}));
+  return pass;
+}
+
+RenderWorkBuildContext::PassPreparationFacts
+makeSurfaceLightingPassFacts(const FramePass &pass,
+                             const IShaderSharedPtr &shader) {
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID(
+      "surface.lighting." + GlobalStringTable::get().toDebugString(pass.name));
+  passFacts.shaderProgram.shaderName = pass.shaderUri.string();
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  return passFacts;
+}
+
 void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
   const ResourceUri shaderUri("memory://shaders/compiler_pass_specialization");
   auto shader = std::make_shared<FakeShader>(
@@ -1224,9 +1323,8 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
           ShaderStageCode{ShaderStage::Fragment,
                           std::vector<u32>{0x07230203, 52}},
       },
-      std::vector<VertexInputAttribute>{
-          VertexInputAttribute{.name = "inPos", .location = 0,
-                               .type = DataType::Float3}},
+      std::vector<VertexInputAttribute>{VertexInputAttribute{
+          .name = "inPos", .location = 0, .type = DataType::Float3}},
       std::vector<ShaderSpecializationConstantInfo>{
           ShaderSpecializationConstantInfo{
               .name = "render_probe",
@@ -1301,9 +1399,11 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
     return;
   }
 
-  const auto &constants = descs.front().pipelineBuildDesc.specializationConstants;
-  EXPECT(constants.size() == 2,
-         "pipeline desc should contain exactly reflected pass feature constants");
+  const auto &constants =
+      descs.front().pipelineBuildDesc.specializationConstants;
+  EXPECT(
+      constants.size() == 2,
+      "pipeline desc should contain exactly reflected pass feature constants");
   const auto hasConstant = [&](u32 constantId, ShaderStage stage, u32 value) {
     return std::any_of(constants.begin(), constants.end(),
                        [&](const ShaderSpecializationConstant &constant) {
@@ -1316,8 +1416,9 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
   };
   EXPECT(hasConstant(17, ShaderStage::Fragment, 1),
          "render_probe should use reflected constant id 17 and YAML true");
-  EXPECT(hasConstant(23, ShaderStage::Vertex, 0),
-         "enable_probe_debug should use reflected constant id 23 and YAML false");
+  EXPECT(
+      hasConstant(23, ShaderStage::Vertex, 0),
+      "enable_probe_debug should use reflected constant id 23 and YAML false");
   EXPECT(std::none_of(constants.begin(), constants.end(),
                       [](const ShaderSpecializationConstant &constant) {
                         return constant.constantId < 10;
@@ -1334,8 +1435,8 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
               .set = 4,
               .binding = 1,
               .type = ShaderPropertyType::UniformBuffer,
-              .members = {StructMemberInfo{
-                  "enableIblLighting", ShaderPropertyType::Int, 0, 4}},
+              .members = {StructMemberInfo{"enableIblLighting",
+                                           ShaderPropertyType::Int, 0, 4}},
           },
       },
       std::vector<ShaderStageCode>{
@@ -1344,9 +1445,8 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
           ShaderStageCode{ShaderStage::Fragment,
                           std::vector<u32>{0x07230203, 52}},
       },
-      std::vector<VertexInputAttribute>{
-          VertexInputAttribute{.name = "inPos", .location = 0,
-                               .type = DataType::Float3}},
+      std::vector<VertexInputAttribute>{VertexInputAttribute{
+          .name = "inPos", .location = 0, .type = DataType::Float3}},
       std::vector<ShaderSpecializationConstantInfo>{
           ShaderSpecializationConstantInfo{
               .name = "render_probe",
@@ -1421,9 +1521,9 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
     return;
   }
 
-  const auto &constants = descs.front().pipelineBuildDesc.specializationConstants;
-  const auto hasSpecializationConstant =
-      [&](const std::string &name) -> bool {
+  const auto &constants =
+      descs.front().pipelineBuildDesc.specializationConstants;
+  const auto hasSpecializationConstant = [&](const std::string &name) -> bool {
     const PassFeatureData *data =
         scene.resources().findPassFeatureDataByFeatureName(
             "compilerPassFeature");
@@ -1440,6 +1540,112 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
          "constant");
   EXPECT(!hasSpecializationConstant("enableIblLighting"),
          "volatile IBL field must not become specialization constant");
+}
+
+void testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred() {
+  const ResourceUri featureUri("memory://features/surface_lighting");
+  const ResourceUri forwardShaderUri("memory://shaders/forward_surface");
+  const ResourceUri deferredShaderUri("memory://shaders/deferred_lighting");
+  auto forwardShader = makeSurfaceLightingShader(61);
+  auto deferredShader = makeSurfaceLightingShader(71);
+
+  Scene scene("SurfaceLightingSharedPayloadCompilerScene");
+  [[maybe_unused]] const ShaderHandle forwardShaderHandle =
+      scene.resources().registerShaderResource(
+          forwardShaderUri, std::vector<ResourceUri>{forwardShaderUri},
+          forwardShader);
+  [[maybe_unused]] const ShaderHandle deferredShaderHandle =
+      scene.resources().registerShaderResource(
+          deferredShaderUri, std::vector<ResourceUri>{deferredShaderUri},
+          deferredShader);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          featureUri, makeCompilerSurfaceLightingFeature());
+
+  RenderPathGraph graph;
+  graph.name = "SurfaceLightingSharedPayloadGraph";
+  graph.renderPath = RenderPath::Forward;
+  graph.features.push_back(RenderPathFeatureDependency{
+      .slot = "surfaceLighting",
+      .uri = featureUri,
+  });
+  RenderPassNode forwardNode;
+  forwardNode.id = "Forward";
+  forwardNode.shaderUri = forwardShaderUri;
+  forwardNode.stage = RenderPassStage::Raster;
+  forwardNode.dispatch = RenderPassDispatch::Fullscreen;
+  forwardNode.input.kind = RenderPassInputKind::FullscreenTriangle;
+  forwardNode.sources = {"feature.surfaceLighting"};
+  graph.passes.push_back(forwardNode);
+  RenderPassNode deferredNode = forwardNode;
+  deferredNode.id = "DeferredLighting";
+  deferredNode.shaderUri = deferredShaderUri;
+  graph.passes.push_back(deferredNode);
+
+  const ResourceUri graphUri("memory://graphs/surface_lighting_shared");
+  const RenderPathGraphHandle graphHandle =
+      scene.resources().registerRenderPathGraph(graphUri, graph);
+  EXPECT(graphHandle.isValid(),
+         "graph with one surfaceLighting feature payload should register");
+  if (graphHandle.isValid()) {
+    const ResourceMetadata &metadata = scene.resources().metadata(graphHandle);
+    EXPECT(std::count(metadata.dependencies.begin(),
+                      metadata.dependencies.end(), featureUri) == 1,
+           "graph metadata should depend on the shared surfaceLighting payload "
+           "once");
+  }
+
+  FramePass forwardPass =
+      makeSurfaceLightingFullscreenPass("Forward", forwardShaderUri);
+  FramePass deferredPass =
+      makeSurfaceLightingFullscreenPass("DeferredLighting", deferredShaderUri);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(
+      makeSurfaceLightingPassFacts(forwardPass, forwardShader));
+  options.passPreparationFacts.push_back(
+      makeSurfaceLightingPassFacts(deferredPass, deferredShader));
+
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  RenderWorkCompiler compiler;
+
+  const auto compilePass = [&](const FramePass &pass) {
+    std::vector<std::unique_ptr<RenderInput>> inputs;
+    compiler.buildInputs(pass, context, inputs);
+    return compiler.prepare(pass, context, inputs);
+  };
+
+  const auto forwardDescs = compilePass(forwardPass);
+  const auto deferredDescs = compilePass(deferredPass);
+  EXPECT(forwardDescs.size() == 1,
+         "Forward pass should produce one desc with surfaceLighting");
+  EXPECT(deferredDescs.size() == 1,
+         "DeferredLighting pass should produce one desc with surfaceLighting");
+  if (forwardDescs.empty() || deferredDescs.empty()) {
+    return;
+  }
+
+  const auto expectSurfaceLightingDesc = [](const RenderInputDesc &desc,
+                                            const char *passName) {
+    EXPECT(desc.accepted(),
+           std::string(passName) +
+               " should accept the shared surfaceLighting descriptor");
+    EXPECT(hasDescriptorBindingName(desc, StringID("SurfaceLightingUBO")),
+           std::string(passName) + " should bind the live surfaceLighting UBO");
+    EXPECT(
+        hasResourceDependencyBindingName(desc, StringID("SurfaceLightingUBO")),
+        std::string(passName) +
+            " should carry the surfaceLighting UBO as a resource "
+            "dependency");
+    EXPECT(desc.pipelineBuildDesc.specializationConstants.empty(),
+           std::string(passName) +
+               " should not turn surfaceLighting UBO facts into "
+               "specialization constants");
+  };
+
+  expectSurfaceLightingDesc(forwardDescs.front(), "Forward");
+  expectSurfaceLightingDesc(deferredDescs.front(), "DeferredLighting");
 }
 
 void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
@@ -1581,8 +1787,9 @@ void testNoMaterialDebugRenderableAcceptedWithDrawPayload() {
   if (!descs.empty()) {
     EXPECT(!descs.front().accepted(),
            "debug no-material renderable without shader facts should reject");
-    EXPECT(hasFatalPipelineDiagnostic(descs.front()),
-           "debug no-material rejection should carry fatal pipeline diagnostic");
+    EXPECT(
+        hasFatalPipelineDiagnostic(descs.front()),
+        "debug no-material rejection should carry fatal pipeline diagnostic");
   }
   EXPECT(!HasDrawCommands<RenderInputDesc>,
          "debug no-material desc should not copy draw commands");
@@ -1618,11 +1825,11 @@ void testDebugObjectClassDoesNotRequireDebugOverlayPassName() {
 
   EXPECT(inputs.size() == 1,
          "debug object class should not require Pass_DebugOverlay name");
-  EXPECT(descs.size() == 1,
-         "debug object class should still produce one desc");
+  EXPECT(descs.size() == 1, "debug object class should still produce one desc");
   if (!descs.empty()) {
-    EXPECT(!descs.front().accepted(),
-           "debug object without shader facts should reject even for custom pass");
+    EXPECT(
+        !descs.front().accepted(),
+        "debug object without shader facts should reject even for custom pass");
     EXPECT(hasFatalPipelineDiagnostic(descs.front()),
            "debug object rejection should carry fatal pipeline diagnostic");
   }
@@ -1910,12 +2117,10 @@ void testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings() {
   Scene scene("EnvironmentCompilerScene");
   const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-      ResourceUri("memory://features/environment_lighting"),
-      makeCompilerEnvironmentFeature());
-  scene.resources().setEnvironmentRuntimeState(
-      SceneEnvironmentRuntimeState{.feature = featureHandle,
-                                   .nodePresent = true,
-                                   .bakeRequested = true});
+          ResourceUri("memory://features/environment_lighting"),
+          makeCompilerEnvironmentFeature());
+  scene.resources().setEnvironmentRuntimeState(SceneEnvironmentRuntimeState{
+      .feature = featureHandle, .nodePresent = true, .bakeRequested = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -1962,8 +2167,8 @@ void testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode() {
   Scene scene("EnvironmentCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-      ResourceUri("memory://features/environment_lighting"),
-      makeCompilerEnvironmentFeature());
+          ResourceUri("memory://features/environment_lighting"),
+          makeCompilerEnvironmentFeature());
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -1991,8 +2196,7 @@ void testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode() {
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
-  EXPECT(descs.size() == 1,
-         "missing environment node should produce one desc");
+  EXPECT(descs.size() == 1, "missing environment node should produce one desc");
   if (!descs.empty()) {
     EXPECT(!descs.front().accepted(),
            "feature.environmentLighting must reject without environment node");
@@ -2017,14 +2221,13 @@ void testRenderWorkCompilerRejectsMetadataOnlyEnvironmentFeature() {
 
   [[maybe_unused]] const RenderFeatureHandle unrelatedFeature =
       scene.resources().registerRenderFeature(
-      ResourceUri("memory://features/unrelated_environment_lighting"),
-      makeCompilerEnvironmentFeature());
-  scene.resources().setEnvironmentRuntimeState(
-      SceneEnvironmentRuntimeState{
-          .feature = RenderFeatureHandle{metadataOnlyFeature.index,
-                                         metadataOnlyFeature.generation},
-          .nodePresent = true,
-          .bakeRequested = true});
+          ResourceUri("memory://features/unrelated_environment_lighting"),
+          makeCompilerEnvironmentFeature());
+  scene.resources().setEnvironmentRuntimeState(SceneEnvironmentRuntimeState{
+      .feature = RenderFeatureHandle{metadataOnlyFeature.index,
+                                     metadataOnlyFeature.generation},
+      .nodePresent = true,
+      .bakeRequested = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -2131,12 +2334,10 @@ void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
   Scene scene("EnvironmentCompilerScene");
   const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-      ResourceUri("memory://features/environment_lighting"),
-      makeCompilerEnvironmentFeature(/*includeColor=*/false));
-  scene.resources().setEnvironmentRuntimeState(
-      SceneEnvironmentRuntimeState{.feature = featureHandle,
-                                   .nodePresent = true,
-                                   .bakeRequested = false});
+          ResourceUri("memory://features/environment_lighting"),
+          makeCompilerEnvironmentFeature(/*includeColor=*/false));
+  scene.resources().setEnvironmentRuntimeState(SceneEnvironmentRuntimeState{
+      .feature = featureHandle, .nodePresent = true, .bakeRequested = false});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -2169,7 +2370,8 @@ void testRenderWorkCompilerRejectsMissingEnvironmentUboMember() {
   if (!descs.empty()) {
     EXPECT(!descs.front().accepted(),
            "missing EnvironmentLightingUBO.color should reject desc");
-    EXPECT(hasDiagnosticCode(descs.front(), RenderInputDiagnosticCode::MissingBinding),
+    EXPECT(hasDiagnosticCode(descs.front(),
+                             RenderInputDiagnosticCode::MissingBinding),
            "missing environment UBO member should report MissingBinding");
   }
 }
@@ -2192,7 +2394,8 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
   EXPECT(table.featureGeneration() == feature0 + 1,
          "feature runtime dirty should advance feature generation");
   EXPECT(table.descriptorResourceSelectionGeneration() == selection0,
-         "feature runtime dirty should not advance descriptor resource selection generation");
+         "feature runtime dirty should not advance descriptor resource "
+         "selection generation");
   EXPECT(table.descriptorUploadGeneration() == descriptor0 + 1,
          "feature runtime dirty should advance descriptor upload generation");
   EXPECT(table.volatileUploadGeneration() == volatile0,
@@ -2208,13 +2411,15 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
   table.markBakedResourceDirty();
   EXPECT(table.graphGeneration() == graph0,
          "baked resource dirty should not change graph generation");
-  EXPECT(table.resourceGeneration() == resource0,
-         "baked resource dirty should not change structural resource generation");
+  EXPECT(
+      table.resourceGeneration() == resource0,
+      "baked resource dirty should not change structural resource generation");
   EXPECT(table.featureGeneration() == feature0 + 1,
          "baked resource dirty should not change feature generation");
   EXPECT(table.descriptorResourceSelectionGeneration() ==
              featureDirtySelection + 1,
-         "baked resource dirty should advance descriptor resource selection generation");
+         "baked resource dirty should advance descriptor resource selection "
+         "generation");
   EXPECT(table.descriptorUploadGeneration() == featureDirtyDescriptor + 1,
          "baked resource dirty should advance descriptor upload generation");
   EXPECT(table.volatileUploadGeneration() == featureDirtyVolatile,
@@ -2233,7 +2438,8 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
   EXPECT(table.resourceGeneration() == beforeCameraResource + 1,
          "registerCamera should advance resource generation");
   EXPECT(table.descriptorResourceSelectionGeneration() == beforeCameraSelection,
-         "registerCamera should not advance descriptor resource selection generation");
+         "registerCamera should not advance descriptor resource selection "
+         "generation");
   EXPECT(table.descriptorUploadGeneration() == beforeCameraDescriptor + 1,
          "registerCamera should advance descriptor upload generation");
   EXPECT(table.volatileUploadGeneration() == beforeCameraVolatile,
@@ -2252,7 +2458,8 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
          "updateCamera should leave structural resource generation unchanged");
   EXPECT(table.descriptorResourceSelectionGeneration() ==
              afterCameraRegisterSelection,
-         "updateCamera should leave descriptor resource selection generation unchanged");
+         "updateCamera should leave descriptor resource selection generation "
+         "unchanged");
   EXPECT(table.descriptorUploadGeneration() == afterCameraRegisterDescriptor,
          "updateCamera should leave descriptor upload generation unchanged");
   EXPECT(table.volatileUploadGeneration() == afterCameraRegisterVolatile + 1,
@@ -2266,21 +2473,24 @@ void testSceneResourceTableTracksSplitRenderGenerations() {
   const u64 afterObjectRegisterResource = table.resourceGeneration();
   const u64 afterObjectRegisterSelection =
       table.descriptorResourceSelectionGeneration();
-  const u64 afterObjectRegisterDescriptor =
-      table.descriptorUploadGeneration();
+  const u64 afterObjectRegisterDescriptor = table.descriptorUploadGeneration();
   const u64 afterObjectRegisterVolatile = table.volatileUploadGeneration();
   const u64 afterObjectRegisterUpload = table.uploadGeneration();
   object.visible = false;
   table.updateObject(objectHandle, object);
   EXPECT(table.resourceGeneration() == afterObjectRegisterResource,
-         "value-only updateObject should leave structural resource generation unchanged");
-  EXPECT(table.descriptorResourceSelectionGeneration() ==
-             afterObjectRegisterSelection + 1,
-         "value-only updateObject should refresh prepared descriptor resources");
-  EXPECT(table.descriptorUploadGeneration() == afterObjectRegisterDescriptor + 1,
+         "value-only updateObject should leave structural resource generation "
+         "unchanged");
+  EXPECT(
+      table.descriptorResourceSelectionGeneration() ==
+          afterObjectRegisterSelection + 1,
+      "value-only updateObject should refresh prepared descriptor resources");
+  EXPECT(table.descriptorUploadGeneration() ==
+             afterObjectRegisterDescriptor + 1,
          "value-only updateObject should refresh descriptor upload generation");
   EXPECT(table.volatileUploadGeneration() == afterObjectRegisterVolatile,
-         "value-only updateObject should not use the dirty-host-buffer-only generation");
+         "value-only updateObject should not use the dirty-host-buffer-only "
+         "generation");
   EXPECT(table.uploadGeneration() == afterObjectRegisterUpload + 1,
          "value-only updateObject should still advance upload generation");
 }
@@ -2307,8 +2517,9 @@ void testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges() {
 
   const u64 afterHierarchy = scene->runtimeNodeGeneration();
   child->setTranslation(Vec3f{1.0f, 2.0f, 3.0f});
-  EXPECT(scene->runtimeNodeGeneration() == afterHierarchy,
-         "scene runtime node generation should not advance on transform changes");
+  EXPECT(
+      scene->runtimeNodeGeneration() == afterHierarchy,
+      "scene runtime node generation should not advance on transform changes");
 
   auto cameraNode = SceneNode::create("camera");
   auto camera = cameraNode->addComponent<CameraComponent>();
@@ -2317,20 +2528,23 @@ void testSceneRuntimeNodeGenerationTracksIdentityAndHierarchyChanges() {
   const u64 afterCameraAdd = scene->runtimeNodeGeneration();
   cameraNode->setTranslation(Vec3f{0.0f, 1.0f, 5.0f});
   EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
-         "scene runtime node generation should not advance on camera transform changes");
+         "scene runtime node generation should not advance on camera transform "
+         "changes");
   const u64 beforeCameraPropertyVolatile =
       scene->resources().volatileUploadGeneration();
   const u64 beforeCameraPropertySelection =
       scene->resources().descriptorResourceSelectionGeneration();
   camera->get().setFovY(60.0f);
   EXPECT(scene->runtimeNodeGeneration() == afterCameraAdd,
-         "scene runtime node generation should not advance on camera property changes");
+         "scene runtime node generation should not advance on camera property "
+         "changes");
   EXPECT(scene->resources().volatileUploadGeneration() ==
              beforeCameraPropertyVolatile + 1,
          "camera property changes should dirty volatile camera upload data");
-  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
-             beforeCameraPropertySelection,
-         "camera property changes should not dirty descriptor resource selection");
+  EXPECT(
+      scene->resources().descriptorResourceSelectionGeneration() ==
+          beforeCameraPropertySelection,
+      "camera property changes should not dirty descriptor resource selection");
 
   const u64 afterValueOnlyChanges = scene->runtimeNodeGeneration();
   scene->removeRenderable(child);
@@ -2350,10 +2564,12 @@ void testCameraMembershipChangesDirtyDescriptorSelectionOnly() {
       scene->resources().descriptorResourceSelectionGeneration();
   const u64 beforeActiveDescriptor =
       scene->resources().descriptorUploadGeneration();
-  const u64 beforeActiveVolatile = scene->resources().volatileUploadGeneration();
+  const u64 beforeActiveVolatile =
+      scene->resources().volatileUploadGeneration();
   camera->get().setActive(false);
   EXPECT(scene->runtimeNodeGeneration() == beforeActiveRuntime,
-         "camera active changes should not advance structural runtime node generation");
+         "camera active changes should not advance structural runtime node "
+         "generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeActiveSelection + 1,
          "camera active changes should rebuild scene-level camera descriptors");
@@ -2372,7 +2588,8 @@ void testCameraMembershipChangesDirtyDescriptorSelectionOnly() {
   camera->get().setTarget(
       RenderTarget{ImageFormat::RGBA8, ImageFormat::D24UnormS8, 1});
   EXPECT(scene->runtimeNodeGeneration() == beforeTargetRuntime,
-         "camera target changes should not advance structural runtime node generation");
+         "camera target changes should not advance structural runtime node "
+         "generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeTargetSelection + 1,
          "camera target changes should rebuild scene-level camera descriptors");
@@ -2383,10 +2600,12 @@ void testCameraMembershipChangesDirtyDescriptorSelectionOnly() {
   const u64 beforeMaskRuntime = scene->runtimeNodeGeneration();
   const u64 beforeMaskSelection =
       scene->resources().descriptorResourceSelectionGeneration();
-  const u64 beforeMaskDescriptor = scene->resources().descriptorUploadGeneration();
+  const u64 beforeMaskDescriptor =
+      scene->resources().descriptorUploadGeneration();
   camera->get().setCullingMask(Layer_Default);
   EXPECT(scene->runtimeNodeGeneration() == beforeMaskRuntime,
-         "camera culling mask changes should not advance structural runtime node generation");
+         "camera culling mask changes should not advance structural runtime "
+         "node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeMaskSelection + 1,
          "camera culling mask changes should rebuild render input selection");
@@ -2405,13 +2624,13 @@ void testAttachedRenderableComponentLifecycleSyncsResources() {
   auto mesh = Mesh::create(
       VertexBuffer<VertexPos>::create(
           std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}}),
-      IndexBuffer::create({0, 1, 2}),
-      BoundingBox{{0, 0, 0}, {1, 1, 0}});
+      IndexBuffer::create({0, 1, 2}), BoundingBox{{0, 0, 0}, {1, 1, 0}});
   auto meshComponent = node->addComponent<MeshComponent>(mesh);
   EXPECT(meshComponent.has_value(),
          "attached node should accept renderable structure component");
   EXPECT(scene->runtimeNodeGeneration() == beforeAddRuntime + 1,
-         "adding attached renderable structure should advance runtime node generation");
+         "adding attached renderable structure should advance runtime node "
+         "generation");
   EXPECT(scene->resources().resourceGeneration() > beforeAddResource,
          "adding attached mesh structure should sync scene mesh resources");
   EXPECT(meshComponent->get().getMeshHandle().isValid(),
@@ -2422,19 +2641,24 @@ void testAttachedRenderableComponentLifecycleSyncsResources() {
   const bool removed = node->removeComponent<MeshComponent>();
   EXPECT(removed, "attached mesh component should be removable");
   EXPECT(scene->runtimeNodeGeneration() == beforeRemoveRuntime + 1,
-         "removing attached renderable structure should advance runtime node generation");
-  EXPECT(scene->resources().resourceGeneration() > beforeRemoveResource,
-         "removing attached mesh structure should release scene mesh resources");
-  EXPECT(scene->resources().meshCount() == 0,
-         "removed attached mesh component should not leave a live mesh resource");
-  EXPECT(scene->resources().geometryStorageCount() == 0,
-         "removed attached mesh component should not leave live geometry storage");
+         "removing attached renderable structure should advance runtime node "
+         "generation");
+  EXPECT(
+      scene->resources().resourceGeneration() > beforeRemoveResource,
+      "removing attached mesh structure should release scene mesh resources");
+  EXPECT(
+      scene->resources().meshCount() == 0,
+      "removed attached mesh component should not leave a live mesh resource");
+  EXPECT(
+      scene->resources().geometryStorageCount() == 0,
+      "removed attached mesh component should not leave live geometry storage");
 }
 
 void testAttachedMeshReplacementReleasesOldSceneResources() {
   auto scene = Scene::create("mesh_replacement");
   auto node = SceneNode::create("mesh_replace_node");
-  auto meshComponent = node->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto meshComponent =
+      node->addComponent<MeshComponent>(makeSceneTriangleMesh());
   auto materialComponent =
       node->addComponent<MaterialComponent>(makeSceneMaterial("matte"));
   EXPECT(meshComponent.has_value(), "test node should have a mesh component");
@@ -2480,7 +2704,8 @@ void testAttachedMaterialReplacementReleasesOldMaterialTextures() {
   auto scene = Scene::create("material_replacement");
   const usize baselineTextureCount = scene->resources().textureCount();
   auto node = SceneNode::create("material_replace_node");
-  auto meshComponent = node->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto meshComponent =
+      node->addComponent<MeshComponent>(makeSceneTriangleMesh());
   auto materialComponent = node->addComponent<MaterialComponent>(
       makeTexturedSceneMaterial("first_textured"));
   EXPECT(meshComponent.has_value(), "test node should have a mesh component");
@@ -2510,8 +2735,9 @@ void testAttachedMaterialReplacementReleasesOldMaterialTextures() {
 
   EXPECT(!scene->resources().isAlive(oldMaterial),
          "material replacement should release the old material handle");
-  EXPECT(!scene->resources().isAlive(oldTexture),
-         "material replacement should release old table-owned material texture");
+  EXPECT(
+      !scene->resources().isAlive(oldTexture),
+      "material replacement should release old table-owned material texture");
   EXPECT(scene->resources().materialCount() == 1,
          "material replacement should leave exactly one live material");
   EXPECT(scene->resources().textureCount() == baselineTextureCount + 1,
@@ -2535,8 +2761,7 @@ void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
   const u64 beforeRuntime = scene->runtimeNodeGeneration();
   const u64 beforeSelection =
       scene->resources().descriptorResourceSelectionGeneration();
-  const u64 beforeDescriptor =
-      scene->resources().descriptorUploadGeneration();
+  const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
   const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
   light->get().setIntensity(2.0f);
 
@@ -2544,12 +2769,14 @@ void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
          "light property changes should not advance runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeSelection + 1,
-         "light property changes should refresh prepared descriptor resource selection");
+         "light property changes should refresh prepared descriptor resource "
+         "selection");
   EXPECT(scene->resources().descriptorUploadGeneration() ==
              beforeDescriptor + 1,
          "light property changes should refresh descriptor upload plans");
   EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
-         "point light aggregate updates should not use dirty-host-buffer-only generation");
+         "point light aggregate updates should not use dirty-host-buffer-only "
+         "generation");
 }
 
 void testLightPassMembershipDirtiesDescriptorSelectionOnly() {
@@ -2566,8 +2793,7 @@ void testLightPassMembershipDirtiesDescriptorSelectionOnly() {
   const u64 beforeRuntime = scene->runtimeNodeGeneration();
   const u64 beforeSelection =
       scene->resources().descriptorResourceSelectionGeneration();
-  const u64 beforeDescriptor =
-      scene->resources().descriptorUploadGeneration();
+  const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
   const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
   light->get().setSupportedPasses({Pass_Forward});
 
@@ -2575,12 +2801,14 @@ void testLightPassMembershipDirtiesDescriptorSelectionOnly() {
          "light pass membership should not advance runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeSelection + 1,
-         "light pass membership should refresh prepared descriptor resource selection");
+         "light pass membership should refresh prepared descriptor resource "
+         "selection");
   EXPECT(scene->resources().descriptorUploadGeneration() ==
              beforeDescriptor + 1,
          "light pass membership should refresh descriptor upload plans");
-  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
-         "light pass membership should not use dirty-host-buffer-only generation");
+  EXPECT(
+      scene->resources().volatileUploadGeneration() == beforeVolatile,
+      "light pass membership should not use dirty-host-buffer-only generation");
 }
 
 void testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection() {
@@ -2611,7 +2839,8 @@ void testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection() {
          "steady directional cascade refresh should not rebuild render inputs");
   EXPECT(scene->resources().descriptorUploadGeneration() ==
              beforeRepeatDescriptor,
-         "steady directional cascade refresh should not rebuild descriptor upload plans");
+         "steady directional cascade refresh should not rebuild descriptor "
+         "upload plans");
 }
 
 void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
@@ -2623,16 +2852,17 @@ void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
   const u64 beforeRuntime = scene->runtimeNodeGeneration();
   const u64 beforeSelection =
       scene->resources().descriptorResourceSelectionGeneration();
-  const u64 beforeDescriptor =
-      scene->resources().descriptorUploadGeneration();
+  const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
   lightNode->setTranslation(Vec3f{2.0f, 3.0f, 4.0f});
 
-  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
-         "light transform should not advance structural runtime node generation");
+  EXPECT(
+      scene->runtimeNodeGeneration() == beforeRuntime,
+      "light transform should not advance structural runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeSelection + 1,
          "light transform should refresh aggregate light descriptor selection");
-  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor + 1,
+  EXPECT(scene->resources().descriptorUploadGeneration() ==
+             beforeDescriptor + 1,
          "light transform should refresh descriptor upload plans");
 }
 
@@ -2649,15 +2879,16 @@ void testDirectionalLightNodeTransformRefreshesDirectionalUbo() {
 
   light->get().setSupportedPasses({Pass_Forward});
   light->get().getDirectionalUBO().clearDirty();
-  lightNode->setRotation(Quatf::fromAxisAngle(Vec3f{0.0f, 1.0f, 0.0f},
-                                              1.57079632679f));
+  lightNode->setRotation(
+      Quatf::fromAxisAngle(Vec3f{0.0f, 1.0f, 0.0f}, 1.57079632679f));
 
   const Vec3f expectedDirection = light->get().getDirection();
   const Vec4f uboDirection = light->get().getDirectionalUBO().param.dir;
-  EXPECT(approxEqual(uboDirection.x, expectedDirection.x) &&
-             approxEqual(uboDirection.y, expectedDirection.y) &&
-             approxEqual(uboDirection.z, expectedDirection.z),
-         "directional light transform should refresh the per-light UBO direction");
+  EXPECT(
+      approxEqual(uboDirection.x, expectedDirection.x) &&
+          approxEqual(uboDirection.y, expectedDirection.y) &&
+          approxEqual(uboDirection.z, expectedDirection.z),
+      "directional light transform should refresh the per-light UBO direction");
   EXPECT(light->get().getDirectionalUBO().isDirty(),
          "directional light transform should mark the per-light UBO dirty");
 }
@@ -2706,11 +2937,13 @@ void testParentTransformSyncsDescendantRuntimeResources() {
           ? Transform::fromMat4(object->get().objectToWorld).translation
           : Vec3f{};
 
-  EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
-         "parent transform should not advance structural runtime node generation");
+  EXPECT(
+      scene->runtimeNodeGeneration() == beforeRuntime,
+      "parent transform should not advance structural runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
              beforeSelection,
-         "parent transform should refresh descendant object/light descriptor selection");
+         "parent transform should refresh descendant object/light descriptor "
+         "selection");
   EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
          "parent transform should refresh descendant descriptor upload plans");
   EXPECT(scene->resources().volatileUploadGeneration() > beforeVolatile,
@@ -2731,10 +2964,12 @@ void testHierarchyChangeSyncsRuntimeResources() {
   scene->addRenderable(secondParent);
 
   auto child = SceneNode::create("hierarchy_child");
-  auto meshComponent = child->addComponent<MeshComponent>(makeSceneTriangleMesh());
+  auto meshComponent =
+      child->addComponent<MeshComponent>(makeSceneTriangleMesh());
   auto materialComponent =
       child->addComponent<MaterialComponent>(makeSceneMaterial("matte"));
-  EXPECT(meshComponent.has_value(), "hierarchy child should have mesh component");
+  EXPECT(meshComponent.has_value(),
+         "hierarchy child should have mesh component");
   EXPECT(materialComponent.has_value(),
          "hierarchy child should have material component");
   child->setParent(firstParent);
@@ -2760,7 +2995,8 @@ void testHierarchyChangeSyncsRuntimeResources() {
          "hierarchy changes should advance structural runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
              beforeSelection,
-         "hierarchy changes should refresh descendant object descriptor selection");
+         "hierarchy changes should refresh descendant object descriptor "
+         "selection");
   EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
          "hierarchy changes should refresh descriptor upload plans");
   EXPECT(approxEqual(objectTranslation.x, 8.0f) &&
@@ -2790,8 +3026,9 @@ void testParentTransformDoesNotRegisterUnattachedDescendants() {
   const usize beforeObjectCount = scene->resources().objectCount();
   parent->setTranslation(Vec3f{1.0f, 2.0f, 3.0f});
 
-  EXPECT(scene->resources().meshCount() == beforeMeshCount,
-         "parent transform should not register unattached child mesh resources");
+  EXPECT(
+      scene->resources().meshCount() == beforeMeshCount,
+      "parent transform should not register unattached child mesh resources");
   EXPECT(scene->resources().materialCount() == beforeMaterialCount,
          "parent transform should not register unattached child materials");
   EXPECT(scene->resources().objectCount() == beforeObjectCount,
@@ -2823,6 +3060,7 @@ int main() {
   testPipelineKeyIncludesGenericPassSpecializationValue();
   testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection();
   testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization();
+  testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred();
   testSceneRenderableMissingRequiredMaterialProducesRejectedDesc();
   testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection();
   testNoMaterialDebugRenderableAcceptedWithDrawPayload();
