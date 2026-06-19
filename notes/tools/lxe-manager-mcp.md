@@ -21,7 +21,7 @@ bearer token，也可以用环境变量或参数提供固定 token。
 先准备 Node 依赖和构建产物：
 
 ```bash
-cd /home/lixiang/proj/LXEngine
+cd /path/to/LXEngine
 npm --prefix src/tools/lxe_manager install
 npm --prefix src/tools/lxe_manager run build
 ```
@@ -68,7 +68,7 @@ scripts/lxe_manager/start_mcp.ps1 0.0.0.0 3880
 本机 Codex：
 
 ```bash
-cd /home/lixiang/proj/LXEngine
+cd /path/to/LXEngine
 # 必须用 source，不能用 ./enable_mcp.sh（子 shell 里的 export Codex 看不到）
 source scripts/lxe_manager/enable_mcp.sh --local
 codex
@@ -103,7 +103,7 @@ codex
 远程 Codex 客户端：
 
 ```bash
-cd /home/lixiang/proj/LXEngine
+cd /path/to/LXEngine
 source scripts/lxe_manager/enable_mcp.sh --endpoint "http://<server-ip>:3880/mcp" --token "<token-from-manager-output>"
 codex
 ```

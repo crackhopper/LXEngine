@@ -68,6 +68,12 @@ preview on
 
 场景应该能稳定打开并进入 PBR + IBL binding 链路。Helmet 会使用 standard-pbr material 和 baked IBL resources；有直射光版本用于和 pure environment 版本对比。判断当前切片是否正确时，优先看 `render debug live-stats`、render resource parser 测试和 HDR target dump，再结合截图确认 helmet 表面不是纯黑、纯白或 flat color。
 
+## 我们已经学会了什么
+
+我们已经把 Helmet neutral IBL 场景拆成了四个验证锚点：相机固定观察点，environment node 提供场景级 IBL 请求，helmet 节点提供 glTF mesh 和 standard-pbr material，directional light 提供直射光对比。这样排查时就不会只看截图，而是能沿着 scene document、runtime node、resource table 和 render input 逐层确认。
+
+这个场景的价值是稳定复现 PBR + IBL binding 链路。它不是 reflection probe 教程，也不把所有 HDR environment lighting 未来能力都当作当前事实。
+
 ## 下一步
 
 进入 [02 资源与 Shader 合同](02-resource-and-shader-contract.md)。

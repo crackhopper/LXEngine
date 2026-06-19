@@ -64,6 +64,12 @@ PBR shader 还会消费 scene-level IBL 资源：
 
 GPU bake executor 创建 cubemap face/mip attachment，执行上述 shader，并把结果注册成可被 descriptor lookup 消费的 scene-level resources。
 
+## 我们已经学会了什么
+
+我们已经把 PBR + IBL 的资源归属分成两类：`.material` 只描述表面参数和材质依赖，IBL cubemap、BRDF LUT 和 lighting feature UBO 属于 scene-level resources。`RenderWorkCompiler` 准备 pass 时会把这两边拼成同一个 `RenderInputDesc`，而不是要求每个材质重复声明环境光。
+
+这种拆分让材质和环境可以独立变化：Helmet 换材质不会破坏 IBL bake，scene 换环境也不需要重写每个 `.material` 文件。
+
 ## 下一步
 
 进入 [03 HDR 到屏幕的 Post 流程](03-hdr-post-process-flow.md)。

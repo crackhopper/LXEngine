@@ -53,9 +53,17 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 | cubemap / BRDF LUT dump | Vulkan cubemap face / texture dump 可继续扩展为文件化验收 |
 | local reflection probe | 独立 requirement，不放进当前场景教程默认能力 |
 
-## 继续阅读
+## 我们已经学会了什么
+
+我们已经建立了 PBR + IBL 的排错顺序：先用测试确认 scene、material、graph 和 shader 合同，再用 editor dump 查看 `hdr.color` 或 pass 输出，最后才根据截图判断曝光、bloom、反射方向或环境资源问题。这个顺序能避免把资源没绑定、FrameGraph 没接上、tone mapping 参数不对混成同一个“画面不对”。
+
+当前教程验证的是 Helmet 场景的 IBL binding 和 HDR 输出主线。环境 HDR 异步 bake、运行时 IBL lighting 热激活和 local reflection probe 仍然要跟随 active requirements 推进。
+
+## 下一步
 
 - [材质 Shader 与绑定](../../concepts/material/shader.md)
 - [多 Pass 如何变成 Draw](../../concepts/material/pass-rendering-flow.md)
 - [FrameGraph](../../concepts-design/rendering-pipeline/framegraph.md)
 - [PBR + IBL 场景](01-helmet-neutral-ibl-scene.md)
+- [REQ-073-g：Environment HDR Async IBL Bake And Runtime Lighting](../../requirements/073-g-environment-hdr-async-ibl-bake-and-runtime-lighting.md)
+- [REQ-073-h：Reflection Probe IBL Extension](../../requirements/073-h-reflection-probe-ibl-extension.md)

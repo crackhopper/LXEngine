@@ -45,6 +45,12 @@ xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 | `test_vulkan_frame_graph` | Vulkan backend 编译出的 pass 顺序包含 HDR Forward、Bloom、DebugOverlay |
 | `test_frame_graph` | core FrameGraph 能表达 sampled read / color write 的资源流 |
 
+## 我们已经学会了什么
+
+我们已经把 PBR + IBL 的出片路径拆成了两段：Forward pass 先把材质、光照、shadow 和 IBL 结果写进 `hdr.color`，Bloom pass 再读取这张 HDR attachment 并输出到 `swapchain.color`。tone mapping 和 bloom 参数来自 RenderFeature，而不是散落在临时 C++ 常量里。
+
+所以调试曝光、bloom 或 HDR 输出时，先确认 FrameGraph pass 顺序和 feature binding，再看具体截图。`hdr.color` 是当前最稳定的验证目标。
+
 ## 下一步
 
 进入 [04 验证与排错](04-verify-and-debug.md)。

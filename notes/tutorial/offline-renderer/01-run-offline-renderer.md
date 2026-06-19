@@ -111,7 +111,13 @@ artifacts/offline/smoke.rgba32f
 | EXR 打不开 | 先看同 basename 的 `.png`；再确认我们使用支持 OpenEXR 的图像查看器 |
 | PNG 过亮或过暗 | 当前 preview 使用 exposure 1.0、ACES、gamma 2.2；EXR 不做 tone mapping |
 
-## 继续阅读
+## 我们已经学会了什么
+
+我们已经把一次离线渲染拆成了可验证的链路：scene 先提供 output profile 和 offline settings，CLI 再把它们收敛成 headless Vulkan compute dispatch，最后写出 EXR、PNG、metadata 和 raw float readback。这里的重点不是画质，而是确认 `SceneResourceTable`、offline FrameGraph、`RenderWorkCompiler`、compute executor 和 writer 之间的合同能跑通。
+
+这也解释了为什么离线 renderer 不复用实时 renderer 的 swapchain 和 viewport 状态。它复用的是 scene、资源表、FrameGraph、pipeline 和 descriptor 基础设施；输出、采样、readback 和实验参数属于 offline profile。
+
+## 下一步
 
 - [EXR 与 PNG 输出](02-output-and-exr-viewers.md)
 - [实现结构](03-implementation-flow.md)

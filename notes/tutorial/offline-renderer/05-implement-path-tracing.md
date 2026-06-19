@@ -147,9 +147,15 @@ Path tracing 的图像测试不要一开始追求逐像素 golden。随机采样
 | 一开始接 bindless | 当前需求明确不做 bindless，且会放大架构风险 | 先用显式 storage buffer / resource binding |
 | 先做复杂 UI | integrator 还在变，UI 会过早固化接口 | 先用 CLI 和 scene profile 固定实验合同 |
 
-## 继续阅读
+## 我们已经学会了什么
+
+我们已经把 path tracing 从“写一个新 shader”拆成了一组合同变化：profile 要能选择 integrator，scene record 和 GLSL layout 要同步，offline work graph 要生成正确 compute input，Vulkan executor 要绑定资源并读回输出。当前 `software-compute` shader 是可工作的实验壳，真正的多 bounce、MIS、environment sampling、AOV 和 PBRT 高阶材质 reference 还属于后续需求。
+
+因此实现 path tracing 时，最稳的路线是先保持现有离线链路可运行，再逐步替换 integrator 的采样和材质评估。每一步都要有小尺寸 CLI smoke 或统计测试，而不是等完整物理模型写完后才第一次 dispatch。
+
+## 下一步
 
 - [运行离线渲染器](01-run-offline-renderer.md)
 - [Offline Renderer 总览](index.md)
-- [REQ-056-a](../../requirements/finished/056-a-offline-pbr-texture-material-support.md)
-- [REQ-073-i](../../requirements/075-c-offline-path-tracing-pbr-reference.md)
+- [REQ-074-h：OfflineRT RenderPathGraph Compute Path](../../requirements/074-h-offlinert-render-path-graph-compute-path.md)
+- [REQ-075-c：Advanced Offline Path Tracing Reference](../../requirements/075-c-offline-path-tracing-pbr-reference.md)
