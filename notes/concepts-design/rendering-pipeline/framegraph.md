@@ -85,4 +85,4 @@ graph.addPass(FramePass{Pass_Forward,
 - [Render Target：Pass 的输出形状](render-target.md)
 - [RenderWorkCompiler：FramePass 之后的唯一工单编译器](render-work-compiler.md)
 - [FrameGraph 源码分析](../../source_analysis/src/core/frame_graph/frame_graph.md)
-- [REQ-042-a](../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md)
+- 历史完成项：`REQ-042-a`

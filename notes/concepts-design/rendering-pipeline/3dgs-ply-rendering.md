@@ -109,6 +109,6 @@ gaussianSplat:
 
 - assets-downloader catalog：`src/tools/assets-downloader/catalog/default.yaml`
 - [REQ-077-a: 3DGS PLY Loader And CPU Resource](../../requirements/077-a-3dgs-ply-loader-and-resource.md)
-- [REQ-063-a: Compute Pipeline Foundation](../../requirements/finished/063-a-compute-pipeline-foundation.md)
 - [REQ-077-c: 3DGS Vulkan Splat Pass](../../requirements/077-c-3dgs-vulkan-splat-pass.md)
 - [Vulkan Backend](../../subsystems/vulkan-backend.md)
+- 历史基础：`REQ-063-a` Compute Pipeline Foundation

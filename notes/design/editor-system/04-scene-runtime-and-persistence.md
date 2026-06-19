@@ -101,7 +101,7 @@ PBR/IBL 验收场景
 
 Phase 3 设想了 GUID、`.meta`、热重载和统一导入入口。当前 editor 已经有显式 runtime root、project、scene YAML 和内置 asset manifest，但还没有真正的 AssetRegistry / GUID handle / hot reload。
 
-因此当前设计文档只按路径和 URI 解释持久化。后续若要把 project/scene 从路径引用升级为 GUID 引用，需要先落地 [REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md)。
+因此当前设计文档只按路径和 URI 解释持久化。后续若要把 project/scene 从路径引用升级为 GUID 引用，需要先落地 pending `REQ-044-c`；它不是 0.2.0-pre 基线的一部分，也不进入默认 notes 站点导航。
 
 ## 继续阅读
 

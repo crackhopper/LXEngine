@@ -99,7 +99,7 @@ dirty 标记没有进入纯虚接口，而是作为基类上的通用状态，�
 
 ## REQ-042 会扩展什么
 
-[`REQ-042`](../../../../requirements/finished/042-a-frame-graph-v1-resource-target-pass-execution.md) R7 把
+`REQ-042` R7 把
 RenderTarget 的所有 attachment 句柄统一到 `IGpuResourceSharedPtr` 上，与本页
 描述的 "GPU 资源走 IGpuResource，无例外" 这条契约保持一致。具体扩展点：
 

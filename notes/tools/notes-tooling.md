@@ -35,7 +35,7 @@ scripts/notes/serve_site.sh
 1. `scripts/notes/serve_site.sh` 调用 `python3 scripts/notes/generate_site_config.py`
 2. `mkdocs serve -f mkdocs.gen.yml` 启动站点
 
-真正被 MkDocs 使用的是 `mkdocs.gen.yml`（生成产物），不是手写 `mkdocs.yml`。后者保持最小，只描述站点基础行为。
+真正被 MkDocs 使用的是 `mkdocs.gen.yml`（生成产物），不是手写 `mkdocs.yml`。后者保持最小，只描述站点基础行为和默认构建排除规则。
 
 `serve_site.sh` 会：
 
@@ -50,8 +50,11 @@ scripts/notes/serve_site.sh
 手写基础配置：
 
 - 站点标题 / 主题 / Markdown 扩展 / 搜索 / 代码高亮 / MathJax + Mermaid 前端加载
+- 默认构建排除：`requirements/finished/**`、`requirements/pending/**`、`requirements/planned/**`、`requirements/README.md`
 
 不再手写具体文档导航。
+
+这些 requirements 子目录仍保留在仓库里，但不进入默认 notes 站点构建。默认站点只对当前活跃文档和显式导航页面做质量检查，避免历史归档里的旧链接掩盖当前文档问题。
 
 公式方案：`pymdownx.arithmatex + MathJax`
 Mermaid 方案：浏览器端 `mermaid.min.js` 把 ` ```mermaid ` 代码块渲染成图
@@ -94,7 +97,7 @@ flowchart TD
 
 生成器，做四件事：
 
-1. 扫描 `notes/requirements/*.md`（不含 `index.md`、`README.md` 和 `finished/`）作为活跃需求列表；文件名编号按实施顺序排序
+1. 扫描 `notes/requirements/*.md`（不含 `index.md`、`README.md` 和子目录）作为活跃需求列表；文件名编号按实施顺序排序
 2. 扫描 `notes/tools/*.md` 并生成 `tools/index.md`
 3. 读 `notes/nav.yml` 作为站点导航唯一来源
 4. 读 `mkdocs.yml`，补上 nav / watch / hooks 写出 `mkdocs.gen.yml`
@@ -117,18 +120,28 @@ flowchart TD
 - `速览`
 - `GetStarted`
 - `Tutorial`
-- `概念`
-- `设计`
-- `后端实现`
-- `需求（进行中）`
+- `场景系统`
+- `概念与设计`
+- `源码分析`
+- `实现技巧`
 - `Roadmap`
+- `发布记录`
+- `需求（进行中）`
+- `Superpowers`
+- `Use Cases`
+- `临时笔记`
 - `相关工具`
+- `Debug 复盘`
+- `FAQ`
 
-三类目录仍允许通过占位符动态展开：
+六类目录仍允许通过占位符动态展开：
 
 - `@requirements`：展开 `notes/requirements/*.md`
 - `@roadmaps`：递归展开 `notes/roadmaps/` 子目录
 - `@source_analysis`：展开 `scripts/source_analysis/extract_sections.py` 里注册的分析目标
+- `@superpowers_specs`：展开 `docs/superpowers/specs/` 同步到 notes 站点后的条目
+- `@superpowers_plans`：展开 `docs/superpowers/plans/` 同步到 notes 站点后的条目
+- `@temporary`：递归展开 `notes/temporary/` 临时笔记
 
 占位符写在 `nav.yml` 里，位置由配置控制；具体页面由目录内容跟随。
 
@@ -141,12 +154,14 @@ flowchart TD
 - `index.md` — 需求索引
 - `NNN-*.md` — 当前活跃需求，按编号顺序实施；局部拆分用 `NNN-a-*.md`
 - `finished/` — 历史归档
+- `pending/` / `planned/` — 暂缓或规划中的需求材料
 
 维护约定：
 
 - `REQ 文件号 = 实施顺序`，用户应能从小到大直接推进
 - `一个 REQ 文件 = 一个连续实施周期`
 - 如果新需求插入后导致旧需求的一部分要后置，先拆旧需求，再优先使用 `NNN-a` / `NNN-b` 后缀族
+- 默认 notes 站点只构建 `index.md` 和当前活跃 `NNN-*.md`；历史、暂缓、规划目录由 `mkdocs.yml exclude_docs` 排除
 
 ### `scripts/notes/mkdocs_hooks.py`
 
@@ -225,12 +240,13 @@ scripts/notes/serve_site.sh
 - `notes/tools/*.md` 自动生成 `notes/tools/index.md`
 - requirements 页面相对链接与中文锚点由 hook 修正
 - `mkdocs.gen.yml` 自动从基础配置 + 导航配置拼出
+- 历史、暂缓、规划 requirements 默认排除出 notes 站点构建
 
 手工：
 
 - `notes/nav.yml` 中的站点结构、标题、排序
 - 新页面接入导航的分组决策
-- `@requirements` / `@roadmaps` / `@source_analysis` 之外的新页面仍需写进导航
+- 已有占位符之外的新页面仍需写进导航
 
 ## 维护建议
 
@@ -267,4 +283,5 @@ python3 scripts/notes/generate_site_config.py
 - `notes/` 唯一人类可读入口
 - `mkdocs.yml` 站点基础行为
 - `generate_site_config.py` 读 `notes/nav.yml` 生成导航
+- `exclude_docs` 让历史 requirements 不影响当前站点质量门
 - `mkdocs_hooks.py` 修正运行期路径与中文锚点

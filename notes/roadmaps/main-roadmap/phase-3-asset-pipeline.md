@@ -25,9 +25,9 @@
 | 4 | Import API | 统一模型、纹理、材质、HDR 导入入口 |
 | 5 | Provenance | 生成/导入来源写入 metadata |
 
-## 与当前 active REQ
+## 与 pending REQ
 
-[REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md) 是本 phase 的 pending 最小桥接入口：先服务 editor asset list 和 hot reload，不要求一口气 GUID 化所有 runtime 资源。它不进入 0.2.0-pre 基线。
+`REQ-044-c` 是本 phase 的 pending 最小桥接入口：先服务 editor asset list 和 hot reload，不要求一口气 GUID 化所有 runtime 资源。它不进入 0.2.0-pre 基线，也不进入默认 notes 站点导航。
 
 ## 与 Phase 1 的关系
 
@@ -44,4 +44,4 @@ FrameGraph / shadow 可以先做，不必等 Phase 3 完成。Phase 3 会在后�
 
 - [资产系统概念](../../concepts/assets/index.md)
 - [Phase 12 · Release](phase-12-release.md)
-- [REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md)
+- pending 需求编号：`REQ-044-c`

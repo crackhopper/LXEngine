@@ -58,6 +58,10 @@ markdown_extensions:
 exclude_docs: |
   .sync-meta.json
   0324-after-implement.md
+  requirements/README.md
+  requirements/finished/**
+  requirements/pending/**
+  requirements/planned/**
 
 extra:
   generator: false

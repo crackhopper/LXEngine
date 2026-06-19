@@ -83,7 +83,7 @@ HTTP endpoint、WebSocket 和 MCP 诊断都复用 `LxeEditorApiService`。这层
 
 当前 `lxe_editor` 已经有 HTTP/WebSocket/API service，并且 manager 可以通过这些能力做远程诊断。但 roadmap 里的 Phase 10 是更大的 engine-level MCP / CLI / agent：它要求标准 MCP tools/resources/prompts、headless CLI、agent runtime、权限和成本模型。
 
-这部分尚未实现，设计边界见 [REQ-044-b](../../requirements/pending/044-b-engine-cli-mcp-agent-entry.md)。
+这部分尚未实现，设计边界仍停留在 pending `REQ-044-b`，不属于 0.2.0-pre 当前实现。
 
 ## 继续阅读
 

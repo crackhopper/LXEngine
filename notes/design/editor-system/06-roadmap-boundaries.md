@@ -17,11 +17,11 @@ Roadmap 像工作台旁边的施工图。它说明我们打算把 `lxe_editor` �
 
 ## Roadmap 中还没有实现的三条线
 
-| Roadmap 方向 | 未实施内容 | 新增 active REQ |
+| Roadmap 方向 | 未实施内容 | 关联 pending REQ |
 |---|---|---|
-| Phase 9 Web Editor | 浏览器 editor shell、WebSocket IPC schema、Web UI 面板复用 command/event | [REQ-044-a](../../requirements/pending/044-a-web-editor-ipc-and-shell.md) |
-| Phase 10 MCP + Agent + CLI | engine-level MCP server、headless CLI、agent runtime、权限/成本模型 | [REQ-044-b](../../requirements/pending/044-b-engine-cli-mcp-agent-entry.md) |
-| Phase 3 Asset Pipeline | AssetRegistry、GUID、`.meta`、热重载、editor asset handle | [REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md) |
+| Phase 9 Web Editor | 浏览器 editor shell、WebSocket IPC schema、Web UI 面板复用 command/event | `REQ-044-a` |
+| Phase 10 MCP + Agent + CLI | engine-level MCP server、headless CLI、agent runtime、权限/成本模型 | `REQ-044-b` |
+| Phase 3 Asset Pipeline | AssetRegistry、GUID、`.meta`、热重载、editor asset handle | `REQ-044-c` |
 
 这三条线都和 editor 有关，但切入层不同：Web Editor 改的是 UI 外壳，MCP/CLI 改的是外部能力入口，AssetRegistry 改的是 asset identity 和持久化引用。
 

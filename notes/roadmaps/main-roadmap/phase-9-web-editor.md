@@ -4,7 +4,7 @@
 
 ## 当前入口
 
-[REQ-044-a](../../requirements/pending/044-a-web-editor-ipc-and-shell.md) 是本 phase 的 pending 最小需求：先定义 Web Editor shell 与 IPC 合同，不要求完整替代 ImGui editor。它不进入 0.2.0-pre 基线。
+`REQ-044-a` 是本 phase 的 pending 最小需求：先定义 Web Editor shell 与 IPC 合同，不要求完整替代 ImGui editor。它不进入 0.2.0-pre 基线，也不进入默认 notes 站点导航。
 
 ## 实施顺序
 
@@ -28,5 +28,5 @@
 
 ## 继续阅读
 
-- [REQ-044-a](../../requirements/pending/044-a-web-editor-ipc-and-shell.md)
 - [Phase 10 · Agent / MCP / CLI](phase-10-ai-agent-mcp.md)
+- pending 需求编号：`REQ-044-a`
