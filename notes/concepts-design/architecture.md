@@ -35,34 +35,38 @@ flowchart TD
 
 ## 一帧渲染从 Scene 走到 GPU submit
 
-运行时渲染像一条生产线：Scene 提供原料，FrameGraph 排工序，RenderWorkQueue 把每道工序要执行的 work 装箱，Pipeline 系统准备机器配置，Vulkan backend 执行命令。
+运行时渲染像一条生产线：Scene 提供原料，`SceneResourceTable` 把原料登记成 typed resources，RenderPathGraph 提供工艺单，FrameGraph 排工序，`RenderWorkCompiler` 给每道工序打包输入，Pipeline 系统准备机器配置，Vulkan backend 执行命令。
 
 ```mermaid
 flowchart TD
     scene["Scene / SceneNode\ncamera, light, renderable"]
-    fg["FrameGraph::build\nFramePass + read/write"]
+    table["SceneResourceTable\ntyped resources + handles"]
+    path["RenderPathGraph\npass program"]
+    fg["FrameGraph::compile\nresource DAG"]
     pass["FramePass\nShadow / Forward / DebugOverlay"]
-    queue["RenderWorkQueue\nper-pass RenderWorkItem"]
-    item["RenderWorkItem\nshader + resources + PipelineKey"]
-    pbd["PipelineBuildDesc\nfrom RenderWorkItem"]
+    compiler["RenderWorkCompiler\nbuildInputs + prepare"]
+    input["RenderInput / RenderInputDesc\nshader + resources + PipelineKey"]
+    pbd["PipelineBuildDesc\nfrom RenderInputDesc"]
     cache["PipelineCache\npreload / get-or-create"]
     renderer["VulkanRenderer::draw"]
     cmd["VulkanCommandBuffer"]
     submit["Queue submit / present"]
 
-    scene --> fg
+    scene --> table
+    table --> compiler
+    path --> fg
     fg --> pass
-    pass --> queue
-    queue --> item
-    item --> pbd
+    pass --> compiler
+    compiler --> input
+    input --> pbd
     pbd --> cache
     cache --> renderer
-    item --> renderer
+    input --> renderer
     renderer --> cmd
     cmd --> submit
 ```
 
-`Scene::getSceneLevelResources(pass, target)` 会在 queue 构建阶段把 camera/light 这类系统资源合进 `RenderWorkItem`。Backend 按 shader 反射出来的 binding name 做 descriptor 路由，执行所需资源都随 `RenderWorkItem` 进入命令录制。
+这里有一个容易混淆的边界：FrameGraph 只负责编译 pass/resource 依赖 DAG，不负责生成 draw 或 dispatch 输入。DAG 确定后，`RenderWorkCompiler::buildInputs(...)` 才按单个 `FramePass` 从 scene/runtime facts 中筛选 renderable、fullscreen 或 compute 输入；`prepare(...)` 再生成 `RenderInputDesc`，把 shader、binding plan、pipeline identity 和诊断收口。Backend 按 shader 反射出来的 binding name 做 descriptor 路由，执行所需资源都随 `RenderInputDesc` 进入命令录制。
 
 ## Shadow-era 的资源流是先写再读
 
@@ -127,8 +131,8 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 |---|---|---|---|
 | Scene | `src/core/scene/` | runtime object graph、camera/light/renderable、scene-level resource 筛选 | Vulkan submit、shader 编译 |
 | Asset / Material | `src/core/asset/`, `src/infra/material_loader/` | `.material` 到 `MaterialTemplate` / `MaterialInstance`、pass、binding ownership、runtime 参数 | FrameGraph resource 生命周期 |
-| FrameGraph | `src/core/frame_graph/` | pass 顺序、target desc、read/write 声明、queue 构建、compile 校验 | attachment 分配、自动 pass reorder、aliasing |
-| RenderWorkQueue | `src/core/frame_graph/` | per-pass realtime renderable 过滤、offline compute item 生成、scene-level resource 拼接、pipeline build desc 去重 | pass 间依赖推导、材质首次校验 |
+| FrameGraph | `src/core/frame_graph/` | pass 顺序、target desc、read/write 声明、compile 校验、资源 DAG 排序 | attachment 分配、draw/dispatch input 打包、pipeline 创建 |
+| RenderWorkCompiler | `src/core/frame_graph/` | per-pass realtime renderable 过滤、offline compute input 生成、`RenderInputDesc`、binding plan、pipeline build desc | pass 间依赖推导、backend command 录制 |
 | Pipeline | `src/core/pipeline/`, `src/backend/vulkan/details/pipelines/` | backend-agnostic build desc、target-aware pipeline identity、Vulkan graphics/compute pipeline materialization | 材质参数值更新 |
 | Vulkan backend | `src/backend/vulkan/` | attachment、render pass/framebuffer、descriptor by name、command buffer、submit/present | scene authoring、业务 update |
 | Editor | `src/demos/lxe_editor/` | project/scene runtime、ImGui UI、CommandBus、API/recording 集成 | 新渲染层、engine-level MCP |
@@ -136,7 +140,7 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 
 ## Realtime 与 Offline 共用 RenderWork 主干
 
-实时视口像工作台上的即时预览；离线渲染像旁边的实验仪器。它们读取同一份 scene/asset 事实，并共用 `FrameGraph`、`RenderWorkQueue`、`RenderWorkItem`、`PipelineBuildDesc`、`PipelineCache` 和 `VulkanCommandBuffer` 这条主干。执行目标不同：realtime 追求交互帧率和 swapchain present，offline 追求可复现实验、ground truth 对比和 path tracing 迭代。
+实时视口像工作台上的即时预览；离线渲染像旁边的实验仪器。它们读取同一份 scene/asset 事实，并共用 `SceneResourceTable`、`FrameGraph`、`RenderWorkCompiler`、`RenderInputDesc`、`PipelineBuildDesc`、`PipelineCache` 和 Vulkan command 录制这条主干。执行目标不同：realtime 追求交互帧率和 swapchain present，offline 追求可复现实验、ground truth 对比和 path tracing 迭代。
 
 ```mermaid
 flowchart TD
@@ -164,7 +168,7 @@ flowchart TD
 
 | 领域 | 当前事实 | Pending 边界 |
 |---|---|---|
-| FrameGraph | 显式 pass 顺序、read/write 声明、compile 校验、per-pass queue | task-based build、自动重排、aliasing |
+| FrameGraph | 显式 pass 顺序、read/write 声明、compile 校验、资源 DAG 排序 | task-based build、attachment aliasing |
 | Shadow / CSM | 4 个 directional shadow cascade，forward 读取 `ShadowMap0..3` | shadow debug visualization 仍可继续扩展 |
 | Forward output | forward HDR scene color、post process、bloom 和 swapchain 输出链路 | 更完整的 post stack 和调试 dump 仍可扩展 |
 | Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、金属球验证场景 | 更完整的 PBR texture set 和 local probe |

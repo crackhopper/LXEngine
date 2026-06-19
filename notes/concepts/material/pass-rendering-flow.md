@@ -1,8 +1,27 @@
 # RenderPathGraph 怎样变成 RenderInput
 
-Surface material 只说明“表面是什么”；真正的多 pass 来自 active `RenderPathGraph`。同一个 object 可能在 Shadow pass 写 depth，在 Forward pass 写 HDR color，在 PostProcess pass 之后由 DebugOverlay 追加调试线。LXEngine 不会把整张 graph 一次性交给 backend，而是把它拆成“某个 pass 下的一份 pipeline work”。
+Surface material 只说明“表面是什么”；真正的多 pass 来自 active `RenderPathGraph`。同一个 object 可能在 Shadow pass 写 depth，在 Forward pass 写 HDR color，随后 fullscreen Bloom pass 把 HDR color 写到 swapchain，DebugOverlay 再追加调试线。LXEngine 不会把整张 graph 一次性交给 backend，而是把它拆成“某个 pass 下的一份 pipeline work”。
 
 当前这份 work 分成两层：`RenderInput` 描述要画什么或 dispatch 什么；`RenderInputDesc` 描述这份输入对应的 pipeline、shader variant、binding plan 和诊断结果。Realtime raster 路径通常生成 `RenderDrawInput`；offline compute 路径生成 `RenderComputeInput`。
+
+## 先把这条生产线校准清楚
+
+我们可以把一次渲染想成“按工艺单加工场景物料”。`.scene.yaml` 是输入来源，
+`SceneResourceTable` 是物料仓库，`RenderPathGraph` 是工艺单，`FrameGraph` 把
+工艺单里的 pass 依赖排成 DAG，`RenderWorkCompiler` 再为每个 pass 打包可执行
+输入，executor 最后把这些输入真正送到 backend。
+
+| 阶段 | 当前职责 | 不负责什么 |
+|---|---|---|
+| Scene / SceneDocument | 提供 node、camera、light、mesh、material、feature 等输入事实 | 不决定 pass 顺序 |
+| SceneResourceTable | 持有解析后的 typed resources 和 generation handle | 不执行 shader |
+| RenderPathGraph | 声明 pass、source/target、input contract、shader、render state | 不持有 runtime draw payload |
+| FrameGraph::compile | 校验 source/target 并按资源依赖生成稳定 DAG 顺序 | 不打包 `RenderInput`，不创建 pipeline |
+| RenderWorkCompiler | 按 DAG 中的单个 pass 筛选 scene facts，生成 `RenderInput` / `RenderInputDesc` | 不提交 Vulkan command buffer |
+| Executor / backend | 按 compiled graph 顺序取 pass + prepared input，绑定资源和 pipeline 后执行 | 不重新解释 scene schema |
+
+所以“build FrameGraph”更准确地说是编译 pass/resource DAG。`RenderInput` 的打包
+发生在 DAG 已经确定之后；执行 pipeline 则是 executor/backend 的职责。
 
 ## RenderPathGraph pass 是结构真值
 
@@ -12,18 +31,14 @@ Surface material 只说明“表面是什么”；真正的多 pass 来自 activ
 |---|---|---|
 | `Shadow` | 写 shadow depth | `scene.camera` / `scene.lights` -> `shadow.main` |
 | `Forward` | 采样 material BSDF 并写 HDR color/depth | `material.bsdf`、`scene.camera`、`scene.lights` -> `hdr.color`、`depth.main` |
-| `PostProcess` | 读 HDR color 和 tone mapping feature，写 swapchain | `hdr.color`、`feature.toneMapping` -> `swapchain.color` |
+| `Bloom` | 读 HDR color 和 bloom feature，写 swapchain | `hdr.color`、`feature.bloom` -> `swapchain.color` |
 | `DebugOverlay` | 追加 debug overlay 线段 | `scene.camera` -> `debug.overlay` |
 
 pass 节点同时声明 `stage`、`dispatch`、`shader`、`input`、`sources`、`targets`、`rendering.attachments` 和 `renderState`。这些字段会进入 RenderPathNode signature，成为 pipeline identity 的一部分。
 
-当前 realtime 默认关闭 bloom。`VulkanPostProcessSettings::bloomEnabled`
-的默认值是 `false`，所以 Forward 默认选择
-`assets/render_paths/forward_main.render-path.yaml`，Deferred 默认选择
-`assets/render_paths/deferred_main.render-path.yaml`。`forward_bloom` /
-`deferred_bloom` 仍然是显式开启 bloom 时使用的 graph：它们多出
-`BloomThreshold`、`BloomBlurH`、`BloomBlurV`，最终 `PostProcess` 再读取
-`bloom.blur`。
+当前 Forward 默认 graph 已经把 bloom 作为一个显式 fullscreen pass 放在
+`assets/render_paths/forward_main.render-path.yaml` 中。是否产生 bloom contribution
+由 `feature.bloom` 的参数控制，而不是切换到另一份 `forward_bloom` graph。
 
 ## 一个 RenderInput 只属于一个 pass
 
@@ -95,34 +110,32 @@ FrameGraph::compile(registry)
 
 它仍然不持有 backend attachment，也不做 attachment aliasing；backend 执行层负责把 compiled pass 转成具体 framebuffer/render pass/dynamic rendering 状态。
 
-## PostProcess 写入真实 swapchain 格式
+## Fullscreen pass 写入真实 swapchain 格式
 
-PostProcess 的 graph asset 写的是逻辑目标 `swapchain.color`。真正执行前，
-Vulkan backend 会先从设备选择出的 surface format 推导当前 swapchain
-target，并保留 `BGRA8Srgb` / `RGBA8Srgb` 这类 sRGB 信息。随后
-`initScene()` 会把 `PostProcess` 和 `DebugOverlay` 的 target 与 attachment
+当前 Forward graph 中，`Bloom` fullscreen pass 写逻辑目标 `swapchain.color`。
+真正执行前，Vulkan backend 会先从设备选择出的 surface format 推导当前
+swapchain target，并保留 `BGRA8Srgb` / `RGBA8Srgb` 这类 sRGB 信息。随后
+`initScene()` 会把写 swapchain 的 fullscreen/debug pass target 与 attachment
 contract 同步成真实 swapchain format。
 
 这一步很重要：如果 surface image view 是 `VK_FORMAT_B8G8R8A8_SRGB`，而
 pipeline contract 仍然按 `BGRA8` / UNORM 创建，就会把颜色编码责任说不清。
 当前约定是：
 
-| Swapchain target | PostProcess shader 输出 | 谁做 sRGB encode |
+| Swapchain target | Fullscreen shader 输出 | 谁做 sRGB encode |
 |---|---|---|
 | `BGRA8Srgb` / `RGBA8Srgb` | linear mapped color | Vulkan sRGB attachment |
 | `BGRA8` / `RGBA8` | shader 手动 gamma 后的 sRGB-like color | shader |
 
-因此，PostProcess fullscreen material 创建前会先看 target color format，再决定
-传给 `PostProcessUBO.gamma` 的值。sRGB target 下写 `gamma = 1.0`，UNORM
-target 下写 `gamma = 2.2`。这是当前实现；更清晰的后续设计应该给
-`PostProcessUBO` 增加显式 `outputEncodingMode`，避免把“输出编码模式”和
-“显示 gamma 数值”混在一个字段里。
+Forward surface shader 仍通过 `feature.toneMapping` 和 `feature.forwardPass`
+决定 tone mapping / gamma flow；`Bloom` fullscreen pass 当前读取 `hdr.color` 和
+`feature.bloom`，用 `render_paths/Bloom/blit.frag` 输出到 swapchain。
 
 ## Debug dump 有两个观察面
 
 `render debug dump <attachment> [path]` 当前只允许 dump frame graph
 attachment，例如 `hdr.color`。这张图观察的是中间 HDR buffer：它还没有经过
-PostProcess、bloom 合成、tone mapping 或 swapchain sRGB 写入。
+fullscreen bloom blit 或 swapchain sRGB 写入。
 
 同一个命令会同时安排一张 paired screen dump，路径为目标文件名加
 `-screen.png`。这张图来自最终 swapchain copy，并且触发时会跳过 GUI frame，
