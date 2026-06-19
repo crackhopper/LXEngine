@@ -26,6 +26,13 @@
 6. [Shadow Pass：只写深度的光源视角](shadow-pass.md)：理解 shadow depth-only pass 如何成为第一条真实多 pass 链路。
 7. [CSM：把方向光阴影分成四段](cascaded-shadow-maps.md)：理解四级 cascade 数据如何从 light 进入 shadow pass 和 forward shader。
 
+## 专题阅读
+
+| 专题 | 什么时候读 |
+|---|---|
+| [Plane 与薄盒阴影](plane-vs-thin-box-shadow.md) | 调试 shadow acne、peter-panning、plane 是否应该 cast shadow 时读 |
+| [3DGS PLY 渲染](3dgs-ply-rendering.md) | 需要理解 3D Gaussian Splatting 目标设计、PLY 字段和 `REQ-077-*` 后续路线时读；它不是当前已落地的 mesh 渲染路径 |
+
 ## 当前范围
 
 | 已经实现 | 不是当前事实 |
@@ -37,6 +44,7 @@
 | target-aware pipeline identity | render graph 自动 barrier / semaphore 推导 |
 | `FramePass` / `RenderWorkCompiler` / `RenderInputDesc` 单轨模型 | 自动把 offline pass 拆成完整 path tracing pass graph |
 | realtime metadata 使用 `renderInputStats` | batch 命名的正向运行时统计 |
+| plane primitive 作为薄盒参与 shadow | 3DGS Vulkan splat pass 已经落地 |
 
 ## 继续阅读
 
@@ -44,6 +52,8 @@
 - [RenderPathGraph：渲染路线说明书](render-path-graph.md)
 - [RenderWorkCompiler：FramePass 之后的唯一工单编译器](render-work-compiler.md)
 - [Realtime 与 Offline：共享同一条 compiler 主线](realtime-offline-shared-flow.md)
+- [Plane 与薄盒阴影](plane-vs-thin-box-shadow.md)
+- [3DGS PLY 渲染](3dgs-ply-rendering.md)
 - [Shadow 阶段教程](../../tutorial/shadow-era/index.md)
 - [多 Pass 材质怎样变成 RenderWork](../../concepts/material/pass-rendering-flow.md)
 - [Vulkan Backend](../../subsystems/vulkan-backend.md)

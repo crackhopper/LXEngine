@@ -24,14 +24,15 @@
 
 1. [Material Contract v2](material-contract-v2.md)：先建立材质定义、contract metadata、parser、shader variant 和 pipeline identity 的完整模型。
 2. [从 .material 到 MaterialInstance](file-to-instance.md)：看 v2 material 文件怎样成为 runtime instance。
-3. [Shader 在材质中的角色](shader.md)：看 contract source、RenderPathGraph pass shader 和系统 ABI 如何配合。
-4. [内置 Shader 清单](shader-catalog.md)：认识 Forward、Deferred、Bloom、IBL bake 和 OfflineRT shader 家族。
-5. [MaterialInstance：运行时状态](material-instance.md)：看 envelope、source signature、resource dependency 和非 surface binding 状态。
-6. [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)：把 RenderPathGraph、FrameGraph、RenderWorkCompiler 串起来。
-7. [什么是 Pipeline](what-is-pipeline.md)：建立当前 pipeline identity 的模型。
-8. [Contract 如何影响 Pipeline](contract-and-pipeline.md)：理解 material type/source variant 与 RenderPathNode signature 怎样组成 pipeline identity。
-9. [创建与排错自定义材质](custom-template.md)：按当前 v2 authoring 路径写材质、contract 和 render path。
-10. [Hardcut 当前边界](hardcut-boundary.md)：把 bindless、variant、FrameGraph 和资源责任边界放在同一页检查。
+3. [RenderPath Pass Contract](render-path-pass-contract.md)：看 pass 如何声明 shader、source/target、geometry、attachment 和 render state。
+4. [Shader 在材质中的角色](shader.md)：看 contract source、RenderPathGraph pass shader 和系统 ABI 如何配合。
+5. [内置 Shader 清单](shader-catalog.md)：认识 Forward、Deferred、Bloom、IBL bake 和 OfflineRT shader 家族。
+6. [MaterialInstance：运行时状态](material-instance.md)：看 envelope、source signature、resource dependency 和非 surface binding 状态。
+7. [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)：把 RenderPathGraph、FrameGraph、RenderWorkCompiler 串起来。
+8. [什么是 Pipeline](what-is-pipeline.md)：建立当前 pipeline identity 的模型。
+9. [Contract 如何影响 Pipeline](contract-and-pipeline.md)：理解 material type/source variant 与 RenderPathNode signature 怎样组成 pipeline identity。
+10. [创建与排错自定义材质](custom-template.md)：按当前 v2 authoring 路径写材质、contract 和 render path。
+11. [Hardcut 当前边界](hardcut-boundary.md)：把 bindless、variant、FrameGraph 和资源责任边界放在同一页检查。
 
 ## 当前边界先记住
 
