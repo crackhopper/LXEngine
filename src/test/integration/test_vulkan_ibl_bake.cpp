@@ -29,6 +29,10 @@ namespace {
 constexpr std::string_view kMaterialSourceUri =
     "memory://materials/standard-pbr.material";
 constexpr std::string_view kMaterialSourceHash = "sha256:standard-pbr";
+constexpr std::string_view kNeutralEnvironmentUri =
+    "assets/env/khronos/neutral/ggx/specular.ktx2";
+constexpr std::string_view kNeutralEnvironmentHash =
+    "sha256:f4766016d86d33019dbe56b42e93d5de4f8926f6724771b8a6c7218db35539c5";
 
 void expect(bool condition, const char *message) {
   if (!condition) {
@@ -50,13 +54,19 @@ std::string joinDiagnostics(const std::vector<std::string> &diagnostics) {
 
 std::filesystem::path repoRootForTest() {
   std::filesystem::path root = std::filesystem::current_path();
-  if (std::filesystem::exists(root / "assets/render_paths")) {
-    return root;
+  while (!root.empty()) {
+    if (std::filesystem::exists(root / "CMakeLists.txt") &&
+        std::filesystem::exists(root / "src/core/scene") &&
+        std::filesystem::exists(root / "assets/render_paths")) {
+      return root;
+    }
+    const std::filesystem::path parent = root.parent_path();
+    if (parent == root) {
+      break;
+    }
+    root = parent;
   }
-  if (std::filesystem::exists(root.parent_path() / "assets/render_paths")) {
-    return root.parent_path();
-  }
-  return root;
+  return std::filesystem::current_path();
 }
 
 std::filesystem::path makeTempDir(const std::string &name) {
@@ -197,8 +207,9 @@ IblBakeItem makeEnvironmentItem() {
       .kind = IblBakeItemKind::EnvironmentLight,
       .key =
           EnvironmentIblBakeKey{
-              .environmentMapUri = ResourceUri("memory://env/output-smoke.hdr"),
-              .sourceHash = "sha256:output-smoke",
+              .environmentMapUri = ResourceUri(std::string(kNeutralEnvironmentUri)),
+              .sourceHash = std::string(kNeutralEnvironmentHash),
+              .sourceKind = EnvironmentIblBakeSourceKind::TextureCube,
           },
       .bakeRenderPathUri = ResourceUri(
           "assets/render_paths/bake_environment_ibl.render-path.yaml"),
@@ -337,7 +348,8 @@ public:
         return IblBakeCacheCheckResult::invalid("environment key required");
       }
       const IblBakeValidationResult source = validateIblBakeManifestSource(
-          *parsed.manifest, key->environmentMapUri, key->sourceHash);
+          *parsed.manifest, key->environmentMapUri, key->sourceHash,
+          key->sourceKind);
       if (!source.ok) {
         return IblBakeCacheCheckResult::invalid(
             joinDiagnostics(source.diagnostics));
@@ -438,6 +450,7 @@ private:
     EnvironmentIblBakeManifest manifest;
     manifest.sourceUri = key->environmentMapUri;
     manifest.sourceHash = key->sourceHash;
+    manifest.sourceKind = key->sourceKind;
     manifest.diffuseFile = "diffuse_sh9.yaml";
     manifest.specularFile = "specular_prefilter.ktx2";
     manifest.specularResolution = 256;
@@ -612,6 +625,51 @@ void testBakeCommandWritesPayloadsCacheHitsAndForceReplaces() {
   std::filesystem::remove_all(root);
 }
 
+void testBakeCommandWritesInspectableNeutralSmokeArtifacts() {
+  const std::filesystem::path root =
+      repoRootForTest() / "artifacts/smoke/ibl-neutral/bake-cache";
+  std::filesystem::remove_all(root);
+
+  const IblBakeItem environment = makeEnvironmentItem();
+  const IblBakeItem material = makeMaterialItem();
+  auto cache = std::make_shared<OutputFileCacheStore>(root);
+  auto executor = std::make_shared<SyntheticIblFrameGraphExecutor>();
+  auto activation = std::make_shared<RecordingActivationSink>();
+  auto dispatcher = std::make_shared<InlineActivationDispatcher>();
+  IblBakeJobService service(IblBakeJobServiceConfig{
+      .items = {environment, material},
+      .cacheStore = cache,
+      .executor = executor,
+      .activation = activation,
+      .activationDispatcher = dispatcher,
+  });
+  CommandBus bus;
+  registerBakeCommands(bus, service);
+
+  const CommandResult started = bus.dispatch("bake ibl start --force");
+  expect(started.ok, "neutral smoke bake command should start");
+  const auto status = waitForStoppedJob(service, 1);
+  expect(status.has_value(), "neutral smoke bake should report final status");
+  expect(status->phase == IblBakeJobPhase::Complete,
+         "neutral smoke bake should complete");
+  expectValidatedOutputs(*cache, environment, material);
+
+  const std::filesystem::path manifestPath =
+      cache->itemDir(environment) / "manifest.yaml";
+  const std::string manifest = readTextFile(manifestPath);
+  expect(manifest.find(std::string(kNeutralEnvironmentUri)) !=
+             std::string::npos,
+         "neutral smoke manifest should record the neutral KTX2 source URI");
+  expect(manifest.find("kind: textureCube") != std::string::npos,
+         "neutral smoke manifest should record textureCube source kind");
+  expect(manifest.find(std::string(kNeutralEnvironmentHash)) !=
+             std::string::npos,
+         "neutral smoke manifest should record the neutral KTX2 source hash");
+
+  std::cout << "[smoke] neutral IBL bake artifacts: "
+            << std::filesystem::absolute(root).generic_string() << '\n';
+}
+
 void testMissingExecutionPayloadFailsWithoutManifestCommit() {
   const std::filesystem::path root =
       makeTempDir("vulkan_ibl_bake_missing_payload");
@@ -653,6 +711,7 @@ void testMetadataOnlyCacheIsInvalid() {
   expect(key != nullptr, "test setup should expose environment key");
   manifest.sourceUri = key->environmentMapUri;
   manifest.sourceHash = key->sourceHash;
+  manifest.sourceKind = key->sourceKind;
   manifest.diffuseFile = "diffuse_sh9.yaml";
   manifest.specularFile = "specular_prefilter.ktx2";
   LX_infra::IblBakeManifestParser parser;
@@ -669,6 +728,7 @@ void testMetadataOnlyCacheIsInvalid() {
 
 int main() {
   testBakeCommandWritesPayloadsCacheHitsAndForceReplaces();
+  testBakeCommandWritesInspectableNeutralSmokeArtifacts();
   testMissingExecutionPayloadFailsWithoutManifestCommit();
   testMetadataOnlyCacheIsInvalid();
   return 0;

@@ -9,6 +9,11 @@ namespace LX_core {
 using BakeJobId = u64;
 using BakeItemId = u64;
 
+enum class EnvironmentIblBakeSourceKind {
+  Equirect2D,
+  TextureCube,
+};
+
 enum class IblBakeJobPhase {
   Queued,
   CacheCheck,

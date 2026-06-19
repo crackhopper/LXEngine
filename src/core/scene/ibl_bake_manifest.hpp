@@ -3,6 +3,7 @@
 #include "core/math/vec.hpp"
 #include "core/platform/types.hpp"
 #include "core/resource/resource_uri.hpp"
+#include "core/scene/ibl_bake_types.hpp"
 
 #include <array>
 #include <filesystem>
@@ -28,6 +29,8 @@ struct Sh9IrradiancePayload final {
 struct EnvironmentIblBakeManifest final {
   ResourceUri sourceUri;
   std::string sourceHash;
+  EnvironmentIblBakeSourceKind sourceKind =
+      EnvironmentIblBakeSourceKind::Equirect2D;
   std::string diffuseBasis = "sh9";
   u32 specularResolution = 256;
   u32 specularMips = 9;
@@ -55,6 +58,10 @@ validateIblBakeManifest(const EnvironmentIblBakeManifest &manifest);
 [[nodiscard]] IblBakeValidationResult validateIblBakeManifestSource(
     const EnvironmentIblBakeManifest &manifest,
     const ResourceUri &expectedSourceUri, std::string_view expectedSourceHash);
+[[nodiscard]] IblBakeValidationResult validateIblBakeManifestSource(
+    const EnvironmentIblBakeManifest &manifest,
+    const ResourceUri &expectedSourceUri, std::string_view expectedSourceHash,
+    EnvironmentIblBakeSourceKind expectedSourceKind);
 [[nodiscard]] IblBakeValidationResult
 validateIblBakeManifest(const MaterialIblBakeManifest &manifest);
 [[nodiscard]] IblBakeValidationResult validateIblBakeManifestSource(

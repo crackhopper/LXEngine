@@ -175,6 +175,32 @@ CombinedTextureSamplerSharedPtr makeTexturePayload(TextureDesc desc,
   return sampler;
 }
 
+CombinedTextureSamplerUniquePtr makeSolidHdrCubePayload(StringID binding) {
+  TextureDesc desc;
+  desc.width = 1;
+  desc.height = 1;
+  desc.format = TextureFormat::RGBA16Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 6;
+  std::vector<u8> bytes(expectedTextureByteCount(desc), 0u);
+  for (usize offset = 0; offset < bytes.size(); offset += 8u) {
+    bytes[offset + 0u] = 0x00u;
+    bytes[offset + 1u] = 0x3cu;
+    bytes[offset + 2u] = 0x00u;
+    bytes[offset + 3u] = 0x3cu;
+    bytes[offset + 4u] = 0x00u;
+    bytes[offset + 5u] = 0x3cu;
+    bytes[offset + 6u] = 0x00u;
+    bytes[offset + 7u] = 0x3cu;
+  }
+  auto sampler = std::make_unique<CombinedTextureSampler>(
+      std::make_shared<Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(binding);
+  return sampler;
+}
+
 CombinedTextureSamplerSharedPtr specularPrefilteredPayloadFixture() {
   TextureDesc desc;
   desc.width = 4;
@@ -389,6 +415,48 @@ void testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap() {
          "missing environmentMap.uri must not create default SkyboxMap");
 }
 
+void testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl() {
+  SceneResourceTable table;
+  const RenderFeatureHandle surfaceHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/surface_lighting.render-feature"),
+      makeSurfaceLightingFeature());
+  EXPECT(surfaceHandle.isValid(), "surface lighting feature should register");
+
+  const SurfaceLightingData::Param *before = findSurfaceLightingParam(table);
+  EXPECT(before != nullptr, "surface lighting UBO should exist before env");
+  if (before != nullptr) {
+    EXPECT(before->environmentIblReady == 0u,
+           "surface lighting must start without active environment IBL");
+    EXPECT(before->standardPbrIblReady == 0u,
+           "surface lighting must start without active standard-pbr IBL");
+  }
+
+  const ResourceUri envUri("memory://env/live-neutral-specular.ktx2");
+  const TextureHandle envTexture =
+      table.registerTexture(envUri, makeSolidHdrCubePayload(StringID{}));
+  EXPECT(envTexture.isValid(), "HDR cubemap texture should register");
+
+  const RenderFeatureHandle envHandle = table.registerRenderFeature(
+      ResourceUri("memory://features/environment_lighting.render-feature"),
+      makeEnvironmentLightingFeature(envUri));
+  EXPECT(envHandle.isValid(), "environment lighting feature should register");
+
+  const SceneResourceTableUploadView uploadView = table.buildUploadView();
+  EXPECT(uploadView.activeIblGeneration != 0u,
+         "live HDR textureCube environment feature should activate IBL");
+
+  const SurfaceLightingData::Param *after = findSurfaceLightingParam(table);
+  EXPECT(after != nullptr, "surface lighting UBO should remain available");
+  if (after != nullptr) {
+    EXPECT(after->environmentIblReady == 1u,
+           "HDR textureCube environment feature should publish environment "
+           "IBL readiness");
+    EXPECT(after->standardPbrIblReady == 1u,
+           "HDR textureCube environment feature should publish standard-pbr "
+           "IBL readiness");
+  }
+}
+
 void testEnvironmentRuntimeStateTracksSceneEnvironmentNode() {
   SceneResourceTable table;
   EXPECT(!table.hasEnvironmentNode(), "new table has no environment node");
@@ -482,33 +550,70 @@ void testIblActivationRejectsMetadataOnlyPayloads() {
          "failed metadata-only activation must not publish a generation");
 }
 
-void testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists() {
+void testIblDescriptorResourcesUseActiveBakePayloadsWhenActiveIblExists() {
   SceneResourceTable table;
   table.setIblEnvironmentResources(iblDescriptorResourceFixture());
+  IblEnvironmentActivationPayload payload = iblActivationPayloadFixture(2);
+  const ResourceCacheIdentity expectedSpecularIdentity =
+      payload.specularPrefilteredCubemap->getBackendCacheIdentity();
+  const ResourceCacheIdentity expectedBrdfIdentity =
+      payload.standardPbrBrdfLut->getBackendCacheIdentity();
   const IblEnvironmentActivationResult activated =
-      table.activateIblEnvironment(iblActivationPayloadFixture(2));
+      table.activateIblEnvironment(std::move(payload));
   EXPECT(activated.ok, "active IBL fixture should activate");
 
   const std::vector<GpuResourceRef> resources =
       table.getIblEnvironmentResources();
-  const auto hasBinding = [&](StringID bindingName) {
-    return std::any_of(resources.begin(), resources.end(),
-                       [&](const GpuResourceRef &resource) {
-                         return resource.isValid() &&
-                                resource.getBindingName() == bindingName;
-                       });
+  const auto findBinding = [&](StringID bindingName)
+      -> const GpuResourceRef * {
+    const auto it =
+        std::find_if(resources.begin(), resources.end(),
+                     [&](const GpuResourceRef &resource) {
+                       return resource.isValid() &&
+                              resource.getBindingName() == bindingName;
+                     });
+    return it == resources.end() ? nullptr : &*it;
   };
 
-  EXPECT(hasBinding(StringID("EnvironmentUBO")),
-         "descriptor resource path should keep EnvironmentUBO while active "
-         "typed IBL records are upload-view-only");
-  EXPECT(hasBinding(StringID("IrradianceMap")),
-         "descriptor resource path should keep IrradianceMap while active "
-         "typed IBL records are upload-view-only");
-  EXPECT(hasBinding(StringID("PrefilteredEnvMap")),
-         "descriptor resource path should keep PrefilteredEnvMap");
-  EXPECT(hasBinding(StringID("BrdfLut")),
-         "descriptor resource path should keep BrdfLut");
+  const GpuResourceRef *irradiance = findBinding(StringID("IrradianceMap"));
+  EXPECT(irradiance != nullptr,
+         "active IBL descriptor resources should include an IrradianceMap "
+         "derived from diffuse SH");
+  if (irradiance != nullptr) {
+    const auto *sampler =
+        dynamic_cast<const CombinedTextureSampler *>(&irradiance->get());
+    EXPECT(sampler != nullptr,
+           "active IBL IrradianceMap should be a live texture sampler");
+    if (sampler != nullptr && sampler->texture()) {
+      EXPECT(sampler->texture()->desc().dimension ==
+                 TextureDimension::TextureCube,
+             "active IBL IrradianceMap should be a cubemap");
+      EXPECT(sampler->texture()->desc().format == TextureFormat::RGBA16Float,
+             "active IBL IrradianceMap should preserve HDR half-float format");
+    }
+  }
+
+  const GpuResourceRef *specular = findBinding(StringID("PrefilteredEnvMap"));
+  EXPECT(specular != nullptr,
+         "active IBL descriptor resources should include PrefilteredEnvMap");
+  if (specular != nullptr) {
+    EXPECT(specular->getBackendCacheIdentity() == expectedSpecularIdentity,
+           "active IBL PrefilteredEnvMap should come from the activated bake "
+           "payload, not the previous descriptor package");
+  }
+
+  const GpuResourceRef *brdf = findBinding(StringID("BrdfLut"));
+  EXPECT(brdf != nullptr,
+         "active IBL descriptor resources should include BrdfLut");
+  if (brdf != nullptr) {
+    EXPECT(brdf->getBackendCacheIdentity() == expectedBrdfIdentity,
+           "active IBL BrdfLut should come from the activated bake payload, "
+           "not the previous descriptor package");
+  }
+
+  EXPECT(findBinding(StringID("EnvironmentUBO")) == nullptr,
+         "active IBL descriptor resources must not keep the legacy "
+         "EnvironmentUBO package path as the IBL truth");
 }
 
 void testIblDescriptorResourcesIncludeDefaultSamplersWhenEnvironmentIsMissing() {
@@ -645,6 +750,38 @@ void testSceneLevelResourcesIncludeIblSamplerFallbacks() {
   EXPECT(!hasSamplerBinding(forwardResources, StringID("IrradianceMap")),
          "Forward renderables should receive IBL descriptors through shader "
          "reflection, not unconditional scene-level resources");
+}
+
+void testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights() {
+  Scene scene("ForwardNoDirectLight");
+  const DescriptorResourceList resources =
+      scene.getSceneLevelResources(Pass_Forward, RenderTarget{});
+
+  const auto lightIt =
+      std::find_if(resources.begin(), resources.end(),
+                   [](const DescriptorResourceRef &resource) {
+                     return resource.isResource() &&
+                            resource.resource().isValid() &&
+                            resource.getBindingName() == StringID("LightUBO") &&
+                            resource.resource().get().getType() ==
+                                ResourceType::UniformBuffer &&
+                            resource.resource().get().getByteSize() ==
+                                sizeof(DirectionalLightData::Param);
+                   });
+  EXPECT(lightIt != resources.end(),
+         "Forward pass should bind a LightUBO even when the scene has no "
+         "direct lights");
+  if (lightIt == resources.end()) {
+    return;
+  }
+
+  const auto *param = static_cast<const DirectionalLightData::Param *>(
+      lightIt->resource().get().getRawData());
+  EXPECT(param != nullptr, "zero LightUBO should expose directional data");
+  if (param != nullptr) {
+    EXPECT(param->color.w == 0.0f,
+           "zero LightUBO must not contribute direct light intensity");
+  }
 }
 
 void testIblActivationReplacesOldLiveHandlesOnSuccess() {
@@ -1555,15 +1692,17 @@ int main() {
   testBuiltinDefaultTexturesAreStableSceneResources();
   testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap();
   testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap();
+  testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl();
   testEnvironmentRuntimeStateTracksSceneEnvironmentNode();
   testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady();
   testIblActivationRejectsMetadataOnlyPayloads();
-  testIblDescriptorResourcesKeepWholePackagePathWhenActiveIblExists();
+  testIblDescriptorResourcesUseActiveBakePayloadsWhenActiveIblExists();
   testIblDescriptorResourcesIncludeDefaultSamplersWhenEnvironmentIsMissing();
   testDefaultSceneResourceTableExportsIblSamplerFallbacks();
   testSurfaceLightingReadinessFollowsActiveIblActivation();
   testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration();
   testSceneLevelResourcesIncludeIblSamplerFallbacks();
+  testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights();
   testIblActivationReplacesOldLiveHandlesOnSuccess();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();

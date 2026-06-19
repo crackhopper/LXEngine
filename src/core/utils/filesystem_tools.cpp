@@ -36,6 +36,7 @@ bool hasShaderFileAtRoot(const fs::path &root, const std::string &shaderFile) {
 bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
   return hasShaderFileAtRoot(
              root, "render_paths/Forward/pbr.standard_pbr.frag.spv") &&
+         hasShaderOutputsAtRoot(root, "render_paths/Bloom/blit") &&
          hasShaderOutputsAtRoot(root, "render_paths/Post/post_process") &&
          hasShaderOutputsAtRoot(root,
                                 "render_paths/Skybox/skybox_background") &&
@@ -48,7 +49,10 @@ bool hasCurrentShaderOutputsAtRoot(const fs::path &root) {
 
 std::optional<fs::path> findShaderBinaryRoot(const fs::path &runtimeRoot) {
   const std::vector<fs::path> candidates = {
+      runtimeRoot / "build-clang",
       runtimeRoot / "build",
+      runtimeRoot / "build-debug",
+      runtimeRoot / "build-release",
       runtimeRoot,
   };
   for (const auto &candidate : candidates) {

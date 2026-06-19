@@ -13,6 +13,8 @@ namespace LX_core {
 struct EnvironmentIblBakeKey final {
   ResourceUri environmentMapUri;
   std::string sourceHash;
+  EnvironmentIblBakeSourceKind sourceKind =
+      EnvironmentIblBakeSourceKind::Equirect2D;
   bool operator==(const EnvironmentIblBakeKey &) const = default;
 };
 
@@ -43,5 +45,9 @@ struct IblBakeItemCollection final {
 
 [[nodiscard]] bool isSupportedMaterialIblBakeType(std::string_view type);
 [[nodiscard]] std::string materialIblBakeModelForType(std::string_view type);
+[[nodiscard]] std::string_view
+environmentIblBakeSourceKindName(EnvironmentIblBakeSourceKind kind);
+[[nodiscard]] EnvironmentIblBakeSourceKind
+environmentIblBakeSourceKindFromFeatureKind(std::string_view kind);
 
 } // namespace LX_core

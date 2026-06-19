@@ -1,5 +1,7 @@
 #include "infra/resource_parsers/ibl_bake_manifest_parser.hpp"
 
+#include "core/scene/ibl_bake_keys.hpp"
+
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
@@ -280,6 +282,26 @@ std::string requiredString(std::vector<std::string> &diagnostics,
     return {};
   }
   return node.as<std::string>();
+}
+
+[[nodiscard]] std::optional<LX_core::EnvironmentIblBakeSourceKind>
+parseEnvironmentSourceKind(std::vector<std::string> &diagnostics,
+                           const LX_core::ResourceUri &uri,
+                           const YAML::Node &node,
+                           const std::string &field) {
+  const std::string value = requiredString(diagnostics, uri, node, field);
+  if (value.empty()) {
+    return std::nullopt;
+  }
+  if (value == "equirect2D") {
+    return LX_core::EnvironmentIblBakeSourceKind::Equirect2D;
+  }
+  if (value == "textureCube") {
+    return LX_core::EnvironmentIblBakeSourceKind::TextureCube;
+  }
+  addDiagnostic(diagnostics, uri, field,
+                "expected equirect2D or textureCube");
+  return std::nullopt;
 }
 
 u32 requiredU32(std::vector<std::string> &diagnostics,
@@ -574,7 +596,7 @@ IblBakeManifestParser::parseEnvironmentManifest(
       outputs ? outputs["specular"] : YAML::Node{};
 
   rejectUnknownFields(result.diagnostics, uri, source, "source",
-                      {"uri", "hash"});
+                      {"uri", "hash", "kind"});
   rejectUnknownFields(result.diagnostics, uri, bake, "bake",
                       {"diffuse", "specular"});
   rejectUnknownFields(result.diagnostics, uri, diffuse, "bake.diffuse",
@@ -594,6 +616,11 @@ IblBakeManifestParser::parseEnvironmentManifest(
       result.diagnostics, uri, source["uri"], "source.uri"));
   manifest.sourceHash =
       requiredString(result.diagnostics, uri, source["hash"], "source.hash");
+  if (auto sourceKind = parseEnvironmentSourceKind(result.diagnostics, uri,
+                                                   source["kind"],
+                                                   "source.kind")) {
+    manifest.sourceKind = *sourceKind;
+  }
   manifest.diffuseBasis = requiredString(result.diagnostics, uri,
                                          diffuse["basis"],
                                          "bake.diffuse.basis");
@@ -834,6 +861,9 @@ std::string IblBakeManifestParser::writeEnvironmentManifest(
   out << YAML::Key << "source" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "uri" << YAML::Value << manifest.sourceUri.string();
   out << YAML::Key << "hash" << YAML::Value << manifest.sourceHash;
+  out << YAML::Key << "kind" << YAML::Value
+      << std::string(
+             LX_core::environmentIblBakeSourceKindName(manifest.sourceKind));
   out << YAML::EndMap;
   out << YAML::Key << "bake" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "diffuse" << YAML::Value << YAML::BeginMap;

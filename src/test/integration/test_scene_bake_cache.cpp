@@ -355,7 +355,8 @@ public:
       return IblBakeCacheCheckResult::invalid("environment key required");
     }
     const auto sourceValidation = validateIblBakeManifestSource(
-        *parsed.manifest, key->environmentMapUri, key->sourceHash);
+        *parsed.manifest, key->environmentMapUri, key->sourceHash,
+        key->sourceKind);
     if (!sourceValidation.ok) {
       return IblBakeCacheCheckResult::invalid(
           joinDiagnostics(sourceValidation.diagnostics));
@@ -392,6 +393,7 @@ private:
     EnvironmentIblBakeManifest manifest;
     manifest.sourceUri = key->environmentMapUri;
     manifest.sourceHash = key->sourceHash;
+    manifest.sourceKind = key->sourceKind;
     manifest.specularResolution = 256;
     manifest.specularMips = deriveIblBakeMipCount(manifest.specularResolution);
     manifest.diffuseFile = "diffuse_sh9.yaml";
@@ -1077,6 +1079,26 @@ void testSameEnvironmentSourceIsDeduplicatedAcrossFeatures() {
          "environment bake key should preserve environment source uri");
 }
 
+void testEnvironmentBakeItemPreservesTextureCubeSourceKind() {
+  SceneResourceTable table;
+  const RenderFeatureHandle feature = table.registerRenderFeature(
+      ResourceUri("memory://features/neutral-env"),
+      makeBakeEnvironmentFeature(
+          "assets/env/khronos/neutral/ggx/specular.ktx2",
+          "sha256:neutral-ggx"));
+  table.addEnvironmentIblBakeRequest(feature);
+
+  const IblBakeItemCollection collection = table.collectIblBakeItems();
+
+  expect(collection.environmentItems.size() == 1,
+         "textureCube environment feature should produce one bake item");
+  const auto *key =
+      std::get_if<EnvironmentIblBakeKey>(&collection.environmentItems[0].key);
+  expect(key != nullptr, "environment bake item should expose key");
+  expect(key->sourceKind == EnvironmentIblBakeSourceKind::TextureCube,
+         "environment bake key should preserve textureCube source kind");
+}
+
 void testSameEnvironmentUriWithDifferentHashProducesDistinctItems() {
   SceneResourceTable table;
   const RenderFeatureHandle first = table.registerRenderFeature(
@@ -1138,6 +1160,7 @@ schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
   hash: sha256:env
+  kind: equirect2D
 bake:
   diffuse:
     basis: sh9
@@ -1170,6 +1193,7 @@ schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
   hash: sha256:env
+  kind: equirect2D
 bake:
   diffuse:
     basis: sh9
@@ -1313,6 +1337,24 @@ void testEnvironmentManifestRejectsWrongSourceHashAgainstExpectedKey() {
          "wrong environment source hash diagnostic should name source.hash");
 }
 
+void testEnvironmentManifestRejectsWrongSourceKindAgainstExpectedKey() {
+  EnvironmentIblBakeManifest manifest;
+  manifest.sourceUri =
+      ResourceUri("assets/env/khronos/neutral/ggx/specular.ktx2");
+  manifest.sourceHash = "sha256:neutral";
+  manifest.sourceKind = EnvironmentIblBakeSourceKind::Equirect2D;
+  manifest.diffuseFile = "diffuse_sh9.yaml";
+  manifest.specularFile = "specular_prefilter.ktx2";
+
+  const auto result = validateIblBakeManifestSource(
+      manifest, ResourceUri("assets/env/khronos/neutral/ggx/specular.ktx2"),
+      "sha256:neutral", EnvironmentIblBakeSourceKind::TextureCube);
+
+  expect(!result.ok, "environment manifest wrong source kind should reject");
+  expect(diagnosticsContain(result.diagnostics, "source.kind"),
+         "wrong environment source kind diagnostic should name source.kind");
+}
+
 void testEnvironmentManifestRejectsMissingPayloadFiles() {
   LX_infra::IblBakeManifestParser parser;
   const auto parsed =
@@ -1321,6 +1363,7 @@ schema: lxe.environment-ibl-bake.v1
 source:
   uri: memory://env/source.hdr
   hash: sha256:env
+  kind: equirect2D
 bake:
   diffuse:
     basis: sh9
@@ -1438,6 +1481,7 @@ int main() {
   testSceneRuntimeRegistersObjectBakeMarker();
   testDifferentEnvironmentKeysProduceDistinctItems();
   testSameEnvironmentSourceIsDeduplicatedAcrossFeatures();
+  testEnvironmentBakeItemPreservesTextureCubeSourceKind();
   testSameEnvironmentUriWithDifferentHashProducesDistinctItems();
   testUnsupportedMaterialTypeProducesWarning();
   testIblManifestDerivesMipCount();
@@ -1448,6 +1492,7 @@ int main() {
   testSh9PayloadRejectsNonNumericCoefficient();
   testMaterialManifestRejectsWrongBrdfSize();
   testEnvironmentManifestRejectsWrongSourceHashAgainstExpectedKey();
+  testEnvironmentManifestRejectsWrongSourceKindAgainstExpectedKey();
   testEnvironmentManifestRejectsMissingPayloadFiles();
   testAtomicEnvironmentManifestCommitKeepsOldFileOnInvalidManifest();
   testAtomicEnvironmentManifestCommitWritesValidManifest();

@@ -486,6 +486,7 @@ private:
       m_iblSpecularPrefilteredCubemaps;
   std::vector<Entry<IblTexturePayloadResource>> m_standardPbrBrdfLuts;
   std::optional<ActiveIblEnvironmentResources> m_activeIblEnvironment;
+  CombinedTextureSamplerSharedPtr m_activeIblIrradianceCubemap;
   mutable std::optional<IblEnvironmentResources> m_iblEnvironmentResources;
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;

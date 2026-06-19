@@ -594,6 +594,47 @@ findDescriptorForBinding(const DescriptorResourceList &descriptors,
   return it == descriptors.end() ? nullptr : &*it;
 }
 
+[[nodiscard]] const ShaderResourceBinding *
+findBindingForName(const std::vector<ShaderResourceBinding> &bindings,
+                   StringID bindingName) {
+  const std::string name = resourceNameText(bindingName);
+  const auto it = std::find_if(bindings.begin(), bindings.end(),
+                               [&](const ShaderResourceBinding &binding) {
+                                 return binding.name == name;
+                               });
+  return it == bindings.end() ? nullptr : &*it;
+}
+
+void validateBakeTextureDimension(const std::string &sourceName,
+                                  const DescriptorResourceRef &descriptor,
+                                  const ShaderResourceBinding &binding,
+                                  RenderInputDesc &desc) {
+  if (!descriptor.isResource() || !descriptor.resource().isValid()) {
+    return;
+  }
+  const auto *sampler = dynamic_cast<const CombinedTextureSampler *>(
+      &descriptor.resource().get());
+  if (sampler == nullptr || !sampler->texture()) {
+    return;
+  }
+
+  const TextureDimension dimension = sampler->texture()->desc().dimension;
+  if (binding.type == ShaderPropertyType::TextureCube &&
+      dimension != TextureDimension::TextureCube) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "bake source '" + sourceName +
+               "' requires TextureCube payload for binding '" + binding.name +
+               "'");
+  }
+  if (binding.type == ShaderPropertyType::Texture2D &&
+      dimension != TextureDimension::Texture2D) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "bake source '" + sourceName +
+               "' requires Texture2D payload for binding '" + binding.name +
+               "'");
+  }
+}
+
 void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
   for (const FrameGraphRead &read : pass.reads) {
     const std::string sourceName = resourceNameText(read.resource);
@@ -614,6 +655,12 @@ void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
              "bake source '" + sourceName +
                  "' requires a live typed payload resource");
+      continue;
+    }
+    const ShaderResourceBinding *binding =
+        findBindingForName(desc.pipelineBuildDesc.bindings, read.bindingName);
+    if (binding != nullptr) {
+      validateBakeTextureDimension(sourceName, *descriptor, *binding, desc);
     }
   }
 }

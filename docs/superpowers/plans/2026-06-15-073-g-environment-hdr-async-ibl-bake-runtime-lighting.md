@@ -15,7 +15,12 @@ RenderWorkCompiler, and executed by a general `FrameGraphExecutor`.
 `IblBakeJobService` owns job state, logs, cache decisions, manifests, file
 commit, retry, and main-thread hot activation. Runtime shading uses
 `feature.surfaceLighting` pass-uniform readiness facts and
-`common/ibl_lighting.glsl` shared by Forward and Deferred.
+`common/ibl_lighting.glsl` shared by Forward and Deferred. Environment bake
+input format is explicit data: `EnvironmentIblBakeKey::sourceKind` comes from
+`environmentMap.kind`, and the first bake pass normalizes either equirect 2D or
+textureCube input into the common `bake.environment.cubemap` resource. The
+strict acceptance scene uses
+`assets/env/khronos/neutral/ggx/specular.ktx2` as a `textureCube` source.
 
 **Tech Stack:** C++20, Vulkan, RenderPathGraph/RenderWorkCompiler,
 SceneResourceTable, YAML resource parsers, GLSL, KTX2 assets, CMake/Ninja tests.
@@ -556,16 +561,31 @@ ctest --test-dir build --output-on-failure -R "(test_render_resource_parsers|tes
 Expected: graph-authored facts drive readiness; backend does not patch graph
 inputs.
 
-### Task 17: Bake Output Validation Smoke
+### Task 17: Bake Source-Kind And Output Validation Smoke
 
 **Files:**
+- Modify: `src/core/scene/ibl_bake_keys.hpp`
+- Modify: `src/core/scene/ibl_bake_manifest.hpp`
+- Modify: `src/core/scene/scene_resource_table.cpp`
+- Modify: `src/core/frame_graph/frame_graph_executor.hpp`
+- Modify: `src/backend/vulkan/vulkan_frame_graph_executor.cpp`
 - Modify: `src/test/integration/test_vulkan_ibl_bake.cpp`
 - Test assets generated at runtime under a temporary directory.
 
-- [ ] Add an end-to-end test that runs `bake ibl start` through service +
-  `FrameGraphExecutor`.
+- [ ] Add `EnvironmentIblBakeSourceKind` with values `Equirect2D` and
+  `TextureCube`.
+- [ ] Collect source kind from `RenderFeatureParameter::kind`; do not infer
+  strictness or source kind from URI/path substrings.
+- [ ] Keep one graph-authored environment bake path. The first pass is
+  `NormalizeEnvironmentToCubemap`; it uses source kind to select an equirect or
+  cubemap normalization variant, then all later SH/specular passes consume the
+  same `bake.environment.cubemap`.
+- [ ] Add an end-to-end contract test that runs `bake ibl start` through
+  service + `FrameGraphExecutor` using
+  `assets/env/khronos/neutral/ggx/specular.ktx2` as a `textureCube` source.
 - [ ] Validate files:
   - environment `manifest.yaml`;
+  - manifest source kind is `textureCube`;
   - `diffuse_sh9.yaml` with 9 nonzero-ish RGB coefficients;
   - `specular_prefilter.ktx2` exists and reports 256 base resolution with
     derived mip count 9;
@@ -582,21 +602,39 @@ cmake --build build --target test_vulkan_ibl_bake
 xvfb-run -a ./build/src/test/test_vulkan_ibl_bake
 ```
 
-Expected: output validation fails if any payload is metadata-only or missing.
+Expected: output validation fails if any payload is metadata-only, missing, or
+written against the wrong environment source kind.
 
-### Task 18: Forward Runtime Visual/Debug Acceptance
+### Task 18: Strict Neutral Runtime Visual Smokes
 
 **Files:**
 - Modify: `src/test/integration/test_lxe_editor_render_debug_dump.cpp`
+- Modify/Create: realtime smoke helper under `src/test/integration/` if needed.
 - Modify as needed: editor smoke scene or generated test scene asset under
   `assets/scenes/`
 
-- [ ] Add a Forward scene/debug smoke that:
-  - loads an environment from `feature.environmentLighting`;
+- [ ] Add a pure-environment-light Forward scene/debug smoke using Helmet plus
+  `assets/env/khronos/neutral/ggx/specular.ktx2` through
+  `feature.environmentLighting`.
+- [ ] The pure-environment smoke must:
+  - contain no direct light nodes;
+  - rely on IBL/runtime environment lighting for the Helmet surface;
+  - render/dump after bake activation;
+  - fail if the Helmet output is pure black or effectively black by image
+    statistics.
+- [ ] Add a complete Forward scene/debug smoke using Helmet plus
+  `assets/env/khronos/neutral/ggx/specular.ktx2` through
+  `feature.environmentLighting`.
+- [ ] The complete smoke must:
+  - load the neutral `textureCube` environment;
+  - include the normal Helmet scene context plus neutral environment lighting;
   - starts `bake ibl start`;
   - waits for completion;
-  - renders/dumps before and after activation;
-  - proves PBR surface output changes after IBL activation.
+  - render/dump before and after activation;
+  - write human-inspectable images under
+    `artifacts/smoke/ibl-neutral/`;
+  - prove PBR surface output changes after IBL activation with numeric image
+    stats and active IBL generation/readiness facts.
 - [ ] Add a Forward bloom compatibility smoke: enabling bloom after IBL
   activation must not produce the known wrong output path.
 - [ ] Do not add a Deferred image acceptance requirement; only compile/reflection
@@ -609,7 +647,8 @@ ctest --test-dir build --output-on-failure -R test_lxe_editor_render_debug_dump
 ```
 
 Expected: Forward output changes after activation without scene reload and
-without a separate Forward IBL geometry pass.
+without a separate Forward IBL geometry pass. Final reporting must include the
+exact before/after image paths for manual inspection.
 
 ### Task 19: Private Bake Path Hard Cut
 
@@ -682,6 +721,11 @@ Expected final state:
 - `bake ibl start --force` rebakes when no job is running.
 - Failed bake/activation does not replace active IBL resources.
 - Output files match manifest contracts.
+- The accepted strict smoke uses
+  `assets/env/khronos/neutral/ggx/specular.ktx2` and emits
+  `artifacts/smoke/ibl-neutral/` before/after images.
+- The pure-environment-light Helmet smoke contains no direct lights and still
+  renders nonblack after IBL activation.
 - Forward uses inline common IBL in the existing surface pass.
 - Deferred compiles against the same common IBL contract.
 - No default positive path uses the old private bake shortcut or a separate

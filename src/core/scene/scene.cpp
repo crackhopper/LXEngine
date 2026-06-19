@@ -136,6 +136,13 @@ void appendRealtimeSceneGpuMaterialResources(
   out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));
 }
 
+GpuResourceRef makeZeroForwardLightUbo(const SceneResourceTable &resources) {
+  auto ubo = std::make_unique<DirectionalLightData>();
+  ubo->param = {};
+  ubo->setDirty();
+  return resources.addRenderGpuResource(std::move(ubo));
+}
+
 void collectSubtreeSnapshots(const SceneNodeSharedPtr &node,
                              std::vector<RemovedNodeSnapshot> &out) {
   if (!node) {
@@ -360,6 +367,7 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
 
   // Lights filter by pass only. A light's target scope is transitive — it
   // illuminates any surface being drawn in a pass it participates in.
+  bool hasForwardLightUbo = false;
   for (const LightHandle lightHandle : m_lightHandles) {
     const auto resolvedLight = m_resources.resolve(lightHandle);
     if (!resolvedLight.has_value())
@@ -372,6 +380,14 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
     auto lightUbo = light.getUBO();
     if (lightUbo.isValid()) {
       out.emplace_back(lightUbo.get());
+      hasForwardLightUbo = hasForwardLightUbo ||
+                           lightUbo.getBindingName() == StringID("LightUBO");
+    }
+  }
+  if (pass == Pass_Forward && !hasForwardLightUbo) {
+    const GpuResourceRef zeroLightUbo = makeZeroForwardLightUbo(m_resources);
+    if (zeroLightUbo.isValid()) {
+      out.emplace_back(zeroLightUbo.get());
     }
   }
   auto sceneLights =
@@ -426,6 +442,7 @@ Scene::getSceneLevelResources(StringID pass,
     }
   }
 
+  bool hasForwardLightUbo = false;
   for (const LightHandle lightHandle : m_lightHandles) {
     const auto resolvedLight = m_resources.resolve(lightHandle);
     if (!resolvedLight.has_value()) {
@@ -441,6 +458,14 @@ Scene::getSceneLevelResources(StringID pass,
     auto lightUbo = light.getUBO();
     if (lightUbo.isValid()) {
       out.emplace_back(lightUbo.get());
+      hasForwardLightUbo = hasForwardLightUbo ||
+                           lightUbo.getBindingName() == StringID("LightUBO");
+    }
+  }
+  if (pass == Pass_Forward && !hasForwardLightUbo) {
+    const GpuResourceRef zeroLightUbo = makeZeroForwardLightUbo(m_resources);
+    if (zeroLightUbo.isValid()) {
+      out.emplace_back(zeroLightUbo.get());
     }
   }
   auto sceneLights =

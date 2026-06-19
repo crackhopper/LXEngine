@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <optional>
@@ -31,6 +32,160 @@ namespace {
 [[nodiscard]] u64 nextGeneration(const u64 current) {
   const u64 next = current + 1;
   return next == 0 ? 1 : next;
+}
+
+[[nodiscard]] u16 floatToHalfBits(float value) {
+  if (!std::isfinite(value)) {
+    value = 0.0f;
+  }
+  value = std::clamp(value, 0.0f, 65504.0f);
+
+  u32 bits = 0;
+  std::memcpy(&bits, &value, sizeof(bits));
+  const u32 sign = (bits >> 16u) & 0x8000u;
+  int exponent = static_cast<int>((bits >> 23u) & 0xffu) - 127 + 15;
+  u32 mantissa = bits & 0x7fffffu;
+
+  if (exponent <= 0) {
+    if (exponent < -10) {
+      return static_cast<u16>(sign);
+    }
+    mantissa = (mantissa | 0x800000u) >> static_cast<u32>(1 - exponent);
+    return static_cast<u16>(sign | ((mantissa + 0x1000u) >> 13u));
+  }
+  if (exponent >= 31) {
+    return static_cast<u16>(sign | 0x7c00u);
+  }
+
+  mantissa += 0x1000u;
+  if ((mantissa & 0x800000u) != 0u) {
+    mantissa = 0u;
+    ++exponent;
+    if (exponent >= 31) {
+      return static_cast<u16>(sign | 0x7c00u);
+    }
+  }
+  return static_cast<u16>(
+      sign | (static_cast<u32>(exponent) << 10u) | (mantissa >> 13u));
+}
+
+void writeHalfLe(std::vector<u8> &bytes, usize offset, float value) {
+  const u16 half = floatToHalfBits(value);
+  bytes[offset + 0u] = static_cast<u8>(half & 0xffu);
+  bytes[offset + 1u] = static_cast<u8>((half >> 8u) & 0xffu);
+}
+
+[[nodiscard]] float halfBitsToFloat(u16 half) {
+  const u32 sign = (static_cast<u32>(half & 0x8000u)) << 16u;
+  u32 exponent = (half >> 10u) & 0x1fu;
+  u32 mantissa = half & 0x03ffu;
+  u32 bits = 0u;
+  if (exponent == 0u) {
+    if (mantissa == 0u) {
+      bits = sign;
+    } else {
+      int normalizedExponent = -14;
+      while ((mantissa & 0x0400u) == 0u) {
+        mantissa <<= 1u;
+        --normalizedExponent;
+      }
+      mantissa &= 0x03ffu;
+      const u32 floatExponent = static_cast<u32>(normalizedExponent + 127);
+      bits = sign | (floatExponent << 23u) | (mantissa << 13u);
+    }
+  } else if (exponent == 31u) {
+    bits = sign | 0x7f800000u | (mantissa << 13u);
+  } else {
+    const u32 floatExponent = exponent + (127u - 15u);
+    bits = sign | (floatExponent << 23u) | (mantissa << 13u);
+  }
+  float value = 0.0f;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+[[nodiscard]] u16 readHalfLe(const u8 *bytes) {
+  return static_cast<u16>(bytes[0]) |
+         static_cast<u16>(static_cast<u16>(bytes[1]) << 8u);
+}
+
+[[nodiscard]] CombinedTextureSamplerSharedPtr
+makeIrradianceCubemapFromSh(const Sh9IrradiancePayload &payload) {
+  TextureDesc desc;
+  desc.width = 1;
+  desc.height = 1;
+  desc.format = TextureFormat::RGBA16Float;
+  desc.content = TextureContent::Environment;
+  desc.dimension = TextureDimension::TextureCube;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 6;
+
+  const Vec3f color = payload.coefficients[0];
+  std::vector<u8> bytes(expectedTextureByteCount(desc), 0u);
+  constexpr usize kPixelBytes = 8u;
+  for (u32 face = 0; face < 6u; ++face) {
+    const usize offset = static_cast<usize>(face) * kPixelBytes;
+    writeHalfLe(bytes, offset + 0u, std::max(color.x, 0.0f));
+    writeHalfLe(bytes, offset + 2u, std::max(color.y, 0.0f));
+    writeHalfLe(bytes, offset + 4u, std::max(color.z, 0.0f));
+    writeHalfLe(bytes, offset + 6u, 1.0f);
+  }
+
+  auto sampler = std::make_shared<CombinedTextureSampler>(
+      std::make_shared<Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(StringID("IrradianceMap"));
+  sampler->setDirty();
+  return sampler;
+}
+
+[[nodiscard]] Sh9IrradiancePayload
+makeDiffuseShFromRadianceCubemap(const Texture &texture) {
+  const TextureDesc &desc = texture.desc();
+  Sh9IrradiancePayload payload;
+  if (desc.dimension != TextureDimension::TextureCube ||
+      desc.format != TextureFormat::RGBA16Float || desc.arrayLayers != 6u ||
+      desc.width == 0u || desc.height == 0u) {
+    return payload;
+  }
+
+  const usize pixelCount =
+      static_cast<usize>(desc.width) * static_cast<usize>(desc.height) * 6u;
+  const auto *bytes = static_cast<const u8 *>(texture.data());
+  Vec3f sum{0.0f, 0.0f, 0.0f};
+  for (usize pixel = 0; pixel < pixelCount; ++pixel) {
+    const usize offset = pixel * 8u;
+    sum.x += halfBitsToFloat(readHalfLe(bytes + offset + 0u));
+    sum.y += halfBitsToFloat(readHalfLe(bytes + offset + 2u));
+    sum.z += halfBitsToFloat(readHalfLe(bytes + offset + 4u));
+  }
+  const float invCount = pixelCount > 0u ? 1.0f / static_cast<float>(pixelCount)
+                                         : 0.0f;
+  payload.coefficients[0] =
+      Vec3f{sum.x * invCount, sum.y * invCount, sum.z * invCount};
+  return payload;
+}
+
+[[nodiscard]] CombinedTextureSamplerSharedPtr makeDefaultBrdfLutSampler() {
+  TextureDesc desc;
+  desc.width = 256;
+  desc.height = 256;
+  desc.format = TextureFormat::RG16Float;
+  desc.content = TextureContent::Data;
+  desc.dimension = TextureDimension::Texture2D;
+  desc.mipLevels = 1;
+  desc.arrayLayers = 1;
+
+  std::vector<u8> bytes(expectedTextureByteCount(desc), 0u);
+  for (usize offset = 0; offset < bytes.size(); offset += 4u) {
+    writeHalfLe(bytes, offset + 0u, 1.0f);
+    writeHalfLe(bytes, offset + 2u, 0.0f);
+  }
+
+  auto sampler = std::make_shared<CombinedTextureSampler>(
+      std::make_shared<Texture>(desc, std::move(bytes)));
+  sampler->setBindingName(StringID("BrdfLut"));
+  sampler->setDirty();
+  return sampler;
 }
 
 [[nodiscard]] bool sameVec4(const Vec4f &lhs, const Vec4f &rhs) {
@@ -2248,6 +2403,7 @@ IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
           : nextGeneration(m_activeIblEnvironment.has_value()
                                ? m_activeIblEnvironment->generation
                                : 0);
+  const Sh9IrradiancePayload diffuseSh = payload.diffuseSh;
 
   auto diffuseResource = std::make_unique<IblDiffuseShPayloadResource>();
   diffuseResource->payload = std::move(payload.diffuseSh);
@@ -2296,6 +2452,7 @@ IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
   const std::optional<ActiveIblEnvironmentResources> oldActive =
       m_activeIblEnvironment;
   m_activeIblEnvironment = candidate;
+  m_activeIblIrradianceCubemap = makeIrradianceCubemapFromSh(diffuseSh);
   if (oldActive.has_value()) {
     release<IblDiffuseShPayloadResource, IblDiffuseShHandle>(
         m_iblDiffuseShPayloads, oldActive->diffuseSh);
@@ -2334,6 +2491,27 @@ SceneResourceTable::getMutableIblEnvironmentResources() {
 std::vector<GpuResourceRef>
 SceneResourceTable::getIblEnvironmentResources() const {
   std::vector<GpuResourceRef> out;
+  if (m_activeIblEnvironment.has_value()) {
+    if (m_activeIblIrradianceCubemap) {
+      out.emplace_back(*m_activeIblIrradianceCubemap);
+    }
+    const auto specular = resolveConst<IblTexturePayloadResource,
+                                       IblSpecularPrefilteredCubemapHandle>(
+        m_iblSpecularPrefilteredCubemaps,
+        m_activeIblEnvironment->specularPrefilteredCubemap);
+    if (specular.has_value() && specular->get().sampler) {
+      out.emplace_back(*specular->get().sampler);
+    }
+    const auto brdf =
+        resolveConst<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
+            m_standardPbrBrdfLuts,
+            m_activeIblEnvironment->standardPbrBrdfLut);
+    if (brdf.has_value() && brdf->get().sampler) {
+      out.emplace_back(*brdf->get().sampler);
+    }
+    return out;
+  }
+
   const auto *resources = getIblEnvironmentResourceSet();
   if (resources == nullptr) {
     return out;
@@ -2388,6 +2566,23 @@ void SceneResourceTable::registerEnvironmentLightingResources(
     if (resolved.has_value()) {
       resolved->get().setBindingName(StringID("SkyboxMap"));
       m_environmentLightingTexture = *texture;
+      const TextureSharedPtr sourceTexture = resolved->get().texture();
+      if (environmentMap->kind == "textureCube" &&
+          environmentMap->valueType == "linear-radiance" && sourceTexture &&
+          sourceTexture->desc().dimension == TextureDimension::TextureCube &&
+          sourceTexture->desc().format == TextureFormat::RGBA16Float) {
+        auto specular = std::make_shared<CombinedTextureSampler>(sourceTexture);
+        specular->setBindingName(StringID("PrefilteredEnvMap"));
+        specular->setDirty();
+
+        IblEnvironmentActivationPayload payload;
+        payload.diffuseSh = makeDiffuseShFromRadianceCubemap(*sourceTexture);
+        payload.specularPrefilteredCubemap = std::move(specular);
+        payload.standardPbrBrdfLut = makeDefaultBrdfLutSampler();
+        const IblEnvironmentActivationResult activated =
+            activateIblEnvironment(std::move(payload));
+        (void)activated;
+      }
     }
   }
 
@@ -2561,6 +2756,8 @@ SceneResourceTable::collectIblBakeItems(ResourceUri bakeRenderPathUri) const {
     EnvironmentIblBakeKey key{
         .environmentMapUri = environmentMap->uri,
         .sourceHash = std::move(sourceHash),
+        .sourceKind =
+            environmentIblBakeSourceKindFromFeatureKind(environmentMap->kind),
     };
     if (containsEnvironmentKey(collection.environmentItems, key)) {
       return;

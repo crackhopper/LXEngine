@@ -68,12 +68,23 @@ validateIblBakeManifest(const EnvironmentIblBakeManifest &manifest) {
 IblBakeValidationResult validateIblBakeManifestSource(
     const EnvironmentIblBakeManifest &manifest,
     const ResourceUri &expectedSourceUri, std::string_view expectedSourceHash) {
+  return validateIblBakeManifestSource(
+      manifest, expectedSourceUri, expectedSourceHash, manifest.sourceKind);
+}
+
+IblBakeValidationResult validateIblBakeManifestSource(
+    const EnvironmentIblBakeManifest &manifest,
+    const ResourceUri &expectedSourceUri, std::string_view expectedSourceHash,
+    EnvironmentIblBakeSourceKind expectedSourceKind) {
   IblBakeValidationResult result;
   if (manifest.sourceUri != expectedSourceUri) {
     addDiagnostic(result, "source.uri does not match requested source");
   }
   if (manifest.sourceHash != expectedSourceHash) {
     addDiagnostic(result, "source.hash does not match requested source");
+  }
+  if (manifest.sourceKind != expectedSourceKind) {
+    addDiagnostic(result, "source.kind does not match requested source");
   }
   return result;
 }

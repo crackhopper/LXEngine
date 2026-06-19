@@ -13,4 +13,23 @@ std::string materialIblBakeModelForType(std::string_view type) {
   return {};
 }
 
+std::string_view
+environmentIblBakeSourceKindName(EnvironmentIblBakeSourceKind kind) {
+  switch (kind) {
+  case EnvironmentIblBakeSourceKind::Equirect2D:
+    return "equirect2D";
+  case EnvironmentIblBakeSourceKind::TextureCube:
+    return "textureCube";
+  }
+  return "equirect2D";
+}
+
+EnvironmentIblBakeSourceKind
+environmentIblBakeSourceKindFromFeatureKind(std::string_view kind) {
+  if (kind == "textureCube") {
+    return EnvironmentIblBakeSourceKind::TextureCube;
+  }
+  return EnvironmentIblBakeSourceKind::Equirect2D;
+}
+
 } // namespace LX_core

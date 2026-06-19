@@ -121,6 +121,23 @@ struct TestGpuResource final : public IGpuResource {
   std::vector<u8> bytes;
 };
 
+CombinedTextureSamplerSharedPtr makeTextureSampler(StringID bindingName,
+                                                   TextureDimension dimension) {
+  TextureDesc desc;
+  desc.width = 4;
+  desc.height = 4;
+  desc.format = TextureFormat::RGBA8;
+  desc.content = TextureContent::Environment;
+  desc.dimension = dimension;
+  desc.arrayLayers = dimension == TextureDimension::TextureCube ? 6u : 1u;
+  desc.mipLevels = 1;
+  auto texture = std::make_shared<Texture>(
+      desc, std::vector<u8>(expectedTextureByteCount(desc), 255u));
+  auto sampler = std::make_shared<CombinedTextureSampler>(texture);
+  sampler->setBindingName(bindingName);
+  return sampler;
+}
+
 class MateriallessRenderable final : public IRenderable {
 public:
   explicit MateriallessRenderable(std::string nodeName,
@@ -858,6 +875,108 @@ void testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload() {
          "metadata-only bake source diagnostic should require typed payload");
 }
 
+void testRenderWorkCompilerRejectsTexture2DForCubemapBakeSource() {
+  FramePass pass;
+  pass.name = StringID("NormalizeEnvironmentToCubemap");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = ResourceUri("render_paths/Bake/environment_to_cubemap");
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("bake.environment.source"), StringID("BakeEnvironmentSource")));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{
+          makeTextureCubeBinding("BakeEnvironmentSource")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 51}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 52}},
+      });
+  auto source =
+      makeTextureSampler(StringID("BakeEnvironmentSource"),
+                         TextureDimension::Texture2D);
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("bake.environment.variant");
+  passFacts.shaderProgram.shaderName =
+      "render_paths/Bake/environment_to_cubemap";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.descriptorResources.emplace_back(*source);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("Texture2DBakeSourceScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "texture2D bake source pass should produce desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(!descs.front().accepted(),
+         "texture2D source must not satisfy cubemap bake source binding");
+  EXPECT(hasDiagnosticMessage(descs.front(), "TextureCube"),
+         "wrong bake source dimension diagnostic should name TextureCube");
+}
+
+void testRenderWorkCompilerAcceptsTextureCubeBakeSourcePayload() {
+  FramePass pass;
+  pass.name = StringID("NormalizeEnvironmentToCubemap");
+  pass.stage = RenderPassStage::Raster;
+  pass.dispatch = RenderPassDispatch::Fullscreen;
+  pass.input.kind = RenderPassInputKind::FullscreenTriangle;
+  pass.shaderUri = ResourceUri("render_paths/Bake/environment_to_cubemap");
+  pass.reads.push_back(FrameGraphRead::sampled(
+      StringID("bake.environment.source"), StringID("BakeEnvironmentSource")));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{
+          makeTextureCubeBinding("BakeEnvironmentSource")},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 61}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 62}},
+      });
+  auto source =
+      makeTextureSampler(StringID("BakeEnvironmentSource"),
+                         TextureDimension::TextureCube);
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = pass.name;
+  passFacts.pipelineVariantKey = StringID("bake.environment.variant");
+  passFacts.shaderProgram.shaderName =
+      "render_paths/Bake/environment_to_cubemap";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+  passFacts.descriptorResources.emplace_back(*source);
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  Scene scene("TextureCubeBakeSourceScene");
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1, "textureCube bake source pass should produce desc");
+  if (descs.empty()) {
+    return;
+  }
+  EXPECT(descs.front().accepted(),
+         "textureCube source should satisfy cubemap bake source binding");
+}
+
 void testRenderWorkCompilerRejectsBakeComputePayloadWithoutReadback() {
   FramePass pass;
   pass.name = StringID("CustomBakeComputePayload");
@@ -972,7 +1091,16 @@ void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
          "pipeline build desc should carry render state");
   EXPECT(desc.pipelineBuildDesc.topology == PrimitiveTopology::TriangleList,
          "pipeline build desc should carry topology");
-  EXPECT(desc.resourceDependencies.size() == 2,
+  const auto hasDependency = [&](const GpuResourceRef &expected) {
+    return std::any_of(desc.resourceDependencies.begin(),
+                       desc.resourceDependencies.end(),
+                       [&](const GpuResourceRef &resource) {
+                         return resource.isValid() && expected.isValid() &&
+                                resource.getBackendCacheIdentity() ==
+                                    expected.getBackendCacheIdentity();
+                       });
+  };
+  EXPECT(hasDependency(draw->vertexBuffer) && hasDependency(draw->indexBuffer),
          "desc should carry vertex and index resource dependencies");
 }
 
@@ -3192,6 +3320,8 @@ int main() {
   testFullscreenDescUsesPreparedPassFactsAndGraphReads();
   testComputeDescUsesPreparedPassFacts();
   testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload();
+  testRenderWorkCompilerRejectsTexture2DForCubemapBakeSource();
+  testRenderWorkCompilerAcceptsTextureCubeBakeSourcePayload();
   testRenderWorkCompilerRejectsBakeComputePayloadWithoutReadback();
   testSceneRenderableValidatedShaderFactsPreparePipelineDesc();
   testSceneRenderableIncludesCameraSceneResourceBinding();
