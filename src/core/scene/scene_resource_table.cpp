@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstring>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -522,6 +521,24 @@ makeCameraDataParam(const CameraResource &camera) {
       .eyePos = camera.pose.eye,
       .pad = 0.0f,
   };
+}
+
+[[nodiscard]] bool matrixEquals(const Mat4f &lhs, const Mat4f &rhs) {
+  for (int row = 0; row < 4; ++row) {
+    for (int col = 0; col < 4; ++col) {
+      if (lhs(row, col) != rhs(row, col)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool cameraDataParamEquals(const CameraData::Param &lhs,
+                                         const CameraData::Param &rhs) {
+  return matrixEquals(lhs.view, rhs.view) && matrixEquals(lhs.proj, rhs.proj) &&
+         lhs.eyePos.x == rhs.eyePos.x && lhs.eyePos.y == rhs.eyePos.y &&
+         lhs.eyePos.z == rhs.eyePos.z;
 }
 
 [[nodiscard]] Vec4f readVertexAttribute(const u8 *vertex,
@@ -1590,10 +1607,6 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         metadata != nullptr &&
         metadata->type == SceneResourceType::RenderFeature &&
         metadata->uri == uri) {
-      registerEnvironmentLightingResources(*entry.resource);
-      registerSurfaceLightingResources(*entry.resource);
-      registerToneMappingResources(*entry.resource);
-      registerBloomResources(*entry.resource);
       return RenderFeatureHandle{i, entry.generation};
     }
   }
@@ -2207,10 +2220,27 @@ SceneResourceTable::getCameraUboResource(CameraHandle handle) const {
 
 GpuResourceRef SceneResourceTable::buildRenderCameraUboResource(
     const CameraResource &camera) const {
-  auto ubo = std::make_unique<CameraData>();
-  ubo->param = makeCameraDataParam(camera);
-  ubo->setDirty();
-  return addRenderGpuResource(std::move(ubo));
+  const CameraData::Param nextParam = makeCameraDataParam(camera);
+  if (!m_liveRenderCameraUbo) {
+    m_liveRenderCameraUbo = std::make_unique<CameraData>();
+    m_liveRenderCameraUbo->param = nextParam;
+    m_liveRenderCameraUbo->setDirty();
+    return GpuResourceRef{*m_liveRenderCameraUbo};
+  }
+  if (!cameraDataParamEquals(m_liveRenderCameraUbo->param, nextParam)) {
+    m_liveRenderCameraUbo->param = nextParam;
+    m_liveRenderCameraUbo->setDirty();
+  }
+  return GpuResourceRef{*m_liveRenderCameraUbo};
+}
+
+GpuResourceRef SceneResourceTable::updateLiveRenderCameraUboResource(
+    const CameraResource &camera) {
+  const GpuResourceRef resource = buildRenderCameraUboResource(camera);
+  if (resource.isValid() && resource.get().isDirty()) {
+    markVolatileUploadDirty();
+  }
+  return resource;
 }
 
 GpuResourceRef SceneResourceTable::buildSceneLightsUboResource(

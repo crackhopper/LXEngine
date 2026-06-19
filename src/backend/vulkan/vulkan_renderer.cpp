@@ -70,6 +70,11 @@ usize VulkanRenderer::initSceneCallCount() const {
   return p_realtime->initSceneCallCount();
 }
 
+PreparedRenderWorkDiagnostics
+VulkanRenderer::preparedRenderWorkDiagnostics() const {
+  return p_realtime->preparedRenderWorkDiagnostics();
+}
+
 VulkanRenderer::FrameGraphAttachmentDumpResult
 VulkanRenderer::dumpFrameGraphAttachment(
     std::string_view attachmentName,

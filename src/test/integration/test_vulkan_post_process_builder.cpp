@@ -160,8 +160,8 @@ void testPreparedRenderStateCacheSkipsStaticFrameWork() {
   key.resourceGeneration += 1;
   const auto resourceDirty =
       evaluatePreparedRenderStateCache(snapshot, key, 30, 11, 20);
-  expect(resourceDirty.rebuildFrameGraph,
-         "resource generation change should compile the frame graph");
+  expect(!resourceDirty.rebuildFrameGraph,
+         "resource generation change should reuse the compiled frame graph");
   expect(resourceDirty.rebuildRenderInputs,
          "resource generation change should rebuild render inputs");
   expect(resourceDirty.rebuildDescriptorUploadPlans,
@@ -197,7 +197,7 @@ void testPreparedRenderStateCacheInvalidatesOnTargetShapeChange() {
          "swapchain target shape change should sync upload plans");
 }
 
-void testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration() {
+void testPreparedRenderStateCacheReusesFrameGraphOnSceneNodeGeneration() {
   using LX_core::backend::PreparedRenderStateCacheSnapshot;
   using LX_core::backend::evaluatePreparedRenderStateCache;
 
@@ -210,8 +210,8 @@ void testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration() {
 
   const auto nodeDirty = evaluatePreparedRenderStateCache(
       snapshot, makePreparedKey(1, 2, 3, target, 5), 30, 10, 20);
-  expect(nodeDirty.rebuildFrameGraph,
-         "scene-node generation change should compile the frame graph");
+  expect(!nodeDirty.rebuildFrameGraph,
+         "scene-node generation change should reuse the compiled frame graph");
   expect(nodeDirty.rebuildRenderInputs,
          "scene-node generation change should rebuild render inputs");
   expect(nodeDirty.rebuildDescriptorUploadPlans,
@@ -236,8 +236,8 @@ void testPreparedRenderStateCacheSplitsDescriptorAndVolatileUploadDirty() {
       evaluatePreparedRenderStateCache(snapshot, key, 31, 11, 20);
   expect(!bakedResourceDirty.rebuildFrameGraph,
          "baked-resource upload dirty should not compile the frame graph");
-  expect(bakedResourceDirty.rebuildRenderInputs,
-         "baked-resource upload dirty should rebuild render inputs and descs");
+  expect(!bakedResourceDirty.rebuildRenderInputs,
+         "baked-resource upload dirty should reuse prepared render inputs");
   expect(bakedResourceDirty.rebuildDescriptorUploadPlans,
          "baked-resource upload dirty should rebuild descriptor upload plans");
   expect(bakedResourceDirty.syncUploadPlans,
@@ -270,7 +270,7 @@ int main() {
   testDeferredLightingMaterialUsesSharedIblRuntimeAbi();
   testPreparedRenderStateCacheSkipsStaticFrameWork();
   testPreparedRenderStateCacheInvalidatesOnTargetShapeChange();
-  testPreparedRenderStateCacheInvalidatesOnSceneNodeGeneration();
+  testPreparedRenderStateCacheReusesFrameGraphOnSceneNodeGeneration();
   testPreparedRenderStateCacheSplitsDescriptorAndVolatileUploadDirty();
   return 0;
 }

@@ -50,6 +50,8 @@ public:
   [[nodiscard]] std::vector<std::string> compiledFrameGraphPassNames() const;
   [[nodiscard]] usize frameGraphAttachmentCount() const;
   [[nodiscard]] usize initSceneCallCount() const;
+  [[nodiscard]] PreparedRenderWorkDiagnostics
+  preparedRenderWorkDiagnostics() const;
   FrameGraphAttachmentDumpResult dumpFrameGraphAttachment(
       std::string_view attachmentName,
       const std::optional<std::filesystem::path> &path = std::nullopt,

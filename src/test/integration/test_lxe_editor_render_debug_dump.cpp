@@ -468,6 +468,36 @@ int main() {
     return fail("rejected pass dump should not call backend dump hook");
   }
 
+  hooks.initSceneCallCount = []() -> usize { return 3; };
+  hooks.preparedRenderWorkDiagnostics =
+      []() -> LX_core::backend::PreparedRenderWorkDiagnostics {
+    return LX_core::backend::PreparedRenderWorkDiagnostics{
+        .frameGraphCompileCount = 4,
+        .renderInputBuildCount = 5,
+        .renderInputPrepareCount = 6,
+        .descriptorUploadPlanBuildCount = 7,
+        .uploadPlanSyncCount = 8,
+        .volatileUploadSyncCount = 9,
+        .cachedUploadResourceTouchCount = 10,
+    };
+  };
+  const LX_core::CommandResult perfStatsResult =
+      bus.dispatch("render debug perf-stats");
+  if (!perfStatsResult.ok) {
+    return fail("render debug perf-stats command failed: " +
+                perfStatsResult.message);
+  }
+  if (!contains(perfStatsResult.structured, "\"initSceneCallCount\":3") ||
+      !contains(perfStatsResult.structured, "\"frameGraphCompileCount\":4") ||
+      !contains(perfStatsResult.structured, "\"renderInputBuildCount\":5") ||
+      !contains(perfStatsResult.structured,
+                "\"descriptorUploadPlanBuildCount\":7") ||
+      !contains(perfStatsResult.structured,
+                "\"cachedUploadResourceTouchCount\":10")) {
+    return fail("render debug perf-stats should return prepared-work JSON: " +
+                perfStatsResult.structured);
+  }
+
   const LX_core::backend::VulkanPostProcessSettings settings;
   if (settings.bloomEnabled) {
     return fail("bloom should be disabled by default");

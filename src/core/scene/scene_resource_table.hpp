@@ -276,6 +276,8 @@ public:
   [[nodiscard]] GpuResourceRef
   buildRenderCameraUboResource(const CameraResource &camera) const;
   [[nodiscard]] GpuResourceRef
+  updateLiveRenderCameraUboResource(const CameraResource &camera);
+  [[nodiscard]] GpuResourceRef
   buildSceneLightsUboResource(const std::vector<LightHandle> &lightHandles,
                               StringID pass) const;
   void setIblEnvironmentResources(IblEnvironmentResources resources);
@@ -499,6 +501,7 @@ private:
   BloomDataUniquePtr m_bloomUbo;
   std::vector<PassFeatureData> m_passFeatureData;
   std::vector<CameraDataUniquePtr> m_cameraUbos;
+  mutable CameraDataUniquePtr m_liveRenderCameraUbo;
   mutable std::unique_ptr<SceneLightsData> m_sceneLightsUbo =
       std::make_unique<SceneLightsData>();
   u64 m_generation = 0;

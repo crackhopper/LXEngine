@@ -1074,6 +1074,12 @@ int main(int argc, char **argv) {
               return renderLoop ? renderLoop->liveRenderSubmissionStats()
                                 : LX_core::gpu::LiveRenderSubmissionStats{};
             },
+        .initSceneCallCount =
+            [vulkanRenderer]() { return vulkanRenderer->initSceneCallCount(); },
+        .preparedRenderWorkDiagnostics =
+            [vulkanRenderer]() {
+              return vulkanRenderer->preparedRenderWorkDiagnostics();
+            },
         .exportColorTransferPath =
             [vulkanRenderer](
                 const LX_core::backend::VulkanDebugColorTransferExportRequest

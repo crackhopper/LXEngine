@@ -52,16 +52,6 @@ struct PreparedRenderStateCacheDecision final {
   PreparedRenderStateCacheSnapshot nextSnapshot;
 };
 
-struct PreparedRenderWorkDiagnostics final {
-  u64 frameGraphCompileCount = 0;
-  u64 renderInputBuildCount = 0;
-  u64 renderInputPrepareCount = 0;
-  u64 descriptorUploadPlanBuildCount = 0;
-  u64 uploadPlanSyncCount = 0;
-  u64 volatileUploadSyncCount = 0;
-  u64 cachedUploadResourceTouchCount = 0;
-};
-
 [[nodiscard]] PreparedRenderStateCacheDecision
 evaluatePreparedRenderStateCache(
     const PreparedRenderStateCacheSnapshot &current,

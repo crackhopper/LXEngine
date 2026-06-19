@@ -243,8 +243,8 @@ void LxeEditorSession::registerRenderDebugCommand(
   bus.registerHandler(
       "render",
       "render debug dump <attachment> [path] | render debug "
-      "stats <target> | render debug live-stats | render debug export-path "
-      "color-transfer [camera-path] [out-dir]",
+      "stats <target> | render debug live-stats | render debug perf-stats | "
+      "render debug export-path color-transfer [camera-path] [out-dir]",
       [&hooks](std::vector<std::string> args) {
         if (args.size() == 2 && args[0] == "debug" && args[1] == "live-stats") {
           if (!hooks.liveRenderSubmissionStats) {
@@ -270,6 +270,32 @@ void LxeEditorSession::registerRenderDebugCommand(
               << ",\"usedBindlessSceneDescriptors\":"
               << (stats.usedBindlessSceneDescriptors ? "true" : "false") << "}";
           return makeCommandOk("render debug live-stats", structured.str());
+        }
+        if (args.size() == 2 && args[0] == "debug" && args[1] == "perf-stats") {
+          if (!hooks.initSceneCallCount ||
+              !hooks.preparedRenderWorkDiagnostics) {
+            return makeCommandError("render debug perf-stats unavailable");
+          }
+          const usize initSceneCallCount = hooks.initSceneCallCount();
+          const auto preparedWork = hooks.preparedRenderWorkDiagnostics();
+          std::ostringstream structured;
+          structured << "{\"initSceneCallCount\":" << initSceneCallCount
+                     << ",\"preparedRenderWork\":{"
+                     << "\"frameGraphCompileCount\":"
+                     << preparedWork.frameGraphCompileCount
+                     << ",\"renderInputBuildCount\":"
+                     << preparedWork.renderInputBuildCount
+                     << ",\"renderInputPrepareCount\":"
+                     << preparedWork.renderInputPrepareCount
+                     << ",\"descriptorUploadPlanBuildCount\":"
+                     << preparedWork.descriptorUploadPlanBuildCount
+                     << ",\"uploadPlanSyncCount\":"
+                     << preparedWork.uploadPlanSyncCount
+                     << ",\"volatileUploadSyncCount\":"
+                     << preparedWork.volatileUploadSyncCount
+                     << ",\"cachedUploadResourceTouchCount\":"
+                     << preparedWork.cachedUploadResourceTouchCount << "}}";
+          return makeCommandOk("render debug perf-stats", structured.str());
         }
         if (args.size() == 3 && args[0] == "debug" && args[1] == "stats") {
           if (!hooks.statsRenderTarget) {
@@ -326,8 +352,8 @@ void LxeEditorSession::registerRenderDebugCommand(
           return makeCommandError(
               "usage: render debug dump <attachment> [path] | "
               "render debug stats <target> | render debug live-stats | "
-              "render debug export-path color-transfer [camera-path] "
-              "[out-dir]");
+              "render debug perf-stats | render debug export-path "
+              "color-transfer [camera-path] [out-dir]");
         }
         if (!hooks.dumpRenderTarget) {
           return makeCommandError("render debug dump unavailable");

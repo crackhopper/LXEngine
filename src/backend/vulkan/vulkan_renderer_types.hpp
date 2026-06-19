@@ -45,6 +45,16 @@ struct VulkanRealtimeRenderInputStats final {
   usize descExecutedInputCount = 0;
 };
 
+struct PreparedRenderWorkDiagnostics final {
+  u64 frameGraphCompileCount = 0;
+  u64 renderInputBuildCount = 0;
+  u64 renderInputPrepareCount = 0;
+  u64 descriptorUploadPlanBuildCount = 0;
+  u64 uploadPlanSyncCount = 0;
+  u64 volatileUploadSyncCount = 0;
+  u64 cachedUploadResourceTouchCount = 0;
+};
+
 struct VulkanRealtimeProfileOutputResult final {
   std::filesystem::path linearExrPath;
   std::filesystem::path cpuSrgbPngPath;

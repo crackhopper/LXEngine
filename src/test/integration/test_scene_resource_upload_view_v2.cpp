@@ -134,6 +134,19 @@ findSourceStorage(const SceneResourceTableUploadView &view,
   return found == view.sourceMaterialStorages.end() ? nullptr : &*found;
 }
 
+const IGpuResource *findBindingResource(const DescriptorResourceList &resources,
+                                        StringID bindingName) {
+  for (const DescriptorResourceRef &resource : resources) {
+    if (!resource.isResource() || !resource.resource().isValid()) {
+      continue;
+    }
+    if (resource.getBindingName() == bindingName) {
+      return &resource.resource().get();
+    }
+  }
+  return nullptr;
+}
+
 bool sourceRecordRangeHasContiguousLocalIndices(
     const SceneResourceTableUploadView &view,
     const SceneSourceLocalMaterialStorageView &storage) {
@@ -455,6 +468,47 @@ void testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl() {
            "HDR textureCube environment feature should publish standard-pbr "
            "IBL readiness");
   }
+}
+
+void testRepeatedEnvironmentFeatureRegistrationReusesActiveIblResources() {
+  SceneResourceTable table;
+  const ResourceUri envUri("memory://env/live-neutral-specular.ktx2");
+  const TextureHandle envTexture =
+      table.registerTexture(envUri, makeSolidHdrCubePayload(StringID{}));
+  EXPECT(envTexture.isValid(), "HDR cubemap texture should register");
+
+  const ResourceUri featureUri(
+      "memory://features/environment_lighting.render-feature");
+  const RenderFeatureHandle firstHandle = table.registerRenderFeature(
+      featureUri, makeEnvironmentLightingFeature(envUri));
+  EXPECT(firstHandle.isValid(), "environment lighting feature should register");
+  const std::optional<ActiveIblEnvironmentResources> firstActive =
+      table.activeIblEnvironment();
+  EXPECT(firstActive.has_value(), "textureCube environment should activate IBL");
+  const u64 firstFeatureGeneration = table.featureGeneration();
+
+  const RenderFeatureHandle secondHandle = table.registerRenderFeature(
+      featureUri, makeEnvironmentLightingFeature(envUri));
+  EXPECT(secondHandle == firstHandle,
+         "re-registering the same render feature URI should reuse the handle");
+  const std::optional<ActiveIblEnvironmentResources> secondActive =
+      table.activeIblEnvironment();
+  EXPECT(secondActive.has_value(),
+         "reused environment feature should keep active IBL");
+
+  if (firstActive.has_value() && secondActive.has_value()) {
+    EXPECT(secondActive->generation == firstActive->generation,
+           "reused environment feature should not reactivate IBL generation");
+    EXPECT(secondActive->specularPrefilteredCubemap ==
+               firstActive->specularPrefilteredCubemap,
+           "reused environment feature should not recreate specular IBL "
+           "payload");
+    EXPECT(secondActive->diffuseSh == firstActive->diffuseSh,
+           "reused environment feature should not recompute diffuse SH "
+           "payload");
+  }
+  EXPECT(table.featureGeneration() == firstFeatureGeneration,
+         "reused environment feature should not advance feature generation");
 }
 
 void testEnvironmentRuntimeStateTracksSceneEnvironmentNode() {
@@ -782,6 +836,47 @@ void testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights() {
     EXPECT(param->color.w == 0.0f,
            "zero LightUBO must not contribute direct light intensity");
   }
+}
+
+void testLiveCameraSceneLevelResourcesReuseStableCameraUbo() {
+  Scene scene("StableLiveCameraUbo");
+
+  CameraResource firstCamera;
+  firstCamera.active = true;
+  firstCamera.pose.eye = Vec3f{0.0f, 1.0f, 5.0f};
+  firstCamera.pose.forward = Vec3f{0.0f, 0.0f, -1.0f};
+  firstCamera.pose.up = Vec3f{0.0f, 1.0f, 0.0f};
+  firstCamera.view = makeCameraViewMatrix(firstCamera.pose);
+  firstCamera.proj = makeCameraProjectionMatrix(firstCamera.projection);
+
+  const DescriptorResourceList firstResources =
+      scene.getSceneLevelResources(Pass_Forward, firstCamera);
+  const IGpuResource *firstCameraUbo =
+      findBindingResource(firstResources, StringID("CameraUBO"));
+  EXPECT(firstCameraUbo != nullptr,
+         "live camera scene resources should include CameraUBO");
+  const ResourceCacheIdentity firstIdentity =
+      firstCameraUbo != nullptr ? firstCameraUbo->getBackendCacheIdentity() : 0;
+
+  CameraResource secondCamera = firstCamera;
+  secondCamera.pose.eye = Vec3f{1.0f, 2.0f, 6.0f};
+  secondCamera.view = makeCameraViewMatrix(secondCamera.pose);
+  secondCamera.proj = makeCameraProjectionMatrix(secondCamera.projection);
+
+  const DescriptorResourceList secondResources =
+      scene.getSceneLevelResources(Pass_Forward, secondCamera);
+  const IGpuResource *secondCameraUbo =
+      findBindingResource(secondResources, StringID("CameraUBO"));
+  EXPECT(secondCameraUbo != nullptr,
+         "updated live camera scene resources should include CameraUBO");
+  const ResourceCacheIdentity secondIdentity =
+      secondCameraUbo != nullptr ? secondCameraUbo->getBackendCacheIdentity()
+                                 : 0;
+
+  EXPECT(firstIdentity != 0 && secondIdentity == firstIdentity,
+         "live camera updates should reuse the same CameraUBO resource identity");
+  EXPECT(secondCameraUbo != nullptr && secondCameraUbo->isDirty(),
+         "live camera updates should dirty the stable CameraUBO for upload");
 }
 
 void testIblActivationReplacesOldLiveHandlesOnSuccess() {
@@ -1693,6 +1788,7 @@ int main() {
   testEnvironmentFeatureBuiltinWhiteCubeRegistersLiveSkyboxMap();
   testEnvironmentFeatureMissingUriDoesNotRegisterSkyboxMap();
   testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl();
+  testRepeatedEnvironmentFeatureRegistrationReusesActiveIblResources();
   testEnvironmentRuntimeStateTracksSceneEnvironmentNode();
   testIblActivationUpdatesUploadViewGenerationOnlyWhenPayloadsReady();
   testIblActivationRejectsMetadataOnlyPayloads();
@@ -1703,6 +1799,7 @@ int main() {
   testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration();
   testSceneLevelResourcesIncludeIblSamplerFallbacks();
   testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights();
+  testLiveCameraSceneLevelResourcesReuseStableCameraUbo();
   testIblActivationReplacesOldLiveHandlesOnSuccess();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();

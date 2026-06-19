@@ -69,6 +69,9 @@ public:
     std::function<RenderDebugDumpResult(std::string_view)> statsRenderTarget;
     std::function<LX_core::gpu::LiveRenderSubmissionStats()>
         liveRenderSubmissionStats;
+    std::function<usize()> initSceneCallCount;
+    std::function<LX_core::backend::PreparedRenderWorkDiagnostics()>
+        preparedRenderWorkDiagnostics;
     std::function<LX_core::backend::VulkanDebugColorTransferExportResult(
         const LX_core::backend::VulkanDebugColorTransferExportRequest &)>
         exportColorTransferPath;

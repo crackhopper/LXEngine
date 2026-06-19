@@ -1090,10 +1090,16 @@ PreparedRenderStateCacheDecision evaluatePreparedRenderStateCache(
     const u64 nextDescriptorUploadGeneration,
     const u64 nextVolatileUploadGeneration) {
   PreparedRenderStateCacheDecision decision;
-  const bool structuralDirty = !current.valid || current.key != nextKey;
+  const bool graphDirty =
+      !current.valid || current.key.graphGeneration != nextKey.graphGeneration ||
+      current.key.target != nextKey.target;
+  const bool renderInputsDirty =
+      graphDirty || current.key.resourceGeneration != nextKey.resourceGeneration ||
+      current.key.featureGeneration != nextKey.featureGeneration ||
+      current.key.sceneNodeGeneration != nextKey.sceneNodeGeneration;
   const bool descriptorResourceSelectionDirty =
-      structuralDirty || current.descriptorResourceSelectionGeneration !=
-                             nextDescriptorResourceSelectionGeneration;
+      renderInputsDirty || current.descriptorResourceSelectionGeneration !=
+                              nextDescriptorResourceSelectionGeneration;
   const bool descriptorUploadDirty =
       descriptorResourceSelectionDirty ||
       current.descriptorUploadGeneration != nextDescriptorUploadGeneration;
@@ -1101,8 +1107,8 @@ PreparedRenderStateCacheDecision evaluatePreparedRenderStateCache(
       !descriptorUploadDirty &&
       current.volatileUploadGeneration != nextVolatileUploadGeneration;
 
-  decision.rebuildFrameGraph = structuralDirty;
-  decision.rebuildRenderInputs = descriptorResourceSelectionDirty;
+  decision.rebuildFrameGraph = graphDirty;
+  decision.rebuildRenderInputs = renderInputsDirty;
   decision.rebuildDescriptorUploadPlans = descriptorUploadDirty;
   decision.syncUploadPlans = descriptorUploadDirty;
   decision.syncVolatileResources = volatileUploadDirty;
@@ -1226,6 +1232,20 @@ void validateOffscreenWritesMatchTarget(
   }
 }
 
+bool liveRenderViewSelectionChanged(
+    const std::optional<LX_core::gpu::LiveRenderView> &lhs,
+    const std::optional<LX_core::gpu::LiveRenderView> &rhs) {
+  if (lhs.has_value() != rhs.has_value()) {
+    return true;
+  }
+  if (!lhs.has_value()) {
+    return false;
+  }
+  return lhs->visibleMask != rhs->visibleMask ||
+         lhs->previewEnabled != rhs->previewEnabled ||
+         lhs->editorOverlayVisible != rhs->editorOverlayVisible;
+}
+
 } // namespace
 
 class VulkanRealtimeRenderer::Impl {
@@ -1269,11 +1289,26 @@ public:
   void shutdown() { destroy(); }
   void setPostProcessSettings(const VulkanPostProcessSettings &settings) {
     m_postProcessSettings = settings;
-    invalidatePreparedRenderState();
+    if (m_scene) {
+      initScene(m_scene);
+    } else {
+      invalidatePreparedRenderState();
+    }
   }
   void setLiveRenderView(std::optional<LX_core::gpu::LiveRenderView> view) {
+    const bool selectionChanged =
+        liveRenderViewSelectionChanged(m_liveRenderView, view);
     m_liveRenderView = std::move(view);
-    invalidatePreparedRenderState();
+    if (selectionChanged) {
+      m_liveRenderViewSelectionGeneration =
+          m_liveRenderViewSelectionGeneration == u64_max
+              ? 1
+              : m_liveRenderViewSelectionGeneration + 1;
+    }
+    if (m_scene && m_liveRenderView.has_value()) {
+      (void)m_scene->resources().updateLiveRenderCameraUboResource(
+          m_liveRenderView->cameraResource);
+    }
   }
   [[nodiscard]] LX_core::gpu::LiveRenderSubmissionStats
   liveRenderSubmissionStats() const {
@@ -1647,7 +1682,8 @@ public:
         .graphGeneration = resources.graphGeneration(),
         .resourceGeneration = resources.resourceGeneration(),
         .featureGeneration = resources.featureGeneration(),
-        .sceneNodeGeneration = m_scene->runtimeNodeGeneration(),
+        .sceneNodeGeneration = m_scene->runtimeNodeGeneration() +
+                               m_liveRenderViewSelectionGeneration,
         .target = std::move(target),
     };
   }
@@ -1687,10 +1723,6 @@ public:
         preparedRenderStateSnapshot(), makePreparedRenderStateKey(target),
         descriptorResourceSelectionGeneration, descriptorUploadGeneration,
         volatileUploadGeneration);
-  }
-
-  [[nodiscard]] bool preparedRenderStateStructuralDirty() const {
-    return evaluateCurrentPreparedRenderState().rebuildFrameGraph;
   }
 
   void invalidatePreparedRenderState() {
@@ -1982,11 +2014,6 @@ public:
     const u32 currentFrameIndex = m_frameIndex % kMaxFramesInFlight;
     resourceManager().beginFrame(currentFrameIndex);
 
-    if (m_scene && preparedRenderStateStructuralDirty()) {
-      initScene(m_scene);
-      return;
-    }
-
     syncPreparedWorkIfInputOrDescriptorGenerationDirty(
         /*waitForSharedHostBuffers=*/true);
 
@@ -2018,9 +2045,6 @@ public:
     // will retry once the window has non-zero size again.
     if (m_window && (m_window->getWidth() <= 0 || m_window->getHeight() <= 0)) {
       return;
-    }
-    if (m_scene && preparedRenderStateStructuralDirty()) {
-      initScene(m_scene);
     }
     syncPreparedWorkIfInputOrDescriptorGenerationDirty(
         /*waitForSharedHostBuffers=*/true);
@@ -3635,6 +3659,7 @@ private:
   LX_core::gpu::LiveRenderSubmissionStats m_currentLiveStats;
   LX_core::gpu::LiveRenderSubmissionStats m_lastLiveStats;
   std::optional<PendingScreenDump> m_pendingScreenDump;
+  u64 m_liveRenderViewSelectionGeneration = 0;
   std::vector<VkImageLayout> m_swapchainImageLayouts;
   std::vector<LX_core::DirectionalLightDataUniquePtr>
       m_shadowCascadeUboSnapshots;
