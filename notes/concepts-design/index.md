@@ -25,7 +25,8 @@
 7. [材质系统](../concepts/material/index.md)：理解 material pass、pipeline identity 和未来 bindless 方向。
 8. [引擎循环](../concepts/engine-loop.md)：理解一帧如何驱动 window、scene、renderer 和 GUI。
 9. [渲染管线](rendering-pipeline/index.md)：在前面概念齐备后，再按 FrameGraph、RenderWork、RenderTarget、Shadow pass、CSM 的顺序拆开当前多 pass 数据流。
-10. [编辑器系统](../design/editor-system/index.md)：理解 `lxe_editor` 如何把 UI、CommandBus、SceneRuntime、API 串起来。
+10. [子系统总览](../subsystems/index.md)：从维护视角串起 Engine Loop、Scene、Geometry、Resource Upload、Pipeline Cache、Vulkan Backend 和 Skeleton。
+11. [编辑器系统](../design/editor-system/index.md)：理解 `lxe_editor` 如何把 UI、CommandBus、SceneRuntime、API 串起来。
 
 ## 当前章节结构
 
@@ -34,6 +35,7 @@
 | `notes/concepts-design/` | 总览、目录结构、术语等跨系统地图 | 单个子系统的长篇细节 |
 | `notes/concepts/` | 资产、材质、引擎循环等概念页 | 源码逐行分析 |
 | `notes/scene-system/` | 场景系统的节点、组件、相机、光源、可渲染对象 | 资产文件格式细节 |
+| `notes/subsystems/` | 当前实现的维护入口、约束和排查路径 | 新人第一课或完整设计 spec |
 | `notes/design/` | Editor 等跨模块设计说明 | 临时草稿 |
 | `notes/source_analysis/` | 贴源码的实现解析 | 面向新人建立概念的第一入口 |
 | `notes/requirements/` | 未实施或正在实施的需求 | 已经落地的长期设计解释 |
@@ -43,4 +45,5 @@
 - [架构总览](architecture.md)
 - [项目目录结构](project-layout.md)
 - [BuildInfo](build-info.md)
+- [子系统总览](../subsystems/index.md)
 - [Roadmap](../roadmaps/README.md)

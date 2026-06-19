@@ -149,5 +149,5 @@ App / Demo
 
 - `notes/concepts-design/architecture.md`
 - `notes/subsystems/vulkan-backend.md`
-- `notes/tutorial/05-app-main.md`
+- `notes/tutorial/start-project/02-start-editor.md`
 - `src/core/gpu/engine_loop.hpp`

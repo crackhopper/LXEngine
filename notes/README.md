@@ -36,7 +36,7 @@
 ## 阅读入口
 
 - [GetStarted](get-started.md)：给第一次进入项目的人预留的快速起步入口。
-- [Tutorial](tutorial/index.md)：按系列学习启动项目、自定义材质、自定义灯光、扩展编辑器和扩展场景节点。
+- [Tutorial](tutorial/index.md)：按系列学习启动项目、自定义材质、自定义灯光、Shadow、PBR + IBL、PBRT BMW M6、Offline Renderer、扩展编辑器和扩展场景节点。
 - [Tutorial / Offline Renderer](tutorial/offline-renderer/index.md)：从同一份 scene 启动 headless Vulkan compute 离线渲染，并理解 path tracing 扩展点。
 - [概念 / 资产系统](concepts/assets/index.md)：理解引擎当前能加载哪些资源，以及网格对象、纹理、材质怎样进入运行时。
 - [场景系统](scene-system/index.md)：从使用者视角理解 `Scene` / `SceneNode` / Component 与场景组织方式。
@@ -47,6 +47,7 @@
 - [概念与设计 / 术语概念](concepts-design/glossary.md)：项目自造词与关键对象的一句话定义。
 - [概念与设计 / 项目目录结构](concepts-design/project-layout.md)：仓库分层、主目录职责、事实来源。
 - [概念与设计 / BuildInfo](concepts-design/build-info.md)：理解二进制版本标签、离线输出 metadata 和 editor 录制如何追溯构建来源。
+- [子系统总览](subsystems/index.md)：从维护视角串起 Engine Loop、Scene、Geometry、Resource Upload、Pipeline Cache、Vulkan Backend 和 Skeleton。
 - [源码分析](source_analysis/index.md)：贴着真实源码看 shader、material、frame graph、pipeline identity、offline renderer 等实现边界。
 - [实现技巧](impl_tricks/index.md)：从现有代码里抽取出来的通用 trick / 手法 / 小范式。
 - [发布记录 / v0.2.0-pre](releases/v0.2.0-pre/CHANGELOG.md)：这次基线包含的当前能力。

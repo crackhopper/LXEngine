@@ -118,6 +118,7 @@ nav:
           - API 与录制观察: design/editor-system/05-api-recording-and-observation.md
           - Roadmap 边界: design/editor-system/06-roadmap-boundaries.md
       - 子系统:
+          - 总览: subsystems/index.md
           - 引擎循环: subsystems/engine-loop.md
           - Scene: subsystems/scene.md
           - Vulkan Backend: subsystems/vulkan-backend.md

@@ -11,11 +11,12 @@
 | 3 | [自定义灯光](custom-light/index.md) | 理解三类内置 light、`SceneLightsUBO` 和当前 shader 消费边界 |
 | 4 | [Shadow 阶段](shadow-era/index.md) | 打开 shadow / CSM 场景，理解多 pass 写读关系 |
 | 5 | [PBR + IBL](pbr-ibl/index.md) | 打开 Damaged Helmet + neutral IBL 场景，理解 scene-level IBL resources |
-| 6 | [Offline Renderer](offline-renderer/index.md) | 用同一份 scene 跑 headless offline ray tracer，写出 EXR/PNG，并理解 path tracing 扩展点 |
-| 7 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
-| 8 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
+| 6 | [PBRT BMW M6 资产包](pbrt-bmw-m6-conversion.md) | 理解当前 BMW M6 runtime approximation 和 PBRT source preservation 的边界 |
+| 7 | [Offline Renderer](offline-renderer/index.md) | 用同一份 scene 跑 headless offline ray tracer，写出 EXR/PNG，并理解 path tracing 扩展点 |
+| 8 | [扩展场景节点](extend-scene-node/index.md) | 理解一种新节点如何兼容 editor 全流程 |
+| 9 | [扩展编辑器](extend-editor/index.md) | 理解 toolbar 与 command bus 如何配合 |
 
-前六条学习线偏当前实践：构建、启动、保存场景、写材质、调灯光、观察 shadow/CSM、验证 PBR/IBL、运行离线输出。最后两条学习线讲当前代码里的 command-first 与 scene-node 手工扩展触点，不再把旧的 registry 占位需求当成教程目标。
+前七条学习线偏当前实践：构建、启动、保存场景、写材质、调灯光、观察 shadow/CSM、验证 PBR/IBL、理解 BMW M6 资产包、运行离线输出。最后两条学习线讲当前代码里的 command-first 与 scene-node 手工扩展触点，不再把旧的 registry 占位需求当成教程目标。
 
 ## 当前教程覆盖范围
 
@@ -35,6 +36,7 @@
 | 想理解 light 和 shader 的连接 | 自定义材质 01/02 + 自定义灯光 01/02/05 |
 | 想理解 0.2.0-pre 的 shadow 主线 | 启动项目全部 + Shadow 阶段全部 |
 | 想理解 PBR + IBL 的当前闭环 | 启动项目全部 + PBR + IBL 全部 |
+| 想理解 PBRT BMW M6 当前能跑什么、未来保留什么 | PBR + IBL 01 + PBRT BMW M6 资产包 |
 | 想跑离线渲染或准备写 path tracing | 启动项目 01 + PBR + IBL 01 + Offline Renderer 全部 |
 | 想新增一种场景对象 | 启动项目 03/04 + 扩展场景节点 |
 | 想改 editor 操作入口 | 启动项目 04 + 扩展编辑器 |
