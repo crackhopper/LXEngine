@@ -16,7 +16,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/windows_msvc_env.cmake")
 # 项目名称
 project(Renderer LANGUAGES C CXX)
 
-set(LX_PROJECT_VERSION "0.1.0-dev" CACHE STRING
+set(LX_PROJECT_VERSION "0.2.0-pre" CACHE STRING
     "LXEngine project version embedded into build metadata")
 
 # 导出 compile_commands.json，供 clangd / cpptools 智能提示使用。
@@ -68,6 +68,7 @@ add_subdirectory(src/infra)
 add_subdirectory(src/backend)
 
 option(LX_BUILD_EDITOR "Build the lxe_editor application" ON)
+option(LX_BUILD_NEW_TRACK "Build C++20 module rewrite libraries and tests" OFF)
 if(LX_BUILD_EDITOR)
   add_subdirectory(src/editor)
 endif()
@@ -144,7 +145,9 @@ add_subdirectory(src/tools)
 # 新分层（C++20 modules）：new_common 基础库 -> new_core
 # 与旧 core/infra/backend 完全隔离。
 # -------------------------------
-add_subdirectory(src/new_common)
-add_subdirectory(src/new_core)
+if(LX_BUILD_NEW_TRACK)
+  add_subdirectory(src/new_common)
+  add_subdirectory(src/new_core)
+endif()
 
 add_subdirectory(src/test)

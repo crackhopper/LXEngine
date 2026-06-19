@@ -134,4 +134,6 @@ set_tests_properties(test_shader_compiler PROPERTIES
 add_dependencies(BuildTest CompileShaders)
 
 # 新分层（C++20 modules）的 smoke exe，自包含子目录。
-add_subdirectory(new)
+if(LX_BUILD_NEW_TRACK)
+  add_subdirectory(new)
+endif()

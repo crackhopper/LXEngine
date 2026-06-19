@@ -2478,6 +2478,54 @@ void testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode() {
   }
 }
 
+void testRenderWorkCompilerAllowsEnvironmentLightingReadWithoutShaderBindings() {
+  Scene scene("EnvironmentCompilerScene");
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/environment_lighting"),
+          makeCompilerEnvironmentFeature());
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{},
+      std::vector<ShaderStageCode>{
+          ShaderStageCode{ShaderStage::Vertex,
+                          std::vector<u32>{0x07230203, 57}},
+          ShaderStageCode{ShaderStage::Fragment,
+                          std::vector<u32>{0x07230203, 58}},
+      });
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = Pass_SkyboxBackground;
+  passFacts.shaderProgram.shaderName = "render_paths/Skybox/skybox_background";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::RealtimeOptions options;
+  options.passPreparationFacts.push_back(passFacts);
+
+  RenderWorkCompiler compiler;
+  FramePass pass = makeSkyboxCompilerPass();
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context =
+      RenderWorkBuildContext::realtime(scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1,
+         "environment feature read without shader bindings should produce one "
+         "desc");
+  if (!descs.empty()) {
+    expectAcceptedDescHasBackendPipelineFacts(
+        descs.front(),
+        "environment feature read should not require an environment node when "
+        "the shader has no environment bindings");
+    EXPECT(!hasDiagnosticMessage(
+               descs.front(),
+               "feature.environmentLighting requires a scene environment node"),
+           "diagnostic should not require environment node without reflected "
+           "environment bindings");
+  }
+}
+
 void testRenderWorkCompilerRejectsMetadataOnlyEnvironmentFeature() {
   Scene scene("EnvironmentCompilerScene");
   const ResourceIdentityHandle metadataOnlyFeature =
@@ -3344,6 +3392,7 @@ int main() {
   testUnsupportedObjectClassProducesRejectedDesc();
   testMaterialTypeFilterRejectsNoMaterialRenderable();
   testRenderWorkCompilerRejectsEnvironmentLightingWithoutEnvironmentNode();
+  testRenderWorkCompilerAllowsEnvironmentLightingReadWithoutShaderBindings();
   testRenderWorkCompilerRejectsMetadataOnlyEnvironmentFeature();
   testRenderWorkCompilerRejectsWrongLiveEnvironmentFeature();
   testRenderWorkCompilerAcceptsEnvironmentLightingFeatureBindings();

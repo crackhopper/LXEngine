@@ -764,6 +764,13 @@ void validateEnvironmentLightingFeatureBindings(
   if (!passUsesFeature(pass, "feature.environmentLighting")) {
     return;
   }
+  const ShaderResourceBinding *skyboxMap =
+      findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");
+  const ShaderResourceBinding *ubo = findReflectedBinding(
+      desc.pipelineBuildDesc.bindings, "EnvironmentLightingUBO");
+  if (skyboxMap == nullptr && ubo == nullptr) {
+    return;
+  }
   if (!context.hasRealtimeScene()) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.environmentLighting requires a realtime scene resource "
@@ -793,8 +800,6 @@ void validateEnvironmentLightingFeatureBindings(
     return;
   }
 
-  const ShaderResourceBinding *skyboxMap =
-      findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");
   if (skyboxMap != nullptr) {
     const auto environmentMap = feature.parameters.find("environmentMap");
     if (environmentMap == feature.parameters.end() ||
@@ -807,8 +812,6 @@ void validateEnvironmentLightingFeatureBindings(
     }
   }
 
-  const ShaderResourceBinding *ubo = findReflectedBinding(
-      desc.pipelineBuildDesc.bindings, "EnvironmentLightingUBO");
   if (ubo == nullptr) {
     return;
   }
