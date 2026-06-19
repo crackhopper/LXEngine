@@ -8,7 +8,7 @@
 |---|---|---|
 | 工具链 | CMake、Ninja、Vulkan、shader 工具先要可用 | [01 环境与构建](01-environment-and-build.md) |
 | editor 可执行程序 | 后续教程都在 `lxe_editor` 里验证 | [02 启动 editor](02-start-editor.md) |
-| project / scene 读写 | 先从模板创建项目，再在项目里保存多个 scene | [03 加载与保存场景](03-load-and-save-scene.md) |
+| scene 打开与项目边界 | 先直接打开当前 scene asset，再理解 project 保存边界 | [03 加载与保存场景](03-load-and-save-scene.md) |
 | 最小编辑循环 | 创建、选择、修改、预览、保存是所有作者工作的基础 | [04 基础场景编辑](04-basic-authoring.md) |
 | 失败分流 | 出错时先判断失败发生在哪一层 | [05 启动排错](05-troubleshooting.md) |
 
@@ -18,16 +18,16 @@
 
 | 部分 | 位置 | 在启动流程中的作用 |
 |---|---|---|
-| editor 入口 | `src/demos/lxe_editor/main.cpp` | 编译出 `lxe_editor` 可执行程序 |
-| editor 会话 | `src/demos/lxe_editor/editor_session.*` | 组织 project、scene runtime、UI 和 command |
-| 项目模板 | `assets/project_templates/` | 提供只读项目起点 |
+| editor 入口 | `src/editor/main.cpp` | 编译出 `lxe_editor` 可执行程序 |
+| editor 会话 | `src/editor/app/editor_session.*` | 组织 project、scene runtime、UI 和 command |
+| 项目目录 | `data/projects/` | 保存本地 project；当前教程不依赖内置 project template |
 | 本地项目 | `data/projects/` | 保存练习 project、scenes 和项目资产 |
 | 本地配置 | `data/lxe_editor/` | 保存 editor 布局、command history、API 发现信息 |
-| 命令总线 | `src/core/editor/command_bus.*` | 让 UI、console、API 和 MCP 复用同一套操作 |
+| 命令总线 | `src/editor/commands/command_bus.*` | 让 UI、console、API 和 MCP 复用同一套操作 |
 
 ## 完成本系列后我们能做什么
 
-完成本系列后，我们应该能从空 build 目录配置工程，启动 editor，从 `empty` template 创建自己的 project，在 project 里新建、打开和保存 scene，并在常见失败发生时知道先检查哪一层。
+完成本系列后，我们应该能从空 build 目录配置工程，启动 editor，直接打开当前 scene asset，理解 project/save 的边界，并在常见失败发生时知道先检查哪一层。
 
 ## 下一步
 

@@ -243,6 +243,6 @@ MCP 执行。当前固定录制场景是
 
 ## 继续阅读
 
-- [lxe_editor README](../../src/demos/lxe_editor/README.md)
+- [lxe_editor README](../../src/editor/README.md)
 - [Notes 工具链说明](notes-tooling.md)
 - [Phase 10 AI Agent MCP](../roadmaps/main-roadmap/phase-10-ai-agent-mcp.md)

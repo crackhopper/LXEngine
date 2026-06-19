@@ -39,8 +39,8 @@
 | 2 | 加 per-sample RNG 和 path throughput loop | 同一 seed 输出稳定，不同 samples 中心像素有限 |
 | 3 | 实现 diffuse cosine sampling | 灰色地面能看到环境间接光趋势 |
 | 4 | 接入 directional light 的 next-event estimation | 有光源时噪声低于纯 BSDF 采样 |
-| 5 | 支持 metallic/roughness 的简化 microfacet | 金属球能反射环境色，roughness 改变高光扩散 |
-| 6 | 接 HDR environment 纹理采样 | `scene.environment.hdrUri` 真正影响背景和间接光 |
+| 5 | 支持 metallic/roughness 的简化 microfacet | Helmet 的金属/粗糙度区域能反射环境色，roughness 改变高光扩散 |
+| 6 | 接 HDR / KTX environment 纹理采样 | environment feature 或 scene environment asset 真正影响背景和间接光 |
 | 7 | 输出 EXR/PNG 和 AOV | 同时保存 beauty、albedo、normal、depth 或 variance |
 
 这个顺序的关键是每一步都能形成一个小的可运行结果，而不是等到完整物理模型写完才第一次 dispatch。

@@ -30,7 +30,7 @@
 |---|---|---|
 | 1 | GPU 资源最小公共契约 | [IGpuResource](src/core/rhi/gpu_resource.md) |
 | 2 | asset / material / texture 如何变成渲染输入 | [Mesh](src/core/asset/mesh.md)、[Shader](src/core/asset/shader.md)、[MaterialTemplate](src/core/asset/material_template.md)、[MaterialInstance](src/core/asset/material_instance.md)、[Texture](src/core/asset/texture.md) |
-| 3 | scene 与 frame graph 怎样收口 draw item | [Scene](src/core/scene/scene.md)、[RenderTarget](src/core/frame_graph/render_target.md)、[RenderQueue](src/core/frame_graph/render_queue.md)、[FrameGraph](src/core/frame_graph/frame_graph.md) |
+| 3 | scene、target 与 frame graph 如何把 pass 合同交给 compiler | [Scene](src/core/scene/scene.md)、[RenderTarget](src/core/frame_graph/render_target.md)、[FrameGraph](src/core/frame_graph/frame_graph.md) |
 | 4 | pipeline identity 为什么只看结构差异 | [Pipeline Identity](src/core/pipeline/pipeline_identity.md) |
 | 5 | 离线渲染如何从 scene IR 进入 Vulkan compute | [Vulkan Offline Renderer](src/backend/vulkan/offline/vulkan_offline_renderer.md) |
 
@@ -44,8 +44,7 @@
 - [Texture 与 CombinedTextureSampler：CPU 图像如何进入 GPU 资源路径](src/core/asset/texture.md)
 - [Scene：场景容器与 scene-level 资源筛选](src/core/scene/scene.md)
 - [RenderTarget：attachment 形状如何成为 target 匹配键](src/core/frame_graph/render_target.md)
-- [RenderQueue：把 scene × pass 收口成可消费的 draw 列表](src/core/frame_graph/render_queue.md)
-- [FrameGraph：把 scene 翻译成按 pass 组织的 RenderWorkItem 列表](src/core/frame_graph/frame_graph.md)
+- [FrameGraph：把 RenderPath pass 收束成可验证的资源 DAG](src/core/frame_graph/frame_graph.md)
 - [GlobalStringTable：字符串驻留与结构化身份树](src/core/utils/string_table.md)
 - [Pipeline Identity：从结构签名到构建输入](src/core/pipeline/pipeline_identity.md)
 - [Vulkan Offline Renderer：从 Scene IR 到 Compute Readback](src/backend/vulkan/offline/vulkan_offline_renderer.md)
@@ -53,7 +52,7 @@
 配套阅读：
 
 - [MaterialInstance：运行时状态](../concepts/material/material-instance.md)：先建立材质实例的概念，再回到源码分析看实现边界
-- [多 Pass 材质怎样变成 Draw](../concepts/material/pass-rendering-flow.md)：先理解 queue / item / pass 的高层流向，再读 RenderQueue / FrameGraph 源码分析
+- [多 Pass 材质怎样变成 Draw](../concepts/material/pass-rendering-flow.md)：先理解 pass / input / desc 的高层流向，再读 FrameGraph 源码分析
 
 ## 更新方式
 

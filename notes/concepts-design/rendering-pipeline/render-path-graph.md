@@ -137,7 +137,7 @@ input:
 | `stage` | `dispatch` | `input.kind` | 例子 |
 |---|---|---|---|
 | `raster` | `draw` | `scene-renderables` | Shadow、Forward、Deferred GBuffer、DebugOverlay |
-| `raster` | `fullscreen` | `fullscreen-triangle` | PostProcess、Bloom、DeferredLighting |
+| `raster` | `fullscreen` | `fullscreen-triangle` | Bloom、DeferredLighting |
 | `compute` | `compute` | `compute-dispatch` | 当前 offline software-compute 的 `OfflineCompute` pass |
 
 `stage` 说明 pipeline 类型，`dispatch` 说明执行方式，`input.kind` 说明 work 从哪里来。三者组合让 parser 可以拒绝非法组合，例如 fullscreen input 搭配 draw dispatch，或 compute input 搭配 raster stage。

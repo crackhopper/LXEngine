@@ -12,7 +12,7 @@
 | Material contract | `common/materials/*.contract.glsl` | `.material v2` 的 `bsdf.source`，用于参数/ABI reflection 和 source variant include |
 | Shadow | `render_paths/Forward/shadow_depth_only` | RenderPathGraph 的 `Shadow` pass |
 | Debug / 诊断 | `render_paths/Debug/debug_overlay`、`debug_line`、`mesh_debug`、`minimal`、`texture_cube_probe` | RenderPathGraph debug overlay、debug draw、resize 诊断或 cubemap probe |
-| HDR 后处理 | `skybox`、`render_paths/Post/bloom_threshold`、`render_paths/Post/bloom_blur_h`、`render_paths/Post/bloom_blur_v`、`render_paths/Post/post_process` | RenderPathGraph / fullscreen pass 消费 HDR、bloom 和 post-process source |
+| HDR 输出 | `skybox`、`render_paths/Bloom/blit`、`features/tone_mapping`、`features/bloom` | RenderPathGraph / fullscreen pass 消费 HDR、tone mapping 和 bloom feature |
 | IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `bake_environment_ibl` / `bake_standard_pbr_brdf_lut` graph 声明 bake pass，旧手写 bake helper 已删除 |
 | Offline compute | `techniques/OfflineRT/offline_pbr_direct_ray` | CLI 默认创建 offline compute shader，再经 `RenderWorkCompiler` 进入 compute pipeline |
 | 共享片段 | `scene_lights_ubo.glsl` | GLSL include 片段，声明 scene lights UBO 结构 |
@@ -50,42 +50,18 @@ PBR shader 的重点是 source contract 和 render path contract 的组合。`.m
 
 这组 shader 的价值在于隔离变量。`minimal` 完全不依赖引擎资源上传，适合判断问题是否来自 swapchain、depth attachment 或 command buffer。`debug_line` 和 `mesh_debug` 则保留 camera/model 路径，用来观察世界空间辅助线和 mesh 覆盖效果。
 
-## Skybox、Bloom 和 Post Process
+## Skybox、Tone Mapping 和 Bloom
 
-这些 shader 像摄影棚的后期部门：几何物体已经画进 HDR target，它们负责背景、亮部提取、模糊和最终 tone mapping。
+这些 shader 像摄影棚的出片部门：几何物体已经画进 `hdr.color`，它们负责环境背景、tone mapping 参数和最终 bloom blit。
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `skybox` | `skybox.vert` / `.frag` | fullscreen 背景 pass，从 camera 反推出世界方向并采样 `SkyboxMap` | `CameraUBO`、`SkyboxMap`、`EnvironmentUBO` |
-| `render_paths/Post/bloom_threshold` | `render_paths/Post/bloom_threshold.vert` / `.frag` | 从 HDR scene color 中提取超过阈值的亮部 | `SceneColor`、`BloomThresholdUBO` |
-| `render_paths/Post/bloom_blur_h` | `render_paths/Post/bloom_blur_h.vert` / `.frag` | bloom 横向高斯近似模糊 | `BloomSource` |
-| `render_paths/Post/bloom_blur_v` | `render_paths/Post/bloom_blur_v.vert` / `.frag` | bloom 纵向高斯近似模糊 | `BloomSource` |
-| `render_paths/Post/post_process` | `render_paths/Post/post_process.vert` / `.frag` | 合并 HDR scene color 与 bloom，执行 exposure、tone mapping 和 gamma | `SceneColor`、`BloomColor`、`PostProcessUBO` |
+| `skybox` | `skybox.vert` / `.frag` | fullscreen 背景 pass，从 camera 反推出世界方向并采样 `SkyboxMap` | `CameraUBO`、`SkyboxMap`、`EnvironmentLightingUBO` |
+| `features/tone_mapping` | `features/tone_mapping.glsl` | Forward PBR shader include，执行 exposure + ACES/Reinhard curve | `ToneMappingUBO` |
+| `features/bloom` | `features/bloom.glsl` | Bloom pass include，按阈值和强度计算当前 bloom blit | `BloomUBO` |
+| `render_paths/Bloom/blit` | `render_paths/Bloom/blit.vert` / `.frag` | fullscreen 读取 `hdr.color` 并写入 `swapchain.color` | `SceneColor`、`BloomUBO` |
 
-这些 fullscreen shader 的顶点阶段通常只用 `gl_VertexIndex` 生成一个覆盖全屏的大三角形，不需要 mesh vertex buffer。PostProcess / Bloom 的 graph 入口必须使用 `render_paths/Post/...`，resolver 不再接受 `post_process` 这类 root short name 或直接 `.frag` 文件路径。仍保留的 builder 手写路径应被视为待硬切的执行层细节。
-
-`PostProcessUBO` 当前包含 `exposure`、`toneMappingMode`、`gamma` 和
-`bloomIntensity`。这些值不是 surface material 的参数；它们由
-`VulkanPostProcessBuilder::createStandardPostProcessMaterial(...)` 创建
-PostProcess fullscreen `MaterialInstance` 时写入 shader binding parameter。
-`assets/effects/tone_mapping.render-feature.yaml` 仍然作为
-`feature.toneMapping` 的 graph 依赖存在，但当前 realtime builder 并没有把这份
-feature asset 的参数逐项读出后注入 `PostProcessUBO`。
-
-`gamma` 现在还承担了输出编码选择的职责。backend 在创建 PostProcess material
-前会检查 swapchain target：
-
-| Target format | Builder 传入的输出编码 | 写入 `PostProcessUBO.gamma` |
-|---|---|---|
-| sRGB swapchain target | `Linear` | `1.0` |
-| UNORM swapchain target | `Srgb` | `2.2` |
-
-shader 只读取 `gamma` 并调用 `lxLinearToSrgbGamma(mapped, gamma)`。因此
-`gamma = 1.0` 表示 shader 不做 gamma 编码，把 linear mapped color 交给
-sRGB attachment；`gamma = 2.2` 表示 shader 自己做 gamma 编码后写入 UNORM
-attachment。这个设计能表达当前行为，但它把两个概念压进了一个字段。更清晰的
-后续设计应像 debug color transfer shader 那样加入显式
-`outputEncodingMode`，让 shader 同时读取“是否编码”和“gamma 数值”。
+fullscreen shader 的顶点阶段通常只用 `gl_VertexIndex` 生成一个覆盖全屏的大三角形，不需要 mesh vertex buffer。当前 `forward_main.render-path.yaml` 的出片链路是 `Forward -> Bloom`：Forward shader 消费 `feature.toneMapping`，Bloom pass 消费 `feature.bloom` 和 `hdr.color`。
 
 ## IBL Bake Shader
 

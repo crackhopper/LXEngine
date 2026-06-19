@@ -17,11 +17,11 @@
 
 | 文件 | 作用 |
 |---|---|
-| `src/core/editor/command_bus.hpp` | command 注册、dispatch、history、completion 的核心接口 |
-| `src/core/editor/commands/builtin_commands.cpp` | 内置 command handler 与补全 |
-| `src/core/editor/console_input_controller.cpp` | console 输入如何 dispatch command |
-| `src/demos/lxe_editor/ui_overlay.*` | 浮动 toolbar 与 editor UI |
-| `src/demos/lxe_editor/lxe_editor_api_service.cpp` | HTTP/WebSocket/MCP 如何复用 command |
+| `src/editor/commands/command_bus.hpp` | command 注册、dispatch、history、completion 的核心接口 |
+| `src/editor/commands/builtin_commands.cpp` | 内置 command handler 与补全 |
+| `src/editor/panels/console_input_controller.cpp` | console 输入如何 dispatch command |
+| `src/editor/ui/ui_overlay.*` | 浮动 toolbar 与 editor UI |
+| `src/editor/api/lxe_editor_api_service.cpp` | HTTP/WebSocket/MCP 如何复用 command |
 
 我们读这些文件时，可以把问题固定成一句话：这个入口最后是否变成了一条 command line。
 

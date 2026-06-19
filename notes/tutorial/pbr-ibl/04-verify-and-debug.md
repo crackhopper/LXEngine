@@ -22,27 +22,27 @@ cmake --build build --target CompileShaders test_gltf_scene_asset_loader test_re
 从 build 目录启动：
 
 ```bash
-./src/editor/lxe_editor
+./build/src/editor/lxe_editor
 ```
 
 在 Console 中打开 project 内场景后，可以 dump 当前 FrameGraph attachment
 或 debug render target pass。HDR attachment 会以调试用 tone mapping 写成 BMP。
 
 ```text
-render debug dump scene.hdrColor data/debug/dump/ibl-hdr-color.bmp
+render debug dump hdr.color data/debug/dump/ibl-hdr-color.bmp
 render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 ```
 
-`render debug dump <target> [camera-path] [path]` 由 editor session 转到 Vulkan renderer。若目标是 FrameGraph attachment，可用 `scene.hdrColor` 这样的 attachment 名；若目标是 debug render target pass，可用 pass 名和 camera path。当前不要用 `swapchain.color` 或 cubemap face 作为教程步骤中的验证命令；这些目标需要等 swapchain/cubemap dump 能力落地后再补。
+`render debug dump <target> [camera-path] [path]` 由 editor session 转到 Vulkan renderer。若目标是 FrameGraph attachment，可用 `hdr.color` 这样的 attachment 名；若目标是 debug render target pass，可用 pass 名和 camera path。当前不要用 `swapchain.color` 或 cubemap face 作为教程步骤中的验证命令；这些目标需要等 swapchain/cubemap dump 能力落地后再补。
 
 ## 常见问题
 
 | 现象 | 优先检查 |
 |---|---|
-| 金属球发黑 | 先跑 `test_render_resource_parsers` / `test_shader_compiler`；再 dump renderer 目标检查 IBL binding 是否实际上传 |
-| 画面过曝或过暗 | `PostProcessUBO.exposure`、tone mapping mode、HDR 输入是否仍是线性值 |
+| Helmet 发黑 | 先跑 `test_render_resource_parsers` / `test_shader_compiler`；再 dump renderer 目标检查 IBL binding 是否实际上传 |
+| 画面过曝或过暗 | `ToneMappingUBO.exposure`、tone mapping mode、HDR 输入是否仍是线性值 |
 | 反射方向不对 | cubemap face orientation；真实 bake 接入后需要 dump cubemap face 对照 HDR 方向 |
-| 没有 bloom | `VulkanRenderer::PostProcessSettings::bloomEnabled`、threshold、`bloomIntensity` |
+| 没有 bloom | `BloomUBO.threshold`、`BloomUBO.intensity`、`feature.bloom` 是否进入 ForwardMain |
 | Headless 环境无法截图 | 使用 `xvfb-run -a`；如果仍失败，按测试输出中的 Vulkan/video device skip 原因排查 |
 | 只看到固定 ambient | 检查 scene 是否启用 environment、renderer 是否完成 GPU bake，以及 `PrefilteredEnvMap` 是否绑定 baked mip chain |
 
@@ -58,4 +58,4 @@ render debug dump Forward /game_cam data/debug/dump/ibl-forward.bmp
 - [材质 Shader 与绑定](../../concepts/material/shader.md)
 - [多 Pass 如何变成 Draw](../../concepts/material/pass-rendering-flow.md)
 - [FrameGraph](../../concepts-design/rendering-pipeline/framegraph.md)
-- [REQ-050-a](../../requirements/finished/050-a-ibl-metal-sphere-test-scene.md)
+- [PBR + IBL 场景](01-helmet-neutral-ibl-scene.md)

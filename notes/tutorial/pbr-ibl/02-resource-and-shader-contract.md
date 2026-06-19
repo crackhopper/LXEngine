@@ -34,7 +34,8 @@ PBR shader 还会消费 scene-level IBL 资源：
 | `IrradianceMap` | `TextureCube` | scene-level IBL |
 | `PrefilteredEnvMap` | `TextureCube` | scene-level IBL |
 | `BrdfLut` | `Texture2D` | scene-level IBL |
-| `EnvironmentUBO` | `UniformBuffer` | scene-level IBL |
+| `EnvironmentLightingUBO` | `UniformBuffer` | `feature.environmentLighting` |
+| `SurfaceLightingUBO` | `UniformBuffer` | `feature.surfaceLighting` |
 
 这些资源由 scene/environment 或 bake pipeline 提供，不写进 `.material`。`RenderWorkCompiler` / descriptor resolver 会在 pass 准备 `RenderInputDesc` 时把 scene-level resources 拼进去。
 
@@ -45,9 +46,10 @@ PBR shader 还会消费 scene-level IBL 资源：
 | `IrradianceMap` | 同一场景内所有 PBR 物体共享 diffuse 环境光 | `Scene::setIblEnvironmentResources(...)` |
 | `PrefilteredEnvMap` | mip 链来自同一个 HDR environment bake | IBL bake / scene environment |
 | `BrdfLut` | 是全局 BRDF 查表，不属于某个表面 | 默认或 bake pipeline 生成 |
-| `EnvironmentUBO` | 控制环境强度和 roughness mip 数 | `scene.environment` / renderer environment data |
+| `EnvironmentLightingUBO` | 控制环境颜色、强度和旋转 | `assets/effects/environment_lighting.render-feature.yaml` |
+| `SurfaceLightingUBO` | 控制 IBL enable 与 bake ready flags | `assets/effects/surface_lighting.render-feature.yaml` + bake state |
 
-这样拆分后，金属球换材质不会破坏环境；场景换 HDR 环境也不需要改每个材质文件。
+这样拆分后，Helmet 换材质不会破坏环境；场景换 HDR 环境也不需要改每个材质文件。
 
 ## 当前 bake 合同
 

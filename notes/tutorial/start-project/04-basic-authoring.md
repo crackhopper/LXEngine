@@ -15,10 +15,10 @@
 
 | 部分 | 文件 |
 |---|---|
-| toolbar 创建入口 | `src/demos/lxe_editor/ui_overlay.*` |
-| 创建命令 | `src/core/editor/commands/builtin_commands.*` |
-| scene document payload | `src/demos/lxe_editor/scene_document.*` |
-| runtime 构建 | `src/demos/lxe_editor/scene_runtime.*` |
+| toolbar 创建入口 | `src/editor/ui/ui_overlay.*` |
+| 创建命令 | `src/editor/commands/builtin_commands.*` |
+| scene document payload | `src/editor/project/scene_document.*` |
+| runtime 构建 | `src/editor/runtime/scene_runtime.*` |
 
 这些文件对应一个共同原则：toolbar 和 Inspector 是入口，scene document 负责保存，runtime 负责把文档变成可渲染对象。
 

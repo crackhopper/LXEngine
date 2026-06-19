@@ -6,8 +6,9 @@
 这一页从
 [src/core/frame_graph/render_target.hpp](../../../../../src/core/frame_graph/render_target.hpp)
 出发，关注的不是"它有哪几个字段"，而是：为什么 `RenderTarget` 被刻意做成
-一个不持有句柄、不参与 PipelineKey 的薄 POD，以及它怎么作为 REQ-009 两轴
-筛选里的 *target 轴* 在 Scene、Camera、RenderQueue 之间穿过。
+一个不持有句柄、不直接拥有 backend image 的薄 POD，以及它怎么作为 camera
+选择和 pass attachment 合同里的 *target 轴* 在 Scene、FramePass、
+RenderWorkCompiler 和 backend 之间穿过。
 
 可以先带着一个问题阅读：既然 backend 最终要的是 attachment 句柄，为什么
 `RenderTarget` 不直接持有句柄？答案是，句柄随 swapchain 重建抖动，而
@@ -39,9 +40,9 @@ offscreen/depth-only 的 role、attachment presence 和 layerCount 语义。
 
 | 位置 | 目的 | 当前真实状态 |
 |------|------|------------------|
-| `Scene::getSceneLevelResources(pass, target)` | 拿 scene-level camera 资源 | 默认 target 全相等 → 永远命中 |
-| `Scene::getCombinedCameraCullingMask(target)` | OR-combine 可见性掩码 | 同上，命中后掩码即所有 camera 的并集 |
-| `RenderWorkQueue::build(context, pass, target, ...)` | 调度上面两个调用 | 从 `FramePass.target` 透传兼容 `RenderTarget` |
+| `FramePass::target` | 保存 pass 输出 attachment 形状 | 来自 RenderPathGraph 的 rendering/attachments 合同 |
+| `Scene::getSceneLevelResources(pass, target)` | 为 compiler 取 scene-level camera/light 资源 | camera 按 target 匹配，light 按 pass 匹配 |
+| `RenderWorkCompiler::buildInputs(...)` / `prepare(...)` | 把 pass target 带入 input 筛选、binding plan 和 pipeline build desc | 不持有 backend image 句柄 |
 
 也就是说 target 轴已经是配置层形状匹配，不是 backend attachment 句柄匹配。
 

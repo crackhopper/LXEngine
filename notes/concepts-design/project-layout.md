@@ -26,7 +26,7 @@ LXEngine/
 | `src/infra/` | 工程工具层 | shader compiler/reflector、mesh/texture/material loader、window、ImGui |
 | `src/backend/vulkan/` | Vulkan 后端 | device、swapchain、FrameGraph attachment、descriptor、pipeline、command buffer |
 | `src/backend/vulkan/offline/` | Vulkan 离线后端 | headless compute renderer、GPU scene packing、BVH、readback |
-| `src/demos/lxe_editor/` | 当前交互 editor | project、scene runtime、UI、API、recording、commands |
+| `src/editor/` | 当前交互 editor | project、scene runtime、UI、API、recording、commands |
 | `src/test/integration/` | 集成测试 | shader、material、scene、pipeline、resource、editor 相关测试 |
 | `src/tools/` | 独立工具 | `lxe_offline_render` CLI、`lxe_manager` MCP 服务、`assets-downloader` React/TS 工具、Node 共享包 |
 
@@ -36,7 +36,7 @@ LXEngine/
 |---|---|
 | `asset/` | `Mesh`、`Texture`、`MaterialTemplate`、`MaterialInstance`、`Shader`、`Skeleton` |
 | `scene/` | `Scene`、`SceneNode`、components、camera、light、controller |
-| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderWorkQueue`、`RenderWorkItem`、`RenderTarget`、read/write resource 声明 |
+| `frame_graph/` | `FrameGraph`、`FramePass`、`RenderTarget`、`RenderWorkCompiler`、`RenderInput`、`RenderInputDesc`、read/write resource 声明 |
 | `offline/` | `OfflineRenderProfile`、`SceneResourceTable`、离线 readback image |
 | `pipeline/` | `PipelineKey`、`PipelineBuildDesc` |
 | `rhi/` | renderer 接口、GPU resource、buffer、vertex layout |
@@ -67,9 +67,9 @@ LXEngine/
 | `assets/models/` | 示例模型、测试模型、内置模型包 |
 | `assets/models/builtin/` | 内置模型 manifest 和低面元资产 |
 | `assets/textures/` | 独立贴图 |
-| `assets/env/` | 环境贴图资产；资产存在不等于 HDR/Post 管线已经实现 |
+| `assets/env/` | 环境贴图资产；当前 Forward/PBR/IBL 路径通过 RenderFeature 与 bake 资源消费它们 |
 | `assets/scenes/` | 仓库自带 scene |
-| `assets/project_templates/` | 新建 project 的只读模板 |
+| `data/projects/` | editor 保存可写 project 和 project-local scene 的默认位置 |
 
 ## src/tools/ 是引擎外的实验工具层
 
@@ -80,7 +80,7 @@ LXEngine/
 | `assets-downloader` | `src/tools/assets-downloader/` | React + TypeScript 页面，管理外部资产下载、license、cache URI 和导入缓存 |
 | `@lxe/build-info` | `src/tools/share/build-info/` | Node 工具共享 BuildInfo 字符串生成 |
 
-这两个工具都服务于“场景资产可以被 editor 使用，也可以被离线 renderer 使用”的同一条路线。它们不应该反向依赖 `src/demos/lxe_editor/` 的 UI 状态；共享边界放在 `infra/scene_io`、`infra/offline`、`core/offline` 和 project/cache 路径约定上。
+这两个工具都服务于“场景资产可以被 editor 使用，也可以被离线 renderer 使用”的同一条路线。它们不应该反向依赖 `src/editor/` 的 UI 状态；共享边界放在 `infra/scene_io`、`infra/offline`、`core/offline` 和 project/cache 路径约定上。
 
 文件格式和 URI 细节见 [资产系统](../concepts/assets/index.md)。
 
@@ -95,7 +95,7 @@ LXEngine/
 | `notes/tutorial/` | 动手路径 | 想按步骤操作 |
 | `notes/source_analysis/` | 贴源码的实现解析 | 已有概念后深入源码 |
 | `notes/requirements/` | 未实施或正在实施的需求 | 判断 future 能力状态 |
-| `notes/roadmaps/` | 长期阶段规划和研究留档 | 判断方向和优先级 |
+| `notes/roadmaps/` | 长期阶段规划和当前缺口 | 判断方向和优先级 |
 | `notes/tools/` | notes/editor manager 工具说明 | 维护文档站点和工具链 |
 
 ## 当前事实来源的优先级
@@ -108,7 +108,7 @@ LXEngine/
 4. `notes/concepts-design/`、`notes/concepts/`、`notes/scene-system/`、`notes/design/`
 5. `notes/source_analysis/`
 6. `notes/roadmaps/`
-7. `notes/requirements/finished/`、`notes/ai-scanned/`、`notes/temporary/`
+7. `notes/requirements/finished/`、`notes/temporary/`
 
 Roadmap 可以说明方向，但不能证明能力已经实现。是否实现要回到代码、当前设计 spec 和 active/finished requirement。
 

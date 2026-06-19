@@ -1,7 +1,7 @@
 {
-  "lastSyncedCommit": "3a1fcfcc7e7cd92ed593ede550fff7535b07cbd8",
-  "lastSyncedAt": "2026-06-14T11:04:30+08:00",
-  "mode": "material-hardcut-073-doc-refresh",
+  "lastSyncedCommit": "6c26e82e3dbda6b637e775cf9dc79baf2c59f603",
+  "lastSyncedAt": "2026-06-19T18:15:54+08:00",
+  "mode": "0.2.0-pre-notes-hardcut",
   "files": [
     "notes/nav.yml",
     "notes/concepts/assets/builtin-catalog.md",
@@ -28,7 +28,6 @@
     "notes/source_analysis/index.md",
     "notes/source_analysis/src/core/asset/material_instance.md",
     "notes/source_analysis/src/core/frame_graph/frame_graph.md",
-    "notes/source_analysis/src/core/frame_graph/render_queue.md",
     "notes/source_analysis/src/core/frame_graph/render_target.md",
     "notes/source_analysis/src/core/pipeline/pipeline_identity.md",
     "notes/source_analysis/src/core/scene/scene.md",

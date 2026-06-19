@@ -8,14 +8,14 @@
 和它的实现
 [src/core/scene/scene.cpp](../../../../../src/core/scene/scene.cpp)
 出发，关注的不是 API 列表，而是 `Scene` 为什么是一层薄壳：
-把结构验证下放给 `SceneNode`、把 draw 组装下放给 `RenderQueue`，
-自己只保留 nodeName 唯一性、shared material 重验证传播、
-以及 scene-level 资源的两轴筛选这三件无法下放的事情。
+把结构验证下放给 `SceneNode`，把 draw / dispatch payload 组装交给
+`RenderWorkCompiler`，自己只保留 nodeName 唯一性、shared material
+重验证传播、scene resource table 和 scene-level 资源筛选这些全场景事实。
 
 可以先带着一个问题阅读：为什么 `Scene` 的容器是平铺的、构造时还要硬塞
-一个默认 Camera 和 DirectionalLight？答案是 REQ-009 — 让那些不走完整
-`VulkanRenderer::initScene` 的纯 core/test 路径仍然能拿到非空的
-scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给 SceneNode。
+一个默认 Camera 和 DirectionalLight？答案是现在的 `Scene` 只表达注册事实；
+editor、offline loader 和测试都必须显式注册带组件的 node。可见性、hierarchy
+和 renderable pass validation 留在 `SceneNode` / compiler 边界处理。
 
 源码入口：[scene.hpp](../../../../src/core/scene/scene.hpp)
 
@@ -26,25 +26,6 @@ scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给
 ## scene.hpp
 
 源码位置：[scene.hpp](../../../../src/core/scene/scene.hpp)
-
-### RenderWorkItem：一次 pipeline work 的最小稳定记录
-
-这个结构体定义在 scene.hpp 而不是 queue.hpp，是因为它描述的是 backend
-真正消费的契约，而不是 queue 的内部状态。任何把"一个 pass 内需要执行的一份
-GPU work"翻译成 backend 提交单元的代码路径，都收口到这个结构体上。
-
-字段拆分体现两个边界：
-
-- `domain / kind / shaderInfo / pipelineKey / pass / target`：决定走哪条
-  pipeline，以及这份 work 是 raster draw、compute dispatch 还是后续 RT work
-- `descriptorResources`：决定 pipeline-visible 资源，顺序固定但 backend 按
-  binding name 命中，不依赖位置
-- `raster / compute`：按 work kind 存放特化 payload，避免把 raster-only
-  vertex/index/material index 当成所有 render work 的公共字段
-- `material`：保留材质句柄是为了 `PipelineBuildDesc::fromRenderWorkItem`
-  不再保存材质对象；pipeline 需要的 render state 在 SceneNode 校验阶段复制进
-  work item，材质资源绑定则由 scene descriptor resolver 从 SceneResourceTable
-  解析。
 
 ### Scene：扁平容器
 
@@ -120,8 +101,9 @@ target 相关 camera 接受就保留），不是交集。
 5. 最后用 **`getCombinedCameraCullingMask`** 收尾，理解资源筛选和可见性裁剪
    为什么要解耦。
 
-`RenderWorkItem` 那一节单独看 — 它解释的是 scene.hpp 为什么承担"frame-consumed
-work record"的定义责任，与 Scene 类自身的运行时行为无直接耦合。
+`SceneResourceTable` 相关章节可以单独看。它解释的是 scene 如何把 mesh、object、
+material、camera、light 和 IBL bake facts 登记成 typed handle；这和 `Scene`
+平铺容器的运行时职责相关，但不是同一个层级。
 
 ## Scene 与 SceneNode 的责任划分
 
@@ -133,7 +115,7 @@ work record"的定义责任，与 Scene 类自身的运行时行为无直接耦�
 | 调试身份 | 注入 `<sceneName>/<nodeName>` 到 node | 接收并保存 sceneDebugId |
 | 结构验证 | 只在 shared material pass 拓扑变化时触发节点重建 | 自己的 `rebuildValidatedCache()` |
 | 层级 | 不感知 | parent / children / world transform |
-| 资源 | 选 scene-level（camera UBO / light UBO） | 选 per-renderable descriptor + 持有 camera component |
+| 资源 | 维护 `SceneResourceTable`，并按 pass/target 选 scene-level camera/light 资源 | 持有 mesh/material/camera/light component，暴露 validated pass data |
 | 可见性 | 合并 camera mask | 自己的 visibility mask |
 
 简言之：**Scene 只做"全场景才能决定"的事**，其它都下放。
@@ -160,19 +142,22 @@ synthetic root node。它不参与 renderable ownership，也不出现在 `m_ren
 `<unnamed-node-0xADDR>` 占位；`findByPath()` 同时接受真实空段（`//`）和这个占位
 文本作为匹配键，保证 dump 出来的路径仍可反查回节点。
 
-## 与 RenderQueue 的边界
+## 与 RenderWorkCompiler 的边界
 
-`RenderWorkQueue::build(...)` 调 Scene 的入口主要是：
-`getSceneLevelResources(pass, target)` 和 `getCombinedCameraCullingMask(target)`。
-其它一切（`shaderInfo`、`pipelineKey`、`descriptorResources` 中 per-renderable 的部分）
-都直接走 `IRenderable::getValidatedPassData(pass)`。
+`RenderWorkCompiler::buildInputs(...)` 调 Scene 的入口主要是：
+`getRenderables()`、`getSceneLevelResources(pass, target)` 和
+`getCombinedCameraCullingMask(target)`。其它一切 per-renderable 结构事实来自
+`IRenderable::getValidatedPassData(pass)`。
 
-这条接口边界让 Scene 和 RenderQueue 的契约非常窄 —
-queue 不需要知道 SceneNode 内部 cache 形态，scene 也不需要知道 queue 排序策略。
-任何想替换 queue 实现的工作只要遵守这两条 scene-side 接口加上 `IRenderable` 即可。
+这条接口边界让 Scene 和 compiler 的契约保持窄而稳定：compiler 不需要知道
+SceneNode 内部 cache 怎样失效，scene 也不需要知道 input 排序、diagnostic 或
+pipeline desc 怎样生成。任何替换 compiler 的工作只要遵守这几条 scene-side 接口
+和 `IRenderable` pass validation 出口即可。
 
 ## 当前 target 轴状态
 
-`FramePass` 使用 `RenderTargetDesc` 表达输出形状，`RenderWorkQueue::build` 仍通过兼容 `RenderTarget{pass.target}` 调用 scene 资源筛选。Scene 只关心 camera 是否匹配 target 形状，不持有 backend attachment 句柄。
+`FramePass` 使用 `RenderTargetDesc` 表达输出形状，compiler 仍通过兼容
+`RenderTarget{pass.target}` 调用 scene 资源筛选。Scene 只关心 camera 是否匹配
+target 形状，不持有 backend attachment 句柄。
 
 这意味着 target 轴已经有真实 offscreen/depth-only/HDR 形状语义，但 framebuffer、image view、layout transition 仍属于 backend 执行层。

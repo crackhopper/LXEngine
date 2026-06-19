@@ -29,7 +29,7 @@ RenderPathGraph input
 
 Forward / Deferred graph 的 draw pass 使用 `input.kind: scene-renderables`。Compiler 会从 scene 里筛选 renderables，检查 material type、object render class、geometry contract 和 scene-level resources，然后生成 `RenderDrawInput[]`。
 
-PostProcess / Bloom / DeferredLighting 这类 fullscreen pass 使用 `input.kind: fullscreen-triangle`。Compiler 不遍历 scene，只生成一个内置 fullscreen draw input。
+Bloom / DeferredLighting 这类 fullscreen pass 使用 `input.kind: fullscreen-triangle`。Compiler 不遍历 scene，只生成一个内置 fullscreen draw input。
 
 Vulkan realtime metadata 当前暴露 `renderInputStats`。关键字段包括 `compilerInputCount`、`acceptedInputCount`、`rejectedInputCount`、`submittedDrawCount`、`submittedDispatchCount` 和 `fallbackObservedCount`。
 

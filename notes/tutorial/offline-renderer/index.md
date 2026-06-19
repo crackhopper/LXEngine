@@ -2,7 +2,7 @@
 
 Offline renderer 像一间独立的渲染实验室：editor 和 realtime renderer 负责搭景、调材质、保存场景；offline renderer 读取同一份 scene，把它加载进统一的 `SceneResourceTable`，再通过 offline `FrameGraph` 和 `RenderWorkCompiler` 生成一个 compute `RenderInput` / `RenderInputDesc`，最后在 headless Vulkan backend 中 dispatch 并 readback。
 
-当前实现已经能从 `assets/scenes/ibl_metal_sphere.scene.yaml` 读取 output profile、离线 settings、相机、内置几何、材质常量、方向光和 background color。`software-compute` integrator 会构建 offline `FrameGraph`，由 `RenderWorkCompiler` 把 `SceneResourceTable` 上传视图、CPU BVH、frame params 和 output buffer 收敛成 compute input、binding plan 和 pipeline build desc，再复用 backend 的 pipeline / descriptor / command buffer 执行路径。它还不是完整 path tracer，但已经把“scene 文件 → SceneResourceTable → offline RenderInputDesc → Vulkan compute dispatch → readback → 输出文件”的主链路打通了。
+当前实现已经能从 `assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml` 读取 output profile、离线 settings、相机、glTF mesh、材质常量、方向光和 background color。`software-compute` integrator 会构建 offline `FrameGraph`，由 `RenderWorkCompiler` 把 `SceneResourceTable` 上传视图、CPU BVH、frame params 和 output buffer 收敛成 compute input、binding plan 和 pipeline build desc，再复用 backend 的 pipeline / descriptor / command buffer 执行路径。它还不是完整 path tracer，但已经把“scene 文件 → SceneResourceTable → offline RenderInputDesc → Vulkan compute dispatch → readback → 输出文件”的主链路打通了。
 
 ## 核心对象
 

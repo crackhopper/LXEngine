@@ -28,7 +28,7 @@
 | Shader | `assets/shaders/glsl/*.vert/.frag` | shader compiler / reflector | 材质系统 |
 | 内置模型 manifest | `assets/models/builtin/**/asset.yaml` | `BuiltinAssetCatalog` | editor palette 与场景插入流程 |
 | 场景 | `assets/scenes/*.scene.yaml`、project 下的 `scenes/*.scene.yaml` | `SceneDocument` | [场景系统](../../scene-system/index.md) |
-| project template | `assets/project_templates/**` | project 初始化流程 | project / scene 打开流程 |
+| project scene | `data/projects/**/scenes/*.scene.yaml` | project / scene 保存流程 | editor 当前可写工作区 |
 
 ## 阅读顺序
 

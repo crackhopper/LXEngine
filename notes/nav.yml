@@ -34,9 +34,9 @@ nav:
           - 调参与边界: tutorial/shadow-era/04-shadow-tuning-and-limits.md
       - PBR + IBL:
           - 总览: tutorial/pbr-ibl/index.md
-          - 金属球场景: tutorial/pbr-ibl/01-metal-sphere-scene.md
+          - Helmet neutral IBL 场景: tutorial/pbr-ibl/01-helmet-neutral-ibl-scene.md
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
-          - HDR Post 流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
+          - HDR 输出流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
       - Offline Renderer:
           - 总览: tutorial/offline-renderer/index.md
@@ -123,6 +123,7 @@ nav:
       - 总览: roadmaps/README.md
       - "@roadmaps"
   - 发布记录:
+      - v0.2.0-pre: releases/v0.2.0-pre/CHANGELOG.md
       - v0.1.0: releases/v0.1.0/CHANGELOG.md
   - 需求（进行中）:
       - requirements/index.md
@@ -138,7 +139,7 @@ nav:
   - Use Cases:
       - use_cases/index.md
       - lxe_editor 复杂场景录制: use_cases/lxe_editor/record-complex-scene-edit.md
-      - lxe_editor PBR IBL 金属球验证: use_cases/lxe_editor/verify-pbr-ibl-metal-sphere.md
+      - lxe_editor PBR IBL Helmet 验证: use_cases/lxe_editor/verify-pbr-ibl-helmet.md
   - 临时笔记:
       - temporary/index.md
       - "@temporary"

@@ -9,13 +9,13 @@ BuildInfo 在 LXEngine 里是一张“实验标签”：我们渲染出一张 EX
 当前字符串形态类似：
 
 ```text
-lxe_offline_render 0.1.0-dev (abc123456789-dirty, Debug, Linux-x86_64)
+lxe_offline_render 0.2.0-pre (abc123456789-dirty, Debug, Linux-x86_64)
 ```
 
 | 片段 | 含义 | 用途 |
 |---|---|---|
 | `lxe_offline_render` | 二进制名字 | 区分 editor、offline renderer 和测试工具 |
-| `0.1.0-dev` | 项目版本 | 对齐发布版本或开发版本 |
+| `0.2.0-pre` | 项目版本 | 对齐当前基线或开发版本 |
 | `abc123456789` | 短 commit | 回到产生结果的源码附近 |
 | `dirty` | 构建时工作区有未提交改动 | 提醒结果来自非干净构建 |
 | `Debug` | 构建类型 | 区分 Debug / Release / 多配置构建 |
@@ -40,7 +40,7 @@ lxe_offline_render 0.1.0-dev (abc123456789-dirty, Debug, Linux-x86_64)
 | `src/infra/CMakeLists.txt` | 声明 buildInfo 生成 target，并把生成目录加入 infra include path |
 | `cmake/generate_build_info.cmake` | 构建时读取短 commit、dirty、build type、platform，内容变化时更新 generated header |
 | `src/infra/build_info/build_info.*` | 合成 BuildInfo 字符串和 JSON |
-| `src/demos/lxe_editor/` | editor 直接调用 infra BuildInfo API，并固定二进制名为 `lxe_editor` |
+| `src/editor/` | editor 直接调用 infra BuildInfo API，并固定二进制名为 `lxe_editor` |
 | `src/tools/lxe_offline_render/main.cpp` | `--version` 和离线输出 metadata |
 | `src/infra/offline/offline_image_writer.*` | 在 sidecar JSON 写入 `"buildInfo"` |
 | `src/tools/share/build-info/` | Node 工具共享的 BuildInfo package |
@@ -53,7 +53,7 @@ Offline renderer 写出的 `smoke.json` 会包含：
 
 ```json
 {
-  "buildInfo": "lxe_offline_render 0.1.0-dev (abc123456789-dirty, Debug, Linux-x86_64)"
+  "buildInfo": "lxe_offline_render 0.2.0-pre (abc123456789-dirty, Debug, Linux-x86_64)"
 }
 ```
 
@@ -61,7 +61,7 @@ Editor API 和 recording metadata 使用同一个 JSON 形态：
 
 ```json
 {
-  "buildInfo": "lxe_editor 0.1.0-dev (abc123456789-dirty, Debug, Linux-x86_64)"
+  "buildInfo": "lxe_editor 0.2.0-pre (abc123456789-dirty, Debug, Linux-x86_64)"
 }
 ```
 

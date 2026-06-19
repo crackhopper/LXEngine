@@ -154,5 +154,6 @@ visibility += (projCoords.z - depthBias) <= closestDepth ? 1.0 : 0.0;
 - `assets/shaders/glsl/blinnphong_0.frag`
 - `assets/shaders/glsl/shadow_depth_only.vert`
 - `src/core/asset/material_instance.cpp`
-- `src/core/frame_graph/render_queue.cpp`
+- `src/core/frame_graph/render_work_compiler.cpp`
+- `src/core/frame_graph/render_input.hpp`
 - `src/core/scene/light.cpp`

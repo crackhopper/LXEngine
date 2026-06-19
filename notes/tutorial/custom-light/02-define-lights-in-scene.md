@@ -49,7 +49,7 @@ nodes:
 | 创建聚光灯 | `light:spot` | cone 参数会进入 light 数据；当前 PBR shader 未完成 spot direct loop |
 | 修改字段 | `light.color` / `light.intensity` 等 | Inspector 与保存后的 scene 同步 |
 
-命令名和参数以当前 command completion 为准。需要确认时，先看 `src/core/editor/commands/builtin_commands.cpp`，那里是当前权威入口。
+命令名和参数以当前 command completion 为准。需要确认时，先看 `src/editor/commands/builtin_commands.cpp`，那里是当前权威入口。
 
 ## 我们已经学会了什么
 

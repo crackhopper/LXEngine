@@ -1,16 +1,11 @@
 # Roadmaps
 
-`notes/roadmaps/` 现在只承担目录入口，不再平铺阶段文档。
+`notes/roadmaps/` 只保存当前路线和仍然有效的阶段规划。旧的技术预研长文已经从 active notes 中移除；需要重新进入主线的研究主题，必须先落到当前 requirement 或设计 spec，再写回 roadmap。
 
-当前分组：
+当前入口：
 
-- [Roadmap · 走向 AI-Native 小型游戏引擎](main-roadmap/README.md)
-- [技术预研 (research/)](research/README.md)
+- [Main Roadmap](main-roadmap/README.md)
+- [Gap Analysis](main-roadmap/00-gap-analysis.md)
+- [Rendering Depth](main-roadmap/phase-1-rendering-depth.md)
 
-站点导航会由 `scripts/notes/generate_site_config.py` 自动按子目录展开：
-
-- `Roadmap` 下的二级菜单显示各个子目录
-- 每个子目录内部按文件名顺序显示页面
-- 子目录内的 `README.md` 作为该组入口页
-
-因此后续新增 roadmap 文档时，应优先放入某个明确的子目录，而不是继续平铺到 `notes/roadmaps/` 根目录。
+站点导航由 `scripts/notes/generate_site_config.py` 自动按目录展开。新增 roadmap 页面时，应先确认它描述的是当前缺口或明确的未来阶段，而不是已经被代码 hard cut 的历史方案。

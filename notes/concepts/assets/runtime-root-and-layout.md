@@ -34,16 +34,17 @@
 | `assets/textures/` | 独立纹理资源；有些模型包也会把贴图放在模型目录内部 |
 | `assets/env/` | 环境贴图资源；HDR/EXR panorama 已能被当前环境资源路径读取，`khronos/neutral/` 保存 Khronos neutral KTX2 参考环境 |
 | `assets/scenes/` | 仓库自带 scene 文档 |
-| `assets/project_templates/` | 新建 project 时复制的只读模板 |
+| `data/projects/` | editor 保存可写 project 和 project-local scene 的默认位置 |
 
 这套布局对应当前资产目录约定。测试里也会检查关键示例资产是否存在，避免资源目录被无意破坏。
 
 `assets/env/khronos/neutral/ggx/specular.ktx2` 是 Khronos glTF Sample
-Environments 的 GGX 预过滤 specular cubemap。当前只为它接入了受限
-`TextureLoader::loadKtx2Cubemap()` 读取路径：uncompressed KTX2、
-`VK_FORMAT_R16G16B16A16_SFLOAT`、6 faces、mip chain。它还没有成为
-scene environment 的默认输入；`REQ-073-f` 会把 skybox/background pass、
-RenderFeature 参数和 scene-level environment resource 一起收束。
+Environments 的 GGX 预过滤 specular cubemap。当前 KTX2 cubemap 读取路径
+已经进入 PBR/IBL 基线：`TextureLoader::loadKtx2Cubemap()` 支持
+uncompressed KTX2、`VK_FORMAT_R16G16B16A16_SFLOAT`、6 faces、mip chain，
+`assets/effects/environment_lighting.render-feature.yaml` 通过
+`EnvironmentLightingUBO` 和 `SkyboxMap` 把它交给 skybox / Forward IBL
+路径消费。
 
 ## 逻辑路径和真实路径分开
 

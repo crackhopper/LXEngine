@@ -4,7 +4,7 @@ CommandBus 像工作台下面的一条中线。toolbar、Inspector、Scene Tree�
 
 ## CommandBus 提供什么
 
-`src/core/editor/command_bus.hpp` 定义了这条中线的核心能力：
+`src/editor/commands/command_bus.hpp` 定义了这条中线的核心能力：
 
 | 能力 | 当前接口 | 作用 |
 |---|---|---|
@@ -36,7 +36,7 @@ set /helmet.nodeMaterial.roughness 0.35
 
 | 层 | 注册函数 | 例子 | 为什么放这里 |
 |---|---|---|---|
-| 通用 editor/scene 命令 | `registerBuiltinCommands(...)` | `select`、`move`、`add`、`scene save`、`preview`、`undo`、`redo` | 位于 `src/core/editor/commands/`，可服务核心 editor 行为 |
+| 通用 editor/scene 命令 | `registerBuiltinCommands(...)` | `select`、`move`、`add`、`scene save`、`preview`、`undo`、`redo` | 位于 `src/editor/commands/`，服务 editor 行为 |
 | `lxe_editor` 专属命令 | `registerLxeEditorCommands(...)` | `mode`、`state`、`pick`、`debug`、`recording`、`display ...` | 依赖 `UiOverlay`、`SceneInteractionController`、runtime display hooks |
 
 这层分工让 core editor 命令不直接依赖 demo app 的 API service、display 选择或 recording controller。

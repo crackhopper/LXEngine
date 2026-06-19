@@ -32,4 +32,4 @@ FrameGraph / shadow / G-Buffer 会增加 shader、pipeline 和 attachment 组合
 
 - [Phase 1 · Rendering Depth](phase-1-rendering-depth.md)
 - [Phase 3 · Asset Pipeline](phase-3-asset-pipeline.md)
-- [Pipeline Cache 调研](../research/pipeline-cache/README.md)
+- [Pipeline Cache 子系统](../../subsystems/pipeline-cache.md)

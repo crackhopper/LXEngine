@@ -4,7 +4,7 @@ Shadow map 像先拍一张从灯光方向看到的深度底片。底片里不需
 
 ## 当前 FrameGraph 如何排 pass
 
-v0.1.1 的 `VulkanRenderer::initScene()` 会为主 directional light 建立四个 shadow cascade pass，然后再建立 forward pass。FrameGraph v1 记录 pass 顺序、target、read/write 声明，并在 compile 阶段检查读写关系。
+0.2.0-pre 的 `VulkanRenderer::initScene()` 会从 RenderPathGraph 建立 Shadow 和 Forward pass。FrameGraph 记录 pass 顺序、target、read/write 声明，并在 compile 阶段检查读写关系。
 
 ```mermaid
 flowchart TD

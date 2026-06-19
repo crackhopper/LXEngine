@@ -1,6 +1,6 @@
 # 架构总览：三层工厂和一条多 Pass 生产线
 
-LXEngine 的架构可以先想成一座工厂：`core` 画产品蓝图，`infra` 负责把外部材料和工具接进来，`backend` 负责把蓝图真正送上 Vulkan 生产线。v0.1.1 之后，这条生产线不只做一次 forward draw，还会先生产 shadow cascade depth，再把这些临时资源接回 forward pass。
+LXEngine 的架构可以先想成一座工厂：`core` 画产品蓝图，`infra` 负责把外部材料和工具接进来，`backend` 负责把蓝图真正送上 Vulkan 生产线。0.2.0-pre 基线里，这条生产线已经由 RenderPathGraph / FrameGraph / RenderWorkCompiler 串起来：Shadow 先写深度，Forward 写 `hdr.color`，Bloom 写 swapchain，DebugOverlay 追加诊断叠加。
 
 ## 三层结构先把责任隔开
 
@@ -10,7 +10,7 @@ LXEngine 的架构可以先想成一座工厂：`core` 画产品蓝图，`infra`
 | `infra` | 工具间 | `src/infra/` | shader 编译反射、mesh/texture/material loader、window、ImGui 接入 |
 | `backend` | Vulkan 车间 | `src/backend/vulkan/` | device、resource upload、attachment、descriptor、pipeline、command buffer、present |
 | `offline` | 离线实验室 | `src/core/offline/`, `src/infra/offline/`, `src/backend/vulkan/offline/` | scene profile、SceneResourceTable、headless compute renderer、readback |
-| `editor` | 集成工作台 | `src/demos/lxe_editor/` | project/scene runtime、UI、CommandBus、API/recording |
+| `editor` | 集成工作台 | `src/editor/` | project/scene runtime、UI、CommandBus、API/recording |
 
 ```mermaid
 flowchart TD
@@ -18,7 +18,7 @@ flowchart TD
     infra["src/infra\n加载器与工具"]
     backend["src/backend/vulkan\nVulkan 实现"]
     offline["offline renderer\nSceneResourceTable + Vulkan compute"]
-    editor["src/demos/lxe_editor\n交互工作台"]
+    editor["src/editor\n交互工作台"]
 
     infra --> core
     backend --> core
@@ -135,7 +135,7 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 | RenderWorkCompiler | `src/core/frame_graph/` | per-pass realtime renderable 过滤、offline compute input 生成、`RenderInputDesc`、binding plan、pipeline build desc | pass 间依赖推导、backend command 录制 |
 | Pipeline | `src/core/pipeline/`, `src/backend/vulkan/details/pipelines/` | backend-agnostic build desc、target-aware pipeline identity、Vulkan graphics/compute pipeline materialization | 材质参数值更新 |
 | Vulkan backend | `src/backend/vulkan/` | attachment、render pass/framebuffer、descriptor by name、command buffer、submit/present | scene authoring、业务 update |
-| Editor | `src/demos/lxe_editor/` | project/scene runtime、ImGui UI、CommandBus、API/recording 集成 | 新渲染层、engine-level MCP |
+| Editor | `src/editor/` | project/scene runtime、ImGui UI、CommandBus、API/recording 集成 | 新渲染层、engine-level MCP |
 | Notes / Requirements | `notes/`, `docs/superpowers/specs/` | 当前能力解释、future/pending 标注、文档导航 | 单独证明实现，最终仍以 `src/` 和当前设计 spec 为准 |
 
 ## Realtime 与 Offline 共用 RenderWork 主干
@@ -171,7 +171,7 @@ flowchart TD
 | FrameGraph | 显式 pass 顺序、read/write 声明、compile 校验、资源 DAG 排序 | task-based build、attachment aliasing |
 | Shadow / CSM | 4 个 directional shadow cascade，forward 读取 `ShadowMap0..3` | shadow debug visualization 仍可继续扩展 |
 | Forward output | forward HDR scene color、post process、bloom 和 swapchain 输出链路 | 更完整的 post stack 和调试 dump 仍可扩展 |
-| Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、金属球验证场景 | 更完整的 PBR texture set 和 local probe |
+| Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、Damaged Helmet neutral IBL 验证场景 | 更完整的 PBR texture set 和 local probe |
 | Offline renderer | scene profile、SceneResourceTable、Vulkan compute software-compute MVP、shared RenderWork flow、`.rgba32f` readback | EXR/PNG、真实 HDR environment sampling、多 bounce path tracing、hardware RT |
 | Deferred | 存在 `Pass_Deferred` 常量和方向 | G-Buffer / Deferred renderer 还未实现 |
 | Editor integration | ImGui editor、CommandBus、API/recording | Web Editor、engine-level CLI/MCP、AssetRegistry/hot reload 仍在 pending |

@@ -11,9 +11,9 @@
 `PipelineKey` 负责回答“是不是同一条 pipeline”，`PipelineBuildDesc`
 负责回答“如果要创建它，backend 需要哪些输入”。
 
-可以先带着一个问题阅读：为什么 `RenderWorkItem` 已经有 shader、material、
-vertex buffer，还要额外保存 `pipelineKey`？答案是，渲染提交和 pipeline
-预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
+可以先带着一个问题阅读：为什么 `RenderInputDesc` 已经有 shader、material、
+vertex layout 和 render state，还要额外保存 `pipelineKey`？答案是，渲染提交和
+pipeline 预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
 
 源码入口：[pipeline_key.hpp](../../../../src/core/pipeline/pipeline_key.hpp)
 
@@ -51,30 +51,14 @@ render work 不再用它承载每 draw 数据。
 
 这里保存的是 pipeline layout 需要的结构信息，不是每个 draw 的实际数据值。
 
-### PipelineBuildDesc：从 RenderWorkItem 派生出的构建输入包
+### PipelineBuildDesc：backend 构建 pipeline 的事实包
 
 `PipelineKey` 只回答“是不是同一条 pipeline”；`PipelineBuildDesc` 回答
 “如果这条 pipeline 还没建，backend 需要哪些输入”。
 
-它从一个已经校验好的 `RenderWorkItem` 派生，不重新判断材质是否合法，也不重新推导
-identity。这样前端的 SceneNode/RenderWorkQueue 负责把 draw 事实准备好，backend
-只负责把 这些事实翻译成 Vulkan pipeline 创建参数。
-
-## pipeline_build_desc.cpp
-
-源码位置：[pipeline_build_desc.cpp](../../../../src/core/pipeline/pipeline_build_desc.cpp)
-
-### filterVertexLayoutToShaderInputs：让 pipeline 只声明
-
-shader 真正读取的输入 Mesh 的 vertex layout 可能包含 shader 当前 pass
-不读取的属性。pipeline 创建时如果把所有 属性都照搬进去，会让同一个 mesh 在不同
-shader/pass 下的 vertex input state 过宽，也会增加 “shader 没声明但 pipeline
-填了”的噪声。
-
-这里按 shader reflection 得到的 vertex inputs 过滤 layout，只保留当前 shader
-需要的 location/type。前置校验已经在 `SceneNode` 做过；这里的 assert 是为了保证
-`PipelineBuildDesc::fromRenderWorkItem` 只消费已经通过验证的 raster / compute
-work item。
+它不再从旧 work item / batch 反向推导。调用方必须在 RenderWorkCompiler prepare
+阶段或显式 backend 过渡调用点先准备好 shader、layout、render state、target 和
+attachment 等结构事实，然后用 `graphics` / `compute` 直接构造。
 
 <!-- SOURCE_ANALYSIS:EXTRA -->
 

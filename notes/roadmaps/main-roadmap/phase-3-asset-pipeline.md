@@ -27,7 +27,7 @@
 
 ## 与当前 active REQ
 
-[REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md) 是本 phase 的 pending 最小桥接入口：先服务 editor asset list 和 hot reload，不要求一口气 GUID 化所有 runtime 资源。它不进入 v0.1.1 active 队列。
+[REQ-044-c](../../requirements/pending/044-c-editor-asset-registry-and-hot-reload-bridge.md) 是本 phase 的 pending 最小桥接入口：先服务 editor asset list 和 hot reload，不要求一口气 GUID 化所有 runtime 资源。它不进入 0.2.0-pre 基线。
 
 ## 与 Phase 1 的关系
 

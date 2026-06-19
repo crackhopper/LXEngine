@@ -1,123 +1,74 @@
 # Scene
 
-> Scene 负责持有 renderables、camera、light，并为 `RenderWorkQueue` 提供 scene-level 资源。真正的 work item 组装消费 `SceneNode` 预验证结果。
->
-> 相关实现入口：`src/core/scene/`、`src/core/frame_graph/`、`src/core/pipeline/`
+Scene 像舞台管理表：它登记哪些节点、相机、灯光和资源属于当前场景，但不自己决定一条 pass 该画什么。当前 draw / dispatch 组装已经交给 `RenderWorkCompiler`；Scene 负责提供稳定的全场景事实。
 
-## 深入阅读
+相关实现入口：`src/core/scene/`、`src/core/frame_graph/render_work_compiler.*`、`src/editor/runtime/scene_runtime.*`、`src/infra/scene_io/`。
 
-- [场景系统](../scene-system/index.md)：从使用者视角展开 `Scene` / `SceneNode` / Component / `ValidatedRenderablePassData`，解释它们如何服务 `preloadPipeline` 和 `drawcall`
+## 当前职责
 
-## 它解决什么问题
+| 对象 | 当前职责 |
+|---|---|
+| `Scene` | 平铺持有 renderables、camera handles、light handles、root path node 和 `SceneResourceTable` |
+| `SceneNode` | transform hierarchy、component 组合、path/name、visibility mask、pass-level validation cache |
+| `SceneResourceTable` | 登记 mesh/material/object/camera/light/IBL bake typed handles，并导出 upload view |
+| `RenderWorkCompiler` | 按 `FramePass.input` 遍历 scene，生成 `RenderDrawInput` / `RenderComputeInput` 和 `RenderInputDesc` |
+| `SceneDocument` | `.scene.yaml` 的持久化文档，由 editor 和 offline loader 共用 |
 
-- 给 renderer 一个稳定的场景入口。
-- 把“对象是否合法”前移到 `SceneNode` 自身，而不是在 queue 里临时检查。
-- 在 scene 级统一管理 camera/light 资源、`nodeName` 调试命名空间，以及 editor/command 用的路径命名空间。
+## 数据流
 
-## 核心对象
+```text
+.scene.yaml
+  -> infra/scene_io::SceneDocument
+  -> editor/runtime::SceneRuntime 或 infra/offline::OfflineSceneLoader
+  -> core::Scene + SceneResourceTable
+  -> RenderWorkCompiler::buildInputs(pass, context)
+  -> RenderInput[] + RenderInputDesc[]
+  -> Vulkan realtime/offline executor
+```
 
-- `Scene`：持有 renderables、camera 列表、light 列表，要求显式 `sceneName`。
-- `IRenderable`：renderable 抽象接口，新增 `getValidatedPassData(pass)` 只读出口。
-- `SceneNode`：当前主路径实现，聚合 `nodeName`、独立 `name/path`、`std::vector<std::unique_ptr<IComponent>>`、`PerDrawDataSharedPtr` 与 transform hierarchy。
-- `transform hierarchy`：`SceneNode` 额外维护 `Transform` 形式的 `localTransform`、派生 `Mat4f worldTransform`、可选 parent 和 child 关系；scene 仍然平铺持有 renderable，hierarchy 只负责空间组合。
-- `scene root`：`Scene` 内部持有一个真实的显式 root 节点；`findByPath("/")` 返回它，真实 top-level 节点作为 root 的 children，路径仍然形如 `/world`。
-- `ValidatedRenderablePassData`：`pass -> validated entry` 缓存项，保存 queue 需要的稳定结构结果。
-- `RenderWorkItem`：一次 pipeline work 的完整上下文，字段包括 `domain`、`kind`、`shaderInfo`、`material`、`raster` / `compute` payload、`descriptorResources`、`pass`、`target`、`pipelineKey`。
-- `SceneResourceTable`：scene 级 GPU 数据合同，统一持有 mesh、material、object、camera、light 等资源 handle，并通过 `buildUploadView()` 导出 `SceneGpu*` 记录供 realtime/bindless/offline 路径消费。
-- `SceneSoftwareBvh`：从 `SceneResourceTableUploadView` 派生的软件 ray tracing 加速结构，只保存 BVH 节点和 primitive 重排引用，不拥有第二份 scene 数据。
-- `visibility mask`：`SceneNode` 自身携带的 layer bitmask；camera 持有独立 `cullingMask`，queue 构建时做交集判断。
-
-## 典型数据流
-
-1. 构造 `SceneNode(nodeName)`，再按需 `addComponent<MeshComponent>(...)`、`addComponent<MaterialComponent>(...)`、`addComponent<SkeletonComponent>(...)`。
-2. `SceneNode` 在可渲染 component 集合变化时扫描 enabled passes，完成结构性校验并建立 `m_validatedPasses`。
-3. `Scene::addRenderable(node)` 检查同一 scene 内 `nodeName` 唯一，为 `SceneNode` 写入 `sceneName/nodeName` 的调试 `StringID`，并接管 shared `MaterialInstance` 的 pass-state 传播。
-4. 编辑器/命令路径走 `SceneNode::setName/getPath` 和 `Scene::findByPath/dumpTree`；这条路径名字与 `nodeName` 解耦，不参与渲染身份。
-5. 如果节点挂在 parent 下，`SceneNode` 会按 `parent.world * local.toMat4()` 懒更新自身 `worldTransform`，并把结果写回 `PerDrawData.model`。
-6. `RenderWorkQueue::build(context, pass, target)` 先通过 realtime context 取一次 `scene.getSceneLevelResources(pass, target)`。
-7. queue 先收集当前 `target` 下所有匹配 camera 的 `cullingMask` 并做按位 OR；renderable 只有在 `visibilityMask & combinedCameraMask != 0` 时才继续参与当前 queue。
-8. queue 把 scene-level 资源追加到 descriptor 列表末尾，生成 `RenderWorkItem` 并排序。
-9. 需要 SSBO/bindless/offline 数据时，调用方从 `SceneResourceTable::buildUploadView()` 取得只读上传视图；软件 BVH、离线 compute integrator 和后续硬件 RT adapter 都从这份视图派生数据。
+`SceneNode` 在 component 结构变化时重建 validated cache。材质参数值、transform 或 GPU buffer dirty 状态不会重建 pass 结构；这些变化通过 `SceneResourceTable`、`PerDrawData` 或 resource dirty 标记进入后续上传。
 
 ## 关键约束
 
-- `SceneNode` 可以脱离 `Scene` 独立存在；scene 只额外提供命名空间和 scene-level 资源。
-- `SceneNode` 的 hierarchy 也是可选的；没设 parent 时，`worldTransform == localTransform.toMat4()`。
-- `SceneNode::name` 允许为空；空名祖先在 `getPath()` / `dumpTree()` 中会显示成 `<unnamed-node-0xADDR>` 占位，便于排错。
-- `Scene::findByPath()` 既接受绝对路径 `/world/player`，也接受 root-relative 简写 `world/player`；重复 `/` 产生的空段会保留为空名段，不做静默折叠。
-- 同一 parent 下允许重名；`findByPath()` 固定返回 child 插入顺序中的首个匹配，且仅对显式命名的重复 sibling 输出 `WARN`。
-- `Scene::dumpTree()` 只导出结构和路径段，不导出 transform / material；导出的每一条路径都应该能再喂回 `findByPath()`。
-- `SceneNode` 回指 parent scene 现在走 `weak_ptr` 语义：挂进 scene 后可锁回 parent，scene 销毁后会自动失效，不再依赖裸指针悬挂状态。
-- `SceneNode` 的结构必填项是 `nodeName`；可渲染能力来自 `MeshComponent` + `MaterialComponent`，`SkeletonComponent` 按需可选；`perDrawData` 继续保留。
-- `MeshComponent::setMesh(...)`、`MaterialComponent::setMaterialInstance(...)`、`SkeletonComponent::setSkeleton(...)`，以及相关 component 的 add/remove，会同步重建 validated cache；`setFloat` / `setTexture` / `syncGpuData()` / model 更新不会。
-- `setLocalTransform(...)`、`setTranslation(...)`、`setRotation(...)`、`setScale(...)`、`setParent(...)`、`clearParent()` 只触发 world/per-draw dirty 传播，不会重建 validated cache，因为 pipeline 和 descriptor 结构没变。
-- `supportsPass(pass)` 现在是缓存查询，不再是简单的 pass-mask 按位判断。
-- `SceneNode` 默认 `visibilityMask = 0xffffffff`，`Camera` 默认 `cullingMask = 0xffffffff`，所以旧场景在不显式设置 mask 时行为不变。
-- camera 的 mask 只决定“哪些 renderable 进入 queue”；`Scene::getSceneLevelResources(pass, target)` 仍只按 `target` 选 camera、按 `pass` 选 light，不会因为某个 renderable 被裁掉就撤掉 camera UBO。
-- 共享 `MaterialInstance` 的 `setPassEnabled(...)` 会由 `Scene::revalidateNodesUsing(materialInstance)` 传播到所有引用该实例的节点；普通参数写入不触发这条结构性重验证。
-- 结构性校验失败统一抛 `logic_error`，错误信息会带 pass、material、shader variants 和 vertex layout。
-- `Scene` 内 `nodeName` 仍必须唯一；重复插入会直接终止。这个约束只服务渲染调试身份，不等于路径 `name` 唯一。
-- 对 `blinnphong_0` 的 forward pass，`SceneNode` 现在除了“按反射 contract 检查 location/type”外，还显式承担 variant-to-resource 约束：
-  - `USE_VERTEX_COLOR` 要求 mesh 提供 `inColor`
-  - `USE_UV` 要求 mesh 提供 `inUV`
-  - `USE_LIGHTING` 要求 mesh 提供 `inNormal`
-  - `USE_NORMAL_MAP` 要求 mesh 同时提供 `inTangent + inUV`
-  - `USE_SKINNING` 要求 mesh 提供 `inBoneIDs + inBoneWeights`，且节点上必须有 `Skeleton/Bones`
-- descriptor 结构校验现在区分“结构性必需资源”和“运行时可选资源”：
-  - `Bones` 仍然是结构性必需资源
-  - material-owned `UniformBuffer` / `StorageBuffer` 仍然必须存在
-  - 普通 sampled image 不再一律视为 fatal 缺失，允许 shader 通过运行时 flag 自己决定是否真的采样
-- `SceneNode` 也会校验保留 binding 名字的 descriptor 类型是否符合系统合同，例如 `CameraUBO` / `LightUBO` / `Bones` 都必须是 `UniformBuffer`。
+- `Scene` 不隐式创建 camera 或 light；editor、offline loader 和测试都必须显式注册带 component 的 node。
+- `nodeName` 仍是 scene 内唯一的调试身份；`name/path` 是 editor/command 路径段，允许空名和 sibling 重名。
+- `Scene` 使用 synthetic root 支持 `/`、`/world/player` 这类路径查询。
+- `SceneNode` 的 parent/child 层级只负责空间组合和 path，不改变 `Scene` 对 renderables 的平铺 ownership。
+- `Scene::getSceneLevelResources(pass, target)` 只选择 camera/light 等 scene-level 资源，不生成 draw payload。
+- `Scene::getCombinedCameraCullingMask(target)` 只为 compiler 的 renderable 筛选提供 camera mask，并不撤销 CameraUBO/LightUBO 合同。
+- `SceneResourceTableUploadView` 是只读上传视图，不是第二份 scene owner。
+- IBL bake 事实通过 `scene.environmentBake`、`scene.materialIblBake` 和 `IblBakeJobService` 进入 table / compiler，不再由私有后端 bake renderer 旁路驱动。
 
-## 当前实现边界
+## Editor 工作流
 
-- per-renderable descriptor 资源现在由 validated pass data 和 scene descriptor resolver 组装；不要再依赖 `IRenderable::getDescriptorResources(...)` 作为当前主接口。
-- `PerDrawData` 仍是 128 字节缓冲，但当前 engine-wide ABI 只要求 `PerDrawLayoutBase` / `PerDrawLayout` 的 `model` 字段有效。
-- 第一版 hierarchy 只支持 renderable-to-renderable 关系；没有单独的 transform-only scene node，也不会改变 `Scene` 对 renderable 的平铺 ownership，所以 child 仍然需要显式加入 `Scene`。
-- `Scene` 构造时仍会补一个默认 directional light；camera 由调用方显式创建并挂到 scene root 下。节点一旦通过 `addRenderable()` / `addCamera()` 挂进 scene，也会拿到一个弱 back-reference，用来支持 shared material 重验证传播。
-- `src/core/scene/object.cpp` 里的 fatal 文本现在会直接带上缺失的 input 名字，例如 `missing vertex input 'inUV' at location 2`，便于把 forward variant 失败定位到具体 mesh contract。
-- `src/test/integration/test_scene_node_validation.cpp` 已经把 `missing inColor / inUV / inNormal / inTangent / inBoneIDs / inBoneWeights / Skeleton` 这些 forward-path 失败都跑成子进程死亡测试，同时覆盖了“可选 sampler 缺失不阻塞校验”的回归用例。
-- `SceneResourceTableUploadView` 是只读上传视图，不是新的 owner。它的 vertex/index/mesh/primitive/object/material/camera 记录来自 `SceneResourceTable` 当前 generation；如果资源 handle 已释放或 generation 不匹配，table 会在构建视图时跳过或拒绝 stale 依赖。
-- `SceneSoftwareBvh` 只构建加速结构。它可以为了遍历效率重排 primitive 引用，但不能复制 material/object/mesh 语义；shader 仍通过 `SceneGpuPrimitiveRecord` 回到统一 scene 记录。
+`lxe_editor` 启动后由 `ProjectSession` 打开 project，再由 `SceneRuntime` 把 active scene 文档构造成 runtime `Scene`。CommandBus、Inspector、toolbar、HTTP/WebSocket/MCP 都围绕同一份 runtime scene 工作。
 
-## lxe_editor 场景工作流
+常用命令包括：
 
-- `lxe_editor` 启动时优先打开 `data/lxe_editor/editor_data.yaml` 记录的 last project；没有可用 project 或 active scene 无法加载时，会打开内置 `lxe_default` project。
-- 只读项目模板放在 `assets/project_templates/`。`project init <type> [name]` 会把模板复制到 `data/projects/`，生成可写 project。
-- `lxe_default` 模板注册内置 scenes，包括 `lxe_editor`、`ibl_metal_sphere` 和 `realtime_offline_compare_diagnostic`。诊断命令可以先 `project open lxe_default`，再 `scene open <scene-id>`。
-- project 可以包含多个 scene。`project.yaml` 记录 scene 列表、active scene 和 asset roots。
-- `scene list` 只列出当前 project 注册的 scenes。
-- `scene open <id-or-path>` 只在当前 project 内解析 scene，并在下一次 update tick 切换 runtime。
-- `scene save` 写回当前 project 的 active scene；`project save` 保存 project metadata，并确保 active scene 已落盘。
-- `scene new <scene-id>` / `scene duplicate <source-id> <new-id>` 会创建新的 project scene，并把它设为 active scene。
-- `scene remove <scene-id>` 只能删除非 active、非最后一个 scene。
-- 关闭 dirty 场景时会弹出 `Save / Discard / Cancel`；`Save` 走当前 project 的 `scene save` 路径。
-- `lxe_editor` 的编辑器配置保存在 `data/lxe_editor/editor_config.yaml`，其中记录主窗口几何、panel layout 和 `uiFontScale` 等长期配置。
-- `lxe_editor` 的本地运行数据保存在 `data/lxe_editor/editor_data.yaml`，当前至少包含最近 50 条 command console 历史。
-- `lxe_editor` 还会在 `data/lxe_editor/api_token.txt` 保存 API token，并在 `data/lxe_editor/runtime_state.yaml` 发布 HTTP / WebSocket / MCP 的当前发现信息。
-- `editor_data.yaml` 记录 last project 和 command history；它不参与 scene 序列化，也不进入版本库。
-- `lxe_editor` 当前主路径使用主场景视图点击选择、windowless ImGuizmo overlay，以及浮动 toolbar；toolbar 将 `Selection` editor mode、`Orbit` / `FreeFly` camera controls 和 `Preview` 分开呈现。
-- 主路径选择命中后，会通过 `DebugDraw` 持续显示选中节点自身的 world-space AABB，以及最近一次成功点击命中的交点小球；点空白会同时清掉选择和交点。
-- 进入 preview 后，主场景视图点击、`Esc` 取消选择、以及 `Delete` 删除节点都会被抑制，避免 gameplay camera 预览期间误改 editor state。
-- toolbar 的位置与尺寸会写回 `editor_config.yaml`，但启动时会强制恢复可见，避免唯一的模式切换入口被旧配置永久隐藏。
-- `lxe_editor` 现在还有一层 command-first API surface：
-  - 所有关键 editor 动作先命令化，再通过 HTTP / WebSocket 暴露。
-  - HTTP 负责命令调用和结构化状态查询。
-  - WebSocket 负责事件流与远程命令响应。
-  - MCP 作为单独的 localhost 诊断 transport，复用同一套 `LxeEditorApiService`，主要给 Codex 使用。
-  - 当前内置状态命令至少包括 `project ...`、`scene ...`、`mode ...`、`state summary`、`state selection`、`state cameras`、`state scene`、`state toolbar`、`pick <x> <y>`、`quit`。
-  - transport 层不会直接绕过 `CommandBus` 改 editor state；`/api/command`、结构化 endpoint、以及 MCP tools/resources 最终都复用同一套 lxe_editor command surface。
-  - 官方 editor 行为回归现在优先走 `tests/lxe_editor/` 下的 Python HTTP 黑盒测试；低层 C++ 测试保留给命令、交互、layout、transport 这些更适合进程内验证的逻辑。
+```text
+project open <id-or-path>
+scene list
+scene open <id-or-path>
+scene save
+state summary
+state scene
+pick <x> <y>
+```
+
+配置和本地状态保存在 `data/lxe_editor/`，不进入 scene YAML。scene YAML 只保存可复现的场景内容。
 
 ## 从哪里改
 
-- 想改结构性校验：看 `src/core/scene/object.cpp` 里的 `rebuildValidatedCache()`。
-- 想改 scene-level 资源筛选：看 `Scene::getSceneLevelResources()`。
-- 想改 camera/renderable 可见性过滤：看 `Scene::getCombinedCameraCullingMask()` 和 `RenderWorkQueue::build()`。
-- 想改 shared material 的结构传播、nodeName 唯一性、路径 root / `findByPath()` / `dumpTree()`：看 `Scene::addRenderable()`、`Scene::findByPath()`、`Scene::dumpTree()`、`Scene::revalidateNodesUsing(...)`，以及 `src/core/scene/components/material_component.cpp`。
+| 想改什么 | 入口 |
+|---|---|
+| 节点结构校验 | `src/core/scene/object.cpp` |
+| scene 资源登记 | `src/core/scene/scene_resource_table.*` |
+| scene 文档读写 | `src/infra/scene_io/scene_document.*` |
+| editor runtime 装配 | `src/editor/runtime/scene_runtime.*` |
+| pass 输入筛选和 desc 生成 | `src/core/frame_graph/render_work_compiler.*` |
 
 ## 关联文档
 
-- `notes/source_analysis/src/core/frame_graph/frame_graph.md`
-- `notes/concepts/material/index.md`
-- `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
+- [场景系统](../scene-system/index.md)
+- [RenderWorkCompiler](../concepts-design/rendering-pipeline/render-work-compiler.md)
+- [Scene 源码分析](../source_analysis/src/core/scene/scene.md)

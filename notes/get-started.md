@@ -18,8 +18,8 @@
 
 | 入口 | 当前用途 | 适合第一天做什么 |
 |---|---|---|
-| `lxe_editor` | 交互式实时 editor，负责打开 project、加载 scene、创建节点、调材质和保存场景 | 打开空 project，创建一个 primitive，保存 scene |
-| `lxe_offline_render` | headless offline ray tracer / compute renderer，读取同一份 scene，输出 EXR/PNG/JSON/raw readback | 对内置 metal sphere scene 跑 64x64 smoke |
+| `lxe_editor` | 交互式实时 editor，负责打开 project、加载 scene、创建节点、调材质和保存场景 | 打开当前 Helmet/PBR scene，保存 scene |
+| `lxe_offline_render` | headless offline ray tracer / compute renderer，读取同一份 scene，输出 EXR/PNG/JSON/raw readback | 对 Helmet compare scene 跑 64x64 smoke |
 | `test_shader_compiler` | shader 编译与反射 smoke | 检查本机 shader 工具链 |
 | `test_vulkan_offline_renderer` | headless Vulkan offline renderer smoke | 排查 Vulkan device / offline backend 基础问题 |
 
@@ -38,7 +38,7 @@ cmake --build build --target lxe_editor -j2
 | 检查 | 说明 |
 |---|---|
 | editor 窗口能打开 | Vulkan、窗口系统和 demo 可执行程序正常 |
-| project 能创建或打开 | 本地 `data/projects/` 和 project template 正常 |
+| scene 能直接打开 | `scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml` 可排队加载 |
 | scene 能保存和重新加载 | scene document、runtime scene 和 editor sidecar 状态闭合 |
 
 后续材质、光源、shadow、PBR/IBL、自定义节点和 editor 扩展教程都会从这条工作台链路继续展开。
@@ -51,8 +51,8 @@ Offline ray tracer 像一间独立实验室：我们仍然用 editor/scene YAML 
 cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2
 ctest --test-dir build --output-on-failure -R 'test_vulkan_offline_renderer'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
-  --profile mvp \
+  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
+  --profile preview \
   --samples 1 \
   --width 64 \
   --height 64 \
@@ -71,7 +71,7 @@ artifacts/offline/smoke.rgba32f
 
 `.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/buildInfo 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
 
-当前 offline ray tracer 是 software-compute MVP：它已经打通 scene 文件、`SceneResourceTable`、offline `RenderWorkItem`、Vulkan compute dispatch、readback 和输出文件。多 bounce path tracing、高质量材质参考和更完整的 AOV 仍在后续 offline 教程中逐步展开。
+当前 offline ray tracer 是 software-compute MVP：它已经打通 scene 文件、`SceneResourceTable`、offline `RenderComputeInput` / `RenderInputDesc`、Vulkan compute dispatch、readback 和输出文件。多 bounce path tracing、高质量材质参考和更完整的 AOV 仍在后续 offline 教程中逐步展开。
 
 ## 环境准备
 
@@ -103,7 +103,7 @@ glslc --version
 | 自定义材质 | `.material`、contract shader、参数、Gooch 材质、editor 验证 | [Tutorial / 自定义材质](tutorial/custom-material/index.md) |
 | 自定义灯光 | 三类内置 light、scene YAML、`SceneLightsUBO` 与当前 shader 边界 | [Tutorial / 自定义灯光](tutorial/custom-light/index.md) |
 | Shadow 阶段 | Shadow pass、CSM、depth target 和多 pass 读写关系 | [Tutorial / Shadow 阶段](tutorial/shadow-era/index.md) |
-| PBR + IBL | HDR/PBR/IBL 金属球场景、资源与 shader 合同 | [Tutorial / PBR + IBL](tutorial/pbr-ibl/index.md) |
+| PBR + IBL | Damaged Helmet + neutral IBL 场景、资源与 shader 合同 | [Tutorial / PBR + IBL](tutorial/pbr-ibl/index.md) |
 | 扩展编辑器 | toolbar 按钮、command、undo/API/MCP 复用 | [Tutorial / 扩展编辑器](tutorial/extend-editor/index.md) |
 | 扩展场景节点 | 新 node kind、保存/加载、DebugDraw、兼容 editor 操作 | [Tutorial / 扩展场景节点](tutorial/extend-scene-node/index.md) |
 

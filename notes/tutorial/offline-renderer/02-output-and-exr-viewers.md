@@ -6,8 +6,8 @@ Offline renderer 的输出像一份实验记录：EXR 保存原始测量值，PN
 
 ```bash
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
-  --profile mvp \
+  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
+  --profile preview \
   --samples 1 \
   --width 64 \
   --height 64 \

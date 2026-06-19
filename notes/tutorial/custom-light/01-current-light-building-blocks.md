@@ -19,8 +19,8 @@
 | `src/core/scene/light.hpp` | 定义三类 light、`SceneLightsData` 与 GPU UBO 结构 |
 | `assets/shaders/glsl/scene_lights_ubo.glsl` | GLSL 侧读取光源数组的合同 |
 | `src/infra/scene_io/scene_document.hpp` | scene 文档里的 `LightKind` 和 `LightNodeState` |
-| `src/demos/lxe_editor/scene_runtime.cpp` | 把 scene 文档转换成运行时 light 数据 |
-| `src/core/editor/commands/builtin_commands.cpp` | command bus 创建与修改 light 的入口 |
+| `src/editor/runtime/scene_runtime.cpp` | 把 scene 文档转换成运行时 light 数据 |
+| `src/editor/commands/builtin_commands.cpp` | command bus 创建与修改 light 的入口 |
 
 `light.hpp` 是灯具的“零件定义”，`scene_document.hpp` 是舞台记录单，`scene_runtime.cpp` 是把记录单搬上舞台的工作人员，shader UBO 是舞台灯控台和渲染程序之间的插座。
 

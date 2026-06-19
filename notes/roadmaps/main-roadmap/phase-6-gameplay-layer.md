@@ -4,7 +4,7 @@
 
 ## 当前基础
 
-v0.1.0 已有 C++ component 模型和 command bus，但还没有 gameplay lifecycle。Phase 6 要补的是“游戏逻辑运行在哪里”。
+0.2.0-pre 已有 C++ component 模型、CommandBus、editor runtime 和 scene document，但还没有 gameplay lifecycle。Phase 6 要补的是“游戏逻辑运行在哪里”。
 
 ## 实施顺序
 

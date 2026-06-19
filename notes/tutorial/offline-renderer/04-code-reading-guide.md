@@ -1,6 +1,6 @@
 # Offline Renderer 源码阅读路线：从命令到像素
 
-读 offline renderer 像追一张快递单：不要一开始就拆 Vulkan 的每个包装细节，而是先看包裹从哪里进入、经过哪些中转站、最后如何交付成文件。当前 MVP 的包裹就是 `assets/scenes/ibl_metal_sphere.scene.yaml`，交付结果是 `smoke.exr`、`smoke.png`、`smoke.json` 和 `smoke.rgba32f`。
+读 offline renderer 像追一张快递单：不要一开始就拆 Vulkan 的每个包装细节，而是先看包裹从哪里进入、经过哪些中转站、最后如何交付成文件。当前 MVP 的包裹就是 `assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml`，交付结果是 `smoke.exr`、`smoke.png`、`smoke.json` 和 `smoke.rgba32f`。
 
 这一页的目标不是穷尽每行代码，而是建立一条稳定的阅读路线。以后我们把 software-compute shader 替换成 path tracing、加入纹理采样、AOV 或 HDR display output 时，也可以沿着同一条路线判断应该改哪里、测哪里。
 
@@ -10,8 +10,8 @@
 
 ```bash
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
-  --profile mvp \
+  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
+  --profile preview \
   --samples 1 \
   --width 64 \
   --height 64 \
@@ -71,7 +71,7 @@ src/tools/lxe_offline_render/offline_render_cli.cpp
 接着打开：
 
 ```text
-assets/scenes/ibl_metal_sphere.scene.yaml
+assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml
 src/core/offline/offline_render_profile.hpp
 src/core/offline/offline_render_profile.cpp
 src/infra/offline/offline_scene_loader.hpp
@@ -79,12 +79,12 @@ src/infra/offline/offline_scene_loader.cpp
 src/core/offline/offline_render_job.hpp
 ```
 
-`ibl_metal_sphere.scene.yaml` 里同时有实时渲染字段和离线字段。offline renderer 当前重点读取这些：
+`realtime_offline_compare_helmet_pbr.scene.yaml` 里同时有实时渲染字段和离线字段。offline renderer 当前重点读取这些：
 
 | YAML 字段 | 当前进入哪里 | 说明 |
 |---|---|---|
 | selected `OutputProfile.cameraPath` | `CameraResource` | `--profile` 选择 output profile 后，相机从 profile 进入 loader |
-| `scene.environment` | deferred environment record | HDR URI 会被保留在 scene 输入侧；当前 shader 主要使用 output profile 的 background color |
+| scene environment / output background | offline frame params | 当前 shader 主要使用 output profile 的 `backgroundColor`；environment texture sampling 仍是后续扩展 |
 | `scene.outputProfiles` | `OutputProfile` | 相机、宽高、outputFormat、outDir、backgroundColor、camera overrides |
 | `scene.offlineRender` | `OfflineRenderSettings` | integrator、samples、maxBounce、seed、profile、shadows、compareMode |
 | camera node `transform` + `camera` 参数 | `CameraResource` | transform 推导 pose，camera 提供 projection |

@@ -2,7 +2,7 @@
 
 场景系统负责把反序列化得到的场景文档、模型资源、材质实例、相机和光源组织成运行时可以查询、编辑和渲染的对象模型。
 
-我们可以把它想成舞台管理系统：资产系统提供剧本和道具清单，场景系统负责把道具摆到舞台上，给每个演员挂上组件，并告诉渲染队列哪些对象可以被画出来。
+我们可以把它想成舞台管理系统：资产系统提供剧本和道具清单，场景系统负责把道具摆到舞台上，给每个对象挂上组件，并把可渲染数据交给 `RenderWorkCompiler` 生成本帧输入。
 
 ## 核心对象
 
@@ -14,7 +14,7 @@
 | `CameraComponent` | 把某个节点变成观察场景的相机 | 摄影机 |
 | `LightBase` / concrete lights | 把光照参数绑定到场景节点 | 灯具 |
 | `MeshComponent` + `MaterialComponent` | 让节点成为可渲染对象 | 几何外形 + 表面配方 |
-| `RenderWorkItem` | 一帧里某个 pass 的 draw/dispatch 记录 | 排练单上的一次出场 |
+| `RenderInputDesc` | 本帧某个 input 的 pipeline、binding、resource 和诊断事实 | 排练单上的一次出场说明 |
 
 ## 阅读顺序
 
@@ -23,7 +23,7 @@
 3. [Component 组件](component.md)：组件怎样给节点添加 camera、mesh、material 等能力。
 4. [相机](camera.md)：相机作为组件怎样提供 view/projection 和 target 过滤。
 5. [光源](light.md)：Directional / Point / Spot 如何挂到节点并形成 scene-level light 数据。
-6. [可渲染对象](renderable-object.md)：mesh + material 如何让节点进入 render queue。
+6. [可渲染对象](renderable-object.md)：mesh + material 如何让节点进入 render input 编译。
 
 ## 权威入口
 

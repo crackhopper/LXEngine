@@ -25,7 +25,7 @@
 1. [Material Contract v2](material-contract-v2.md)：先建立材质定义、contract metadata、parser、shader variant 和 pipeline identity 的完整模型。
 2. [从 .material 到 MaterialInstance](file-to-instance.md)：看 v2 material 文件怎样成为 runtime instance。
 3. [Shader 在材质中的角色](shader.md)：看 contract source、RenderPathGraph pass shader 和系统 ABI 如何配合。
-4. [内置 Shader 清单](shader-catalog.md)：认识 Forward、Deferred、PostProcess、OfflineRT shader 家族。
+4. [内置 Shader 清单](shader-catalog.md)：认识 Forward、Deferred、Bloom、IBL bake 和 OfflineRT shader 家族。
 5. [MaterialInstance：运行时状态](material-instance.md)：看 envelope、source signature、resource dependency 和非 surface binding 状态。
 6. [多 Pass 材质怎样变成 RenderInput](pass-rendering-flow.md)：把 RenderPathGraph、FrameGraph、RenderWorkCompiler 串起来。
 7. [什么是 Pipeline](what-is-pipeline.md)：建立当前 pipeline identity 的模型。
@@ -39,7 +39,7 @@
 |---|---|
 | `.material` 负责什么 | 负责 `schema`、`renderClass`、`bsdf.type`、`bsdf.source`、typed parameters、tags 和 metadata |
 | RenderPathGraph 负责什么 | 负责 pass DAG、shader URI、source/target、attachment、geometry 和 render state |
-| 一个 RenderPath 能有多个 pass 吗 | 可以；Forward 示例包含 Shadow、Forward、PostProcess、DebugOverlay |
+| 一个 RenderPath 能有多个 pass 吗 | 可以；Forward 示例包含 Shadow、Forward、Bloom、DebugOverlay |
 | `RenderFeature` 负责什么 | 提供 tone mapping、shadow、post effect 等算法参数 envelope |
 | 参数值会影响 pipeline 吗 | 普通 BSDF 参数值不影响；material type/source contract 和 shader variant signature 会影响 |
 | mesh/object 是否是 `PipelineKey` 独立轴 | mesh layout/topology 通过 RenderPathNode geometry contract 校验；object transform 和 visibility 属于 draw 数据 |

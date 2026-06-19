@@ -1,54 +1,29 @@
-# Roadmap · v0.1.1 主线
+# Roadmap · 0.2.0-pre 之后
 
-> 本目录只写未来路线和当前缺口。已经落地的能力沉淀到 [v0.1.0 发布记录](../../releases/v0.1.0/CHANGELOG.md)，不在 roadmap 里重复维护。
+`0.2.0-pre` 是当前基线。它已经包含 `src/editor/` 主入口、RenderPathGraph / FrameGraph / RenderWorkCompiler 单轨渲染输入、PBR + IBL bake runtime、offline compute renderer、CommandBus/API/MCP 可观察入口，以及默认关闭的新 track。
 
-LXEngine 当前已经有可交互的 `lxe_editor`、scene document、组件化场景对象、多类型光源数据、材质参数覆盖、通用 `.material` loader、pass-aware `RenderQueue` 和 pipeline cache。v0.1.1 的目标是把渲染路径推进到真正的多 pass：先完成 FrameGraph v1，再做 directional shadow，近期队列支持到 CSM 截止。
+Roadmap 现在只写未来路线和当前缺口；已经落地的能力放进 [v0.2.0-pre 发布记录](../../releases/v0.2.0-pre/CHANGELOG.md)，不在这里重复维护。
 
-## 当前决策：v0.1.1 到 CSM 截止
+## 当前主线
 
-我们现在面对的是两条看似都重要的路线：
-
-| 路线 | 能解决什么 | 对 shadow / G-Buffer 的关系 | 当前决策 |
-|---|---|---|---|
-| FrameGraph v1 | offscreen target、pass 输入输出、同 queue barrier、pass 执行顺序 | shadow map、HDR scene color、G-Buffer 都需要跨 pass 资源流转 | **先做** |
-| Task-based 并行 | CPU 侧多线程构建 pass、录制 command、资源上传调度 | 需要稳定 pass work unit 和资源依赖图，否则后续会返工 | **后做** |
-
-原因很直接：shadow 的第一步是“Shadow pass 写 depth texture，Forward pass 读它”；G-Buffer 的第一步是“Geometry pass 写多张 attachment，Lighting pass 读它们”。这两个能力的阻塞点都是资源图和 attachment 生命周期，不是 CPU 并行。
-
-因此 v0.1.1 主线选择：
-
-```text
-RenderTarget/FrameGraph v1
-  -> 单方向光 shadow
-  -> CSM
-```
-
-HDR + tone map、G-Buffer / deferred、task-based pass build、async compute、Web Editor、Engine CLI/MCP、AssetRegistry 热重载都不是放弃，而是移出当前 active 队列。这样 v0.1.1 开发只围绕 FrameGraph / shadow / CSM 收敛。
-
-## 近期实施队列
-
-| 顺序 | 主题 | 为什么现在做 |
+| 主线 | 为什么排在前面 | 当前边界 |
 |---|---|---|
-| 1 | `REQ-042-a` FrameGraph v1：resource / target / pass execution | shadow 和后续多 pass 的共同前置 |
-| 2 | `REQ-042-b` Directional shadow map | 最小真实 multiple pass 功能，视觉反馈强 |
-| 3 | `REQ-042-c` CSM | 让 directional shadow 在真实场景尺度可用 |
-| 4 | `REQ-043-a` Shadow 阶段教程支撑 | 完成 1-3 后，把教程需要的场景/说明补齐 |
-| 5 | `REQ-043-b` 架构概念文档展开与 Mermaid 图 | 让读者能理解代码属于架构中的哪个系统和模块 |
-
-原教程扩展、OBJ 材质槽、Web Editor、Engine CLI/MCP、AssetRegistry 热重载需求已移入 `notes/requirements/pending/`。HDR/Post、PBR 完整管线、G-Buffer/Deferred、Task-based 并行只保留在后续 roadmap 中，不进入 v0.1.1 active requirements。
+| Render graph execution 收口 | realtime/offline 已共享 compiler，但 backend attachment/barrier/diagnostics 仍需要继续收敛 | 不重新引入旧 queue/item |
+| PBR / IBL / RenderFeature 参数合同 | 当前 feature 词表已经稳定，下一步是减少手写 builder 和 runtime fallback | feature asset 是事实源 |
+| SceneResourceTable 与 package load | 大资产、offline、IBL bake、future bindless 都依赖 typed handle 和 upload view | 不让 editor UI 状态进入 table |
+| Agent / MCP 正式入口 | manager MCP 已能调试 editor；后续需要 engine-level capability manifest | manager 仍是工具层，不等于 engine API |
 
 ## 阶段地图
 
-| Phase | 文档 | 角色 |
+| Phase | 文档 | 当前角色 |
 |---|---|---|
-| 0 | [Gap Analysis](00-gap-analysis.md) | v0.1.0 之后的当前缺口 |
-| 1 | [Rendering Depth](phase-1-rendering-depth.md) | v0.1.1 主线：FrameGraph v1、shadow、CSM |
-| 1.5 | [v0.1.0 Editor Baseline](phase-1.5-imgui-editor-mvp.md) | 已完成历史入口，详细内容见 release |
-| 2 | [Foundation Layer](phase-2-foundation-layer.md) | 输入、时间、文本内省、空间查询 |
-| 3 | [Asset Pipeline](phase-3-asset-pipeline.md) | AssetRegistry、`.meta`、热重载、导入 |
+| 0 | [Gap Analysis](00-gap-analysis.md) | 0.2.0-pre 之后的真实缺口 |
+| 1 | [Rendering Depth](phase-1-rendering-depth.md) | 渲染图执行、PBR/IBL、post/deferred/offline 统一 |
+| 2 | [Foundation Layer](phase-2-foundation-layer.md) | 输入、时间、结构化内省、空间查询 |
+| 3 | [Asset Pipeline](phase-3-asset-pipeline.md) | AssetRegistry、`.meta`、热重载、导入与 package |
 | 4 | [Animation](phase-4-animation.md) | Skeleton 之后的 clip/player/state machine |
 | 5 | [Physics](phase-5-physics.md) | CPU 物理优先，GPU 物理后置 |
-| 6 | [Gameplay](phase-6-gameplay-layer.md) | TypeScript 逻辑层 |
+| 6 | [Gameplay](phase-6-gameplay-layer.md) | 游戏逻辑生命周期和脚本层 |
 | 7 | [Audio](phase-7-audio.md) | 最小音频系统 |
 | 8 | [Web UI](phase-8-web-ui.md) | 游戏内 HTML/Vue 子集 UI |
 | 9 | [Web Editor](phase-9-web-editor.md) | 浏览器编辑器 shell |
@@ -60,55 +35,24 @@ HDR + tone map、G-Buffer / deferred、task-based pass build、async compute、W
 
 ```mermaid
 flowchart TD
-    v010["v0.1.0<br/>Editor baseline"]
-    fg["Phase 1A<br/>FrameGraph v1"]
-    shadow["REQ-042-b<br/>Directional shadow"]
-    csm["REQ-042-c<br/>CSM"]
-    tutorial["REQ-043-a<br/>Tutorial support"]
-    arch["REQ-043-b<br/>Architecture docs"]
-    hdr["Pending<br/>HDR + Post"]
-    gbuf["Pending<br/>G-Buffer"]
-    task["Pending<br/>Task-based pass build"]
-    assets["Phase 3<br/>Asset pipeline"]
-    cli["Phase 10<br/>CLI/MCP"]
-    gameplay["Phase 6<br/>Gameplay"]
-    release["Phase 12<br/>Release"]
+    base["0.2.0-pre baseline"]
+    render["Phase 1<br/>Render graph + PBR/IBL"]
+    assets["Phase 3<br/>Asset/package pipeline"]
+    agent["Phase 10<br/>Agent/MCP/CLI"]
+    gameplay["Phase 6<br/>Gameplay lifecycle"]
+    release["Phase 12<br/>Release packaging"]
 
-    v010 --> fg
-    fg --> shadow
-    shadow --> csm
-    csm --> tutorial
-    csm --> arch
-    csm --> hdr
-    shadow --> gbuf
-    hdr --> gbuf
-    gbuf --> task
-    v010 --> assets
-    assets --> cli
+    base --> render
+    base --> assets
+    render --> assets
+    assets --> agent
     assets --> gameplay
-    cli --> release
-    gbuf --> release
+    agent --> release
+    gameplay --> release
 ```
-
-## 与研究文档的关系
-
-研究文档提供方案池，不等于当前实施承诺：
-
-| 研究目录 | 何时进入主线 |
-|---|---|
-| [frame-graph](../research/frame-graph/README.md) | 现在进入，取 v1 子集：resource/target/pass/barrier |
-| [shadows](../research/shadows/README.md) | Shadow pass 立项时进入，先单 directional + CSM |
-| [pipeline-cache](../research/pipeline-cache/README.md) | pipeline 创建变慢或发布预编译时进入 |
-| [bindless-texture](../research/bindless-texture/README.md) | deferred + 材质组合增多后进入，不作为 shadow 前置 |
-| [multi-threading](../research/multi-threading/README.md) | FrameGraph v1 稳定后，接 task-based pass build |
-| [async-compute](../research/async-compute/README.md) | 有 compute pass 或 GPU 物理/粒子后进入 |
-| [gpu-driven-rendering](../research/gpu-driven-rendering/README.md) | G-Buffer / 多光源压力显现后进入 |
-| [temporal-techniques](../research/temporal-techniques/README.md) | HDR/post/deferred 稳定后进入 |
-| [ray-tracing](../research/ray-tracing/README.md) | 桌面加分项，远期 |
 
 ## 继续阅读
 
-- [Phase 1 · Rendering Depth](phase-1-rendering-depth.md)
 - [Gap Analysis](00-gap-analysis.md)
-- [v0.1.0 CHANGELOG](../../releases/v0.1.0/CHANGELOG.md)
-- [Frame Graph 技术调研](../research/frame-graph/README.md)
+- [Phase 1 · Rendering Depth](phase-1-rendering-depth.md)
+- [v0.2.0-pre 发布记录](../../releases/v0.2.0-pre/CHANGELOG.md)

@@ -30,4 +30,4 @@ CPU 物理库可能内部有 task scheduler，但这不是 Phase 1 task-based re
 ## 继续阅读
 
 - [Phase 2 · Foundation Layer](phase-2-foundation-layer.md)
-- [Async Compute 调研](../research/async-compute/README.md)
+- [Phase 1 · Rendering Depth](phase-1-rendering-depth.md)

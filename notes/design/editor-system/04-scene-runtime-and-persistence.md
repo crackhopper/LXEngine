@@ -23,25 +23,22 @@ Editor 里的持久化像整理一个工作室：project 文件夹决定“我�
 |---|---|---|
 | 持久化文件 | `*.scene.yaml` | 保存、复制、project 管理 |
 | 文档对象 | `SceneDocument` | 反序列化字段、捕获保存字段 |
-| 运行时对象 | `Scene` / `SceneNode` / components | 每帧 update、picking、render queue |
+| 运行时对象 | `Scene` / `SceneNode` / components | 每帧 update、picking、render input 编译 |
 
 `SceneRuntime` 的价值就在于让这三层有明确转换点。UI 不应该直接把 YAML 当作 runtime scene，renderer 也不应该直接理解 scene 文件格式。
 
-## project_template 如何变成 project
+## 当前 project 入口只服务可写工作区
 
-`project_template` 是只读样板。`ProjectSession::initProject(...)` 从 `assets/project_templates/<type>/project_template.yaml` 读取模板，复制模板声明的 `copy` roots，再写出新的 `project.yaml`。
+当前 0.2.0-pre 基线不把内置 project template 作为教程或文档主线。
+`ProjectSession` 仍保留 project metadata、active scene 和 `data/projects/`
+写入边界，但仓库默认体验从显式 scene asset 开始：打开
+`assets/scenes/generated/helmet_standard_pbr.scene.yaml`、保存到当前可写
+project，或把外部 scene 通过 `scene import` 纳入 project。
 
-```yaml
-schema: lxe.project_template.v1
-id: empty
-displayName: Empty
-defaultScene: scenes/main.scene.yaml
-copy:
-  - scenes/
-  - assets/
-```
-
-创建项目时，模板的 `defaultScene` 会变成 project 的 `activeScene`，并登记到 `ProjectDocument::scenes`。模板目录仍然只读；之后的保存都落在 `data/projects/<project-id>/`。
+这意味着文档里的正向路径不再要求一个只读 template 目录。要验证 scene /
+runtime / renderer，直接使用仓库里的 `.scene.yaml`；要验证 project 保存，
+先打开已有 project 或由 editor 命令显式创建可写 project，再执行
+`scene save` / `project save`。
 
 ## scene runtime 只关心当前 scene 文档
 
@@ -81,7 +78,13 @@ copy:
 
 ## 启动时如何恢复 lastProject
 
-`EditorDataDocument::lastProject` 记录上次打开的 project 路径。启动时，`LxeEditorSession::initialize()` 会尝试打开这个 project；如果失败或没有记录，我们会打开内置 `lxe_default` project。这个默认 project 的 active scene 是 `scenes/lxe_editor.scene.yaml`，同时注册内置诊断场景，所以远程诊断可以从 `project open lxe_default` 和 `scene open <scene-id>` 开始，而不需要临时 `scene import`。
+`EditorDataDocument::lastProject` 记录上次打开的 project 路径。启动时，
+`LxeEditorSession::initialize()` 会尝试恢复这个 project；如果失败或没有
+记录，当前 editor 会回到内置启动 scene：
+`assets/scenes/generated/helmet_standard_pbr.scene.yaml`。远程诊断可以直接
+`scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml`，或打开
+PBR/IBL 验收场景
+`assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml`。
 
 本地 editor 文件分工如下：
 

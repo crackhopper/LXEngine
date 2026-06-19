@@ -20,13 +20,13 @@
 
 ```bash
 ninja lxe_editor
-./src/demos/lxe_editor/lxe_editor
+./build/src/editor/lxe_editor
 ```
 
 | 命令 | 作用 |
 |---|---|
 | `ninja lxe_editor` | 编译 editor 可执行程序，并确保 `CompileShaders` 已经完成 |
-| `./src/demos/lxe_editor/lxe_editor` | 从 build 目录运行 editor，让 runtime 能看到同步后的 `assets/` |
+| `./build/src/editor/lxe_editor` | 从 build 目录运行 editor，让 runtime 能看到同步后的 `assets/` |
 
 启动后，我们应该看到一个 editor 窗口。左侧或浮动面板会提供 Scene Tree、Inspector、Console、Toolbar 等入口。具体布局会受 `data/lxe_editor/editor_config.yaml` 影响。
 
@@ -39,7 +39,7 @@ ninja lxe_editor
 如果想带渲染调试日志：
 
 ```bash
-LX_RENDER_DEBUG=1 ./src/demos/lxe_editor/lxe_editor
+LX_RENDER_DEBUG=1 ./build/src/editor/lxe_editor
 ```
 
 ## 启动失败时回到哪一步

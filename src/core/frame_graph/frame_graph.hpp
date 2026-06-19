@@ -46,7 +46,7 @@ enum class FrameGraphPhase { PreEffect, Material, PostEffect, Debug };
 - `input`：RenderPathGraph 传入的 work 输入合同，只描述这条 pass 从哪里取
   输入，不在 FrameGraph 阶段生成 draw / dispatch payload
 - `reads` / `writes`：有序 FrameGraph 的资源流声明，例如 Forward 写
-  `scene.hdrColor`，PostProcess 再以 `SceneColor` binding 采样它
+  `hdr.color`，Bloom 再以 `SceneColor` binding 采样它
 
 之所以打包而不是让 `FrameGraph` 持有多个并行 vector，是因为这些字段在每条
 pass 上是强绑定的：`name` 决定后续编译诊断身份，`target` 决定 attachment

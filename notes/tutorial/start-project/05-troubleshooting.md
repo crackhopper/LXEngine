@@ -35,7 +35,7 @@
 
 ## project 与 scene 保存问题
 
-project 是保存边界。`scene save` 只保存当前 project 的 active scene；如果没有打开 project，先执行 `project init empty my_first_project` 或 `project open <id-or-path>`。如果 scene 看起来没有切换，先用 `project status` 确认 `activeScene`，再用 `state summary` 确认 runtime sceneName 已经变化。
+project 是保存边界。`scene save` 只保存当前 project 的 active scene；如果没有打开 project，先执行 `project open <id-or-path>`，或先用 `scene open <asset-path>` 做只读验证。如果 scene 看起来没有切换，先用 `project status` 确认 `activeScene`，再用 `state summary` 确认 runtime sceneName 已经变化。
 
 | 现象 | 先检查 |
 |---|---|

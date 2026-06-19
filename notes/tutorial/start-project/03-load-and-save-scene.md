@@ -1,107 +1,71 @@
-# 03 加载与保存场景：先有项目，再有场景
+# 03 加载与保存场景：先分清 scene asset 和 project scene
 
-场景文件像工作台上的一张布置图，但一张布置图通常不会单独漂在外面。我们会把它放进一个项目文件夹里，旁边还可以放贴图、模型、材质和 editor 的辅助状态。LXEngine 现在按这个顺序组织：`project_template` 提供只读起点，`project` 是我们的工作文件夹，`scene` 是 project 里的一个可打开文档。
+场景文件像工作台上的布置图。当前 editor 支持两种入口：没有 project 时可以直接 `scene open <path>` 打开一个 scene asset；打开 project 后，`scene open` / `scene save` 才落到 project 的 scene catalog 和 `project.yaml`。
 
-## project_template 是只读样板
+## 当前主线先直接打开 scene asset
 
-`project_template` 像新建工程时选择的项目类型。它放在 `assets/project_templates/`，由仓库提供，启动练习时只读取，不直接修改。
-
-| 概念 | 类比 | 当前位置 |
-|---|---|---|
-| `project_template` | 只读样板间 | `assets/project_templates/<type>/project_template.yaml` |
-| `project` | 我们复制出来的工作室 | `data/projects/<name>/project.yaml` |
-| `scene` | 工作室里的布置图 | `data/projects/<name>/scenes/*.scene.yaml` |
-| project assets | 跟项目一起走的材料柜 | `data/projects/<name>/assets/` |
-
-先列出可用模板：
+从 Console 运行：
 
 ```text
-project templates
+scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml
 ```
 
-当前内置模板是 `empty`。它包含一个最小场景：一个 gameplay camera 和一个 directional light。
+这条命令会把 scene 读入 pending runtime，并在下一次 update tick 切换到新 runtime。它不要求当前已经打开 project，也不会把 asset scene 写入 `data/projects/`。
 
-## 从模板创建第一个项目
-
-接下来我们从模板创建一个自己的项目：
+确认运行时已加载：
 
 ```text
-project init empty my_first_project
+state summary
+state scene
 ```
 
-这条命令会把 `empty` 模板复制到 `data/projects/my_first_project/`，生成 `project.yaml`，并把模板里声明的默认 scene 排进加载队列。runtime scene 会在下一次 editor update tick 绑定完成，所以我们用 `project status` 查看项目层状态，用 `state summary` 或画面确认 runtime 已经切换。
+我们关心两件事：`sceneName` 是否切到目标 scene，以及 cameras/lights/renderables 是否已经进入 runtime。
 
-```text
-project status
-```
+## project 是保存边界
 
-`project status` 返回的结构里最重要的是：
+`scene save` 只保存当前 project 的 active scene。如果当前没有 project，保存会失败并提示需要先打开已有 project，或先把外部 scene 导入一个可写 project。仓库不再把内置 project template 作为教程主线。
 
-| 字段 | 意义 |
+| 命令 | 当前含义 |
 |---|---|
-| `id` | 当前 project 的稳定 id |
-| `path` | project 文件夹路径 |
-| `activeScene` | project metadata 记录的当前 scene |
-| `dirty` | project metadata 或当前 scene 是否有待保存变化 |
+| `project list` | 列出 `data/projects/` 中已有 project |
+| `project open <id-or-path>` | 打开已有 project，并排队打开它的 active scene |
+| `scene open <path>` | 没有 project 时直接打开 scene asset；有 project 时优先按 project scene 解析，失败后回退到路径打开 |
+| `scene import <source-path> [scene-id]` | 有 project 且提供 scene id 时，把外部 scene 复制进 project |
+| `scene save` | 保存当前 project active scene；没有 project 时不可用 |
 
-## 一个项目可以有多个 scene
+## 把现有 asset scene 导入 project
 
-项目像文件夹，scene 像文件夹里的多个布置图。我们先列出当前 project 的 scenes：
-
-```text
-scene list
-```
-
-然后创建一个新的练习 scene：
+如果我们已经有一个 project，可以把仓库里的 scene asset 导入为 project scene：
 
 ```text
-scene new lighting_test
-```
-
-`scene new` 会在当前 project 下写入 `scenes/lighting_test.scene.yaml`，把它登记进 `project.yaml`，并把它设为 active scene。我们可以显式打开它：
-
-```text
-scene open lighting_test
-```
-
-这里的 `scene open` 只在当前 project 内解析 scene id 或 scene 路径，不会去全局 `assets/scenes/` 和 `data/scenes/` 搜索。
-
-## scene save 和 project save 的边界
-
-保存时先分清两件事：scene 保存当前布置图，project 保存项目目录和 active scene 这层索引。
-
-```text
+project open <project-id-or-path>
+scene import assets/scenes/generated/helmet_standard_pbr.scene.yaml helmet_standard_pbr
 scene save
 project save
 ```
 
-| 命令 | 保存什么 | 常见时机 |
-|---|---|---|
-| `scene save` | 当前 runtime scene 对应的 `.scene.yaml`，以及同名 editor sidecar state | 修改了节点、相机、灯光、材质后 |
-| `project save` | `project.yaml`，包括 scene 列表、active scene、asset roots 等 metadata | 新建、复制、删除 scene 后 |
-
-在 editor 中，`project save` 也会保存 active scene，避免项目 metadata 和当前 scene 内容脱节。我们仍然把两个命令分开理解，因为它们对应不同层的文件。
+`scene import` 会把源文件复制到当前 project 的 `scenes/<scene-id>.scene.yaml`，登记到 `project.yaml`，并把它设为 active scene。之后的 `scene save` 写回 project 内的副本，不会覆盖仓库 `assets/scenes/` 原文件。
 
 ## scene YAML 如何记录一个节点
 
 一个 scene 节点大致像这样：
 
 ```yaml
-nodeName: primitive_cube_1        # -> SceneNode::getNodeName()
-name: Cube                        # -> SceneNode::getName(), editor path 显示
-transform:                        # -> LX_core::Transform
-  translation: [0.0, 0.5, 0.0]
+nodeName: damaged_helmet
+name: damaged_helmet
+transform:
+  translation: [0.0, 0.0, 0.0]
 mesh:
-  uri: builtin://lxe_editor/primitives/cube
+  uri: assets/models/damaged_helmet/DamagedHelmet.gltf
 material:
-  uri: assets/materials/rtr_experiment_template.material
+  uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material
 ```
 
-我们不需要一开始记住所有字段。先记住：scene file 负责保存场景内容，project file 负责把这些 scene 组织成一个工作单元。
+我们不需要一开始记住所有字段。先记住：scene file 保存场景内容，project file 负责把这些 scene 组织成一个可写工作单元。
 
 ## 我们已经学会了什么
 
-我们已经把“加载和保存”拆成了三层：只读 `project_template` 提供起点，`project` 拥有可写文件夹，`scene` 保存当前布置图。之后所有编辑动作都发生在当前 project 的 active scene 上。
+我们已经把“加载和保存”拆成了两层：scene asset 可以直接打开验证，project scene 才是可保存的工作副本。当前教程不再依赖内置 project template。
 
 ## 下一步
 

@@ -21,12 +21,12 @@ LXEngine 没有 `src/CMakeLists.txt`。顶层 `CMakeLists.txt` 直接把几个�
 
 | 文件 | 当前职责 |
 |---|---|
-| `CMakeLists.txt` | 顶层入口；设置 C++20、测试开关、全局选项，并加入 `src/core`、`src/infra`、`src/backend`、`src/test`、`src/demos`、`assets/shaders` |
+| `CMakeLists.txt` | 顶层入口；设置 C++20、测试开关、全局选项，并加入 `src/core`、`src/infra`、`src/backend`、`src/editor`、`src/test`、`assets/shaders` |
 | `src/core/CMakeLists.txt` | 定义 `LX_Core`，收集 core 源文件和核心 include 路径 |
 | `src/infra/CMakeLists.txt` | 定义 `LX_Infra`，处理 SDL/GLFW、shaderc、SPIRV-Cross、yaml-cpp、ImGui 等基础设施依赖 |
 | `src/backend/CMakeLists.txt` | 定义 `LX_Backend`，查找 Vulkan 并连接 core / infra |
 | `src/test/CMakeLists.txt` | 定义集成测试 target、`BuildTest` 聚合 target，并把测试注册到 CTest |
-| `src/demos/lxe_editor/CMakeLists.txt` | 定义 `lxe_editor`，连接 editor 所需库，并依赖 `CompileShaders` |
+| `src/editor/CMakeLists.txt` | 定义 `lxe_editor`，连接 editor 所需库，并依赖 `CompileShaders` |
 | `assets/shaders/CMakeLists.txt` | 定义 `CompileShaders`，调用 `glslc` 生成 build 目录下的 `.spv` |
 
 这样组织的好处是职责清楚：顶层只安排工程结构，具体模块在自己的目录里说明如何构建。
@@ -82,15 +82,16 @@ ninja test_shader_compiler
 |---|---|---|
 | `USE_SDL` | `ON` | 使用 SDL 窗口后端 |
 | `USE_GLFW` | `OFF` | 使用 GLFW 窗口后端 |
-| `LX_BUILD_DEMOS` | `ON` | 是否加入 `src/demos`，其中包含 `lxe_editor` |
+| `LX_BUILD_EDITOR` | `ON` | 是否构建 `src/editor/lxe_editor` |
+| `LX_BUILD_NEW_TRACK` | `OFF` | 是否构建 C++20 module rewrite track |
 | `SHADERC_DIR` | 空 | 指向自定义 shaderc 安装目录 |
 | `SPIRV_CROSS_DIR` | 空 | 指向自定义 SPIRV-Cross 安装目录 |
 | `LX_ENABLE_SANITIZERS` | `OFF` | 在 GCC/Clang 下启用 ASan + UBSan |
 
-例如我们只想配置 SDL 后端并显式保留 demos：
+例如我们只想配置 SDL 后端并显式构建 editor：
 
 ```bash
-cmake .. -G Ninja -DUSE_SDL=ON -DUSE_GLFW=OFF -DLX_BUILD_DEMOS=ON
+cmake .. -G Ninja -DUSE_SDL=ON -DUSE_GLFW=OFF -DLX_BUILD_EDITOR=ON
 ```
 
 ## CMake 配置失败时先看这些点

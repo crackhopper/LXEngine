@@ -89,7 +89,7 @@ PipelineKey::build(materialTypeVariant, renderPathNodeSignature)
 |---|---|
 | `Shadow` | 生成 shadow depth |
 | `Forward` | 画 surface material 到 HDR color/depth |
-| `PostProcess` | tone mapping / bloom / gamma |
+| `Bloom` | fullscreen 读取 `hdr.color`，按 bloom feature 写入 swapchain |
 | `DebugOverlay` | editor 叠加信息 |
 
 这些 pass 之间通过 `sources` 和 `targets` 形成资源依赖。FrameGraph 会根据资源读写关系排序并校验 source/target 是否存在。

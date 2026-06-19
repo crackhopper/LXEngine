@@ -4,7 +4,7 @@
 
 ## 进程启动时先搭外壳
 
-`src/demos/lxe_editor/main.cpp` 负责外层生命周期：
+`src/editor/main.cpp` 负责外层生命周期：
 
 | 阶段 | 当前代码中的对象 | 作用 |
 |---|---|---|

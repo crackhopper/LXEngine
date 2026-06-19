@@ -6,10 +6,10 @@ Toolbar 按钮像遥控器上的快捷键。它本身不应该保存业务规则
 
 | 文件 | 作用 |
 |---|---|
-| `src/demos/lxe_editor/ui_overlay.hpp` | 保存 toolbar 相关状态与绘制入口 |
-| `src/demos/lxe_editor/ui_overlay.*` | 绘制浮动 toolbar，处理按钮点击 |
-| `src/core/editor/viewport_overlay.cpp` | 部分 viewport overlay 行为也会 dispatch command |
-| `src/demos/lxe_editor/lxe_editor_api_service.cpp` | 暴露 toolbar snapshot 给 API |
+| `src/editor/ui/ui_overlay.hpp` | 保存 toolbar 相关状态与绘制入口 |
+| `src/editor/ui/ui_overlay.*` | 绘制浮动 toolbar，处理按钮点击 |
+| `src/editor/panels/viewport_overlay.cpp` | 部分 viewport overlay 行为也会 dispatch command |
+| `src/editor/api/lxe_editor_api_service.cpp` | 暴露 toolbar snapshot 给 API |
 | `notes/subsystems/scene.md` | 记录当前 toolbar 与 command-first 设计 |
 
 当前 toolbar 已经承担 selection mode、camera controls、preview 等入口。新增按钮时，我们要检查它是否影响 toolbar snapshot、配置保存和 API 观察结果。

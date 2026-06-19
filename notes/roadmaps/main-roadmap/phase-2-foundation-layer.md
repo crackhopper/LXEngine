@@ -2,7 +2,7 @@
 
 > 目标：把编辑器已有的场景对象基础，补成游戏运行时和 agent 都能稳定消费的基础层。
 
-v0.1.0 已经完成 transform、层级、path、component、camera-as-component、picking 和 command bus。Phase 2 不再重复这些内容，聚焦仍缺的运行时基础：输入抽象升级、时间步进、结构化内省和空间查询。
+0.2.0-pre 基线已经完成 transform、层级、path、component、camera-as-component、picking、command bus 和 editor/API 可观察入口。Phase 2 不再重复这些内容，聚焦仍缺的运行时基础：输入抽象升级、时间步进、结构化内省和空间查询。
 
 ## 当前缺口
 

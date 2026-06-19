@@ -61,16 +61,16 @@
 
 当前实现入口主要在：
 
-- `src/core/editor/command_bus.*`
-- `src/core/editor/commands/builtin_commands.*`
-- `src/core/editor/editor_state.*`
-- `src/core/editor/console_panel.*`
-- `src/core/editor/inspector_panel.*`
-- `src/core/editor/scene_tree_panel.*`
-- `src/core/editor/viewport_overlay.*`
-- `src/core/editor/gizmo_adapter.*`
-- `src/demos/lxe_editor/ui_overlay.*`
-- `src/demos/lxe_editor/scene_interaction_controller.*`
+- `src/editor/commands/command_bus.*`
+- `src/editor/commands/builtin_commands.*`
+- `src/editor/app/editor_state.*`
+- `src/editor/panels/console_panel.*`
+- `src/editor/panels/inspector_panel.*`
+- `src/editor/panels/scene_tree_panel.*`
+- `src/editor/panels/viewport_overlay.*`
+- `src/editor/ui/gizmo_adapter.*`
+- `src/editor/ui/ui_overlay.*`
+- `src/editor/runtime/scene_interaction_controller.*`
 
 ## 测试场景作者链路
 
@@ -81,20 +81,20 @@
 | 点击创建与拖拽放置 | 已完成 | REQ-041-d |
 | `SceneDocument` 保存 `meshUri` / `materialUri` / camera / typed light / material override | 已完成 | REQ-041-d ~ REQ-041-h |
 | `SceneRuntime` 从 scene document 构造 primitive / camera / light / material | 已完成 | REQ-041-d ~ REQ-041-h |
-| project_template -> project -> scene 的编辑器工作流 | 已完成 | 代码现状 |
+| project -> scene 的编辑器工作流 | 已完成 | 代码现状 |
 | project 内多 scene 的创建、打开、复制、删除与保存 | 已完成 | 代码现状 |
 | dirty scene 关闭确认 | 已完成 | 代码现状 |
 | editor config / editor data 本地持久化 | 已完成 | 代码现状 |
 
 当前实现入口主要在：
 
-- `src/demos/lxe_editor/scene_document.*`
-- `src/demos/lxe_editor/scene_runtime.*`
-- `src/demos/lxe_editor/project_document.*`
-- `src/demos/lxe_editor/project_session.*`
-- `src/demos/lxe_editor/project_catalog.*`
-- `src/demos/lxe_editor/editor_config_state.*`
-- `src/demos/lxe_editor/editor_data_state.*`
+- `src/editor/project/scene_document.*`
+- `src/editor/runtime/scene_runtime.*`
+- `src/editor/project/project_document.*`
+- `src/editor/project/project_session.*`
+- `src/editor/project/project_catalog.*`
+- `src/editor/app/editor_config_state.*`
+- `src/editor/app/editor_data_state.*`
 
 ## 光源与 RTR 实验底座
 

@@ -1,6 +1,6 @@
 # 可渲染对象：网格加材质才进入 draw
 
-可渲染对象像一位准备上场的演员：`MeshComponent` 给它形体，`MaterialComponent` 给它表面和 pass 规则，`SceneNode` 给它位置、名字和可见性。三者合在一起，节点才可能进入 render queue。
+可渲染对象像一位准备上场的演员：`MeshComponent` 给它形体，`MaterialComponent` 给它表面和 pass 规则，`SceneNode` 给它位置、名字和可见性。三者合在一起，节点才可能被 `RenderWorkCompiler` 接收为 `RenderDrawInput`。
 
 ## Mesh 和 Material 的边界
 
@@ -26,7 +26,7 @@
 | `renderPathNodeSignature` | graph pass 的 shader/renderState/attachment/geometry contract |
 | `pipelineKey` | `MaterialTypeVariant + RenderPathNodeSignature` |
 
-这样 render queue 拿到节点时，不需要重新判断“这个对象能不能画”。它只需要针对当前 pass 和 camera/visibility 过滤，取出已经验证过的 pass 数据。
+这样 `RenderWorkCompiler` 处理节点时，不需要重新判断“这个对象能不能画”。它只需要针对当前 pass 和 camera/visibility 过滤，取出已经验证过的 pass 数据，再生成 `RenderDrawInput` 和 `RenderInputDesc`。
 
 ## 一个 scene YAML 如何表达可渲染对象
 
@@ -44,10 +44,10 @@
     roughness: { kind: float, value: 0.35 }
 ```
 
-YAML 字段本身属于资产系统；节点怎样用这些字段形成 draw 输入，属于场景系统。
+YAML 字段本身属于资产系统；节点怎样用这些字段形成 draw input，属于场景系统。
 
 ## 继续阅读
 
 - [Component 组件](component.md)
 - [材质系统](../concepts/material/index.md)
-- [源码分析：RenderWorkItem](../source_analysis/src/core/scene/scene.md)
+- [源码分析：Scene](../source_analysis/src/core/scene/scene.md)

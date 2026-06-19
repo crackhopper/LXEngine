@@ -21,12 +21,12 @@
 
 | 对象 | 主要位置 | 角色 |
 |---|---|---|
-| `LxeEditorSession` | `src/demos/lxe_editor/editor_session.*` | editor 的组合根，持有 runtime、CommandBus、panels、scene interaction 和本地状态 |
-| `UiOverlay` | `src/demos/lxe_editor/ui_overlay.*` | ImGui 总入口，绘制 toolbar、stats、help、preferences，并调用 panels |
-| `CommandBus` | `src/core/editor/command_bus.*` | 命令注册、dispatch、completion、history、undo/redo |
-| `SceneRuntime` | `src/demos/lxe_editor/scene_runtime.*` | 把 `.scene.yaml` 文档构造成运行时 `Scene` |
-| `EditorState` | `src/core/editor/editor_state.*` | selection、preview camera、editor camera 等短期 editor 状态 |
-| `LxeEditorApiService` | `src/demos/lxe_editor/lxe_editor_api_service.*` | HTTP/WebSocket/MCP 使用的状态快照、命令执行和事件流 |
+| `LxeEditorSession` | `src/editor/app/editor_session.*` | editor 的组合根，持有 runtime、CommandBus、panels、scene interaction 和本地状态 |
+| `UiOverlay` | `src/editor/ui/ui_overlay.*` | ImGui 总入口，绘制 toolbar、stats、help、preferences，并调用 panels |
+| `CommandBus` | `src/editor/commands/command_bus.*` | 命令注册、dispatch、completion、history、undo/redo |
+| `SceneRuntime` | `src/editor/runtime/scene_runtime.*` | 把 `.scene.yaml` 文档构造成运行时 `Scene` |
+| `EditorState` | `src/editor/app/editor_state.*` | selection、preview camera、editor camera 等短期 editor 状态 |
+| `LxeEditorApiService` | `src/editor/api/lxe_editor_api_service.*` | HTTP/WebSocket/MCP 使用的状态快照、命令执行和事件流 |
 
 ## 新人最容易混淆的三条线
 

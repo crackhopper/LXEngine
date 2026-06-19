@@ -4,7 +4,7 @@
 
 ## 当前入口
 
-[REQ-044-b](../../requirements/pending/044-b-engine-cli-mcp-agent-entry.md) 是本 phase 的 pending 最小需求。它不要求一次实现完整 agent runtime，但要先把 CLI、MCP server、capability discovery 的边界定下来。它不进入 v0.1.1 active 队列。
+[REQ-044-b](../../requirements/pending/044-b-engine-cli-mcp-agent-entry.md) 是本 phase 的 pending 最小需求。它不要求一次实现完整 agent runtime，但要先把 CLI、MCP server、capability discovery 的边界定下来。它不进入 0.2.0-pre 基线。
 
 ## 当前基础
 

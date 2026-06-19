@@ -1,6 +1,6 @@
 # Vulkan Backend
 
-> Vulkan backend 是 core 抽象到 Vulkan API 的落地点。它不决定“什么时候开始一帧”，也不负责业务层 update hook；这些编排职责已经上移到 `EngineLoop`。backend 负责把 `FrameGraph` 和 `RenderWorkItem` 真实提交到 GPU。
+> Vulkan backend 是 core 抽象到 Vulkan API 的落地点。它不决定“什么时候开始一帧”，也不负责业务层 update hook；这些编排职责已经上移到 `EngineLoop`。backend 负责把 compiled `FrameGraph`、`RenderInput[]` 和 `RenderInputDesc[]` 真实提交到 GPU。
 >
 > 当前事实以 `src/backend/vulkan/` 和本页说明为准。
 
@@ -10,7 +10,7 @@
 
 ## 一页版总结
 
-- `VulkanRenderer` 负责 orchestration：初始化、`initScene()`、`uploadData()`、`draw()`
+- `VulkanRealtimeRenderer` / `VulkanRenderer` 负责 orchestration：初始化、`initScene()`、`uploadData()`、`draw()`
 - `VulkanDevice` 负责 instance/device/queue/surface format/depth format
 - `VulkanSwapchain` 负责 swapchain image、depth、framebuffer、同步对象
 - `VulkanResourceManager` 负责 CPU 资源镜像与 pipeline cache
@@ -27,9 +27,9 @@
 - 如果没跑在桌面或 `Xvfb` 下，这类测试通常会以 `No available video device` 明确 skip；先排环境，再排 renderer 逻辑
 - 物理设备选择现在按“先判定功能是否满足，再按设备类型偏好排序”处理；独显优先，但集显/虚拟 GPU 只要满足队列、扩展和 surface 要求也允许启动
 - descriptor 路由按 binding name，不按硬编码 slot 枚举
-- scene-level UBO 已经在 queue 构建阶段合并好，backend 按 `RenderWorkItem` 中的资源录制 descriptor
+- scene-level UBO、RenderFeature UBO、IBL bake resources 和 material resources 已经在 `RenderInputDesc.bindingPlan` 中合并好，backend 按 binding name 录制 descriptor
 - 离线 compute 路径上传 `SceneResourceTableUploadView` 导出的统一 `SceneGpu*` SSBO，并把 `SceneSoftwareBvh` 作为派生加速 buffer；backend 不创建第二份 scene IR
-- `VulkanResourceManager` 不直接持有 pipeline map，而是委托给 `PipelineCache`；graphics 和 compute 都通过 `getOrCreatePipeline(item)` 返回 `VulkanPipelineRef`
+- `VulkanResourceManager` 不直接持有 pipeline map，而是委托给 `PipelineCache`；graphics 和 compute 都通过 `getOrCreatePipeline(desc)` 返回 `VulkanPipelineRef`
 - `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，资源身份来自显式 backend cache identity
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
 - `FrameGraph` 当前执行 4 个 `Pass_Shadow` cascade，再执行 `Pass_Forward` 和需要的 debug / overlay 路径
@@ -93,11 +93,11 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 
 ## 离线 Integrator 边界
 
-离线 renderer 像一台无窗口实验设备：入口仍在 Vulkan backend，但场景数据来自 core 层统一资源表。`VulkanOfflineRenderer::render(job)` 只做显式 integrator 选择；当前 `software-compute` integrator 会构建 offline `FrameGraph`，让 `Pass_OfflineRayTrace` 通过 `RenderWorkQueue` 产出 compute work item，再交给 `OfflineRenderGraphExecutor` 执行。
+离线 renderer 像一台无窗口实验设备：入口仍在 Vulkan backend，但场景数据来自 core 层统一资源表。`VulkanOfflineRenderer::render(job)` 只做显式 integrator 选择；当前 `software-compute` integrator 会构建 offline `FrameGraph`，让 `RenderWorkCompiler` 产出 `RenderComputeInput` 和 `RenderInputDesc`，再交给 offline graph executor 执行。
 
 | Integrator | 当前职责 | 数据入口 |
 |---|---|---|
-| `software-compute` | 初始化 headless `VulkanDevice`，创建 offline FrameGraph，预构建 compute pipeline，按 pass upload plan 同步 SSBO，dispatch `offline_pbr_direct_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` |
+| `software-compute` | 初始化 headless `VulkanDevice`，创建 offline FrameGraph，预构建 compute pipeline，按 pass upload plan 同步 SSBO，dispatch `offline_pbr_direct_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` + `RenderInputDesc` |
 | `hardware-ray-tracing` | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录 | `SceneResourceTableUploadView` |
 
 `software-compute` 的 descriptor contract 使用统一 block 名：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 `OutputPixels`。这些名字由 shader reflection 测试和 integrator 的 descriptor validation 同时保护。

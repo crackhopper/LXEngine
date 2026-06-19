@@ -267,15 +267,11 @@ NVIDIA 推荐应用导出 `__declspec(dllexport) DWORD NvOptimusEnablement = 1`�
 
 ## 工件 / 回归测试基线
 
-### `demo_minimal_resize_baseline`（**冻结**，不要修改）
+### 当前回归入口
 
-`src/demos/minimal_resize_baseline/main.cpp` —— 完全教科书风格 raw Vulkan，只用 `LX_infra::Window`（SDL 包装）+ raw vk。在用户的 Optimus 笔记本上验证过完全稳定（baseline 默认 first-suitable 选 iGPU）。
-
-后续遇到任何 swapchain / depth / WSI / resize 类问题，可以并排跑这个 demo 做 A/B 对照。
-
-### `demo_minimal_resize`（迭代试验场）
-
-`src/demos/minimal_resize/main.cpp` —— 当前是"baseline + MAILBOX-first present mode fallback + GPU 列表打印 + score-based pick"的状态，作为 dGPU 路径下进一步实验的载体。
+独立 resize demo 已不在当前源码树中维护。后续遇到 swapchain / depth / WSI /
+resize 类问题，先回到 `lxe_editor` 当前路径和 Vulkan 集成测试做复现，再按
+问题范围补新的最小测试入口。
 
 ### `test_vulkan_device_selection.cpp`
 

@@ -1,8 +1,12 @@
 # RenderWorkCompiler：FramePass 之后的唯一工单编译器
 
-我们可以把渲染提交想成一张工厂工单：`RenderPathGraph` 画出路线，`FrameGraph` 排出工序，`FramePass` 保存单道工序的合同。真正要把这道工序变成 draw 或 dispatch 时，当前代码只走 `RenderWorkCompiler`，不再经过旧的 per-pass queue。
+我们可以把渲染提交想成一张工厂工单：`RenderPathGraph` 画出路线，
+`FrameGraph` 排出工序，`FramePass` 保存单道工序的合同。真正要把这道
+工序变成 draw 或 dispatch 时，当前代码只走 `RenderWorkCompiler`。
 
-REQ-073-e2 hard cut 后，`src/core/frame_graph/render_queue.hpp/.cpp` 已删除，`FramePass` 直接持有 `RenderPassInputContract input`，backend pipeline / upload / execute 都消费 `RenderInput[]` 和 `RenderInputDesc[]`。
+在 0.2.0-pre 基线里，`FramePass` 直接持有
+`RenderPassInputContract input`，backend pipeline / upload / execute 都消费
+`RenderInput[]` 和 `RenderInputDesc[]`。
 
 ## 当前主线
 
@@ -91,7 +95,9 @@ input:
 
 `RenderInputStats` 当前字段是 `compilerInputCount`、`acceptedInputCount`、`rejectedInputCount`、`submittedDrawCount`、`submittedDispatchCount` 和 `fallbackObservedCount`。Vulkan realtime metadata 使用 `renderInputStats`，不再使用 batch 命名的统计输出。
 
-`render_validation_contract` 的 `validatePreparedRenderInputs()` 直接校验 descs。也就是说，validation 观察的是 prepare 后的 pipeline/binding/resource 事实，而不是旧的 work item 或 queue。
+`render_validation_contract` 的 `validatePreparedRenderInputs()` 直接校验
+descs。也就是说，validation 观察的是 prepare 后的
+pipeline/binding/resource 事实。
 
 ## Vulkan 消费 desc，不反推 pipeline
 
@@ -106,11 +112,13 @@ RenderInputDesc.pipelineBuildDesc
 
 pipeline 创建只看 `PipelineBuildDesc` / `RenderInputDesc`。upload plan 从 accepted desc 的 binding plan、resource dependencies 和 typed input resources 收集资源。executor 记录 draw 或 dispatch 时，payload 来自 `RenderInput`，pipeline/binding/validation 事实来自 `RenderInputDesc`。
 
-## 已删除的历史词表
+## 当前边界
 
-旧实现里的 `RenderWorkQueue`、`RenderWorkItem`、`RenderBatch`、`RenderIndirectBatch`、`renderBatchStats`、queue-derived pipeline preload、`Pass_OfflineRayTrace` pass-name branch 都不是当前正向工作流。它们只适合作为历史删除背景或审计 token，不应再出现在新的实现说明、正向测试或资产写法里。
-
-当前 offline software-compute 仍有一个 file-local `OfflineCompute` pass builder，并且 shader 仍通过 `OfflineRenderJob::offlineShader` / provider 进入 compiler preparation；这属于 [REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md) 的后续 OfflineRT graph hard cut，不是旧 queue/item 路径。
+当前 offline software-compute 仍有一个 file-local `OfflineCompute` pass
+builder，并且 shader 仍通过 `OfflineRenderJob::offlineShader` / provider
+进入 compiler preparation；这属于
+[REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md)
+的后续 OfflineRT graph 收束，不是 realtime Forward 主线的一部分。
 
 ## 继续阅读
 

@@ -1,40 +1,35 @@
-# HDR 到屏幕：PostProcess 是统一出片流程
+# HDR 到屏幕：Forward 和 Bloom 是当前出片主线
 
-PBR shader 只负责算摄影棚里的线性光照，不负责把照片冲印出来。冲印这一步由标准 post stack 完成：Forward 写 HDR，PostProcess 做曝光、tone mapping、gamma 和 bloom，再写 swapchain。
+PBR shader 负责算摄影棚里的光照，并按 `feature.toneMapping` 的参数执行当前 Forward shader 内的 tone mapping。随后 `Bloom` fullscreen pass 读取 `hdr.color`，按 `feature.bloom` 做当前的 bloom blit，最后写到 `swapchain.color`。
 
 ## FrameGraph 主线
 
 默认渲染顺序是：
 
 ```text
-Shadow -> Forward(scene.hdrColor) -> BloomThreshold -> BloomBlurH -> BloomBlurV -> PostProcess(swapchain) -> DebugOverlay/ImGui
+Shadow -> Forward(hdr.color) -> Bloom(swapchain.color) -> DebugOverlay/ImGui
 ```
 
 | Pass | 读 | 写 | 作用 |
 |---|---|---|---|
 | `Shadow` | scene geometry | `shadow.cascadeN` | directional light shadow depth |
-| `Forward` | camera/light/shadow/IBL resources | `scene.hdrColor` / `scene.depth` | PBR 和其它材质输出线性 HDR |
-| `BloomThreshold` | `scene.hdrColor` | `bloom.threshold` | 提取高亮区域 |
-| `BloomBlurH/V` | bloom ping-pong | `bloom.blur` | full-res blur v1 |
-| `PostProcess` | `SceneColor` / `BloomColor` | `swapchain.color` | exposure、tone mapping、gamma、bloom composite |
+| `Forward` | camera/light/shadow/IBL resources | `hdr.color` / `depth.main` | PBR 和其它材质输出线性 HDR |
+| `Bloom` | `hdr.color` / `feature.bloom` | `swapchain.color` | 当前 fullscreen bloom blit 和最终出片 |
 | `DebugOverlay` | overlay draw data | swapchain pass | editor/debug 叠加 |
 
-`VulkanRenderer::PostProcessSettings` 可以在 `initScene()` 前关闭 bloom。关闭后编译出的顺序回到：
+如果关闭 bloom，当前 renderer 会走不带 bloom feature 的 Forward 输出路径；文档验证仍以 `hdr.color` dump 为准。
 
-```text
-Shadow -> Forward(scene.hdrColor) -> PostProcess(swapchain) -> DebugOverlay/ImGui
-```
-
-## Post shader 参数
+## Feature 参数
 
 | 参数 | 作用 | 默认 |
 |---|---|---|
-| `exposure` | HDR 进入 tone mapping 前的曝光倍率 | `1.0` |
-| `toneMappingMode` | `0` 为 ACES，`1` 为 Reinhard | `0` |
-| `gamma` | 输出 gamma correction | `2.2` |
-| `bloomIntensity` | bloom 合成强度 | `0.25` |
+| `ToneMappingUBO.exposure` | HDR 进入 tone mapping 前的曝光倍率 | `1.0` |
+| `ToneMappingUBO.mode` | `0` 为 ACES，`1` 为 Reinhard | `0` |
+| `BloomUBO.threshold` | bloom mask 阈值 | `1.0` |
+| `BloomUBO.intensity` | bloom 叠加强度 | `0.0` |
+| `BloomUBO.radius` | 当前 blit 中的 bloom 权重 | `1.0` |
 
-PBR fragment shader 不做最终显示映射。这样我们能让 BlinnPhong、PBR、skybox 和未来透明/后处理路径共享同一个输出规则。
+这组参数来自 `assets/effects/tone_mapping.render-feature.yaml` 和 `assets/effects/bloom.render-feature.yaml`。当前 PBR Forward shader 包含 tone mapping feature；Bloom pass 使用 `features/bloom.glsl` 读取 `SceneColor` 和 `BloomUBO`。
 
 ## 验证当前流程
 
@@ -46,8 +41,8 @@ xvfb-run -a ./build/src/test/test_vulkan_frame_graph
 
 | 测试 | 覆盖点 |
 |---|---|
-| `test_shader_compiler` | PostProcess shader 反射出 `SceneColor`、tone mapping 参数和 bloom binding |
-| `test_vulkan_frame_graph` | Vulkan backend 编译出的 pass 顺序包含 HDR Forward、bloom、PostProcess、DebugOverlay |
+| `test_shader_compiler` | Forward PBR、Bloom blit、tone mapping 和 bloom feature binding 保持 ABI |
+| `test_vulkan_frame_graph` | Vulkan backend 编译出的 pass 顺序包含 HDR Forward、Bloom、DebugOverlay |
 | `test_frame_graph` | core FrameGraph 能表达 sampled read / color write 的资源流 |
 
 ## 下一步

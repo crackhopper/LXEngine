@@ -166,14 +166,14 @@ TARGETS = [
             和它的实现
             [src/core/scene/scene.cpp](../../../../../src/core/scene/scene.cpp)
             出发，关注的不是 API 列表，而是 `Scene` 为什么是一层薄壳：
-            把结构验证下放给 `SceneNode`、把 draw 组装下放给 `RenderQueue`，
-            自己只保留 nodeName 唯一性、shared material 重验证传播、
-            以及 scene-level 资源的两轴筛选这三件无法下放的事情。
+            把结构验证下放给 `SceneNode`，把 draw / dispatch payload 组装交给
+            `RenderWorkCompiler`，自己只保留 nodeName 唯一性、shared material
+            重验证传播、scene resource table 和 scene-level 资源筛选这些全场景事实。
 
             可以先带着一个问题阅读：为什么 `Scene` 的容器是平铺的、构造时还要硬塞
-            一个默认 Camera 和 DirectionalLight？答案是 REQ-009 — 让那些不走完整
-            `VulkanRenderer::initScene` 的纯 core/test 路径仍然能拿到非空的
-            scene-level 资源，同时把 hierarchy/可见性等可选维度整体下推给 SceneNode。
+            一个默认 Camera 和 DirectionalLight？答案是现在的 `Scene` 只表达注册事实；
+            editor、offline loader 和测试都必须显式注册带组件的 node。可见性、hierarchy
+            和 renderable pass validation 留在 `SceneNode` / compiler 边界处理。
             """
         ).strip(),
         related_sources=(
@@ -190,8 +190,9 @@ TARGETS = [
             这一页从
             [src/core/frame_graph/render_target.hpp](../../../../../src/core/frame_graph/render_target.hpp)
             出发，关注的不是"它有哪几个字段"，而是：为什么 `RenderTarget` 被刻意做成
-            一个不持有句柄、不参与 PipelineKey 的薄 POD，以及它怎么作为 REQ-009 两轴
-            筛选里的 *target 轴* 在 Scene、Camera、RenderQueue 之间穿过。
+            一个不持有句柄、不直接拥有 backend image 的薄 POD，以及它怎么作为 camera
+            选择和 pass attachment 合同里的 *target 轴* 在 Scene、FramePass、
+            RenderWorkCompiler 和 backend 之间穿过。
 
             可以先带着一个问题阅读：既然 backend 最终要的是 attachment 句柄，为什么
             `RenderTarget` 不直接持有句柄？答案是，句柄随 swapchain 重建抖动，而
@@ -202,48 +203,24 @@ TARGETS = [
         nav_order=550,
     ),
     SourceAnalysisTarget(
-        source="src/core/frame_graph/render_queue.hpp",
-        output="notes/source_analysis/src/core/frame_graph/render_queue.md",
-        title="RenderQueue：把 scene × pass 收口成可消费的 RenderWorkItem 列表",
-        intro=textwrap.dedent(
-            """\
-            这一页从
-            [src/core/frame_graph/render_queue.hpp](../../../../../src/core/frame_graph/render_queue.hpp)
-            和它的实现
-            [src/core/frame_graph/render_queue.cpp](../../../../../src/core/frame_graph/render_queue.cpp)
-            出发，关注的不是"队列里有哪些 API"，而是 `RenderQueue` 在数据流里的位置：
-            它是 per-pass 的 RenderWorkItem 收口点，把 `Scene` 的扁平容器视角翻译成
-            backend 能直接消费的 draw / dispatch 列表。
-
-            可以先带着一个问题阅读：为什么 `RenderQueue` 不是一个全局队列？答案是，
-            同一个 renderable 在不同 pass 下的 RenderWorkItem 本就不同（不同 shader、
-            不同 binding、不同 pipelineKey），合并会让"按 pipelineKey 聚合"的语义崩塌；
-            这里只在单个 pass 内部完成 REQ-009 两轴筛选、稳定排序、和 pipeline 去重。
-            """
-        ).strip(),
-        related_sources=(
-            "src/core/frame_graph/render_queue.cpp",
-        ),
-        nav_order=600,
-    ),
-    SourceAnalysisTarget(
         source="src/core/frame_graph/frame_graph.hpp",
         output="notes/source_analysis/src/core/frame_graph/frame_graph.md",
-        title="FrameGraph：把 scene 翻译成按 pass 组织的 RenderWorkItem 列表",
+        title="FrameGraph：把 RenderPath pass 收束成可验证的资源 DAG",
         intro=textwrap.dedent(
             """\
             这一页从
             [src/core/frame_graph/frame_graph.hpp](../../../../../src/core/frame_graph/frame_graph.hpp)
             和它的实现
             [src/core/frame_graph/frame_graph.cpp](../../../../../src/core/frame_graph/frame_graph.cpp)
-            出发，关注的不是"FrameGraph 有哪些方法"，而是它在 frame_graph 子系统里的
-            位置：FramePass 把 pass 身份、target、queue、resource flow 和 RenderPathNode
-            contract 打包成一条 pass 的完整描述，FrameGraph 在加载期把每条 pass 上的
-            RenderWorkQueue 各自填好，compile 时校验资源依赖并输出稳定 pass 顺序。
+            出发，关注的不是"FrameGraph 有哪些方法"，而是它在当前单轨渲染流里的位置：
+            `FramePass` 打包 pass 身份、target、input contract、resource flow 和
+            RenderPathNode contract；`FrameGraph::compile()` 校验资源依赖并输出稳定 pass
+            顺序。draw / dispatch payload 由后续 `RenderWorkCompiler` 生成。
 
             可以先带着一个问题阅读：core 层的 FrameGraph 已经负责哪些 graph 语义，
-            又把什么留给 backend？答案是它负责 resource registry 校验、DAG 排序和
-            per-pass queue 构建，但不持有 backend attachment，也不做 aliasing / barrier 推导。
+            又把什么留给 compiler / backend？答案是它负责 resource registry 校验和
+            DAG 排序；它不持有 backend attachment，不做 aliasing / barrier 推导，也不遍历
+            scene 生成 render input。
             """
         ).strip(),
         related_sources=(
@@ -302,9 +279,9 @@ TARGETS = [
             `PipelineKey` 负责回答“是不是同一条 pipeline”，`PipelineBuildDesc`
             负责回答“如果要创建它，backend 需要哪些输入”。
 
-            可以先带着一个问题阅读：为什么 `RenderWorkItem` 已经有 shader、material、
-            vertex buffer，还要额外保存 `pipelineKey`？答案是，渲染提交和 pipeline
-            预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
+            可以先带着一个问题阅读：为什么 `RenderInputDesc` 已经有 shader、material、
+            vertex layout 和 render state，还要额外保存 `pipelineKey`？答案是，渲染提交和
+            pipeline 预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
             """
         ).strip(),
         related_sources=(

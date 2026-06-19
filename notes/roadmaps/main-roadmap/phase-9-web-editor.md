@@ -4,7 +4,7 @@
 
 ## 当前入口
 
-[REQ-044-a](../../requirements/pending/044-a-web-editor-ipc-and-shell.md) 是本 phase 的 pending 最小需求：先定义 Web Editor shell 与 IPC 合同，不要求完整替代 ImGui editor。它不进入 v0.1.1 active 队列。
+[REQ-044-a](../../requirements/pending/044-a-web-editor-ipc-and-shell.md) 是本 phase 的 pending 最小需求：先定义 Web Editor shell 与 IPC 合同，不要求完整替代 ImGui editor。它不进入 0.2.0-pre 基线。
 
 ## 实施顺序
 

@@ -21,7 +21,7 @@ ctest --test-dir build --output-on-failure -R 'test_render_work_compiler|test_sc
 
 ## Output Profile 是输出参数单
 
-`assets/scenes/ibl_metal_sphere.scene.yaml` 里有 `scene.outputProfiles` 和单个 `scene.offlineRender`。这些配置不会影响 editor 的实时视口：`OutputProfile` 负责相机、分辨率、输出格式、背景色和 `outDir`，`OfflineRenderSettings` 负责 integrator、samples、maxBounce、seed、shadow 开关和 compare mode。CLI 的 `--profile` 选择一个 output profile；相机来自被选中的 output profile。
+`assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml` 里有 `scene.outputProfiles` 和单个 `scene.offlineRender`。这些配置不会影响 editor 的实时视口：`OutputProfile` 负责相机、分辨率、输出格式、背景色和 `outDir`，`OfflineRenderSettings` 负责 integrator、samples、maxBounce、seed 和 compare mode。CLI 的 `--profile` 选择一个 output profile；相机来自被选中的 output profile。
 
 ```yaml
 scene:
@@ -56,8 +56,8 @@ CLI 参数可以覆盖被选中 output profile 的宽高，以及 `OfflineRender
 
 ```bash
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/ibl_metal_sphere.scene.yaml \
-  --profile mvp \
+  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
+  --profile preview \
   --samples 1 \
   --width 64 \
   --height 64 \
@@ -115,4 +115,4 @@ artifacts/offline/smoke.rgba32f
 
 - [EXR 与 PNG 输出](02-output-and-exr-viewers.md)
 - [实现结构](03-implementation-flow.md)
-- [PBR + IBL 金属球场景](../pbr-ibl/01-metal-sphere-scene.md)
+- [PBR + IBL Helmet 场景](../pbr-ibl/01-helmet-neutral-ibl-scene.md)

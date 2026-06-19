@@ -1,10 +1,10 @@
 # 项目速览
 
-> 一个从 Vulkan 渲染器出发，逐步走向 **AI Native 小型游戏引擎** 的 C++20 工程。这里的首页只保留最重要的描述，细节拆到各专题文档中。
+> `0.2.0-pre` 是当前文档和代码的基线：Vulkan realtime/editor、RenderPathGraph 单轨渲染输入、PBR + IBL bake、offline compute renderer 和 agent 可观察入口已经站住。这里的首页只保留当前事实，历史实现和已删除词表不再作为阅读入口。
 
 ## 项目定位
 
-`LXEngine` 当前的起点仍然是一个强调渲染基础能力的工程：Vulkan backend、材质系统、shader 编译与反射、scene / frame graph、pipeline identity，这些是引擎继续向上生长的底座。
+`LXEngine` 当前的起点仍然是一个强调渲染基础能力的工程：Vulkan backend、材质系统、shader 编译与反射、RenderPathGraph / FrameGraph、RenderWorkCompiler、pipeline identity、scene resource table，这些是引擎继续向上生长的底座。
 
 这个项目的目标已经不再是单纯做一个“教学型 renderer”，而是以这些底层能力为起点，构造一个 **AI Native 的小型游戏引擎**：
 
@@ -22,12 +22,14 @@
 当前工程已经具备一组足够坚实的渲染器基础设施：
 
 - `C++20 + CMake` 的跨平台工程组织
-- `core / infra / backend` 三层分离
+- `core / infra / backend / editor / tools` 的职责分离
 - Vulkan 渲染后端
 - `shaderc + SPIRV-Cross` 驱动的 GLSL 编译与反射
-- `MaterialInstance / PipelineKey / FrameGraph / RenderQueue` 等渲染主干能力
+- `MaterialInstance / PipelineKey / RenderPathGraph / FrameGraph / RenderWorkCompiler / RenderInputDesc` 等渲染主干能力
+- `feature.forwardPass`、`feature.environmentLighting`、`feature.surfaceLighting`、`scene.environmentBake`、`scene.materialIblBake` 组成的当前 PBR/IBL 合同
 - SDL3 / GLFW 窗口层、OBJ / GLTF / texture loader、ImGui 集成
 - `lxe_editor` 交互编辑器、scene 文档、CommandBus、HTTP / WebSocket / MCP 自动化入口
+- `lxe_offline_render` headless Vulkan compute renderer 和 EXR/PNG/JSON/raw 输出
 
 这些内容决定了 `LXEngine` 的第一性原点：先把“渲染器应该如何干净地组织起来”做扎实，再向 gameplay、编辑器、agent runtime 和 AI 资产生成扩展。
 
@@ -47,7 +49,8 @@
 - [概念与设计 / BuildInfo](concepts-design/build-info.md)：理解二进制版本标签、离线输出 metadata 和 editor 录制如何追溯构建来源。
 - [源码分析](source_analysis/index.md)：贴着真实源码看 shader、material、frame graph、pipeline identity、offline renderer 等实现边界。
 - [实现技巧](impl_tricks/index.md)：从现有代码里抽取出来的通用 trick / 手法 / 小范式。
-- [Roadmap](roadmaps/README.md)：从当前基座走向 AI Native 小型游戏引擎的阶段规划。
+- [发布记录 / v0.2.0-pre](releases/v0.2.0-pre/CHANGELOG.md)：这次基线包含的当前能力。
+- [Roadmap](roadmaps/README.md)：从当前基线走向 AI Native 小型游戏引擎的阶段规划。
 - [相关工具](tools/index.md)：`notes` 站点如何生成、如何索引、如何本地预览。
 
 ## 一句话总结
