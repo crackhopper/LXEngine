@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/asset/texture.hpp](../../../../../src/core/asset/texture.hpp)
+`src/core/asset/texture.hpp`
 出发，关注的问题不是“怎么加载一张图”，而是：为什么项目要把纹理拆成
 `Texture`（CPU 数据）和 `CombinedTextureSampler`（`IGpuResource` 适配层）
 两个类型，以及这种切分如何让同一份像素数据在多个材质里安全复用。
@@ -13,7 +13,7 @@
 直接实现 `IGpuResource`？答案是，纯 CPU 图像属于资源加载侧，而 binding
 name 和 dirty 追踪属于材质实例侧，两者生命周期不同，合并会让共享变难。
 
-源码入口：[texture.hpp](../../../../src/core/asset/texture.hpp)
+源码入口：`src/core/asset/texture.hpp`
 
 ## Texture：CPU 侧的薄图像资源容器
 

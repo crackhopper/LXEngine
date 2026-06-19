@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/rhi/gpu_resource.hpp](../../../../../src/core/rhi/gpu_resource.hpp)
+`src/core/rhi/gpu_resource.hpp`
 出发，解释为什么引擎需要一个极薄的 `IGpuResource` 接口，
 以及为什么 `CameraData`、`SkeletonData`、`ParameterBuffer`、
 `CombinedTextureSampler`、`VertexBuffer` / `IndexBuffer`
@@ -14,7 +14,7 @@
 “backend 侧 upload/bind 输入”拆成更多层？答案是，这里故意只保留
 backend 真正需要的最小公共契约，避免每条资源路径都发明一套专用接口。
 
-源码入口：[gpu_resource.hpp](../../../../src/core/rhi/gpu_resource.hpp)
+源码入口：`src/core/rhi/gpu_resource.hpp`
 
 ## IGpuResource：core 层定义的“可被 GPU 消费”的统一契约
 

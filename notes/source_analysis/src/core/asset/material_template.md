@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/asset/material_template.hpp](../../../../../src/core/asset/material_template.hpp)
+`src/core/asset/material_template.hpp`
 出发，关注的不是 API 清单，而是这个类型如何把多个 pass 的 shader、
 render state 和 material-owned binding 收束成一份可共享的蓝图。
 
@@ -12,16 +12,16 @@ render state 和 material-owned binding 收束成一份可共享的蓝图。
 又要额外构建 canonical material binding 表？答案是，前者回答“这个材质
 在结构上有哪些 pass”，后者回答“这些 pass 共同引用的是哪一组稳定 binding 契约”。
 
-源码入口：[material_template.hpp](../../../../src/core/asset/material_template.hpp)
+源码入口：`src/core/asset/material_template.hpp`
 
 关联源码：
 
-- [material_pass_definition.hpp](../../../../src/core/asset/material_pass_definition.hpp)
-- [shader.hpp](../../../../src/core/asset/shader.hpp)
+- `src/core/asset/material_pass_definition.hpp`
+- `src/core/asset/shader.hpp`
 
 ## material_template.hpp
 
-源码位置：[material_template.hpp](../../../../src/core/asset/material_template.hpp)
+源码位置：`src/core/asset/material_template.hpp`
 
 ### MaterialTemplate：多 pass 材质蓝图，而不是运行时数据容器
 
@@ -64,7 +64,7 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 
 ## material_pass_definition.hpp
 
-源码位置：[material_pass_definition.hpp](../../../../src/core/asset/material_pass_definition.hpp)
+源码位置：`src/core/asset/material_pass_definition.hpp`
 
 ### RenderState：pass 级固定功能状态的可签名快照
 
@@ -91,7 +91,7 @@ descriptor 类型支持范围、以及运行时实例需要面对的 binding 集
 
 ## shader.hpp
 
-源码位置：[shader.hpp](../../../../src/core/asset/shader.hpp)
+源码位置：`src/core/asset/shader.hpp`
 
 ### StructMemberInfo：把 UBO 成员布局显式带出 shader 反射边界
 

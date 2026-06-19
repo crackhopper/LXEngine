@@ -25,6 +25,7 @@ nav:
           - 当前光源积木: tutorial/custom-light/01-current-light-building-blocks.md
           - 场景中定义光源: tutorial/custom-light/02-define-lights-in-scene.md
           - C++ 扩展光源: tutorial/custom-light/03-extend-light-in-cpp.md
+          - SceneLights / Shader 边界: tutorial/custom-light/04-scene-lights-shader-boundary.md
           - 验证与调试光源: tutorial/custom-light/05-verify-and-debug-lights.md
       - Shadow 阶段:
           - 总览: tutorial/shadow-era/index.md
@@ -38,6 +39,7 @@ nav:
           - 资源与绑定: tutorial/pbr-ibl/02-resource-and-shader-contract.md
           - HDR 输出流程: tutorial/pbr-ibl/03-hdr-post-process-flow.md
           - 验证与排错: tutorial/pbr-ibl/04-verify-and-debug.md
+      - PBRT BMW M6 资产包: tutorial/pbrt-bmw-m6-conversion.md
       - Offline Renderer:
           - 总览: tutorial/offline-renderer/index.md
           - 运行 CLI: tutorial/offline-renderer/01-run-offline-renderer.md
@@ -51,12 +53,14 @@ nav:
           - 文档与 Runtime: tutorial/extend-scene-node/02-document-and-runtime.md
           - 当前触点: tutorial/extend-scene-node/03-current-custom-node-touchpoints.md
           - Debug draw 与 picking: tutorial/extend-scene-node/04-debug-draw-and-picking.md
+          - 节点操作合同: tutorial/extend-scene-node/05-node-operation-contract.md
       - 扩展编辑器:
           - 总览: tutorial/extend-editor/index.md
           - CommandBus 模型: tutorial/extend-editor/01-command-bus-model.md
           - 当前内置命令: tutorial/extend-editor/02-read-current-commands.md
           - 增加命令: tutorial/extend-editor/03-add-command-current-path.md
           - 增加 toolbar 按钮: tutorial/extend-editor/04-add-toolbar-button-current-path.md
+          - Command / Toolbar 合同: tutorial/extend-editor/05-command-toolbar-contract.md
   - 场景系统:
       - 总览: scene-system/index.md
       - 文档到 Runtime: scene-system/document-runtime-flow.md
@@ -113,6 +117,14 @@ nav:
           - SceneRuntime 与持久化: design/editor-system/04-scene-runtime-and-persistence.md
           - API 与录制观察: design/editor-system/05-api-recording-and-observation.md
           - Roadmap 边界: design/editor-system/06-roadmap-boundaries.md
+      - 子系统:
+          - 引擎循环: subsystems/engine-loop.md
+          - Scene: subsystems/scene.md
+          - Vulkan Backend: subsystems/vulkan-backend.md
+          - Geometry: subsystems/geometry.md
+          - Resource Upload: subsystems/resource-upload.md
+          - Pipeline Cache: subsystems/pipeline-cache.md
+          - Skeleton: subsystems/skeleton.md
   - 源码分析:
       - source_analysis/index.md
       - "@source_analysis"

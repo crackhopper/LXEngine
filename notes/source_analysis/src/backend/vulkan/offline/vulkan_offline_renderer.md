@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页把 offline renderer 当成一条独立实验管线来读，入口是
-[src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
+`src/backend/vulkan/offline/vulkan_offline_renderer.hpp`。
 关注的问题是：为什么离线渲染不直接复用 realtime draw item，而是把
 scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 compute shader 的 storage buffer。
 
@@ -13,18 +13,18 @@ scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 com
 `OfflineSceneLoader`、`offline_scene_storage_resources`、`SoftwareComputeOfflineIntegrator`
 和 `VulkanOfflineRenderer` 的分层里。
 
-源码入口：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
+源码入口：`src/backend/vulkan/offline/vulkan_offline_renderer.hpp`
 
 关联源码：
 
-- [offline_render_job.hpp](../../../../src/core/offline/offline_render_job.hpp)
-- [offline_scene_storage_resources.hpp](../../../../src/core/offline/offline_scene_storage_resources.hpp)
-- [offline_scene_loader.hpp](../../../../src/infra/offline/offline_scene_loader.hpp)
-- [software_compute_offline_integrator.hpp](../../../../../src/backend/vulkan/offline/software_compute_offline_integrator.hpp)
+- `src/core/offline/offline_render_job.hpp`
+- `src/core/offline/offline_scene_storage_resources.hpp`
+- `src/infra/offline/offline_scene_loader.hpp`
+- `src/backend/vulkan/offline/software_compute_offline_integrator.hpp`
 
 ## vulkan_offline_renderer.hpp
 
-源码位置：[vulkan_offline_renderer.hpp](../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)
+源码位置：`src/backend/vulkan/offline/vulkan_offline_renderer.hpp`
 
 ### VulkanOfflineRenderer 是离线积分器协调入口
 

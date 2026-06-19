@@ -4,9 +4,9 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/pipeline/pipeline_key.hpp](../../../../../src/core/pipeline/pipeline_key.hpp)
+`src/core/pipeline/pipeline_key.hpp`
 和
-[src/core/pipeline/pipeline_build_desc.hpp](../../../../../src/core/pipeline/pipeline_build_desc.hpp)
+`src/core/pipeline/pipeline_build_desc.hpp`
 出发，解释 pipeline identity 的两层分工：
 `PipelineKey` 负责回答“是不是同一条 pipeline”，`PipelineBuildDesc`
 负责回答“如果要创建它，backend 需要哪些输入”。
@@ -15,17 +15,17 @@
 vertex layout 和 render state，还要额外保存 `pipelineKey`？答案是，渲染提交和
 pipeline 预构建都需要一个稳定、可哈希、可调试的 identity，而不是每次临时比较所有字段。
 
-源码入口：[pipeline_key.hpp](../../../../src/core/pipeline/pipeline_key.hpp)
+源码入口：`src/core/pipeline/pipeline_key.hpp`
 
 关联源码：
 
-- [pipeline_key.cpp](../../../../src/core/pipeline/pipeline_key.cpp)
-- [pipeline_build_desc.hpp](../../../../src/core/pipeline/pipeline_build_desc.hpp)
-- [pipeline_build_desc.cpp](../../../../src/core/pipeline/pipeline_build_desc.cpp)
+- `src/core/pipeline/pipeline_key.cpp`
+- `src/core/pipeline/pipeline_build_desc.hpp`
+- `src/core/pipeline/pipeline_build_desc.cpp`
 
 ## pipeline_key.hpp
 
-源码位置：[pipeline_key.hpp](../../../../src/core/pipeline/pipeline_key.hpp)
+源码位置：`src/core/pipeline/pipeline_key.hpp`
 
 ### PipelineKey：pipeline 身份的最终句柄
 
@@ -42,7 +42,7 @@ attachment contract 包含。
 
 ## pipeline_build_desc.hpp
 
-源码位置：[pipeline_build_desc.hpp](../../../../src/core/pipeline/pipeline_build_desc.hpp)
+源码位置：`src/core/pipeline/pipeline_build_desc.hpp`
 
 ### PushConstantRange：当前固定 ABI 的占位描述
 

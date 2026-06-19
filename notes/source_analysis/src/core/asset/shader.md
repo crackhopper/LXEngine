@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页把反射层当作一条独立的读路径来读，入口是
-[src/core/asset/shader.hpp](../../../../../src/core/asset/shader.hpp)。
+`src/core/asset/shader.hpp`。
 关注的问题是：shader 反射出来的 binding 列表，是怎么被切开成
 “引擎全局数据”和“材质自己管理的资源”这两部分，交给材质系统的。
 
@@ -13,15 +13,15 @@
 直接按 shader 反射结果分配 buffer，而是先经过一道按名字分流的 ownership
 过滤，才开始构造 canonical material binding 表。
 
-源码入口：[shader.hpp](../../../../src/core/asset/shader.hpp)
+源码入口：`src/core/asset/shader.hpp`
 
 关联源码：
 
-- [shader_binding_ownership.hpp](../../../../src/core/asset/shader_binding_ownership.hpp)
+- `src/core/asset/shader_binding_ownership.hpp`
 
 ## shader.hpp
 
-源码位置：[shader.hpp](../../../../src/core/asset/shader.hpp)
+源码位置：`src/core/asset/shader.hpp`
 
 ### StructMemberInfo：把 UBO 成员布局显式带出 shader 反射边界
 
@@ -74,7 +74,7 @@
 
 ## shader_binding_ownership.hpp
 
-源码位置：[shader_binding_ownership.hpp](../../../../src/core/asset/shader_binding_ownership.hpp)
+源码位置：`src/core/asset/shader_binding_ownership.hpp`
 
 ### System-owned binding：按名字切开反射结果的所有权边界
 
@@ -170,5 +170,5 @@ isSystemOwnedBinding(name)                   （shader_binding_ownership.hpp）
 
 - 先读本页 `shader.hpp` 部分的四个 section：建立反射结果的形状认知
 - 再读 `shader_binding_ownership.hpp` 两个 section：理解所有权分流这条边界
-- 之后跳去 [MaterialTemplate](../material_template.md)：看上述分流和 canonical 化的实际实现
-- 最后回到 [MaterialInstance](../material_instance.md)：看 canonical binding id 如何对应到运行时资源
+- 之后跳去 [MaterialTemplate](material_template.md)：看上述分流和 canonical 化的实际实现
+- 最后回到 [MaterialInstance](material_instance.md)：看 canonical binding id 如何对应到运行时资源

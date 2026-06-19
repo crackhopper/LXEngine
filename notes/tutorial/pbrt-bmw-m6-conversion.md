@@ -78,3 +78,16 @@ artifacts/pbrt/bmw-m6/local-smoke/render.json
 | Substrate / car paint | `Kd`、`Ks`、`uroughness`、`vroughness` |
 
 当这些模块具备后，`offline-pbrt-reference` profile 应让直接材质引用从 runtime PBR approximation 过渡到读取 `offline.pbrtSourceMaterialUri` 指向的 source material YAML。
+
+## 我们已经学会了什么
+
+这个资产包现在有两条并行事实：`pbrt_bmw_m6.scene.yaml` 和 `materials/runtime-pbr-approx/*.material` 支撑当前 renderer 的 smoke 渲染，`pbrt_bmw_m6.converted.json`、`pbrt_bmw_m6.conversion.md` 和 `materials/pbrt-source/*.pbrt-material.yaml` 保留 PBRT 原始语义。阅读或调试 BMW M6 时，先判断自己在验证当前 runtime approximation，还是在检查未来 high-fidelity PBRT source preservation。
+
+当前 smoke 的目标是确认资产包路径、mesh/material 解析和离线输出链路可用；它不是 PBRT ground truth，也不代表 `glass`、`fourier`、spectral conductor、mix material 或 HDR environment importance sampling 已被当前 renderer 准确支持。
+
+## 下一步
+
+- 要跑当前离线输出链路，继续读 [Offline Renderer](offline-renderer/index.md)。
+- 要扩展 PBRT 高阶材质合同，跟踪 [REQ-075-a](../requirements/075-a-specialized-pbrt-bsdf-contracts.md)。
+- 要把 BMW M6 用作更完整 path tracing reference，跟踪 [REQ-075-c](../requirements/075-c-offline-path-tracing-pbr-reference.md)。
+- 要把离线渲染入口接回 editor，跟踪 [REQ-075-d](../requirements/075-d-editor-offline-render-integration.md)。

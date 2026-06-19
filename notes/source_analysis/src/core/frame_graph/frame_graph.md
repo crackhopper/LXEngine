@@ -4,9 +4,9 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/frame_graph/frame_graph.hpp](../../../../../src/core/frame_graph/frame_graph.hpp)
+`src/core/frame_graph/frame_graph.hpp`
 和它的实现
-[src/core/frame_graph/frame_graph.cpp](../../../../../src/core/frame_graph/frame_graph.cpp)
+`src/core/frame_graph/frame_graph.cpp`
 出发，关注的不是"FrameGraph 有哪些方法"，而是它在当前单轨渲染流里的位置：
 `FramePass` 打包 pass 身份、target、input contract、resource flow 和
 RenderPathNode contract；`FrameGraph::compile()` 校验资源依赖并输出稳定 pass
@@ -17,15 +17,15 @@ RenderPathNode contract；`FrameGraph::compile()` 校验资源依赖并输出稳
 DAG 排序；它不持有 backend attachment，不做 aliasing / barrier 推导，也不遍历
 scene 生成 render input。
 
-源码入口：[frame_graph.hpp](../../../../src/core/frame_graph/frame_graph.hpp)
+源码入口：`src/core/frame_graph/frame_graph.hpp`
 
 关联源码：
 
-- [frame_graph.cpp](../../../../src/core/frame_graph/frame_graph.cpp)
+- `src/core/frame_graph/frame_graph.cpp`
 
 ## frame_graph.hpp
 
-源码位置：[frame_graph.hpp](../../../../src/core/frame_graph/frame_graph.hpp)
+源码位置：`src/core/frame_graph/frame_graph.hpp`
 
 ### FramePass：pass 身份、target、input 与资源流
 
@@ -80,7 +80,7 @@ frame_graph 子目录里的三个源码分析页对应三个抽象层，从底�
 |---|---|---|
 | 形状 | [RenderTarget](render_target.md) | 一条 pass 的输出形状（attachment 配置） |
 | 多 pass 调度 | 本页 FrameGraph | 把多条 pass 串起来，校验 source/target/resource DAG |
-| per-pass 工单 | [RenderWorkCompiler](../../../concepts-design/rendering-pipeline/render-work-compiler.md) | 在 `compile()` 后生成 `RenderInput[]`、`RenderInputDesc[]`、binding plan 和 pipeline build desc |
+| per-pass 工单 | [RenderWorkCompiler](../../../../concepts-design/rendering-pipeline/render-work-compiler.md) | 在 `compile()` 后生成 `RenderInput[]`、`RenderInputDesc[]`、binding plan 和 pipeline build desc |
 
 读完三层就能回答："一条 RenderPathGraph pass 如何变成可验证的 FramePass，
 FramePass 又如何变成 backend 能消费的 draw/dispatch input"这类问题。

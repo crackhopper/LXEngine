@@ -4,9 +4,9 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/scene/scene.hpp](../../../../../src/core/scene/scene.hpp)
+`src/core/scene/scene.hpp`
 和它的实现
-[src/core/scene/scene.cpp](../../../../../src/core/scene/scene.cpp)
+`src/core/scene/scene.cpp`
 出发，关注的不是 API 列表，而是 `Scene` 为什么是一层薄壳：
 把结构验证下放给 `SceneNode`，把 draw / dispatch payload 组装交给
 `RenderWorkCompiler`，自己只保留 nodeName 唯一性、shared material
@@ -17,15 +17,15 @@
 editor、offline loader 和测试都必须显式注册带组件的 node。可见性、hierarchy
 和 renderable pass validation 留在 `SceneNode` / compiler 边界处理。
 
-源码入口：[scene.hpp](../../../../src/core/scene/scene.hpp)
+源码入口：`src/core/scene/scene.hpp`
 
 关联源码：
 
-- [scene.cpp](../../../../src/core/scene/scene.cpp)
+- `src/core/scene/scene.cpp`
 
 ## scene.hpp
 
-源码位置：[scene.hpp](../../../../src/core/scene/scene.hpp)
+源码位置：`src/core/scene/scene.hpp`
 
 ### Scene：扁平容器
 
@@ -43,7 +43,7 @@ scene。
 
 ## scene.cpp
 
-源码位置：[scene.cpp](../../../../src/core/scene/scene.cpp)
+源码位置：`src/core/scene/scene.cpp`
 
 ### ~Scene：weak detach 协议
 

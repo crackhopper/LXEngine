@@ -4,9 +4,9 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页不是重新抄一遍 API，而是顺着
-[src/core/asset/material_instance.hpp](../../../../../src/core/asset/material_instance.hpp)
+`src/core/asset/material_instance.hpp`
 和
-[src/core/asset/parameter_buffer.hpp](../../../../../src/core/asset/parameter_buffer.hpp)
+`src/core/asset/parameter_buffer.hpp`
 的类型定义来看：这个类为什么要拆成 `ParameterBuffer`
 和 `MaterialInstance` 两层，以及为什么它现在坚持
 “surface envelope + material source signature + 资源依赖账本”这条主线。
@@ -16,15 +16,15 @@
 “表面是什么”，instance 负责把这份表面合同、资源依赖和运行时状态整理成
 scene / render path 可以消费的事实。
 
-源码入口：[material_instance.hpp](../../../../src/core/asset/material_instance.hpp)
+源码入口：`src/core/asset/material_instance.hpp`
 
 关联源码：
 
-- [parameter_buffer.hpp](../../../../src/core/asset/parameter_buffer.hpp)
+- `src/core/asset/parameter_buffer.hpp`
 
 ## material_instance.hpp
 
-源码位置：[material_instance.hpp](../../../../src/core/asset/material_instance.hpp)
+源码位置：`src/core/asset/material_instance.hpp`
 
 ### MaterialInstance：surface envelope 的运行时账本
 
@@ -42,7 +42,7 @@ material type/source variant；普通 envelope 参数值只改变材质数据和
 
 ## parameter_buffer.hpp
 
-源码位置：[parameter_buffer.hpp](../../../../src/core/asset/parameter_buffer.hpp)
+源码位置：`src/core/asset/parameter_buffer.hpp`
 
 ### ParameterBuffer：材质实例里一份可写的 buffer 绑定资源
 
@@ -91,10 +91,4 @@ Envelope-backed surface instance 会忽略旧 shader-binding 参数写入。读�
 
 - [材质系统总览](../../../../concepts/material/index.md)
 - [MaterialInstance：运行时状态](../../../../concepts/material/material-instance.md)
-- [material_instance.cpp](../../../../../src/core/asset/material_instance.cpp)
-
-## 继续阅读
-
-- [材质系统总览](../../../../concepts/material/index.md)
-- [MaterialInstance：运行时状态](../../../../concepts/material/material-instance.md)
-- [material_instance.cpp](../../../../../src/core/asset/material_instance.cpp)
+- `src/core/asset/material_instance.cpp`

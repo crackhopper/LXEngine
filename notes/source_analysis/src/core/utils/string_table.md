@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/utils/string_table.hpp](../../../../../src/core/utils/string_table.hpp)
+`src/core/utils/string_table.hpp`
 出发，解释为什么 LXEngine 不只把字符串压成整数，还要支持
 `compose / decompose / toDebugString` 这一组结构化身份 API。
 
@@ -12,7 +12,7 @@
 答案是，pipeline identity 需要同时满足 hot path 上的整数比较、
 cache key 的稳定性，以及调试时能展开 object/material/pass 结构树。
 
-源码入口：[string_table.hpp](../../../../src/core/utils/string_table.hpp)
+源码入口：`src/core/utils/string_table.hpp`
 
 ## TypeTag：让 StringID 不只是“压缩字符串”
 

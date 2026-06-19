@@ -31,5 +31,5 @@
 |---|---|
 | 场景文件格式和 URI | [资产系统：场景文件也是资产](../concepts/assets/scene-assets.md) |
 | 材质 pass 和 pipeline identity | [材质系统](../concepts/material/index.md) |
-| 当前实现源码 | [scene.hpp](/home/lixiang/proj/LXEngine/src/core/scene/scene.hpp:1)、[object.hpp](/home/lixiang/proj/LXEngine/src/core/scene/object.hpp:1) |
+| 当前实现源码 | `src/core/scene/scene.hpp`、`src/core/scene/object.hpp` |
 | 源码分析 | [Scene 源码分析](../source_analysis/src/core/scene/scene.md) |

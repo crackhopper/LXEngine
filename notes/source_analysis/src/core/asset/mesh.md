@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/asset/mesh.hpp](../../../../../src/core/asset/mesh.hpp)
+`src/core/asset/mesh.hpp`
 出发，但真正想回答的问题不是“Mesh 里有哪些字段”，而是：
 为什么项目把几何对象做得这么薄，却仍然能让 pipeline、scene 校验和 backend
 都拿到自己需要的结构事实。
@@ -13,16 +13,16 @@
 却还能参与 `PipelineKey`？答案是，这里真正进入渲染签名的不是“几何内容本身”，
 而是顶点输入布局和图元拓扑这两类几何接口形状。
 
-源码入口：[mesh.hpp](../../../../src/core/asset/mesh.hpp)
+源码入口：`src/core/asset/mesh.hpp`
 
 关联源码：
 
-- [vertex_buffer.hpp](../../../../src/core/rhi/vertex_buffer.hpp)
-- [index_buffer.hpp](../../../../src/core/rhi/index_buffer.hpp)
+- `src/core/rhi/vertex_buffer.hpp`
+- `src/core/rhi/index_buffer.hpp`
 
 ## mesh.hpp
 
-源码位置：[mesh.hpp](../../../../src/core/asset/mesh.hpp)
+源码位置：`src/core/asset/mesh.hpp`
 
 ### GeometryStorage：收束底层 vertex/index 数据
 
@@ -53,7 +53,7 @@
 
 ## vertex_buffer.hpp
 
-源码位置：[vertex_buffer.hpp](../../../../src/core/rhi/vertex_buffer.hpp)
+源码位置：`src/core/rhi/vertex_buffer.hpp`
 
 ### VertexLayout：把 shader 关心的顶点输入契约显式带出来
 
@@ -78,7 +78,7 @@
 
 ## index_buffer.hpp
 
-源码位置：[index_buffer.hpp](../../../../src/core/rhi/index_buffer.hpp)
+源码位置：`src/core/rhi/index_buffer.hpp`
 
 ### PrimitiveTopology：索引 buffer 不只是字节，还携带装配语义
 

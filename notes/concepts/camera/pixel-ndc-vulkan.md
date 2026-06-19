@@ -71,5 +71,5 @@ screenY = (1.0f - (ndc.y * 0.5f + 0.5f)) * viewportSize.y - 0.5f;
 
 - [`../../subsystems/vulkan-backend.md`](../../subsystems/vulkan-backend.md)
 - [`../../subsystems/scene.md`](../../subsystems/scene.md)
-- [src/core/scene/components/camera_component.cpp](/home/lixiang/proj/LXEngine/src/core/scene/components/camera_component.cpp:1)
-- [src/backend/vulkan/details/commands/command_buffer.cpp](/home/lixiang/proj/LXEngine/src/backend/vulkan/details/commands/command_buffer.cpp:1)
+- `src/core/scene/components/camera_component.cpp`
+- `src/backend/vulkan/details/commands/command_buffer.cpp`

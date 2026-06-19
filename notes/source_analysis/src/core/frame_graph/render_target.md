@@ -4,7 +4,7 @@
 `@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。
 
 这一页从
-[src/core/frame_graph/render_target.hpp](../../../../../src/core/frame_graph/render_target.hpp)
+`src/core/frame_graph/render_target.hpp`
 出发，关注的不是"它有哪几个字段"，而是：为什么 `RenderTarget` 被刻意做成
 一个不持有句柄、不直接拥有 backend image 的薄 POD，以及它怎么作为 camera
 选择和 pass attachment 合同里的 *target 轴* 在 Scene、FramePass、
@@ -15,7 +15,7 @@ RenderWorkCompiler 和 backend 之间穿过。
 "camera 匹配哪个 target" 是配置层的事实 — 把这两件事捏在一起会让 REQ-009
 的匹配判断跟着 backend 状态一起抖。
 
-源码入口：[render_target.hpp](../../../../src/core/frame_graph/render_target.hpp)
+源码入口：`src/core/frame_graph/render_target.hpp`
 
 ## RenderTarget：旧 target 轴的兼容外壳
 

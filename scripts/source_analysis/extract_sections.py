@@ -26,6 +26,7 @@ SECTION_RE = re.compile(
     r"/\*\s*\n@source_analysis\.section[ \t]+(?P<title>[^\n]+)\n(?P<body>.*?)\*/",
     re.DOTALL,
 )
+SOURCE_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]*src/[^\]]+)\]\([^)]+\)")
 
 
 @dataclass(frozen=True)
@@ -337,6 +338,10 @@ def extract_sections(source_text: str) -> list[tuple[str, str]]:
     return sections
 
 
+def normalize_source_markdown_links(text: str) -> str:
+    return SOURCE_MARKDOWN_LINK_RE.sub(lambda match: f"`{match.group(1)}`", text)
+
+
 def load_extra_section(output_path: Path) -> str:
     if not output_path.is_file():
         return ""
@@ -346,11 +351,8 @@ def load_extra_section(output_path: Path) -> str:
     return text.split(EXTRA_MARKER, 1)[1].lstrip("\n")
 
 
-def format_source_link(source: str) -> str:
-    source_path = Path(source)
-    depth = len(Path(source).parts) - 1
-    rel_prefix = "../" * (depth + 1)
-    return f"[{source_path.name}]({rel_prefix}{source})"
+def format_source_ref(source: str) -> str:
+    return f"`{source}`"
 
 
 def load_targets() -> list[SourceAnalysisTarget]:
@@ -369,9 +371,9 @@ def render_target(target: SourceAnalysisTarget) -> str:
         "本页的主体内容由 `scripts/source_analysis/extract_sections.py` 从源码中的",
         "`@source_analysis.section` 注释块生成，用来把讲解锚定在真实代码结构上。",
         "",
-        target.intro,
+        normalize_source_markdown_links(target.intro),
         "",
-        f"源码入口：{format_source_link(target.source)}",
+        f"源码入口：{format_source_ref(target.source)}",
         "",
     ]
 
@@ -379,7 +381,7 @@ def render_target(target: SourceAnalysisTarget) -> str:
         lines.append("关联源码：")
         lines.append("")
         for source in target.related_sources:
-            lines.append(f"- {format_source_link(source)}")
+            lines.append(f"- {format_source_ref(source)}")
         lines.append("")
 
     for source in all_sources:
@@ -390,14 +392,14 @@ def render_target(target: SourceAnalysisTarget) -> str:
         if len(all_sources) > 1:
             lines.append(f"## {Path(source).name}")
             lines.append("")
-            lines.append(f"源码位置：{format_source_link(source)}")
+            lines.append(f"源码位置：{format_source_ref(source)}")
             lines.append("")
 
         for section_title, body in sections:
             heading = "###" if len(all_sources) > 1 else "##"
             lines.append(f"{heading} {section_title}")
             lines.append("")
-            lines.append(body)
+            lines.append(normalize_source_markdown_links(body))
             lines.append("")
 
     lines.extend(
