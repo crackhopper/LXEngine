@@ -151,11 +151,16 @@ Use these when you need architecture context:
 - `notes/source_analysis/index.md`
 - `notes/concepts/material/index.md`
 - `notes/concepts/material/file-to-instance.md`
-- `notes/concepts/material/template-blueprint.md`
+- `notes/concepts/material/material-contract-v2.md`
+- `notes/concepts/material/render-path-pass-contract.md`
 - `notes/concepts/material/shader.md`
 - `notes/concepts/material/material-instance.md`
-- `notes/concepts/material/template-and-pipeline.md`
+- `notes/concepts/material/contract-and-pipeline.md`
 - `notes/source_analysis/src/core/pipeline/pipeline_identity.md`
+- `notes/subsystems/index.md`
+- `notes/subsystems/engine-loop.md`
+- `notes/subsystems/geometry.md`
+- `notes/subsystems/resource-upload.md`
 - `notes/subsystems/pipeline-cache.md`
 - `notes/concepts/material/pass-rendering-flow.md`
 - `notes/subsystems/scene.md`
@@ -163,7 +168,7 @@ Use these when you need architecture context:
 - `notes/source_analysis/src/core/utils/string_table.md`
 - `notes/subsystems/skeleton.md`
 - `notes/subsystems/vulkan-backend.md`
-- `notes/concepts/scene/index.md`
+- `notes/scene-system/index.md`
 
 ## Current Command Workflow
 
