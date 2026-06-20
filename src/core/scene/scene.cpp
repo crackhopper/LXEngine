@@ -6,9 +6,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
-#include <cstring>
-#include <span>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -17,124 +14,11 @@ namespace LX_core {
 
 namespace {
 
-constexpr usize kRealtimeSceneTextureDescriptorCount = 256;
-
 struct RemovedNodeSnapshot {
   SceneNodeSharedPtr node;
   std::string lastAttachedPath;
   std::string stableNodeName;
 };
-
-class SceneStorageBufferResource final : public IGpuResource {
-public:
-  SceneStorageBufferResource(StringID bindingName, std::vector<std::byte> bytes)
-      : m_bindingName(bindingName), m_bytes(std::move(bytes)) {
-    setDirty();
-  }
-
-  ResourceType getType() const override { return ResourceType::StorageBuffer; }
-  const void *getRawData() const override { return m_bytes.data(); }
-  u32 getByteSize() const override { return static_cast<u32>(m_bytes.size()); }
-  StringID getBindingName() const override { return m_bindingName; }
-
-private:
-  StringID m_bindingName;
-  std::vector<std::byte> m_bytes;
-};
-
-template <typename T>
-std::vector<std::byte> copyBytes(std::span<const T> values) {
-  std::vector<std::byte> bytes(sizeof(T) * values.size());
-  if (!bytes.empty()) {
-    std::memcpy(bytes.data(), values.data(), bytes.size());
-  }
-  return bytes;
-}
-
-std::vector<std::byte> copySourceMaterialRecordBytes(
-    std::span<const SourceLocalMaterialRecord> records) {
-  usize byteCount = 0;
-  for (const SourceLocalMaterialRecord &record : records) {
-    byteCount += record.bytes.size();
-  }
-  std::vector<std::byte> bytes(byteCount);
-  usize cursor = 0;
-  for (const SourceLocalMaterialRecord &record : records) {
-    if (record.bytes.empty()) {
-      continue;
-    }
-    std::memcpy(bytes.data() + cursor, record.bytes.data(),
-                record.bytes.size());
-    cursor += record.bytes.size();
-  }
-  return bytes;
-}
-
-void appendRenderStorageDescriptor(DescriptorResourceList &out,
-                                   const SceneResourceTable &resources,
-                                   StringID bindingName,
-                                   std::vector<std::byte> bytes) {
-  if (bytes.empty()) {
-    return;
-  }
-  const GpuResourceRef resource = resources.addRenderGpuResource(
-      std::make_unique<SceneStorageBufferResource>(bindingName,
-                                                   std::move(bytes)));
-  if (resource.isValid()) {
-    out.emplace_back(resource.get());
-  }
-}
-
-DescriptorResourceRef makeRealtimeSceneTextureArray(
-    const SceneResourceTable &resources,
-    std::span<const std::reference_wrapper<const CombinedTextureSampler>>
-        uploadTextures) {
-  if (uploadTextures.size() > kRealtimeSceneTextureDescriptorCount) {
-    throw std::logic_error(
-        "realtime PBR scene texture descriptor array supports at most 256 "
-        "textures");
-  }
-
-  std::vector<TextureSamplerRef> textures;
-  textures.reserve(kRealtimeSceneTextureDescriptorCount);
-  for (const auto &texture : uploadTextures) {
-    textures.emplace_back(texture.get());
-  }
-
-  TextureSamplerRef paddingTexture;
-  if (!textures.empty()) {
-    paddingTexture = textures.front();
-  } else {
-    paddingTexture = resources.addRenderTextureSampler(
-        std::make_unique<CombinedTextureSampler>(createWhiteTexture()));
-  }
-  if (!paddingTexture.isValid()) {
-    throw std::logic_error("realtime scene texture descriptor padding missing");
-  }
-  while (textures.size() < kRealtimeSceneTextureDescriptorCount) {
-    textures.emplace_back(paddingTexture.get());
-  }
-
-  return DescriptorResourceRef::textureArray(StringID("SceneTextures"),
-                                             std::move(textures));
-}
-
-void appendRealtimeSceneGpuMaterialResources(
-    DescriptorResourceList &out, const SceneResourceTable &resources) {
-  const SceneResourceTableUploadView uploadView = resources.buildUploadView();
-  appendRenderStorageDescriptor(out, resources, StringID("SceneObjects"),
-                                copyBytes(uploadView.objects));
-  appendRenderStorageDescriptor(out, resources, StringID("SceneMaterials"),
-                                copyBytes(uploadView.materials));
-  appendRenderStorageDescriptor(out, resources, StringID("SceneMaterialRefs"),
-                                copyBytes(uploadView.materialRefs));
-  appendRenderStorageDescriptor(
-      out, resources, StringID("SceneSourceMaterialRecords"),
-      copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords));
-  appendRenderStorageDescriptor(out, resources, StringID("SceneDraws"),
-                                copyBytes(uploadView.draws));
-  out.push_back(makeRealtimeSceneTextureArray(resources, uploadView.textures));
-}
 
 GpuResourceRef makeZeroForwardLightUbo(const SceneResourceTable &resources) {
   auto ubo = std::make_unique<DirectionalLightData>();
@@ -350,8 +234,7 @@ per-renderable descriptor 列表末尾 — backend 按 binding name 命中，不
 */
 DescriptorResourceList
 Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
-  DescriptorResourceList out;
-  appendRealtimeSceneGpuMaterialResources(out, m_resources);
+  DescriptorResourceList out = m_resources.getRealtimeSceneDescriptorResources();
 
   // Cameras filter by target only. A camera draws to one target; whether a
   // pass draws to that target is orthogonal to the camera's identity.
@@ -442,8 +325,7 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
 DescriptorResourceList
 Scene::getSceneLevelResources(StringID pass,
                               const CameraResource &camera) const {
-  DescriptorResourceList out;
-  appendRealtimeSceneGpuMaterialResources(out, m_resources);
+  DescriptorResourceList out = m_resources.getRealtimeSceneDescriptorResources();
 
   if (camera.active) {
     auto camUbo = m_resources.buildRenderCameraUboResource(camera);

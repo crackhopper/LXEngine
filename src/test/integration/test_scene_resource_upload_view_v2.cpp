@@ -879,6 +879,84 @@ void testLiveCameraSceneLevelResourcesReuseStableCameraUbo() {
          "live camera updates should dirty the stable CameraUBO for upload");
 }
 
+void testRealtimeSceneObjectTransformUpdatesDirtyStablePayloadResource() {
+  SceneResourceTable table;
+  const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
+  const MaterialHandle material =
+      table.registerMaterial(MaterialInstance::createUnique(
+          MaterialTemplate::create("matte")));
+
+  ObjectResource object;
+  object.mesh = mesh;
+  object.material = material;
+  object.worldBounds = BoundingBox{{0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}};
+  const ObjectHandle objectHandle = table.registerObject(object);
+  EXPECT(objectHandle.isValid(), "object fixture should register");
+
+  const DescriptorResourceList firstResources =
+      table.getRealtimeSceneDescriptorResources();
+  const IGpuResource *firstObjects =
+      findBindingResource(firstResources, StringID("SceneObjects"));
+  EXPECT(firstObjects != nullptr,
+         "realtime scene descriptors should include SceneObjects");
+  if (firstObjects == nullptr) {
+    return;
+  }
+  const ResourceCacheIdentity firstIdentity =
+      firstObjects->getBackendCacheIdentity();
+  firstObjects->clearDirty();
+
+  const u64 beforeSelection =
+      table.descriptorResourceSelectionGeneration();
+  const u64 beforeDescriptor = table.descriptorUploadGeneration();
+  const u64 beforeVolatile = table.volatileUploadGeneration();
+  const u64 beforeUpload = table.uploadGeneration();
+
+  object.objectToWorld = Mat4f::translate(Vec3f{2.0f, 0.0f, -1.0f});
+  object.worldToObject = Mat4f::translate(Vec3f{-2.0f, 0.0f, 1.0f});
+  object.worldBounds = BoundingBox{{2.0f, 0.0f, -1.0f}, {3.0f, 1.0f, 0.0f}};
+  table.updateObject(objectHandle, object);
+
+  EXPECT(table.descriptorResourceSelectionGeneration() == beforeSelection,
+         "transform-only updateObject should not rebuild render inputs");
+  EXPECT(table.descriptorUploadGeneration() == beforeDescriptor,
+         "transform-only updateObject should not rebuild descriptor upload "
+         "plans");
+  EXPECT(table.volatileUploadGeneration() == beforeVolatile + 1,
+         "transform-only updateObject should use the dirty resource upload "
+         "path");
+  EXPECT(table.uploadGeneration() == beforeUpload + 1,
+         "transform-only updateObject should still advance upload generation");
+
+  table.refreshDirtyRealtimeScenePayloadResources();
+  const DescriptorResourceList secondResources =
+      table.getRealtimeSceneDescriptorResources();
+  const IGpuResource *secondObjects =
+      findBindingResource(secondResources, StringID("SceneObjects"));
+  EXPECT(secondObjects != nullptr,
+         "refreshed realtime descriptors should keep SceneObjects");
+  if (secondObjects == nullptr) {
+    return;
+  }
+  EXPECT(secondObjects->getBackendCacheIdentity() == firstIdentity,
+         "transform-only updates should keep the SceneObjects resource "
+         "identity stable");
+  EXPECT(secondObjects->isDirty(),
+         "transform-only updates should dirty the stable SceneObjects payload");
+  EXPECT(secondObjects->getByteSize() == sizeof(SceneGpuObjectRecord),
+         "single object fixture should upload one SceneObjects record");
+
+  const auto *records =
+      static_cast<const SceneGpuObjectRecord *>(secondObjects->getRawData());
+  EXPECT(records != nullptr, "SceneObjects resource should expose CPU bytes");
+  if (records != nullptr) {
+    EXPECT(records[0].objectToWorld[3].x == 2.0f &&
+               records[0].objectToWorld[3].y == 0.0f &&
+               records[0].objectToWorld[3].z == -1.0f,
+           "dirty SceneObjects payload should contain the updated transform");
+  }
+}
+
 void testIblActivationReplacesOldLiveHandlesOnSuccess() {
   SceneResourceTable table;
   const IblEnvironmentActivationResult first =
@@ -1800,6 +1878,7 @@ int main() {
   testSceneLevelResourcesIncludeIblSamplerFallbacks();
   testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights();
   testLiveCameraSceneLevelResourcesReuseStableCameraUbo();
+  testRealtimeSceneObjectTransformUpdatesDirtyStablePayloadResource();
   testIblActivationReplacesOldLiveHandlesOnSuccess();
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();

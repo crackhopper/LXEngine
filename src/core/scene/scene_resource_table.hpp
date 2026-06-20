@@ -18,6 +18,7 @@
 #include "core/scene/visibility_mask.hpp"
 #include "core/utils/string_table.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -291,6 +292,9 @@ public:
   [[nodiscard]] GpuResourceRef
   buildSceneLightsUboResource(const std::vector<LightHandle> &lightHandles,
                               StringID pass) const;
+  [[nodiscard]] DescriptorResourceList
+  getRealtimeSceneDescriptorResources() const;
+  void refreshDirtyRealtimeScenePayloadResources() const;
   void setIblEnvironmentResources(IblEnvironmentResources resources);
   [[nodiscard]] IblEnvironmentActivationResult
   activateIblEnvironment(IblEnvironmentActivationPayload payload);
@@ -475,6 +479,13 @@ private:
   validateActiveIblEnvironment(const ActiveIblEnvironmentResources &active,
                                std::vector<std::string> &diagnostics) const;
   void updateSurfaceLightingIblReadiness();
+  [[nodiscard]] GpuResourceRef
+  upsertRealtimeSceneStorageResource(StringID bindingName,
+                                     std::vector<std::byte> bytes) const;
+  void refreshRealtimeScenePayloadResources(
+      const SceneResourceTableUploadView &uploadView, bool forceAll) const;
+  void markRealtimeSceneObjectsPayloadDirty();
+  void markRealtimeSceneDescriptorPayloadsDirty();
 
   void advanceUploadGeneration();
   void advanceDescriptorResourceSelectionGeneration();
@@ -594,6 +605,10 @@ private:
   std::vector<u32> m_resourceMetadataGenerations;
   mutable std::vector<std::unique_ptr<IGpuResource>> m_renderGpuResources;
   mutable std::vector<CombinedTextureSamplerUniquePtr> m_renderTextureSamplers;
+  mutable std::vector<std::unique_ptr<IGpuResource>>
+      m_realtimeSceneGpuResources;
+  mutable bool m_realtimeSceneObjectsPayloadDirty = true;
+  mutable bool m_realtimeSceneDescriptorPayloadsDirty = true;
 };
 
 } // namespace LX_core

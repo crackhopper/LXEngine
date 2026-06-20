@@ -4262,6 +4262,7 @@ void testHierarchyChangeSyncsRuntimeResources() {
   const u64 beforeSelection =
       scene->resources().descriptorResourceSelectionGeneration();
   const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
+  const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
   child->setParent(secondParent);
 
   const auto object = scene->resources().resolve(objectHandle);
@@ -4273,12 +4274,15 @@ void testHierarchyChangeSyncsRuntimeResources() {
 
   EXPECT(scene->runtimeNodeGeneration() == beforeRuntime + 1,
          "hierarchy changes should advance structural runtime node generation");
-  EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeSelection,
-         "hierarchy changes should refresh descendant object descriptor "
-         "selection");
-  EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
-         "hierarchy changes should refresh descriptor upload plans");
+         "hierarchy transform changes should not rebuild descendant object "
+         "descriptor selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor,
+         "hierarchy transform changes should not rebuild descriptor upload "
+         "plans");
+  EXPECT(scene->resources().volatileUploadGeneration() > beforeVolatile,
+         "hierarchy transform changes should refresh dirty upload data");
   EXPECT(approxEqual(objectTranslation.x, 8.0f) &&
              approxEqual(objectTranslation.y, 0.0f) &&
              approxEqual(objectTranslation.z, 0.0f),

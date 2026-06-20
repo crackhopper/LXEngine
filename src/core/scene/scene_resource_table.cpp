@@ -12,8 +12,11 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -23,9 +26,108 @@
 namespace LX_core {
 namespace {
 
+constexpr usize kRealtimeSceneTextureDescriptorCount = 256;
+
 [[nodiscard]] u32 nextGeneration(const u32 current) {
   const u32 next = current + 1;
   return next == 0 ? 1 : next;
+}
+
+class SceneStorageBufferResource final : public IGpuResource {
+public:
+  SceneStorageBufferResource(StringID bindingName, std::vector<std::byte> bytes)
+      : m_bindingName(bindingName), m_bytes(std::move(bytes)) {
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::StorageBuffer; }
+  const void *getRawData() const override { return m_bytes.data(); }
+  u32 getByteSize() const override { return static_cast<u32>(m_bytes.size()); }
+  StringID getBindingName() const override { return m_bindingName; }
+
+  void updateBytes(std::vector<std::byte> bytes) {
+    if (m_bytes.size() == bytes.size() &&
+        (m_bytes.empty() ||
+         std::memcmp(m_bytes.data(), bytes.data(), m_bytes.size()) == 0)) {
+      return;
+    }
+    m_bytes = std::move(bytes);
+    setDirty();
+  }
+
+private:
+  StringID m_bindingName;
+  std::vector<std::byte> m_bytes;
+};
+
+template <typename T>
+std::vector<std::byte> copyBytes(std::span<const T> values) {
+  std::vector<std::byte> bytes(sizeof(T) * values.size());
+  if (!bytes.empty()) {
+    std::memcpy(bytes.data(), values.data(), bytes.size());
+  }
+  return bytes;
+}
+
+std::vector<std::byte> copySourceMaterialRecordBytes(
+    std::span<const SourceLocalMaterialRecord> records) {
+  usize byteCount = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    byteCount += record.bytes.size();
+  }
+  std::vector<std::byte> bytes(byteCount);
+  usize cursor = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    if (record.bytes.empty()) {
+      continue;
+    }
+    std::memcpy(bytes.data() + cursor, record.bytes.data(),
+                record.bytes.size());
+    cursor += record.bytes.size();
+  }
+  return bytes;
+}
+
+void appendRealtimeStorageDescriptor(DescriptorResourceList &out,
+                                     const GpuResourceRef &resource) {
+  if (!resource.isValid() || resource.get().getByteSize() == 0) {
+    return;
+  }
+  out.emplace_back(resource.get());
+}
+
+DescriptorResourceRef makeRealtimeSceneTextureArray(
+    const SceneResourceTable &resources,
+    std::span<const std::reference_wrapper<const CombinedTextureSampler>>
+        uploadTextures) {
+  if (uploadTextures.size() > kRealtimeSceneTextureDescriptorCount) {
+    throw std::logic_error(
+        "realtime PBR scene texture descriptor array supports at most 256 "
+        "textures");
+  }
+
+  std::vector<TextureSamplerRef> textures;
+  textures.reserve(kRealtimeSceneTextureDescriptorCount);
+  for (const auto &texture : uploadTextures) {
+    textures.emplace_back(texture.get());
+  }
+
+  TextureSamplerRef paddingTexture;
+  if (!textures.empty()) {
+    paddingTexture = textures.front();
+  } else {
+    paddingTexture = resources.addRenderTextureSampler(
+        std::make_unique<CombinedTextureSampler>(createWhiteTexture()));
+  }
+  if (!paddingTexture.isValid()) {
+    throw std::logic_error("realtime scene texture descriptor padding missing");
+  }
+  while (textures.size() < kRealtimeSceneTextureDescriptorCount) {
+    textures.emplace_back(paddingTexture.get());
+  }
+
+  return DescriptorResourceRef::textureArray(StringID("SceneTextures"),
+                                             std::move(textures));
 }
 
 [[nodiscard]] u64 nextGeneration(const u64 current) {
@@ -829,6 +931,7 @@ void SceneResourceTable::advanceVolatileUploadGeneration() {
 }
 
 void SceneResourceTable::markDescriptorUploadDirty() {
+  markRealtimeSceneDescriptorPayloadsDirty();
   advanceDescriptorUploadGeneration();
   advanceUploadGeneration();
 }
@@ -841,6 +944,15 @@ void SceneResourceTable::markDescriptorResourceSelectionDirty() {
 void SceneResourceTable::markVolatileUploadDirty() {
   advanceVolatileUploadGeneration();
   advanceUploadGeneration();
+}
+
+void SceneResourceTable::markRealtimeSceneObjectsPayloadDirty() {
+  m_realtimeSceneObjectsPayloadDirty = true;
+}
+
+void SceneResourceTable::markRealtimeSceneDescriptorPayloadsDirty() {
+  m_realtimeSceneObjectsPayloadDirty = true;
+  m_realtimeSceneDescriptorPayloadsDirty = true;
 }
 
 void SceneResourceTable::advanceGraphGeneration() {
@@ -1949,8 +2061,20 @@ void SceneResourceTable::updateObject(ObjectHandle handle,
   if (!resolved.has_value()) {
     return;
   }
+  const ObjectResource &previous = resolved->get();
+  const bool renderInputSelectionChanged =
+      previous.mesh != object.mesh || previous.material != object.material ||
+      previous.renderType != object.renderType ||
+      previous.visibilityMask != object.visibilityMask ||
+      previous.visible != object.visible ||
+      previous.debugOnly != object.debugOnly;
   resolved->get() = std::move(object);
-  markDescriptorResourceSelectionDirty();
+  if (renderInputSelectionChanged) {
+    markDescriptorResourceSelectionDirty();
+    return;
+  }
+  markRealtimeSceneObjectsPayloadDirty();
+  markVolatileUploadDirty();
 }
 
 void SceneResourceTable::updateCamera(CameraHandle handle,
@@ -2362,6 +2486,90 @@ GpuResourceRef SceneResourceTable::buildSceneLightsUboResource(
             static_cast<i32>(spotCount), 0};
   m_sceneLightsUbo->setDirty();
   return GpuResourceRef{*m_sceneLightsUbo};
+}
+
+GpuResourceRef SceneResourceTable::upsertRealtimeSceneStorageResource(
+    StringID bindingName, std::vector<std::byte> bytes) const {
+  for (std::unique_ptr<IGpuResource> &resource : m_realtimeSceneGpuResources) {
+    if (!resource || resource->getBindingName() != bindingName) {
+      continue;
+    }
+    auto *storage = dynamic_cast<SceneStorageBufferResource *>(resource.get());
+    if (storage == nullptr || storage->getByteSize() != bytes.size()) {
+      resource = std::make_unique<SceneStorageBufferResource>(
+          bindingName, std::move(bytes));
+    } else {
+      storage->updateBytes(std::move(bytes));
+    }
+    return GpuResourceRef{*resource};
+  }
+
+  m_realtimeSceneGpuResources.push_back(
+      std::make_unique<SceneStorageBufferResource>(bindingName,
+                                                   std::move(bytes)));
+  return GpuResourceRef{*m_realtimeSceneGpuResources.back()};
+}
+
+void SceneResourceTable::refreshRealtimeScenePayloadResources(
+    const SceneResourceTableUploadView &uploadView, bool forceAll) const {
+  const bool updateObjects =
+      forceAll || m_realtimeSceneObjectsPayloadDirty ||
+      m_realtimeSceneDescriptorPayloadsDirty;
+  const bool updateDescriptorPayloads =
+      forceAll || m_realtimeSceneDescriptorPayloadsDirty;
+
+  if (updateObjects) {
+    (void)upsertRealtimeSceneStorageResource(StringID("SceneObjects"),
+                                             copyBytes(uploadView.objects));
+  }
+  if (updateDescriptorPayloads) {
+    (void)upsertRealtimeSceneStorageResource(StringID("SceneMaterials"),
+                                             copyBytes(uploadView.materials));
+    (void)upsertRealtimeSceneStorageResource(
+        StringID("SceneMaterialRefs"), copyBytes(uploadView.materialRefs));
+    (void)upsertRealtimeSceneStorageResource(
+        StringID("SceneSourceMaterialRecords"),
+        copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords));
+    (void)upsertRealtimeSceneStorageResource(StringID("SceneDraws"),
+                                             copyBytes(uploadView.draws));
+  }
+
+  if (updateObjects) {
+    m_realtimeSceneObjectsPayloadDirty = false;
+  }
+  if (updateDescriptorPayloads) {
+    m_realtimeSceneDescriptorPayloadsDirty = false;
+  }
+}
+
+DescriptorResourceList
+SceneResourceTable::getRealtimeSceneDescriptorResources() const {
+  const SceneResourceTableUploadView uploadView = buildUploadView();
+  const bool forceAll = m_realtimeSceneGpuResources.empty();
+  if (forceAll || m_realtimeSceneObjectsPayloadDirty ||
+      m_realtimeSceneDescriptorPayloadsDirty) {
+    refreshRealtimeScenePayloadResources(uploadView, forceAll);
+  }
+
+  DescriptorResourceList out;
+  for (const std::unique_ptr<IGpuResource> &resource :
+       m_realtimeSceneGpuResources) {
+    if (resource) {
+      appendRealtimeStorageDescriptor(out, GpuResourceRef{*resource});
+    }
+  }
+  out.push_back(makeRealtimeSceneTextureArray(*this, uploadView.textures));
+  return out;
+}
+
+void SceneResourceTable::refreshDirtyRealtimeScenePayloadResources() const {
+  if (m_realtimeSceneGpuResources.empty() ||
+      (!m_realtimeSceneObjectsPayloadDirty &&
+       !m_realtimeSceneDescriptorPayloadsDirty)) {
+    return;
+  }
+  const SceneResourceTableUploadView uploadView = buildUploadView();
+  refreshRealtimeScenePayloadResources(uploadView, /*forceAll=*/false);
 }
 
 void SceneResourceTable::setIblEnvironmentResources(
@@ -3020,6 +3228,8 @@ void SceneResourceTable::beginRenderResourceScope() {
   m_renderMaterialHandles.clear();
   m_renderGpuResources.clear();
   m_renderTextureSamplers.clear();
+  m_realtimeSceneGpuResources.clear();
+  markRealtimeSceneDescriptorPayloadsDirty();
 }
 
 MaterialHandle

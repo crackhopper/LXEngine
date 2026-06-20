@@ -2052,6 +2052,9 @@ public:
 
     syncPreparedWorkIfInputOrDescriptorGenerationDirty(
         /*waitForSharedHostBuffers=*/true);
+    if (m_scene) {
+      m_scene->resources().refreshDirtyRealtimeScenePayloadResources();
+    }
 
     if (m_swapchain &&
         preparedFramePassUploadPlansRequireSharedHostBufferSync()) {
