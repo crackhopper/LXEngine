@@ -1460,7 +1460,7 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();
         materialComponent.has_value()) {
-      if (materialUri.has_value() ||
+      if (!materialUri.empty() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
