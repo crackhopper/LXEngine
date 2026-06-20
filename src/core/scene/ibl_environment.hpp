@@ -80,6 +80,31 @@ struct alignas(16) EnvironmentLightingData final : public IGpuResource {
 using EnvironmentLightingDataUniquePtr =
     std::unique_ptr<EnvironmentLightingData>;
 
+struct alignas(16) SkyboxData final : public IGpuResource {
+  struct Param {
+    Vec4f colorIntensity{1.0f, 1.0f, 1.0f, 1.0f};
+    Vec4f rotation{0.0f, 0.0f, 0.0f, 0.0f};
+  };
+
+  void set(Vec3f color, float intensity, float rotationRadians) {
+    param.colorIntensity = Vec4f{color.x, color.y, color.z, intensity};
+    param.rotation = Vec4f{rotationRadians, 0.0f, 0.0f, 0.0f};
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::UniformBuffer; }
+  const void *getRawData() const override { return &param; }
+  u32 getByteSize() const override { return sizeof(Param); }
+  StringID getBindingName() const override {
+    static const StringID kName("SkyboxUBO");
+    return kName;
+  }
+
+  Param param{};
+};
+
+using SkyboxDataUniquePtr = std::unique_ptr<SkyboxData>;
+
 struct alignas(16) SurfaceLightingData final : public IGpuResource {
   struct alignas(16) Param {
     u32 enableIblLighting = 0;

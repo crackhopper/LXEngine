@@ -1648,6 +1648,7 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
     registerEnvironmentLightingResources(
         *m_renderFeatures[handle.index].resource);
+    registerSkyboxResources(*m_renderFeatures[handle.index].resource);
     registerSurfaceLightingResources(*m_renderFeatures[handle.index].resource);
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
     registerBloomResources(*m_renderFeatures[handle.index].resource);
@@ -2675,6 +2676,62 @@ SceneResourceTable::getEnvironmentLightingResources() const {
   return out;
 }
 
+void SceneResourceTable::registerSkyboxResources(const RenderFeature &feature) {
+  if (feature.feature != "skybox") {
+    return;
+  }
+
+  const auto *environmentMap = findFeatureParameter(feature, "environmentMap");
+  if (environmentMap == nullptr || environmentMap->uri.empty()) {
+    m_builtinSkyboxMap.reset();
+    m_skyboxTexture.reset();
+    m_skyboxUbo.reset();
+    markDescriptorUploadDirty();
+    return;
+  }
+
+  m_builtinSkyboxMap.reset();
+  m_skyboxTexture.reset();
+  if (environmentMap->uri == ResourceUri("builtin:env/white_cube")) {
+    m_builtinSkyboxMap = makeBuiltinWhiteEnvironmentCube();
+    m_builtinSkyboxMap->setBindingName(StringID("SkyboxMap"));
+    m_builtinSkyboxMap->setDirty();
+  } else if (const auto texture = findTexture(environmentMap->uri)) {
+    auto resolved = resolve(*texture);
+    if (resolved.has_value()) {
+      resolved->get().setBindingName(StringID("SkyboxMap"));
+      m_skyboxTexture = *texture;
+    }
+  }
+
+  auto ubo = std::make_unique<SkyboxData>();
+  const auto *color = findFeatureParameter(feature, "color");
+  const auto *intensity = findFeatureParameter(feature, "intensity");
+  const auto *rotation = findFeatureParameter(feature, "rotation");
+  ubo->set(color != nullptr ? parseFeatureVec3(*color)
+                            : Vec3f{1.0f, 1.0f, 1.0f},
+           intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
+           rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
+  m_skyboxUbo = std::move(ubo);
+  markDescriptorUploadDirty();
+}
+
+std::vector<GpuResourceRef> SceneResourceTable::getSkyboxResources() const {
+  std::vector<GpuResourceRef> out;
+  if (m_builtinSkyboxMap) {
+    out.emplace_back(*m_builtinSkyboxMap);
+  } else if (m_skyboxTexture.has_value()) {
+    auto resolved = resolve(*m_skyboxTexture);
+    if (resolved.has_value()) {
+      out.emplace_back(resolved->get());
+    }
+  }
+  if (m_skyboxUbo) {
+    out.emplace_back(*m_skyboxUbo);
+  }
+  return out;
+}
+
 void SceneResourceTable::registerSurfaceLightingResources(
     const RenderFeature &feature) {
   if (feature.feature != "surfaceLighting") {
@@ -2735,6 +2792,25 @@ SceneResourceTable::environmentRuntimeState() const {
 bool SceneResourceTable::hasEnvironmentNode() const {
   return m_environmentRuntimeState.has_value() &&
          m_environmentRuntimeState->nodePresent;
+}
+
+void SceneResourceTable::setSkyboxRuntimeState(SceneSkyboxRuntimeState state) {
+  if (state.generation == 0) {
+    const u64 current =
+        m_skyboxRuntimeState.has_value() ? m_skyboxRuntimeState->generation : 0;
+    state.generation = nextGeneration(current);
+  }
+  m_skyboxRuntimeState = state;
+  markFeatureRuntimeDirty();
+}
+
+std::optional<SceneSkyboxRuntimeState>
+SceneResourceTable::skyboxRuntimeState() const {
+  return m_skyboxRuntimeState;
+}
+
+bool SceneResourceTable::hasSkyboxNode() const {
+  return m_skyboxRuntimeState.has_value() && m_skyboxRuntimeState->nodePresent;
 }
 
 void SceneResourceTable::addEnvironmentIblBakeRequest(

@@ -1,0 +1,31 @@
+schema: lxe.render-feature.v1
+name: FootprintCourtEnvironmentLighting
+feature: environmentLighting
+level: shader
+shader:
+  uri: features/environment_lighting
+parameters:
+  environmentMap:
+    kind: textureCube
+    uri: assets/env/khronos/footprint_court/ggx/specular.ktx2
+    valueType: linear-radiance
+    binding: SkyboxMap
+    required: true
+  color:
+    kind: vec3
+    value: [1.0, 1.0, 1.0]
+    binding: EnvironmentLightingUBO
+    member: color
+    required: true
+  intensity:
+    kind: float
+    value: 1.0
+    binding: EnvironmentLightingUBO
+    member: intensity
+    required: true
+  rotation:
+    kind: float
+    value: 0.0
+    binding: EnvironmentLightingUBO
+    member: rotation
+    required: true

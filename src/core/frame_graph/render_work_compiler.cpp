@@ -972,7 +972,7 @@ findFirstDirectionalLight(const SceneResourceTable &resources) {
           : static_cast<u32>(uploadView.materialRefs.size());
   params.maxBounce = parseU32RuntimeFeatureValue(
       context, StringID("feature.offlineRayTracer.maxBounce"), 1u);
-  params.shadowsEnabled = 0u;
+  params.shadowsEnabled = context.scene().renderSettings().shadows ? 1u : 0u;
   params.compareMode = parseCompareModeRuntimeFeatureValue(context);
   return params;
 }
@@ -1171,26 +1171,26 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
              : materialIt->typedIndex;
 }
 
-[[nodiscard]] std::optional<std::reference_wrapper<const PrimitiveHitGroup>>
-findPrimitiveHitGroup(const RayProgramTable &table, u32 participantIndex,
+[[nodiscard]] std::optional<std::reference_wrapper<const PrimitiveHitShader>>
+findPrimitiveHitShader(const RayProgramTable &table, u32 participantIndex,
                       u32 primitiveIndex) {
   const auto it = std::find_if(
-      table.primitiveHitGroups.begin(), table.primitiveHitGroups.end(),
-      [participantIndex, primitiveIndex](const PrimitiveHitGroup &group) {
+      table.primitiveHitShaders.begin(), table.primitiveHitShaders.end(),
+      [participantIndex, primitiveIndex](const PrimitiveHitShader &group) {
         return group.participantIndex == participantIndex &&
                group.primitiveIndex == primitiveIndex;
       });
-  if (it == table.primitiveHitGroups.end()) {
+  if (it == table.primitiveHitShaders.end()) {
     return std::nullopt;
   }
   return std::cref(*it);
 }
 
-[[nodiscard]] std::vector<RayPrimitiveHitGroupRecord>
-buildRayPrimitiveHitGroupRecords(const SceneResourceTableUploadView &uploadView,
+[[nodiscard]] std::vector<RayPrimitiveHitShaderRecord>
+buildRayPrimitiveHitShaderRecords(const SceneResourceTableUploadView &uploadView,
                                  const RenderComputeInput &compute,
                                  const RayProgramTable &table) {
-  std::vector<RayPrimitiveHitGroupRecord> originalRecords(
+  std::vector<RayPrimitiveHitShaderRecord> originalRecords(
       uploadView.primitives.size());
   for (u32 participantIndex = 0; participantIndex < compute.sceneParticipants.size();
        ++participantIndex) {
@@ -1198,11 +1198,11 @@ buildRayPrimitiveHitGroupRecords(const SceneResourceTableUploadView &uploadView,
         compute.sceneParticipants[participantIndex];
     const u32 materialIndex =
         materialRecordIndexForHandle(uploadView, participant.material);
-    const auto participantHitGroup =
-        findPrimitiveHitGroup(table, participantIndex, 0u);
-    const u32 participantHitGroupIndex =
-        participantHitGroup.has_value()
-            ? participantHitGroup->get().hitGroupIndex
+    const auto participantHitShader =
+        findPrimitiveHitShader(table, participantIndex, 0u);
+    const u32 participantHitShaderIndex =
+        participantHitShader.has_value()
+            ? participantHitShader->get().hitShaderIndex
             : 0u;
     u32 localPrimitiveIndex = 0;
     for (;;) {
@@ -1215,8 +1215,8 @@ buildRayPrimitiveHitGroupRecords(const SceneResourceTableUploadView &uploadView,
       if (primitiveIndex == u32_max) {
         break;
       }
-      originalRecords[primitiveIndex] = RayPrimitiveHitGroupRecord{
-          .hitGroupIndex = participantHitGroupIndex,
+      originalRecords[primitiveIndex] = RayPrimitiveHitShaderRecord{
+          .hitShaderIndex = participantHitShaderIndex,
           .materialIndex = materialIndex == u32_max ? 0u : materialIndex,
       };
       ++localPrimitiveIndex;
@@ -1227,12 +1227,12 @@ buildRayPrimitiveHitGroupRecords(const SceneResourceTableUploadView &uploadView,
   }
 
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
-  std::vector<RayPrimitiveHitGroupRecord> records;
+  std::vector<RayPrimitiveHitShaderRecord> records;
   records.reserve(bvh.primitives().size());
   for (const SceneSoftwareBvhPrimitive &primitive : bvh.primitives()) {
     records.push_back(primitive.primitiveIndex < originalRecords.size()
                           ? originalRecords[primitive.primitiveIndex]
-                          : RayPrimitiveHitGroupRecord{});
+                          : RayPrimitiveHitShaderRecord{});
   }
   return records;
 }
@@ -1288,12 +1288,12 @@ buildRayMaterialRecords(const SceneResourceTable &resources,
     if (!material.has_value()) {
       continue;
     }
-    const auto hitGroup =
-        findPrimitiveHitGroup(table, participantIndex, 0u);
-    const u32 hitGroupIndex =
-        hitGroup.has_value() ? hitGroup->get().hitGroupIndex : 0u;
+    const auto hitShader =
+        findPrimitiveHitShader(table, participantIndex, 0u);
+    const u32 hitShaderIndex =
+        hitShader.has_value() ? hitShader->get().hitShaderIndex : 0u;
     RayMaterialRecord record;
-    record.hitGroupIndex = hitGroupIndex;
+    record.hitShaderIndex = hitShaderIndex;
     const u32 white = textureSlotForMaterialParameter(
         resources, uploadView, material->get(), "baseColorTexture", 0u);
     record.baseColorTexture = white;
@@ -1342,12 +1342,12 @@ void appendRayProgramResources(const RenderWorkBuildContext &context,
   }
   const SceneResourceTable &resources = context.resourceTable();
   const SceneResourceTableUploadView uploadView = resources.buildUploadView();
-  if (shaderConsumesBinding(desc, StringID("RayPrimitiveHitGroups")) &&
-      !descAlreadyHasDescriptor(desc, StringID("RayPrimitiveHitGroups"))) {
-    const auto records = buildRayPrimitiveHitGroupRecords(
+  if (shaderConsumesBinding(desc, StringID("RayPrimitiveHitShaders")) &&
+      !descAlreadyHasDescriptor(desc, StringID("RayPrimitiveHitShaders"))) {
+    const auto records = buildRayPrimitiveHitShaderRecords(
         uploadView, compute, *desc.rayProgramTable);
-    appendStorageIfConsumed(desc, resources, StringID("RayPrimitiveHitGroups"),
-                            copyBytes(std::span<const RayPrimitiveHitGroupRecord>(
+    appendStorageIfConsumed(desc, resources, StringID("RayPrimitiveHitShaders"),
+                            copyBytes(std::span<const RayPrimitiveHitShaderRecord>(
                                 records.data(), records.size())));
   }
   if (shaderConsumesBinding(desc, StringID("RayMaterialRecords")) &&
@@ -1646,6 +1646,77 @@ void validateEnvironmentLightingFeatureBindings(
   }
 }
 
+void validateSkyboxFeatureBindings(const FramePass &pass,
+                                   const RenderWorkBuildContext &context,
+                                   RenderInputDesc &desc) {
+  if (!passUsesFeature(pass, "feature.skybox")) {
+    return;
+  }
+  const ShaderResourceBinding *skyboxMap =
+      findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxMap");
+  const ShaderResourceBinding *ubo =
+      findReflectedBinding(desc.pipelineBuildDesc.bindings, "SkyboxUBO");
+  if (skyboxMap == nullptr && ubo == nullptr) {
+    return;
+  }
+  if (!context.hasScene()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.skybox requires a scene resource table");
+    return;
+  }
+
+  const SceneResourceTable &resources = context.scene().resources();
+  const auto skyboxState = resources.skyboxRuntimeState();
+  if (!skyboxState.has_value() || !skyboxState->nodePresent) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.skybox requires an infinite scene skybox node");
+    return;
+  }
+
+  const auto resolvedFeature = resources.resolve(skyboxState->feature);
+  if (!resolvedFeature.has_value()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "feature.skybox RenderFeature payload is unresolved");
+    return;
+  }
+  const RenderFeature &feature = resolvedFeature->get();
+  if (feature.feature != "skybox") {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "scene skybox node RenderFeature payload is not skybox");
+    return;
+  }
+
+  if (skyboxMap != nullptr) {
+    const auto environmentMap = feature.parameters.find("environmentMap");
+    if (environmentMap == feature.parameters.end() ||
+        environmentMap->second.kind != "textureCube" ||
+        environmentMap->second.binding != "SkyboxMap" ||
+        environmentMap->second.uri.empty()) {
+      reject(desc, RenderInputDiagnosticCode::MissingBinding,
+             "feature.skybox parameter environmentMap does not satisfy "
+             "reflected binding SkyboxMap");
+    }
+  }
+
+  if (ubo == nullptr) {
+    return;
+  }
+  for (const StructMemberInfo &member : ubo->members) {
+    const RenderFeatureParameter *parameter =
+        findParameterForBindingMember(feature, "SkyboxUBO", member.name);
+    if (parameter == nullptr) {
+      reject(desc, RenderInputDiagnosticCode::MissingBinding,
+             "feature.skybox is missing SkyboxUBO." + member.name);
+      continue;
+    }
+    if (!environmentParameterKindMatches(member.name, parameter->kind)) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "feature.skybox parameter for SkyboxUBO." + member.name +
+                 " has incompatible kind " + parameter->kind);
+    }
+  }
+}
+
 void validateSurfaceLightingFeatureRead(const FramePass &pass,
                                         RenderInputDesc &desc) {
   if (findReflectedBinding(desc.pipelineBuildDesc.bindings,
@@ -1745,22 +1816,22 @@ findPassHitShaderTableFeature(const FramePass &pass,
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<std::reference_wrapper<const RayHitGroupProgram>>
-findHitGroupProgram(const RayProgramTable &table, StringID materialType,
+[[nodiscard]] std::optional<std::reference_wrapper<const RayHitShaderProgram>>
+findHitShaderProgram(const RayProgramTable &table, StringID materialType,
                     const ResourceUri &uri) {
   const std::string materialTypeText = stringIdText(materialType);
   const auto it = std::find_if(
-      table.hitGroups.begin(), table.hitGroups.end(),
-      [&](const RayHitGroupProgram &program) {
-        const std::string hitGroupMaterialType =
+      table.hitShaders.begin(), table.hitShaders.end(),
+      [&](const RayHitShaderProgram &program) {
+        const std::string hitShaderMaterialType =
             stringIdText(program.materialType);
         const bool materialTypeMatches =
-            materialTypeText == hitGroupMaterialType ||
-            materialTypeText.rfind(hitGroupMaterialType + "-", 0) == 0;
+            materialTypeText == hitShaderMaterialType ||
+            materialTypeText.rfind(hitShaderMaterialType + "-", 0) == 0;
         return materialTypeMatches &&
                program.uri == uri;
       });
-  if (it == table.hitGroups.end()) {
+  if (it == table.hitShaders.end()) {
     return std::nullopt;
   }
   return std::cref(*it);
@@ -1792,10 +1863,10 @@ void buildRayProgramTable(const FramePass &pass,
   RayProgramTable table;
   table.payload = RayProgramPayload::Radiance;
   table.dispatchFunction = StringID(featureTable.dispatchFunction);
-  table.hitGroups.reserve(featureTable.entries.size());
+  table.hitShaders.reserve(featureTable.entries.size());
   for (const RenderFeatureHitShaderTableEntry &entry : featureTable.entries) {
-    table.hitGroups.push_back(RayHitGroupProgram{
-        .index = entry.index,
+    table.hitShaders.push_back(RayHitShaderProgram{
+        .hitShaderIndex = entry.hitShaderIndex,
         .materialType = StringID(entry.materialType),
         .uri = entry.uri,
         .function = entry.function,
@@ -1823,19 +1894,19 @@ void buildRayProgramTable(const FramePass &pass,
       continue;
     }
     const auto program =
-        findHitGroupProgram(table, participant.materialTypeSignature,
+        findHitShaderProgram(table, participant.materialTypeSignature,
                             hitUri->get());
     if (!program.has_value()) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
              "material hit.radiance.uri is not present in hitShaderTable");
       continue;
     }
-    table.primitiveHitGroups.push_back(PrimitiveHitGroup{
+    table.primitiveHitShaders.push_back(PrimitiveHitShader{
         .participantIndex = i,
         .primitiveIndex = participant.primitiveIndex == u32_max
                               ? 0u
                               : participant.primitiveIndex,
-        .hitGroupIndex = program->get().index,
+        .hitShaderIndex = program->get().hitShaderIndex,
     });
   }
 
@@ -2525,6 +2596,9 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
     }
     if (desc.accepted()) {
       validateEnvironmentLightingFeatureBindings(pass, context, desc);
+    }
+    if (desc.accepted()) {
+      validateSkyboxFeatureBindings(pass, context, desc);
     }
     if (desc.accepted()) {
       validateSurfaceLightingFeatureRead(pass, desc);

@@ -1,0 +1,58 @@
+schema: lxe.render-feature.v1
+name: OfflineRayTracerSkybox
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray_skybox
+hitShaderTable:
+  payload: radiance
+  dispatchFunction: lxDispatchRadianceHit
+  entries:
+    - hitShaderIndex: 0
+      materialType: standard-pbr
+      uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
+      function: lxHitStandardPbrRadiance
+    - hitShaderIndex: 1
+      materialType: unlit-texture
+      uri: assets://shaders/glsl/common/materials/hits/unlit_texture_radiance.glsl
+      function: lxHitUnlitTextureRadiance
+parameters:
+  samples:
+    kind: u32
+    volatile: true
+    binding: SceneFrameParams
+    member: samples
+    required: true
+  maxBounce:
+    kind: u32
+    volatile: true
+    binding: SceneFrameParams
+    member: maxBounce
+    required: true
+  seed:
+    kind: u32
+    volatile: true
+    binding: SceneFrameParams
+    member: seed
+    required: true
+  compareMode:
+    kind: enum
+    volatile: true
+    binding: SceneFrameParams
+    member: compareMode
+    required: true
+    allowedValues: [beauty, albedo]
+resources:
+  acceleration:
+    api: scene-acceleration
+    function: buildSceneAcceleration
+    implementation: software-bvh
+    derived: true
+    volatile: true
+    source: scene.selection
+    output:
+      kind: storage-buffer
+      binding: SceneBvhNodes
+      layout: struct-array
+      elementType: LxSceneBvhNode
+    required: true

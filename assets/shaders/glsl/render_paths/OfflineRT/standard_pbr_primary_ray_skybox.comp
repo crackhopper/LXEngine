@@ -1,0 +1,649 @@
+#version 450
+
+// source-text: OfflineRT standard-pbr primary ray shader.
+// Owns software-BVH traversal, primary camera rays, radiance payload dispatch,
+// and OutputPixels writes for the FrameGraphExecutor OfflineRT path.
+
+#extension GL_EXT_nonuniform_qualifier : require
+
+#include "common/material_surface.glsl"
+#include "common/material_bsdf.glsl"
+#include "common/pbr.glsl"
+#include "common/materials/hits/standard_pbr_radiance.glsl"
+#include "common/materials/hits/unlit_texture_radiance.glsl"
+#include "features/skybox.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+const uint SCENE_ATTRIBUTE_NORMAL0 = 1u;
+const uint SCENE_ATTRIBUTE_UV0 = 2u;
+const uint SCENE_ATTRIBUTE_TANGENT0 = 3u;
+
+struct lxSceneMeshRecord {
+  uint vertexOffset;
+  uint indexOffset;
+  uint indexCount;
+  uint geometryIndex;
+  uint attributeStreamOffset;
+  uint attributeStreamCount;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct lxSceneAttributeStreamRecord {
+  uint semantic;
+  uint valueOffset;
+  uint valueCount;
+  uint components;
+};
+
+struct lxScenePrimitiveRecord {
+  uint indexOffset;
+  uint meshIndex;
+  uint materialIndex;
+  uint objectIndex;
+};
+
+struct lxSceneObjectRecord {
+  mat4 objectToWorld;
+  mat4 worldToObject;
+  vec4 boundsMin;
+  vec4 boundsMax;
+  uvec4 flags;
+};
+
+struct lxSceneBvhNode {
+  vec4 boundsMinLeftFirst;
+  vec4 boundsMaxTriCount;
+};
+
+struct lxRayPrimitiveHitShaderRecord {
+  uint hitShaderIndex;
+  uint materialIndex;
+  uint reserved0;
+  uint reserved1;
+};
+
+struct lxRayMaterialRecord {
+  uint hitShaderIndex;
+  uint baseColorTexture;
+  float metallic;
+  float roughness;
+  uint metallicRoughnessTexture;
+  uint normalTexture;
+  uint occlusionTexture;
+  uint emissiveTexture;
+  vec4 baseColor;
+  vec4 emissive;
+};
+
+layout(std430, binding = 0) readonly buffer ScenePositions {
+  vec4 positions[];
+};
+
+layout(std430, binding = 1) readonly buffer SceneAttributeStreams {
+  lxSceneAttributeStreamRecord attributeStreams[];
+};
+
+layout(std430, binding = 2) readonly buffer SceneAttributeValues {
+  vec4 attributeValues[];
+};
+
+layout(std430, binding = 3) readonly buffer SceneIndices {
+  uint indices[];
+};
+
+layout(std430, binding = 4) readonly buffer SceneMeshes {
+  lxSceneMeshRecord meshes[];
+};
+
+layout(std430, binding = 5) readonly buffer ScenePrimitives {
+  lxScenePrimitiveRecord primitives[];
+};
+
+layout(std430, binding = 6) readonly buffer SceneObjects {
+  lxSceneObjectRecord objects[];
+};
+
+layout(std430, binding = 8) readonly buffer SceneBvhNodes {
+  lxSceneBvhNode bvhNodes[];
+};
+
+layout(std430, binding = 12) readonly buffer RayPrimitiveHitShaders {
+  lxRayPrimitiveHitShaderRecord rayPrimitiveHitShaders[];
+};
+
+layout(std430, binding = 13) readonly buffer RayMaterialRecords {
+  lxRayMaterialRecord rayMaterials[];
+};
+
+layout(std430, binding = 9) readonly buffer SceneFrameParams {
+  vec4 eye;
+  vec4 cameraRight;
+  vec4 cameraUp;
+  vec4 cameraForward;
+  vec4 lightDirectionIntensity;
+  vec4 lightColorEnvironment;
+  vec4 backgroundColor;
+  vec4 reserved;
+  uint width;
+  uint height;
+  uint samples;
+  uint seed;
+  uint primitiveCount;
+  uint bvhNodeCount;
+  uint materialCount;
+  uint maxBounce;
+  uint shadowsEnabled;
+  uint compareMode;
+  uint integrator;
+  uint frameIndex;
+} params;
+
+layout(std430, binding = 10) writeonly buffer OutputPixels {
+  vec4 pixels[];
+};
+
+layout(set = 0, binding = 11) uniform sampler2D SceneTextures[256];
+#define LX_SCENE_TEXTURES_DECLARED 1
+
+const uint BVH_LEAF_NODE_FLAG = 0x80000000u;
+
+uint wangHash(uint value) {
+  value = (value ^ 61u) ^ (value >> 16u);
+  value *= 9u;
+  value = value ^ (value >> 4u);
+  value *= 0x27d4eb2du;
+  value = value ^ (value >> 15u);
+  return value;
+}
+
+float random01(uint seed) {
+  return float(wangHash(seed) & 0x00ffffffu) / float(0x01000000u);
+}
+
+vec4 lxSampleSceneTexture(uint textureSlot, vec2 uv) {
+  return texture(SceneTextures[nonuniformEXT(textureSlot)], uv);
+}
+
+vec3 lxLoadRayNormal(lxRayMaterialRecord material, vec2 uv,
+                     vec3 geometricNormal, mat3 tangentFrame) {
+  vec3 tangentNormal =
+      lxSampleSceneTexture(material.normalTexture, uv).xyz * 2.0 - 1.0;
+  vec3 mapped = normalize(tangentFrame * tangentNormal);
+  return dot(mapped, mapped) > 0.0 ? mapped : normalize(geometricNormal);
+}
+
+LxMaterialSurface lxLoadRayMaterialSurface(uint materialIndex, vec2 uv,
+                                           vec3 geometricNormal,
+                                           mat3 tangentFrame) {
+  uint clampedIndex =
+      params.materialCount == 0u ? 0u : min(materialIndex, params.materialCount - 1u);
+  lxRayMaterialRecord material = rayMaterials[clampedIndex];
+  vec4 baseColorTex = lxSampleSceneTexture(material.baseColorTexture, uv);
+  vec4 metallicRoughnessTex =
+      lxSampleSceneTexture(material.metallicRoughnessTexture, uv);
+
+  LxMaterialSurface surface;
+  surface.baseColor = material.baseColor.rgb * baseColorTex.rgb;
+  surface.alpha = material.baseColor.a * baseColorTex.a;
+  surface.metallic = clamp(material.metallic * metallicRoughnessTex.b,
+                           0.0, 1.0);
+  surface.roughness = clamp(material.roughness * metallicRoughnessTex.g,
+                            0.04, 1.0);
+  surface.normal =
+      lxLoadRayNormal(material, uv, geometricNormal, tangentFrame);
+  surface.ao = lxSampleSceneTexture(material.occlusionTexture, uv).r;
+  surface.emissive =
+      material.emissive.rgb *
+      lxSampleSceneTexture(material.emissiveTexture, uv).rgb;
+  return surface;
+}
+
+struct LxRadianceDispatchInput {
+  uint hitShaderIndex;
+  LxMaterialSurface surface;
+  vec3 hitPosition;
+  vec3 viewDirection;
+  vec3 lightDirection;
+  vec3 lightColor;
+  float lightIntensity;
+  float visibility;
+};
+
+vec3 lxDispatchRadianceHit(LxRadianceDispatchInput dispatchInput) {
+  if (dispatchInput.hitShaderIndex == 1u) {
+    LxUnlitTextureRadianceHitInput hitInput;
+    hitInput.baseColor = dispatchInput.surface.baseColor;
+    LxUnlitTextureRadianceHitResult result =
+        lxHitUnlitTextureRadiance(hitInput);
+    return result.radiance;
+  }
+  LxStandardPbrRadianceHitInput hitInput;
+  hitInput.surface = dispatchInput.surface;
+  hitInput.worldPosition = dispatchInput.hitPosition;
+  hitInput.worldNormal = normalize(dispatchInput.surface.normal);
+  hitInput.viewDirection = normalize(dispatchInput.viewDirection);
+  hitInput.lightDirection = normalize(dispatchInput.lightDirection);
+  hitInput.lightColor = dispatchInput.lightColor;
+  hitInput.lightIntensity = dispatchInput.lightIntensity;
+  hitInput.visibility = dispatchInput.visibility;
+  LxStandardPbrRadianceHitResult result =
+      lxHitStandardPbrRadiance(hitInput);
+  return result.radiance;
+}
+
+struct HitAttributes {
+  vec3 normal;
+  vec3 tangent;
+  float tangentSign;
+  vec2 uv;
+  uint materialIndex;
+  uint primitiveIndex;
+};
+
+vec3 transformPoint(mat4 m, vec3 p) {
+  vec4 value = m * vec4(p, 1.0);
+  return value.xyz / max(value.w, 1.0e-8);
+}
+
+vec4 readMeshAttribute(lxSceneMeshRecord mesh, uint semantic, uint vertexIndex,
+                       vec4 fallback) {
+  for (uint i = 0u; i < mesh.attributeStreamCount; ++i) {
+    lxSceneAttributeStreamRecord stream =
+        attributeStreams[mesh.attributeStreamOffset + i];
+    if (stream.semantic != semantic || vertexIndex < mesh.vertexOffset ||
+        vertexIndex >= mesh.vertexOffset + stream.valueCount) {
+      continue;
+    }
+    return attributeValues[stream.valueOffset + vertexIndex - mesh.vertexOffset];
+  }
+  return fallback;
+}
+
+bool shouldCullRayHit(uint materialIndex, bool frontFacing) {
+  // TODO(REQ-073-b): cull mode needs a non-legacy material-side ABI. Task 8
+  // removes direct lxSceneMaterialRecord reads from this PBR surface path.
+  return false;
+}
+
+bool intersectPrimitive(vec3 origin, vec3 dir, lxScenePrimitiveRecord primitive,
+                        out float t, out HitAttributes attributes) {
+  lxSceneObjectRecord object = objects[primitive.objectIndex];
+  lxSceneMeshRecord mesh = meshes[primitive.meshIndex];
+  uint i0 = indices[primitive.indexOffset + 0u];
+  uint i1 = indices[primitive.indexOffset + 1u];
+  uint i2 = indices[primitive.indexOffset + 2u];
+  vec4 p0 = positions[i0];
+  vec4 p1 = positions[i1];
+  vec4 p2 = positions[i2];
+  vec3 v0 = transformPoint(object.objectToWorld, p0.xyz);
+  vec3 v1 = transformPoint(object.objectToWorld, p1.xyz);
+  vec3 v2 = transformPoint(object.objectToWorld, p2.xyz);
+  vec3 e1 = v1 - v0;
+  vec3 e2 = v2 - v0;
+  vec3 p = cross(dir, e2);
+  float det = dot(e1, p);
+  if (abs(det) < 1e-7) {
+    return false;
+  }
+  if (shouldCullRayHit(primitive.materialIndex, det > 0.0)) {
+    return false;
+  }
+  float invDet = 1.0 / det;
+  vec3 tv = origin - v0;
+  float u = dot(tv, p) * invDet;
+  if (u < 0.0 || u > 1.0) {
+    return false;
+  }
+  vec3 q = cross(tv, e1);
+  float v = dot(dir, q) * invDet;
+  if (v < 0.0 || u + v > 1.0) {
+    return false;
+  }
+  t = dot(e2, q) * invDet;
+  if (t <= 0.0005) {
+    return false;
+  }
+
+  const float w = 1.0 - u - v;
+  vec4 n0 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i0,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec4 n1 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i1,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec4 n2 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_NORMAL0, i2,
+                              vec4(0.0, 0.0, 1.0, 0.0));
+  vec4 uv0 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_UV0, i0,
+                               vec4(0.0, 0.0, 0.0, 0.0));
+  vec4 uv1 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_UV0, i1,
+                               vec4(0.0, 0.0, 0.0, 0.0));
+  vec4 uv2 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_UV0, i2,
+                               vec4(0.0, 0.0, 0.0, 0.0));
+  vec4 t0 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_TANGENT0, i0,
+                              vec4(1.0, 0.0, 0.0, 1.0));
+  vec4 t1 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_TANGENT0, i1,
+                              vec4(1.0, 0.0, 0.0, 1.0));
+  vec4 t2 = readMeshAttribute(mesh, SCENE_ATTRIBUTE_TANGENT0, i2,
+                              vec4(1.0, 0.0, 0.0, 1.0));
+  vec3 localNormal =
+      normalize(n0.xyz * w + n1.xyz * u + n2.xyz * v);
+  vec3 normal = normalize(transpose(mat3(object.worldToObject)) * localNormal);
+  vec3 localTangent =
+      normalize(t0.xyz * w + t1.xyz * u + t2.xyz * v);
+  attributes.normal = normal;
+  attributes.tangent = normalize(mat3(object.objectToWorld) * localTangent);
+  attributes.tangentSign = t0.w * w + t1.w * u + t2.w * v;
+  attributes.uv = uv0.xy * w + uv1.xy * u + uv2.xy * v;
+  attributes.materialIndex = primitive.materialIndex;
+  return true;
+}
+
+bool intersectAabb(vec3 origin, vec3 invDir, vec3 bmin, vec3 bmax,
+                   float maxT) {
+  vec3 t0 = (bmin - origin) * invDir;
+  vec3 t1 = (bmax - origin) * invDir;
+  vec3 tmin = min(t0, t1);
+  vec3 tmax = max(t0, t1);
+  float lo = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
+  float hi = min(min(tmax.x, tmax.y), min(tmax.z, maxT));
+  return hi >= lo;
+}
+
+bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
+                out HitAttributes hitAttributes) {
+  hitT = maxT;
+  hitAttributes.normal = vec3(0.0, 1.0, 0.0);
+  hitAttributes.tangent = vec3(1.0, 0.0, 0.0);
+  hitAttributes.tangentSign = 1.0;
+  hitAttributes.uv = vec2(0.0);
+  hitAttributes.materialIndex = 0u;
+  hitAttributes.primitiveIndex = 0u;
+  bool hit = false;
+  vec3 invDir = 1.0 / dir;
+  uint stack[64];
+  uint stackSize = 0u;
+  stack[stackSize++] = 0u;
+  while (stackSize > 0u) {
+    uint nodeIndex = stack[--stackSize];
+    if (nodeIndex >= params.bvhNodeCount) {
+      continue;
+    }
+    lxSceneBvhNode node = bvhNodes[nodeIndex];
+    if (!intersectAabb(origin, invDir, node.boundsMinLeftFirst.xyz,
+                       node.boundsMaxTriCount.xyz, hitT)) {
+      continue;
+    }
+    uint packedNodeData = floatBitsToUint(node.boundsMaxTriCount.w);
+    uint leftFirst = floatBitsToUint(node.boundsMinLeftFirst.w);
+    bool isLeaf = (packedNodeData & BVH_LEAF_NODE_FLAG) != 0u;
+    if (isLeaf) {
+      uint triCount = packedNodeData & ~BVH_LEAF_NODE_FLAG;
+      for (uint i = 0u; i < triCount; ++i) {
+        uint primitiveIndex = leftFirst + i;
+        if (primitiveIndex >= params.primitiveCount) {
+          continue;
+        }
+        float t;
+        HitAttributes attributes;
+        if (intersectPrimitive(origin, dir, primitives[primitiveIndex], t,
+                               attributes) &&
+            t < hitT) {
+          hit = true;
+          hitT = t;
+          hitAttributes = attributes;
+          hitAttributes.primitiveIndex = primitiveIndex;
+        }
+      }
+    } else {
+      if (stackSize + 2u < 64u) {
+        stack[stackSize++] = packedNodeData;
+        stack[stackSize++] = leftFirst;
+      }
+    }
+  }
+  return hit;
+}
+
+mat3 makeTangentFrame(HitAttributes hit) {
+  vec3 N = normalize(hit.normal);
+  vec3 T = hit.tangent - N * dot(N, hit.tangent);
+  float tangentLength = length(T);
+  if (tangentLength < 1.0e-5) {
+    vec3 helper = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0)
+                                   : vec3(0.0, 1.0, 0.0);
+    T = normalize(cross(helper, N));
+  } else {
+    T = T / tangentLength;
+  }
+  vec3 B = normalize(cross(N, T) * hit.tangentSign);
+  return mat3(T, B, N);
+}
+
+float lxRtLuminance(vec3 value) {
+  return dot(value, vec3(0.2126, 0.7152, 0.0722));
+}
+
+struct RaySurfaceHit {
+  uint hitShaderIndex;
+  uint materialIndex;
+  vec3 hitPosition;
+  vec3 normal;
+  LxMaterialSurface surface;
+};
+
+RaySurfaceHit loadRaySurfaceHit(vec3 origin, vec3 dir, float hitT,
+                                HitAttributes hit) {
+  lxRayPrimitiveHitShaderRecord rayHit =
+      rayPrimitiveHitShaders[min(hit.primitiveIndex, params.primitiveCount - 1u)];
+  uint materialIndex =
+      params.materialCount == 0u ? 0u
+                                 : min(rayHit.materialIndex,
+                                       params.materialCount - 1u);
+  mat3 tangentFrame = makeTangentFrame(hit);
+
+  RaySurfaceHit surfaceHit;
+  surfaceHit.hitShaderIndex = rayHit.hitShaderIndex;
+  surfaceHit.materialIndex = materialIndex;
+  surfaceHit.hitPosition = origin + dir * hitT;
+  surfaceHit.normal = normalize(hit.normal);
+  surfaceHit.surface =
+      lxLoadRayMaterialSurface(materialIndex, hit.uv, surfaceHit.normal,
+                               tangentFrame);
+  surfaceHit.normal = normalize(surfaceHit.surface.normal);
+  return surfaceHit;
+}
+
+vec3 evaluateDirectLighting(RaySurfaceHit hit, vec3 viewDirection) {
+  vec3 L = normalize(-params.lightDirectionIntensity.xyz);
+
+  float shadowT;
+  HitAttributes shadowHit;
+  bool occluded = params.shadowsEnabled != 0u &&
+                  traceScene(hit.hitPosition + hit.normal * 0.002, L, 1.0e30,
+                             shadowT, shadowHit);
+  float visibility = occluded ? 0.0 : 1.0;
+
+  LxRadianceDispatchInput dispatchInput;
+  dispatchInput.hitShaderIndex = hit.hitShaderIndex;
+  dispatchInput.surface = hit.surface;
+  dispatchInput.hitPosition = hit.hitPosition;
+  dispatchInput.viewDirection = normalize(viewDirection);
+  dispatchInput.lightDirection = L;
+  dispatchInput.lightColor = params.lightColorEnvironment.rgb;
+  dispatchInput.lightIntensity = params.lightDirectionIntensity.w;
+  dispatchInput.visibility = visibility;
+  return lxDispatchRadianceHit(dispatchInput);
+}
+
+vec3 sampleGgxHalfVector(vec3 N, float roughness, vec2 xi) {
+  float a = max(roughness * roughness, 0.001);
+  float a2 = a * a;
+  float phi = 2.0 * LX_PBR_PI * xi.x;
+  float cosTheta =
+      sqrt(max((1.0 - xi.y) / (1.0 + (a2 - 1.0) * xi.y), 0.0));
+  float sinTheta = sqrt(max(1.0 - cosTheta * cosTheta, 0.0));
+  vec3 localH = vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+  return normalize(lxBsdfTangentFrame(N) * localH);
+}
+
+vec3 sampleGgxVndf(vec3 N, vec3 V, float roughness, vec2 xi) {
+  mat3 frame = lxBsdfTangentFrame(N);
+  vec3 localV = normalize(vec3(dot(V, frame[0]), dot(V, frame[1]), dot(V, N)));
+  float alpha = max(roughness * roughness, 0.001);
+  vec3 view = normalize(vec3(alpha * localV.x, alpha * localV.y, localV.z));
+
+  float lensq = view.x * view.x + view.y * view.y;
+  vec3 tangent1 =
+      lensq > 0.0 ? vec3(-view.y, view.x, 0.0) * inversesqrt(lensq)
+                  : vec3(1.0, 0.0, 0.0);
+  vec3 tangent2 = cross(view, tangent1);
+
+  float r = sqrt(clamp(xi.x, 0.0, 0.999999));
+  float phi = 2.0 * LX_PBR_PI * clamp(xi.y, 0.0, 0.999999);
+  float t1 = r * cos(phi);
+  float t2 = r * sin(phi);
+  float s = 0.5 * (1.0 + view.z);
+  t2 = mix(sqrt(max(0.0, 1.0 - t1 * t1)), t2, s);
+
+  vec3 normal =
+      t1 * tangent1 + t2 * tangent2 +
+      sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * view;
+  vec3 localH =
+      normalize(vec3(alpha * normal.x, alpha * normal.y,
+                     max(normal.z, 0.0)));
+  vec3 H = normalize(frame * localH);
+  return dot(H, N) < 0.0 ? -H : H;
+}
+
+float ggxReflectionPdf(vec3 N, vec3 V, vec3 L, float roughness) {
+  vec3 H = normalize(V + L);
+  float NdotH = max(dot(N, H), 0.0);
+  float VdotH = max(dot(V, H), 1.0e-5);
+  float D = lxDistributionGGX(N, H, roughness);
+  return max(D * NdotH / (4.0 * VdotH), 1.0e-5);
+}
+
+vec3 evaluateSpecularBrdf(LxMaterialSurface surface, vec3 N, vec3 V, vec3 L) {
+  float NdotV = max(dot(N, V), 0.0);
+  float NdotL = max(dot(N, L), 0.0);
+  if (NdotV <= 0.0 || NdotL <= 0.0) {
+    return vec3(0.0);
+  }
+
+  vec3 H = normalize(V + L);
+  float roughness = clamp(surface.roughness, 0.04, 1.0);
+  float metallic = clamp(surface.metallic, 0.0, 1.0);
+  vec3 F0 = lxPbrF0(max(surface.baseColor, vec3(0.0)), metallic);
+  float D = lxDistributionGGX(N, H, roughness);
+  float G = lxGeometrySmith(N, V, L, roughness);
+  vec3 F = lxFresnelSchlick(max(dot(H, V), 0.0), F0);
+  return (D * G * F) / max(4.0 * NdotV * NdotL, 1.0e-4);
+}
+
+vec3 shadeSecondaryDirect(vec3 origin, vec3 dir) {
+  float hitT;
+  HitAttributes hit;
+  if (!traceScene(origin, dir, 1.0e30, hitT, hit)) {
+    return lxEvaluateSkyboxRadiance(dir);
+  }
+  RaySurfaceHit surfaceHit = loadRaySurfaceHit(origin, dir, hitT, hit);
+  return evaluateDirectLighting(surfaceHit, -dir);
+}
+
+vec3 shadeOneBounceIndirect(RaySurfaceHit hit, vec3 viewDirection, uint seed) {
+  vec3 N = normalize(hit.normal);
+  vec3 V = normalize(viewDirection);
+  float NdotV = max(dot(N, V), 0.0);
+  if (NdotV <= 0.0) {
+    return vec3(0.0);
+  }
+
+  float metallic = clamp(hit.surface.metallic, 0.0, 1.0);
+  float roughness = clamp(hit.surface.roughness, 0.04, 1.0);
+  vec3 baseColor = max(hit.surface.baseColor, vec3(0.0));
+  vec3 F0 = lxPbrF0(baseColor, metallic);
+  vec3 F = lxFresnelSchlick(NdotV, F0);
+  float specularWeight = max(lxRtLuminance(F), 0.0);
+  float diffuseWeight = max(1.0 - specularWeight, 0.0) * (1.0 - metallic);
+  float weightSum = diffuseWeight + specularWeight;
+  if (weightSum <= 1.0e-5) {
+    return vec3(0.0);
+  }
+  float diffuseProbability = diffuseWeight / weightSum;
+  float specularProbability = specularWeight / weightSum;
+
+  vec2 xiLobe = vec2(random01(seed ^ 0x6d2b79f5u),
+                     random01(seed ^ 0x1b873593u));
+  float lobe = random01(seed ^ 0x85ebca6bu);
+  if (lobe < diffuseProbability) {
+    LxBsdfSampleInput sampleInput;
+    sampleInput.normal = N;
+    sampleInput.wo = V;
+    sampleInput.xi = xiLobe;
+    LxBsdfSampleOutput diffuseSample = lxSampleCosineHemisphereBsdf(sampleInput);
+    vec3 Li = lxEvaluateSkyboxRadianceMaxMip(diffuseSample.wi);
+    vec3 kd = (vec3(1.0) - F) * (1.0 - metallic);
+    return kd * baseColor * Li / max(diffuseProbability, 1.0e-5);
+  }
+
+  vec3 H = sampleGgxVndf(N, V, roughness, xiLobe);
+  vec3 L = normalize(reflect(-V, H));
+  float NdotL = max(dot(N, L), 0.0);
+  if (NdotL <= 0.0 || dot(V, H) <= 0.0) {
+    return vec3(0.0);
+  }
+
+  vec3 Li = shadeSecondaryDirect(hit.hitPosition + N * 0.002, L);
+  vec3 brdf = evaluateSpecularBrdf(hit.surface, N, V, L);
+  float pdf = ggxReflectionPdf(N, V, L, roughness);
+  return Li * brdf * NdotL / max(pdf * specularProbability, 1.0e-5);
+}
+
+vec3 shade(vec3 origin, vec3 dir, uint seed) {
+  float hitT;
+  HitAttributes hit;
+  if (!traceScene(origin, dir, 1.0e30, hitT, hit)) {
+    if (params.compareMode == 1u) {
+      return vec3(0.0);
+    }
+    return lxEvaluateSkyboxRadiance(dir);
+  }
+
+  RaySurfaceHit surfaceHit = loadRaySurfaceHit(origin, dir, hitT, hit);
+  vec3 baseColor = max(surfaceHit.surface.baseColor, vec3(0.0));
+  if (params.compareMode == 1u) {
+    return baseColor;
+  }
+
+  vec3 V = normalize(-dir);
+  vec3 color = evaluateDirectLighting(surfaceHit, V);
+  if (params.maxBounce >= 2u) {
+    color += shadeOneBounceIndirect(surfaceHit, V, seed);
+  }
+  return color;
+}
+
+void main() {
+  uvec2 gid = gl_GlobalInvocationID.xy;
+  if (gid.x >= params.width || gid.y >= params.height) {
+    return;
+  }
+  uint pixelIndex = gid.y * params.width + gid.x;
+  vec3 color = vec3(0.0);
+  uint sampleCount = max(params.samples, 1u);
+  for (uint s = 0u; s < sampleCount; ++s) {
+    uint sampleSeed = params.seed ^ (pixelIndex * 9781u) ^ (s * 6271u);
+    vec2 jitter = vec2(random01(sampleSeed), random01(sampleSeed ^ 0x9e3779b9u));
+    if (sampleCount == 1u) {
+      jitter = vec2(0.5);
+    }
+    vec2 uv = (vec2(gid) + jitter) / vec2(params.width, params.height);
+    vec2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    vec3 rayDir = normalize(params.cameraForward.xyz +
+                            params.cameraRight.xyz * ndc.x +
+                            params.cameraUp.xyz * ndc.y);
+    color += shade(params.eye.xyz, rayDir, sampleSeed);
+  }
+  pixels[pixelIndex] = vec4(color / float(sampleCount), 1.0);
+}

@@ -75,6 +75,7 @@ int main(int argc, char **argv) {
     LX_core::backend::offline::VulkanOfflineRenderer renderer;
     LX_core::backend::offline::VulkanOfflineRenderRequest renderRequest;
     renderRequest.scene = std::move(loaded.table);
+    renderRequest.renderSettings = loaded.renderSettings;
     renderRequest.output = resolved.output;
     renderRequest.offline = resolved.offline;
     renderRequest.profileName = resolved.profileName;

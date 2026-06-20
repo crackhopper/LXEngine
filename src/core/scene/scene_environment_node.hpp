@@ -22,6 +22,8 @@ enum class SceneSkyboxMode {
 
 struct SceneSkyboxNode final {
   SceneSkyboxMode mode = SceneSkyboxMode::Finite;
+  ResourceUri meshUri;
+  ResourceUri materialUri;
   ResourceUri featureUri;
   SceneIblBakeMarker bake;
 };

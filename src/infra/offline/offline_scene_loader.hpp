@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/scene/scene_resource_table.hpp"
+#include "core/scene/scene_render_settings.hpp"
 #include "infra/offline/offline_asset_resolver.hpp"
 #include "infra/scene_io/scene_document.hpp"
 
@@ -12,6 +13,7 @@ namespace LX_infra::offline {
 
 struct OfflineLoadedScene final {
   LX_core::SceneResourceTable table;
+  LX_core::SceneRenderSettings renderSettings;
   std::vector<std::string> warnings;
 };
 

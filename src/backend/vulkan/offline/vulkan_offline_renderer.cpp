@@ -357,6 +357,7 @@ struct VulkanOfflineRenderer::Impl final {
     const RenderPathGraphHandle graphHandle =
         loadOfflineRenderPathGraph(request.scene, request.renderPathGraphUri);
     Scene scene("OfflineRT", std::move(request.scene));
+    scene.setRenderSettings(request.renderSettings);
     auto resolvedGraph = scene.resources().resolve(graphHandle);
     if (!resolvedGraph.has_value()) {
       throw std::runtime_error("offline RenderPathGraph payload disappeared");

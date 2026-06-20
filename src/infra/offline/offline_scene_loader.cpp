@@ -123,6 +123,24 @@ struct RegisteredMesh final {
   return parent + "/" + name;
 }
 
+[[nodiscard]] std::optional<std::string>
+effectiveMeshUri(const SceneNodeDocument &node) {
+  if (node.skybox.has_value() &&
+      node.skybox->mode == LX_core::SceneSkyboxMode::Finite) {
+    return node.skybox->meshUri.string();
+  }
+  return node.meshUri;
+}
+
+[[nodiscard]] std::optional<std::string>
+effectiveMaterialUri(const SceneNodeDocument &node) {
+  if (node.skybox.has_value() &&
+      node.skybox->mode == LX_core::SceneSkyboxMode::Finite) {
+    return node.skybox->materialUri.string();
+  }
+  return node.materialUri;
+}
+
 [[nodiscard]] Vec3f transformPoint(const Mat4f &matrix, const Vec3f &point) {
   const Vec4f transformed = matrix * Vec4f{point.x, point.y, point.z, 1.0f};
   if (std::abs(transformed.w) > 1.0e-8f) {
@@ -264,9 +282,13 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
                                     const SceneNodeDocument &node,
                                     const LX_core::ResourceUri &requestedUri,
                                     const LX_core::SceneIblBakeMarker &bake,
-                                    std::string_view fieldName) {
-  if (table.hasEnvironmentNode()) {
-    throw std::runtime_error("scene contains multiple environment/skybox nodes");
+                                    std::string_view fieldName,
+                                    std::string_view expectedFeature) {
+  if (expectedFeature == "environmentLighting" && table.hasEnvironmentNode()) {
+    throw std::runtime_error("scene contains multiple environment nodes");
+  }
+  if (expectedFeature == "skybox" && table.hasSkyboxNode()) {
+    throw std::runtime_error("scene contains multiple infinite skybox nodes");
   }
 
   LX_infra::SceneResourceParserRegistry registry;
@@ -303,10 +325,17 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
   }
   const auto resolvedFeature = table.resolve(*featureHandle);
   if (!resolvedFeature.has_value() ||
-      resolvedFeature->get().feature != "environmentLighting") {
+      resolvedFeature->get().feature != expectedFeature) {
     throw std::runtime_error(
         std::string(fieldName) + " node '" + node.nodeName +
-        "' RenderFeature must provide feature environmentLighting");
+        "' RenderFeature must provide feature " + std::string(expectedFeature));
+  }
+  if (expectedFeature == "skybox") {
+    table.setSkyboxRuntimeState(LX_core::SceneSkyboxRuntimeState{
+        .feature = *featureHandle,
+        .nodePresent = true,
+    });
+    return;
   }
   table.setEnvironmentRuntimeState(LX_core::SceneEnvironmentRuntimeState{
       .feature = *featureHandle,
@@ -321,13 +350,14 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
   if (node.environment.has_value()) {
     registerEnvironmentNodeFeature(resolver, table, node,
                                    node.environment->featureUri,
-                                   node.environment->bake, "environment");
+                                   node.environment->bake, "environment",
+                                   "environmentLighting");
   }
   if (node.skybox.has_value() &&
       node.skybox->mode == LX_core::SceneSkyboxMode::Infinite) {
     registerEnvironmentNodeFeature(resolver, table, node,
                                    node.skybox->featureUri, node.skybox->bake,
-                                   "skybox");
+                                   "skybox", "skybox");
   }
 }
 
@@ -465,20 +495,21 @@ void visitNode(const OfflineAssetResolver &resolver,
     }
   }
 
-  if (node.meshUri.has_value()) {
-    const std::string &meshUri = *node.meshUri;
+  const std::optional<std::string> meshUri = effectiveMeshUri(node);
+  if (meshUri.has_value()) {
     const RegisteredMesh mesh = registerMeshUri(
-        state.loaded.table, resolver, meshUri, state.meshByUri);
+        state.loaded.table, resolver, *meshUri, state.meshByUri);
 
+    const std::optional<std::string> materialUri = effectiveMaterialUri(node);
     const std::string materialKey =
-        node.materialUri.value_or("missing") + "|" + path;
+        materialUri.value_or("missing") + "|" + path;
     MaterialHandle materialHandle;
     if (const auto it = state.materialByKey.find(materialKey);
         it != state.materialByKey.end()) {
       materialHandle = it->second;
     } else {
       MaterialInstanceSharedPtr material = loadMaterialInstance(
-          resolver, node.materialUri, node.materialOverrides,
+          resolver, materialUri, node.materialOverrides,
           node.nodeMaterialOverrides, state.loaded.table, state.materialCache);
       materialHandle = state.loaded.table.registerMaterial(
           material->cloneInstanceDataUnique());
@@ -504,6 +535,7 @@ OfflineLoadedScene
 OfflineSceneLoader::load(const LX_infra::scene_io::SceneDocument &document,
                          const std::string &cameraPath) const {
   LoadState state;
+  state.loaded.renderSettings = document.renderSettings();
   const std::string requestedCamera =
       cameraPath.empty() ? document.gameplayCameraPath() : cameraPath;
 

@@ -224,7 +224,7 @@ struct RenderFeatureResourceRequirement final {
 };
 
 struct RenderFeatureHitShaderTableEntry final {
-  u32 index = 0;
+  u32 hitShaderIndex = 0;
   std::string materialType;
   ResourceUri uri;
   std::string function;

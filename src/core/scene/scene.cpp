@@ -406,6 +406,11 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
       out.emplace_back(resource.get());
     }
   }
+  for (const GpuResourceRef &resource : m_resources.getSkyboxResources()) {
+    if (resource.isValid()) {
+      out.emplace_back(resource.get());
+    }
+  }
   for (const GpuResourceRef &resource :
        m_resources.getSurfaceLightingResources()) {
     if (resource.isValid()) {
@@ -484,6 +489,11 @@ Scene::getSceneLevelResources(StringID pass,
   }
   for (const GpuResourceRef &resource :
        m_resources.getEnvironmentLightingResources()) {
+    if (resource.isValid()) {
+      out.emplace_back(resource.get());
+    }
+  }
+  for (const GpuResourceRef &resource : m_resources.getSkyboxResources()) {
     if (resource.isValid()) {
       out.emplace_back(resource.get());
     }

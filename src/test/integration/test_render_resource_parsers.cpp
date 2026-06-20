@@ -722,8 +722,8 @@ void testOfflineRayTracerRenderFeatureAssetParses() {
     for (const auto &entry : table.entries) {
       if (entry.materialType == "standard-pbr") {
         foundStandardPbr = true;
-        EXPECT(entry.index == 0,
-               "standard-pbr radiance hit shader should use group 0");
+        EXPECT(entry.hitShaderIndex == 0,
+               "standard-pbr radiance hit shader should use hit shader index 0");
         EXPECT(entry.uri ==
                    LX_core::ResourceUri(
                        "assets://shaders/glsl/common/materials/hits/"
@@ -734,8 +734,8 @@ void testOfflineRayTracerRenderFeatureAssetParses() {
       }
       if (entry.materialType == "unlit-texture") {
         foundUnlitTexture = true;
-        EXPECT(entry.index == 1,
-               "unlit-texture radiance hit shader should use group 1");
+        EXPECT(entry.hitShaderIndex == 1,
+               "unlit-texture radiance hit shader should use hit shader index 1");
         EXPECT(entry.uri ==
                    LX_core::ResourceUri(
                        "assets://shaders/glsl/common/materials/hits/"
@@ -1657,6 +1657,9 @@ void testStandardPbrRadianceHitShaderSourceMarker() {
          "hit shader marker should document the dispatch function");
   EXPECT(source.find("lxHitStandardPbrRadiance(") != std::string::npos,
          "hit shader source should define the documented function");
+  EXPECT(source.find("lxPbrDirectBrdf") != std::string::npos,
+         "standard-pbr radiance hit shader should own standard-pbr direct "
+         "radiance evaluation");
 }
 
 void testUnlitTextureRadianceHitShaderSourceMarker() {
@@ -1682,13 +1685,26 @@ void testOfflinePrimaryRayShaderSourceMarker() {
          "primary ray shader should carry the source-text marker");
   EXPECT(source.find("SceneBvhNodes") != std::string::npos,
          "primary ray shader should declare the software BVH binding");
-  EXPECT(source.find("RayPrimitiveHitGroups") != std::string::npos,
-         "primary ray shader must consume hitShaderTable primitive hit groups");
+  EXPECT(source.find("RayPrimitiveHitShaders") != std::string::npos,
+         "primary ray shader must consume hitShaderTable primitive hit shaders");
   EXPECT(source.find("lxDispatchRadianceHit") != std::string::npos,
          "primary ray shader must dispatch through the RenderFeature hit "
          "shader table");
   EXPECT(source.find("OutputPixels") != std::string::npos,
          "primary ray shader should declare the output binding");
+  EXPECT(source.find("#include \"features/environment_lighting.glsl\"") ==
+             std::string::npos,
+         "OfflineRT direct ray must not include the Forward/IBL environment "
+         "lighting feature");
+  EXPECT(source.find("lxEvaluateEnvironmentLightingRadiance") ==
+             std::string::npos,
+         "OfflineRT direct ray must not sample IBL/environment lighting");
+  EXPECT(source.find("metallicRoughnessTex") != std::string::npos,
+         "OfflineRT standard-pbr surface load should consume "
+         "metallicRoughnessTexture");
+  EXPECT(source.find("lxPbrDirectBrdf") == std::string::npos,
+         "OfflineRT primary ray should dispatch hit shaders instead of owning "
+         "standard-pbr radiance evaluation");
 }
 
 void testOfflineRayTracerHitShaderTableMatchesPrimaryRayDispatchSwitch() {
@@ -2135,6 +2151,9 @@ void testOfflineStandardPbrRayTraceRenderPathGraphParsesAndCompiles() {
            "OfflineRT compute pass should declare dispatch facts");
     EXPECT(renderPassHasSource(pass, "feature.offlineRayTracer"),
            "OfflineRT pass should consume feature.offlineRayTracer");
+    EXPECT(!renderPassHasSource(pass, "feature.environmentLighting"),
+           "OfflineRT direct ray graph must not consume Forward/IBL "
+           "environmentLighting");
     EXPECT(pass.readbacks.size() == 1,
            "OfflineRT pass should declare offline.output readback");
     if (!pass.readbacks.empty()) {
@@ -2567,11 +2586,11 @@ hitShaderTable:
   payload: radiance
   dispatchFunction: lxDispatchRadianceHit
   entries:
-    - index: 0
+    - hitShaderIndex: 0
       materialType: standard-pbr
       uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
       function: lxHitStandardPbrRadiance
-    - index: 0
+    - hitShaderIndex: 0
       materialType: standard-pbr
       uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
       function: lxHitStandardPbrRadiance
@@ -2583,7 +2602,7 @@ parameters:
 
   EXPECT(!parsed.renderFeature.has_value(),
          "duplicate hit table indices and URIs should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "duplicate hit shader table index"),
+  EXPECT(hasDiagnosticContaining(parsed, "duplicate hit shader index"),
          "diagnostic should reject duplicate hit table indices");
   EXPECT(hasDiagnosticContaining(parsed, "duplicate hit shader table uri"),
          "diagnostic should reject duplicate hit table URIs");
@@ -2603,7 +2622,7 @@ hitShaderTable:
   payloads: [radiance, radiance]
   dispatchFunction: lxDispatchRadianceHit
   entries:
-    - index: 0
+    - hitShaderIndex: 0
       materialType: standard-pbr
       uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
       function: lxHitStandardPbrRadiance
@@ -2624,7 +2643,7 @@ parameters:
          "diagnostic should reject per-entry payloads");
 }
 
-void testRenderFeatureRejectsAuthoredPrimitiveHitGroups() {
+void testRenderFeatureRejectsAuthoredPrimitiveHitShaders() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse("memory://feature-authored-hit-groups", R"(
 schema: lxe.render-feature.v1
@@ -2633,9 +2652,9 @@ feature: offlineRayTracer
 level: pass
 shader:
   uri: render_paths/OfflineRT/standard_pbr_primary_ray
-PrimitiveHitGroups:
+PrimitiveHitShaders:
   - primitive: 0
-    hitGroup: 0
+    hitShaderIndex: 0
 parameters:
   enableDirectLighting:
     kind: bool
@@ -2643,9 +2662,9 @@ parameters:
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "PrimitiveHitGroups must be derived, not authored in YAML");
-  EXPECT(hasDiagnosticContaining(parsed, "PrimitiveHitGroups"),
-         "diagnostic should name authored PrimitiveHitGroups");
+         "PrimitiveHitShaders must be derived, not authored in YAML");
+  EXPECT(hasDiagnosticContaining(parsed, "PrimitiveHitShaders"),
+         "diagnostic should name authored PrimitiveHitShaders");
 }
 
 void testRenderFeatureRejectsHitShaderTableOnShaderLevelFeature() {
@@ -2661,7 +2680,7 @@ hitShaderTable:
   payload: radiance
   dispatchFunction: lxDispatchRadianceHit
   entries:
-    - index: 0
+    - hitShaderIndex: 0
       materialType: standard-pbr
       uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
       function: lxHitStandardPbrRadiance
@@ -3999,7 +4018,7 @@ parameters:
       LX_infra::offline::OfflineAssetResolver{std::filesystem::current_path()}};
   expectThrowsContaining(
       [&] { (void)loader.load(document, ""); },
-      "scene contains multiple environment/skybox nodes",
+      "scene contains multiple environment nodes",
       "offline loader should reject multiple environment nodes");
 }
 
@@ -4277,7 +4296,7 @@ int main() {
   testRenderFeatureRejectsSystemOwnedResourceBinding();
   testRenderFeatureRejectsDuplicateHitShaderTableEntries();
   testRenderFeatureRejectsHitShaderTableWrongPayloadAndFields();
-  testRenderFeatureRejectsAuthoredPrimitiveHitGroups();
+  testRenderFeatureRejectsAuthoredPrimitiveHitShaders();
   testRenderFeatureRejectsHitShaderTableOnShaderLevelFeature();
   testRenderFeatureRejectsUnknownParameterFields();
   testRenderFeatureRejectsUnknownParameterField();

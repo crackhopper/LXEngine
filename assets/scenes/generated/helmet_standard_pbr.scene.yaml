@@ -102,21 +102,20 @@ root:
         rotation: [1.0, 0.0, 0.0, 0.0]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
-      mesh:
-        uri: assets/scenes/generated/finite_room/test_neutral_room.obj
-      material:
-        uri: assets/scenes/generated/finite_room/test_neutral_room_unlit.material
       skybox:
         mode: finite
-    - nodeName: neutral_infinite_skybox
-      name: neutral_infinite_skybox
+        mesh:
+          uri: assets/scenes/generated/finite_room/test_neutral_room.obj
+        material:
+          uri: assets/scenes/generated/finite_room/test_neutral_room_unlit.material
+    - nodeName: neutral_environment
+      name: neutral_environment
       transform:
         translation: [0.0, 0.0, 0.0]
         rotation: [1.0, 0.0, 0.0, 0.0]
         scale: [1.0, 1.0, 1.0]
       visibilityMask: 4294967295
-      skybox:
-        mode: infinite
+      environment:
         feature:
           uri: assets/effects/environment_lighting.render-feature.yaml
         bake:

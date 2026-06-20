@@ -389,6 +389,17 @@ makeDepthAttachmentInfo(VkImageView view, const FrameGraphWrite &write) {
   return info;
 }
 
+VkRenderingAttachmentInfo makeReadOnlyDepthAttachmentInfo(VkImageView view) {
+  VkRenderingAttachmentInfo info{};
+  info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+  info.imageView = view;
+  info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+  info.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+  info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  info.clearValue.depthStencil = {1.0f, 0};
+  return info;
+}
+
 u32 dynamicRenderingLayerCount(const FramePass &graphPass) {
   if (graphPass.attachments.empty()) {
     return 1u;
@@ -547,6 +558,34 @@ void recordDynamicRasterPass(const FrameGraphExecutionRequest &request,
     }
     depthAttachment = makeDepthAttachmentInfo(
         attachment->get().texture->getImageView(), depthWrite->get());
+  } else if (depthContract != nullptr &&
+             depthContract->attachmentUsage ==
+                 RenderPathAttachmentUsage::DepthAttachmentReadOnly) {
+    const StringID depthName(depthContract->target);
+    const auto depthRead =
+        std::find_if(compiledPass.reads.begin(), compiledPass.reads.end(),
+                     [depthName](const FrameGraphRead &read) {
+                       return read.resource == depthName;
+                     });
+    if (depthRead == compiledPass.reads.end()) {
+      throw std::runtime_error(
+          "dynamic offscreen pass missing read-only depth source: " +
+          depthContract->target);
+    }
+    auto attachment = target.resourceManager->getFrameGraphAttachment(depthName);
+    if (!attachment.has_value() || !attachment->get().texture) {
+      throw std::runtime_error(
+          "dynamic offscreen pass missing read-only depth attachment: " +
+          depthContract->target);
+    }
+    transitionFrameGraphAttachment(
+        *target.commandBuffer, attachment->get(),
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+    depthAttachment =
+        makeReadOnlyDepthAttachmentInfo(attachment->get().texture->getImageView());
   }
 
   target.commandBuffer->beginRendering(

@@ -1,0 +1,97 @@
+schema: lxe.render-path-graph.v1
+name: HelmetSkyboxForwardNoIbl
+renderPath: Forward
+
+features:
+  forwardPass:
+    uri: effects/forward_pass.render-feature.yaml
+  skybox:
+    uri: effects/footprint_court_skybox.render-feature.yaml
+  toneMapping:
+    uri: effects/tone_mapping.render-feature.yaml
+  surfaceLighting:
+    uri: effects/surface_lighting_no_ibl.render-feature.yaml
+
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+        required: true
+      batching:
+        mode: material
+      geometry:
+        vertex: position-only
+        topology: triangle-list
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+    sources:
+      - geometry.vertex
+      - geometry.index
+      - material.bsdf
+      - scene.camera
+      - scene.lights
+      - feature.forwardPass
+      - feature.surfaceLighting
+      - feature.toneMapping
+    targets: [hdr.color, depth.main]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+      blendEnable: false
+
+  - id: SkyboxBackground
+    stage: raster
+    dispatch: fullscreen
+    shader: render_paths/Skybox/skybox_background
+    input:
+      kind: fullscreen-triangle
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+        - target: depth.main
+          format: D32Float
+          samples: 1
+          layers: 1
+          depth: true
+          attachmentUsage: depth-attachment-read-only
+    sources:
+      - hdr.color
+      - depth.main
+      - scene.camera
+      - feature.skybox
+    targets: [hdr.color]
+    writeMode: append
+    readbacks:
+      - name: offline.output
+        target: hdr.color
+        extentFrom: offline.output.resolution
+        format: RGBA16Float
+        kind: image2d
+        mediaType: application/x-lxe-rgba16f-image2d
+    renderState:
+      cullMode: None
+      depthTest: true
+      depthWrite: false
+      depthOp: LessEqual
+      blendEnable: false

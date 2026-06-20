@@ -250,7 +250,7 @@ bool isSystemOwnedResourceBinding(const std::string &binding) {
       "SceneObjects",    "SceneDraws",          "SceneMaterials",
       "SceneTextures",   "SceneMaterialRefs",   "SceneSourceMaterialRecords",
       "SceneGeometry",   "SceneMeshlets",       "SceneLights",
-      "SceneAttributes", "ScenePrimitiveData",  "PrimitiveHitGroups",
+      "SceneAttributes", "ScenePrimitiveData",  "PrimitiveHitShaders",
   };
   return std::find(std::begin(kSystemOwnedBindings),
                    std::end(kSystemOwnedBindings),
@@ -490,7 +490,7 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
     addDiagnostic(result, uri, "hitShaderTable.entries",
                   "missing required sequence");
   } else {
-    std::vector<u32> indices;
+    std::vector<u32> hitShaderIndices;
     std::vector<std::string> uris;
     for (usize i = 0; i < entries.size(); ++i) {
       const YAML::Node entryNode = entries[i];
@@ -508,8 +508,8 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
           continue;
         }
         const std::string key = entryField->first.as<std::string>();
-        if (key == "index" || key == "materialType" || key == "uri" ||
-            key == "function") {
+        if (key == "hitShaderIndex" || key == "materialType" ||
+            key == "uri" || key == "function") {
           continue;
         }
         addDiagnostic(result, uri, field + "." + key,
@@ -517,16 +517,17 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
       }
 
       LX_core::RenderFeatureHitShaderTableEntry entry;
-      const auto index =
-          parseU32Scalar(result, uri, entryNode["index"], field + ".index");
-      if (index.has_value()) {
-        entry.index = *index;
-        if (std::find(indices.begin(), indices.end(), entry.index) !=
-            indices.end()) {
-          addDiagnostic(result, uri, field + ".index",
-                        "duplicate hit shader table index");
+      const auto hitShaderIndex =
+          parseU32Scalar(result, uri, entryNode["hitShaderIndex"],
+                         field + ".hitShaderIndex");
+      if (hitShaderIndex.has_value()) {
+        entry.hitShaderIndex = *hitShaderIndex;
+        if (std::find(hitShaderIndices.begin(), hitShaderIndices.end(),
+                      entry.hitShaderIndex) != hitShaderIndices.end()) {
+          addDiagnostic(result, uri, field + ".hitShaderIndex",
+                        "duplicate hit shader index");
         }
-        indices.push_back(entry.index);
+        hitShaderIndices.push_back(entry.hitShaderIndex);
       }
       if (!entryNode["materialType"] || !entryNode["materialType"].IsScalar()) {
         addDiagnostic(result, uri, field + ".materialType",

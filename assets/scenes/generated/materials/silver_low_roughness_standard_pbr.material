@@ -1,0 +1,19 @@
+schema: lxe.material.v2
+bsdf:
+  type: standard-pbr
+  source: assets://shaders/glsl/common/materials/standard_pbr.contract.glsl
+  parameters:
+    baseColor: { kind: rgb, value: [0.82, 0.84, 0.86] }
+    metallic: { kind: float, value: 0.85 }
+    roughness: { kind: float, value: 0.22 }
+    emissive: { kind: rgb, value: [0.0, 0.0, 0.0] }
+    alphaMode: { kind: string, value: OPAQUE }
+    alphaCutoff: { kind: float, value: 0.5 }
+    baseColorTexture: { kind: texture, valueType: rgb, uri: builtin://textures/default/white }
+    metallicRoughnessTexture: { kind: texture, valueType: rgb, uri: builtin://textures/default/white }
+    normalTexture: { kind: texture, valueType: rgb, uri: builtin://textures/default/flat-normal }
+    occlusionTexture: { kind: texture, valueType: rgb, uri: builtin://textures/default/white }
+    emissiveTexture: { kind: texture, valueType: rgb, uri: builtin://textures/default/black }
+hit:
+  radiance:
+    uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl

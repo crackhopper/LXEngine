@@ -5,6 +5,7 @@
 #include "core/offline/offline_render_result.hpp"
 #include "core/resource/resource_uri.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "core/scene/scene_render_settings.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -26,6 +27,7 @@ mapping 和 metadata 写出留给 infra/offline writer，而不是混进 Vulkan 
 */
 struct VulkanOfflineRenderRequest final {
   SceneResourceTable scene;
+  SceneRenderSettings renderSettings;
   LX_core::offline::OutputProfile output;
   LX_core::offline::OfflineRenderSettings offline;
   std::string profileName;

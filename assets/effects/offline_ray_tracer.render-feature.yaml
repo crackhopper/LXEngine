@@ -8,11 +8,11 @@ hitShaderTable:
   payload: radiance
   dispatchFunction: lxDispatchRadianceHit
   entries:
-    - index: 0
+    - hitShaderIndex: 0
       materialType: standard-pbr
       uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
       function: lxHitStandardPbrRadiance
-    - index: 1
+    - hitShaderIndex: 1
       materialType: unlit-texture
       uri: assets://shaders/glsl/common/materials/hits/unlit_texture_radiance.glsl
       function: lxHitUnlitTextureRadiance

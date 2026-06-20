@@ -1,0 +1,49 @@
+schema: lxe.render-path-graph.v1
+name: HelmetSkyboxRayTraceTwoBounce
+renderPath: OfflineRT
+
+features:
+  offlineRayTracer:
+    uri: effects/offline_ray_tracer_skybox.render-feature.yaml
+  skybox:
+    uri: effects/footprint_court_skybox.render-feature.yaml
+
+passes:
+  - id: OfflinePrimaryRay
+    stage: compute
+    dispatch: compute
+    shader: render_paths/OfflineRT/standard_pbr_primary_ray_skybox
+    compute:
+      dispatchFrom: offline.output.resolution
+      localSize: [8, 8, 1]
+    input:
+      kind: compute-dispatch
+      object:
+        renderClass: [mesh]
+      material:
+        type: [standard-pbr]
+        required: true
+      batching:
+        mode: all
+    sources:
+      - feature.offlineRayTracer
+      - feature.skybox
+      - scene.geometry
+      - scene.materials
+      - scene.textures
+      - material.bsdf
+    targets: [offline.output]
+    readbacks:
+      - name: offline.output
+        target: offline.output
+        extentFrom: offline.output.resolution
+        binding: OutputPixels
+        format: RGBA32Float
+        kind: image2d
+        mediaType: application/x-lxe-rgba32f-image2d
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+      blendEnable: false

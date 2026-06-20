@@ -11,7 +11,6 @@
 #include "common/pbr.glsl"
 #include "common/materials/hits/standard_pbr_radiance.glsl"
 #include "common/materials/hits/unlit_texture_radiance.glsl"
-#include "features/environment_lighting.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -57,15 +56,15 @@ struct lxSceneBvhNode {
   vec4 boundsMaxTriCount;
 };
 
-struct lxRayPrimitiveHitGroupRecord {
-  uint hitGroupIndex;
+struct lxRayPrimitiveHitShaderRecord {
+  uint hitShaderIndex;
   uint materialIndex;
   uint reserved0;
   uint reserved1;
 };
 
 struct lxRayMaterialRecord {
-  uint hitGroupIndex;
+  uint hitShaderIndex;
   uint baseColorTexture;
   float metallic;
   float roughness;
@@ -109,8 +108,8 @@ layout(std430, binding = 8) readonly buffer SceneBvhNodes {
   lxSceneBvhNode bvhNodes[];
 };
 
-layout(std430, binding = 12) readonly buffer RayPrimitiveHitGroups {
-  lxRayPrimitiveHitGroupRecord rayPrimitiveHitGroups[];
+layout(std430, binding = 12) readonly buffer RayPrimitiveHitShaders {
+  lxRayPrimitiveHitShaderRecord rayPrimitiveHitShaders[];
 };
 
 layout(std430, binding = 13) readonly buffer RayMaterialRecords {
@@ -166,14 +165,6 @@ vec4 lxSampleSceneTexture(uint textureSlot, vec2 uv) {
   return texture(SceneTextures[nonuniformEXT(textureSlot)], uv);
 }
 
-vec3 environmentColor(vec3 dir) {
-  vec3 sampled = lxEvaluateEnvironmentLightingRadiance(dir);
-  if (max(max(sampled.r, sampled.g), sampled.b) <= 0.0) {
-    return params.backgroundColor.rgb;
-  }
-  return sampled;
-}
-
 vec3 lxLoadRayNormal(lxRayMaterialRecord material, vec2 uv,
                      vec3 geometricNormal, mat3 tangentFrame) {
   vec3 tangentNormal =
@@ -189,12 +180,16 @@ LxMaterialSurface lxLoadRayMaterialSurface(uint materialIndex, vec2 uv,
       params.materialCount == 0u ? 0u : min(materialIndex, params.materialCount - 1u);
   lxRayMaterialRecord material = rayMaterials[clampedIndex];
   vec4 baseColorTex = lxSampleSceneTexture(material.baseColorTexture, uv);
+  vec4 metallicRoughnessTex =
+      lxSampleSceneTexture(material.metallicRoughnessTexture, uv);
 
   LxMaterialSurface surface;
   surface.baseColor = material.baseColor.rgb * baseColorTex.rgb;
   surface.alpha = material.baseColor.a * baseColorTex.a;
-  surface.metallic = clamp(material.metallic, 0.0, 1.0);
-  surface.roughness = clamp(material.roughness, 0.04, 1.0);
+  surface.metallic = clamp(material.metallic * metallicRoughnessTex.b,
+                           0.0, 1.0);
+  surface.roughness = clamp(material.roughness * metallicRoughnessTex.g,
+                            0.04, 1.0);
   surface.normal =
       lxLoadRayNormal(material, uv, geometricNormal, tangentFrame);
   surface.ao = lxSampleSceneTexture(material.occlusionTexture, uv).r;
@@ -205,7 +200,7 @@ LxMaterialSurface lxLoadRayMaterialSurface(uint materialIndex, vec2 uv,
 }
 
 struct LxRadianceDispatchInput {
-  uint hitGroupIndex;
+  uint hitShaderIndex;
   LxMaterialSurface surface;
   vec3 hitPosition;
   vec3 viewDirection;
@@ -215,41 +210,26 @@ struct LxRadianceDispatchInput {
   float visibility;
 };
 
-vec3 lxShadeStandardPbrRadiance(LxRadianceDispatchInput dispatchInput) {
-  LxStandardPbrRadianceHitInput hitInput;
-  hitInput.worldPosition = dispatchInput.hitPosition;
-  hitInput.worldNormal = normalize(dispatchInput.surface.normal);
-  hitInput.viewDirection = normalize(dispatchInput.viewDirection);
-  LxStandardPbrRadianceHitResult hitResult =
-      lxHitStandardPbrRadiance(hitInput);
-
-  LxBsdfEvaluateInput bsdfInput;
-  bsdfInput.baseColor = max(dispatchInput.surface.baseColor, vec3(0.0));
-  bsdfInput.normal = normalize(dispatchInput.surface.normal);
-  bsdfInput.wi = normalize(dispatchInput.lightDirection);
-  bsdfInput.wo = normalize(dispatchInput.viewDirection);
-  bsdfInput.metallic = clamp(dispatchInput.surface.metallic, 0.0, 1.0);
-  bsdfInput.roughness = clamp(dispatchInput.surface.roughness, 0.04, 1.0);
-  bsdfInput.ao = clamp(dispatchInput.surface.ao, 0.0, 1.0);
-  bsdfInput.emissive = max(dispatchInput.surface.emissive, vec3(0.0));
-  LxBsdfEvaluateOutput evaluated = lxEvaluateLambertLikeBsdf(bsdfInput);
-
-  float NdotL = max(dot(bsdfInput.normal, bsdfInput.wi), 0.0);
-  return evaluated.value * dispatchInput.lightColor *
-             dispatchInput.lightIntensity * dispatchInput.visibility * NdotL *
-             bsdfInput.ao +
-         bsdfInput.emissive;
-}
-
 vec3 lxDispatchRadianceHit(LxRadianceDispatchInput dispatchInput) {
-  if (dispatchInput.hitGroupIndex == 1u) {
+  if (dispatchInput.hitShaderIndex == 1u) {
     LxUnlitTextureRadianceHitInput hitInput;
     hitInput.baseColor = dispatchInput.surface.baseColor;
     LxUnlitTextureRadianceHitResult result =
         lxHitUnlitTextureRadiance(hitInput);
     return result.radiance;
   }
-  return lxShadeStandardPbrRadiance(dispatchInput);
+  LxStandardPbrRadianceHitInput hitInput;
+  hitInput.surface = dispatchInput.surface;
+  hitInput.worldPosition = dispatchInput.hitPosition;
+  hitInput.worldNormal = normalize(dispatchInput.surface.normal);
+  hitInput.viewDirection = normalize(dispatchInput.viewDirection);
+  hitInput.lightDirection = normalize(dispatchInput.lightDirection);
+  hitInput.lightColor = dispatchInput.lightColor;
+  hitInput.lightIntensity = dispatchInput.lightIntensity;
+  hitInput.visibility = dispatchInput.visibility;
+  LxStandardPbrRadianceHitResult result =
+      lxHitStandardPbrRadiance(hitInput);
+  return result.radiance;
 }
 
 struct HitAttributes {
@@ -445,11 +425,11 @@ vec3 shade(vec3 origin, vec3 dir) {
     if (params.compareMode == 1u) {
       return vec3(0.0);
     }
-    return environmentColor(dir);
+    return params.backgroundColor.rgb;
   }
 
-  lxRayPrimitiveHitGroupRecord rayHit =
-      rayPrimitiveHitGroups[min(hit.primitiveIndex, params.primitiveCount - 1u)];
+  lxRayPrimitiveHitShaderRecord rayHit =
+      rayPrimitiveHitShaders[min(hit.primitiveIndex, params.primitiveCount - 1u)];
   uint materialIndex =
       params.materialCount == 0u ? 0u
                                  : min(rayHit.materialIndex,
@@ -476,7 +456,7 @@ vec3 shade(vec3 origin, vec3 dir) {
   float visibility = occluded ? 0.0 : 1.0;
 
   LxRadianceDispatchInput dispatchInput;
-  dispatchInput.hitGroupIndex = rayHit.hitGroupIndex;
+  dispatchInput.hitShaderIndex = rayHit.hitShaderIndex;
   dispatchInput.surface = surface;
   dispatchInput.hitPosition = hitPos;
   dispatchInput.viewDirection = V;

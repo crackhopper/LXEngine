@@ -367,9 +367,13 @@ void registerEnvironmentNodeFeature(
     const SceneNodeDocument &nodeDocument,
     const LX_core::ResourceUri &requestedFeatureUri,
     const LX_core::SceneIblBakeMarker &bake,
-    std::string_view fieldName) {
-  if (resourceTable.hasEnvironmentNode()) {
-    throw std::runtime_error("scene contains multiple environment/skybox nodes");
+    std::string_view fieldName, std::string_view expectedFeature) {
+  if (expectedFeature == "environmentLighting" &&
+      resourceTable.hasEnvironmentNode()) {
+    throw std::runtime_error("scene contains multiple environment nodes");
+  }
+  if (expectedFeature == "skybox" && resourceTable.hasSkyboxNode()) {
+    throw std::runtime_error("scene contains multiple infinite skybox nodes");
   }
 
   LX_infra::SceneResourceParserRegistry registry;
@@ -406,10 +410,17 @@ void registerEnvironmentNodeFeature(
   }
   const auto resolvedFeature = resourceTable.resolve(*featureHandle);
   if (!resolvedFeature.has_value() ||
-      resolvedFeature->get().feature != "environmentLighting") {
+      resolvedFeature->get().feature != expectedFeature) {
     throw std::runtime_error(
         std::string(fieldName) + " node '" + nodeDocument.nodeName +
-        "' RenderFeature must provide feature environmentLighting");
+        "' RenderFeature must provide feature " + std::string(expectedFeature));
+  }
+  if (expectedFeature == "skybox") {
+    resourceTable.setSkyboxRuntimeState(LX_core::SceneSkyboxRuntimeState{
+        .feature = *featureHandle,
+        .nodePresent = true,
+    });
+    return;
   }
   resourceTable.setEnvironmentRuntimeState(
       LX_core::SceneEnvironmentRuntimeState{
@@ -427,13 +438,14 @@ void registerEnvironmentNodeFeature(
     registerEnvironmentNodeFeature(
         resourceTable, assetRoots, nodeDocument,
         nodeDocument.environment->featureUri, nodeDocument.environment->bake,
-        "environment");
+        "environment", "environmentLighting");
   }
   if (nodeDocument.skybox.has_value() &&
       nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Infinite) {
     registerEnvironmentNodeFeature(resourceTable, assetRoots, nodeDocument,
                                    nodeDocument.skybox->featureUri,
-                                   nodeDocument.skybox->bake, "skybox");
+                                   nodeDocument.skybox->bake, "skybox",
+                                   "skybox");
   }
 }
 
@@ -960,13 +972,23 @@ isEditorAssignableMaterialFilename(const std::string &filename) {
 }
 
 [[nodiscard]] std::string normalizeMaterialUri(const SceneNodeDocument &node) {
-  if (node.materialUri.has_value()) {
-    if (*node.materialUri == "builtin://lxe_editor/ground_material") {
+  const std::optional<std::string> materialUri =
+      node.skybox.has_value() &&
+              node.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{node.skybox->materialUri.string()}
+          : node.materialUri;
+  const std::optional<std::string> meshUri =
+      node.skybox.has_value() &&
+              node.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{node.skybox->meshUri.string()}
+          : node.meshUri;
+  if (materialUri.has_value()) {
+    if (*materialUri == "builtin://lxe_editor/ground_material") {
       return kDefaultGroundMaterial;
     }
-    return *node.materialUri;
+    return *materialUri;
   }
-  if (node.meshUri == "builtin://lxe_editor/ground_mesh") {
+  if (meshUri == "builtin://lxe_editor/ground_mesh") {
     return kDefaultGroundMaterial;
   }
   return {};
@@ -983,7 +1005,9 @@ void setDocumentNodeMaterialUri(SceneNodeDocument &node,
 
 [[nodiscard]] bool
 documentNodeHasMaterialSurface(const SceneNodeDocument &node) {
-  return node.meshUri.has_value() || node.materialUri.has_value();
+  return node.meshUri.has_value() || node.materialUri.has_value() ||
+         (node.skybox.has_value() &&
+          node.skybox->mode == LX_core::SceneSkyboxMode::Finite);
 }
 
 [[nodiscard]] const LX_core::MaterialInstance *
@@ -1089,8 +1113,12 @@ loadEffectiveMaterialForSceneNode(
     const MaterialOverrideState &nodeOverrides,
     const ProceduralMaterialState &proceduralMaterial =
         ProceduralMaterialState{}) {
-  if (uri.empty() && nodeDocument.meshUri.has_value() &&
-      isGltfMeshUri(*nodeDocument.meshUri)) {
+  const std::optional<std::string> meshUri =
+      nodeDocument.skybox.has_value() &&
+              nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{nodeDocument.skybox->meshUri.string()}
+          : nodeDocument.meshUri;
+  if (uri.empty() && meshUri.has_value() && isGltfMeshUri(*meshUri)) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
   return loadMaterialForSceneNode(assetRoots, resourceTable, uri,
@@ -1124,9 +1152,19 @@ loadEffectiveMaterialForSceneNode(
     LX_core::SceneResourceTable &resourceTable,
     const SceneNodeDocument &nodeDocument,
     const MaterialOverrideState &nodeOverrides) {
-  if (nodeDocument.meshUri.has_value() &&
-      isGltfMeshUri(*nodeDocument.meshUri) &&
-      !nodeDocument.materialUri.has_value()) {
+  const std::optional<std::string> meshUri =
+      nodeDocument.skybox.has_value() &&
+              nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{nodeDocument.skybox->meshUri.string()}
+          : nodeDocument.meshUri;
+  const std::optional<std::string> materialUri =
+      nodeDocument.skybox.has_value() &&
+              nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{
+                nodeDocument.skybox->materialUri.string()}
+          : nodeDocument.materialUri;
+  if (meshUri.has_value() && isGltfMeshUri(*meshUri) &&
+      !materialUri.has_value()) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
 
@@ -1325,17 +1363,28 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     const SceneNodeDocument &nodeDocument,
     const std::vector<std::filesystem::path> &assetRoots,
     LX_core::SceneResourceTable &resourceTable) {
-  if (!nodeDocument.meshUri.has_value()) {
+  const std::optional<std::string> meshUri =
+      nodeDocument.skybox.has_value() &&
+              nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{nodeDocument.skybox->meshUri.string()}
+          : nodeDocument.meshUri;
+  const std::optional<std::string> materialUri =
+      nodeDocument.skybox.has_value() &&
+              nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Finite
+          ? std::optional<std::string>{
+                nodeDocument.skybox->materialUri.string()}
+          : nodeDocument.materialUri;
+  if (!meshUri.has_value()) {
     return LX_core::SceneNode::create(nodeDocument.nodeName);
   }
 
-  if (*nodeDocument.meshUri == "builtin://lxe_editor/ground_mesh") {
+  if (*meshUri == "builtin://lxe_editor/ground_mesh") {
     auto node = buildGroundNode();
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();
         materialComponent.has_value()) {
       const std::string uri = normalizeMaterialUri(nodeDocument);
-      if (nodeDocument.materialUri.has_value() ||
+      if (materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
@@ -1347,10 +1396,10 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     return node;
   }
 
-  if (isGltfMeshUri(*nodeDocument.meshUri)) {
+  if (isGltfMeshUri(*meshUri)) {
     const std::filesystem::path meshPath =
-        resolveGltfMeshPath(assetRoots, *nodeDocument.meshUri);
-    if (nodeDocument.materialUri.has_value()) {
+        resolveGltfMeshPath(assetRoots, *meshUri);
+    if (materialUri.has_value()) {
       auto meshAsset = loadTimedGltfMeshAsset(meshPath);
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
       return makeRenderableNode(
@@ -1362,14 +1411,14 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     throw std::runtime_error("glTF scene node requires explicit material uri");
   }
 
-  if (isBuiltinPrimitiveMeshUri(*nodeDocument.meshUri)) {
+  if (isBuiltinPrimitiveMeshUri(*meshUri)) {
     auto node =
-        buildBuiltinPrimitiveNode(*nodeDocument.meshUri, nodeDocument.nodeName);
+        buildBuiltinPrimitiveNode(*meshUri, nodeDocument.nodeName);
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();
         materialComponent.has_value()) {
       const std::string uri = normalizeMaterialUri(nodeDocument);
-      if (nodeDocument.materialUri.has_value() ||
+      if (materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
@@ -1381,14 +1430,14 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     return node;
   }
 
-  if (isBuiltinPatchMeshUri(*nodeDocument.meshUri)) {
+  if (isBuiltinPatchMeshUri(*meshUri)) {
     auto node =
-        buildBuiltinPatchNode(*nodeDocument.meshUri, nodeDocument.nodeName);
+        buildBuiltinPatchNode(*meshUri, nodeDocument.nodeName);
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();
         materialComponent.has_value()) {
       const std::string uri = normalizeMaterialUri(nodeDocument);
-      if (nodeDocument.materialUri.has_value() ||
+      if (materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
@@ -1400,18 +1449,18 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     return node;
   }
 
-  if (isBuiltinModelMeshUri(*nodeDocument.meshUri)) {
+  if (isBuiltinModelMeshUri(*meshUri)) {
     const std::string materialUri = normalizeMaterialUri(nodeDocument);
     const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
-    const auto asset = builtinAssets.findByMeshUri(*nodeDocument.meshUri);
+    const auto asset = builtinAssets.findByMeshUri(*meshUri);
     auto node = buildModelAssetNode(
-        *nodeDocument.meshUri, materialUri,
+        *meshUri, materialUri,
         asset ? asset->albedoTextureUri : std::string{}, nodeDocument.nodeName);
     node->setName(nodeDocument.name);
     if (auto materialComponent =
             node->getComponent<LX_core::MaterialComponent>();
         materialComponent.has_value()) {
-      if (nodeDocument.materialUri.has_value() ||
+      if (materialUri.has_value() ||
           !nodeDocument.nodeMaterialOverrides.empty() ||
           !nodeDocument.materialOverrides.empty() ||
           nodeDocument.proceduralMaterial.enabled) {
@@ -1427,12 +1476,12 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     return node;
   }
 
-  if (isSceneMeshAssetUri(*nodeDocument.meshUri)) {
+  if (isSceneMeshAssetUri(*meshUri)) {
     const std::filesystem::path meshPath =
-        resolveProjectAssetPath(assetRoots, *nodeDocument.meshUri)
-            .value_or(std::filesystem::path(*nodeDocument.meshUri));
+        resolveProjectAssetPath(assetRoots, *meshUri)
+            .value_or(std::filesystem::path(*meshUri));
     auto mesh = loadTimedSceneMeshAsset(meshPath);
-    if (nodeDocument.materialUri.has_value()) {
+    if (materialUri.has_value()) {
       const std::string materialUri = normalizeMaterialUri(nodeDocument);
       return makeRenderableNode(
           nodeDocument.nodeName, std::move(mesh),
@@ -1441,7 +1490,7 @@ loadTimedSceneMeshAsset(const std::filesystem::path &meshPath) {
     }
     throw std::runtime_error(
         "scene mesh node requires explicit material uri: " +
-        *nodeDocument.meshUri);
+        *meshUri);
   }
 
   return LX_core::SceneNode::create(nodeDocument.nodeName);
@@ -1866,6 +1915,7 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
       entry.visibilityMask = existing->visibilityMask;
       entry.meshUri = existing->meshUri;
       entry.materialUri = existing->materialUri;
+      entry.skybox = existing->skybox;
       entry.proceduralMaterial = existing->proceduralMaterial;
       entry.nodeMaterialOverrides = existing->nodeMaterialOverrides;
       entry.materialOverrides = existing->materialOverrides;

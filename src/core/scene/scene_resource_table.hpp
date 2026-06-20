@@ -139,6 +139,12 @@ struct SceneEnvironmentRuntimeState final {
   u64 generation = 0;
 };
 
+struct SceneSkyboxRuntimeState final {
+  RenderFeatureHandle feature;
+  bool nodePresent = false;
+  u64 generation = 0;
+};
+
 /*
 @source_analysis.section SceneResourceTable 统一持有场景渲染资源
 `SceneResourceTable` 是 bindless-ready 资源模型的入口。它给长期资源分配带
@@ -297,12 +303,18 @@ public:
   void registerEnvironmentLightingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef>
   getEnvironmentLightingResources() const;
+  void registerSkyboxResources(const RenderFeature &feature);
+  [[nodiscard]] std::vector<GpuResourceRef> getSkyboxResources() const;
   void registerSurfaceLightingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef> getSurfaceLightingResources() const;
   void setEnvironmentRuntimeState(SceneEnvironmentRuntimeState state);
   [[nodiscard]] std::optional<SceneEnvironmentRuntimeState>
   environmentRuntimeState() const;
   [[nodiscard]] bool hasEnvironmentNode() const;
+  void setSkyboxRuntimeState(SceneSkyboxRuntimeState state);
+  [[nodiscard]] std::optional<SceneSkyboxRuntimeState>
+  skyboxRuntimeState() const;
+  [[nodiscard]] bool hasSkyboxNode() const;
   void addEnvironmentIblBakeRequest(RenderFeatureHandle feature);
   void setObjectIblBakeMarker(ObjectHandle handle, SceneIblBakeMarker marker);
   [[nodiscard]] IblBakeItemCollection
@@ -498,8 +510,12 @@ private:
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
+  CombinedTextureSamplerSharedPtr m_builtinSkyboxMap;
+  std::optional<TextureHandle> m_skyboxTexture;
+  SkyboxDataUniquePtr m_skyboxUbo;
   SurfaceLightingDataUniquePtr m_surfaceLightingUbo;
   std::optional<SceneEnvironmentRuntimeState> m_environmentRuntimeState;
+  std::optional<SceneSkyboxRuntimeState> m_skyboxRuntimeState;
   std::vector<RenderFeatureHandle> m_environmentIblBakeRequests;
   std::vector<std::optional<SceneIblBakeMarker>> m_objectIblBakeMarkers;
   ToneMappingDataUniquePtr m_toneMappingUbo;

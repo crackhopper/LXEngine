@@ -74,28 +74,28 @@ enum class RayProgramPayload {
   Radiance,
 };
 
-struct RayHitGroupProgram final {
-  u32 index = 0;
+struct RayHitShaderProgram final {
+  u32 hitShaderIndex = 0;
   StringID materialType;
   ResourceUri uri;
   std::string function;
 };
 
-struct PrimitiveHitGroup final {
+struct PrimitiveHitShader final {
   u32 participantIndex = 0;
   u32 primitiveIndex = 0;
-  u32 hitGroupIndex = 0;
+  u32 hitShaderIndex = 0;
 };
 
-struct alignas(16) RayPrimitiveHitGroupRecord final {
-  u32 hitGroupIndex = 0;
+struct alignas(16) RayPrimitiveHitShaderRecord final {
+  u32 hitShaderIndex = 0;
   u32 materialIndex = 0;
   u32 reserved0 = 0;
   u32 reserved1 = 0;
 };
 
 struct alignas(16) RayMaterialRecord final {
-  u32 hitGroupIndex = 0;
+  u32 hitShaderIndex = 0;
   u32 baseColorTexture = u32_max;
   float metallic = 0.0f;
   float roughness = 1.0f;
@@ -110,8 +110,8 @@ struct alignas(16) RayMaterialRecord final {
 struct RayProgramTable final {
   RayProgramPayload payload = RayProgramPayload::Radiance;
   StringID dispatchFunction;
-  std::vector<RayHitGroupProgram> hitGroups;
-  std::vector<PrimitiveHitGroup> primitiveHitGroups;
+  std::vector<RayHitShaderProgram> hitShaders;
+  std::vector<PrimitiveHitShader> primitiveHitShaders;
 };
 
 struct RenderInput {

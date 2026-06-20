@@ -695,6 +695,32 @@ loadSceneSkyboxMode(const YAML::Node &node, const char *fieldName) {
                            " must be finite or infinite");
 }
 
+[[nodiscard]] LX_core::ResourceUri
+loadSceneResourceUriRef(const YAML::Node &node, const char *fieldName) {
+  if (!node || !node.IsMap()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a map");
+  }
+  bool hasUri = false;
+  std::string uri;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    if (key == "uri") {
+      uri = loadRequiredString(it->second,
+                               (std::string(fieldName) + ".uri").c_str());
+      validateSceneAssetUriInternal(uri,
+                                    (std::string(fieldName) + ".uri").c_str());
+      hasUri = true;
+    } else {
+      throw std::runtime_error(std::string(fieldName) + "." + key +
+                               " is not supported");
+    }
+  }
+  if (!hasUri) {
+    throw std::runtime_error(std::string(fieldName) + ".uri is required");
+  }
+  return LX_core::ResourceUri(uri);
+}
+
 [[nodiscard]] LX_core::SceneSkyboxNode
 loadSceneSkyboxNode(const YAML::Node &node, const char *fieldName) {
   if (!node) {
@@ -708,6 +734,8 @@ loadSceneSkyboxNode(const YAML::Node &node, const char *fieldName) {
   bool hasMode = false;
   bool hasFeatureUri = false;
   bool hasBake = false;
+  bool hasMesh = false;
+  bool hasMaterial = false;
   for (auto it = node.begin(); it != node.end(); ++it) {
     const std::string key = it->first.as<std::string>();
     const YAML::Node value = it->second;
@@ -715,6 +743,15 @@ loadSceneSkyboxNode(const YAML::Node &node, const char *fieldName) {
       skybox.mode =
           loadSceneSkyboxMode(value, (std::string(fieldName) + ".mode").c_str());
       hasMode = true;
+    } else if (key == "mesh") {
+      skybox.meshUri =
+          loadSceneResourceUriRef(value,
+                                  (std::string(fieldName) + ".mesh").c_str());
+      hasMesh = true;
+    } else if (key == "material") {
+      skybox.materialUri = loadSceneResourceUriRef(
+          value, (std::string(fieldName) + ".material").c_str());
+      hasMaterial = true;
     } else if (key == "feature") {
       if (!value.IsMap()) {
         throw std::runtime_error(std::string(fieldName) +
@@ -749,6 +786,14 @@ loadSceneSkyboxNode(const YAML::Node &node, const char *fieldName) {
   }
   if (!hasMode) {
     throw std::runtime_error(std::string(fieldName) + ".mode is required");
+  }
+  if (skybox.mode == LX_core::SceneSkyboxMode::Finite && !hasMesh) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".mesh.uri is required for finite skybox");
+  }
+  if (skybox.mode == LX_core::SceneSkyboxMode::Finite && !hasMaterial) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".material.uri is required for finite skybox");
   }
   if (skybox.mode == LX_core::SceneSkyboxMode::Infinite && !hasFeatureUri) {
     throw std::runtime_error(std::string(fieldName) +
@@ -811,6 +856,16 @@ void saveSceneSkyboxNode(YAML::Emitter &out,
   out << YAML::Key << "mode" << YAML::Value
       << (skybox.mode == LX_core::SceneSkyboxMode::Finite ? "finite"
                                                           : "infinite");
+  if (!skybox.meshUri.empty()) {
+    out << YAML::Key << "mesh" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "uri" << YAML::Value << skybox.meshUri.string();
+    out << YAML::EndMap;
+  }
+  if (!skybox.materialUri.empty()) {
+    out << YAML::Key << "material" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "uri" << YAML::Value << skybox.materialUri.string();
+    out << YAML::EndMap;
+  }
   if (!skybox.featureUri.empty()) {
     out << YAML::Key << "feature" << YAML::Value << YAML::BeginMap;
     out << YAML::Key << "uri" << YAML::Value << skybox.featureUri.string();
@@ -1406,6 +1461,12 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
   }
   if (const auto skyboxNode = node["skybox"]; skyboxNode) {
     entry.skybox = loadSceneSkyboxNode(skyboxNode, "nodes[].skybox");
+  }
+  if (entry.skybox.has_value() &&
+      (entry.meshUri.has_value() || entry.materialUri.has_value())) {
+    throw std::runtime_error(
+        "nodes[].mesh/material are not supported on skybox nodes; use "
+        "nodes[].skybox.mesh/material for finite skybox");
   }
   entry.bake = loadSceneNodeBakeMarkers(node["bake"], "nodes[].bake");
   if (const auto cameraNode = node["camera"]; cameraNode) {

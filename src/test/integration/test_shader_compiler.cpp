@@ -416,9 +416,6 @@ static bool testPbrShadersUseMaterialAccessorAbi(
        shaderDir / "render_paths" / "Forward" / "pbr.frag"},
       {"Deferred GBuffer",
        shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag"},
-      {"OfflineRT direct ray",
-       shaderDir / "render_paths" / "OfflineRT" /
-           "standard_pbr_primary_ray.comp"},
   };
 
   for (const auto &shader : shaders) {
@@ -465,12 +462,6 @@ static bool testPbrShadersUseMaterialAccessorAbi(
                 << " should write material properties to the GBuffer\n";
       return false;
     }
-    if (std::string(shader.label) == "OfflineRT direct ray" &&
-        source.find("lxSampleBsdf") == std::string::npos) {
-      std::cerr << "  FAIL: " << shader.label
-                << " should call lxSampleBsdf\n";
-      return false;
-    }
     if (source.find("struct lxSceneMaterialRecord") != std::string::npos) {
       std::cerr << "  FAIL: " << shader.label
                 << " still declares legacy lxSceneMaterialRecord\n";
@@ -478,7 +469,90 @@ static bool testPbrShadersUseMaterialAccessorAbi(
     }
   }
 
-  std::cout << "  PASS: PBR shaders use Material Accessor ABI source hook\n";
+  const auto offlineSource = readTextFile(
+      shaderDir / "render_paths" / "OfflineRT" /
+      "standard_pbr_primary_ray.comp");
+  if (offlineSource.empty()) {
+    std::cerr << "  FAIL: OfflineRT direct ray source is empty or unreadable\n";
+    return false;
+  }
+  if (offlineSource.find("#include \"common/material_surface.glsl\"") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT direct ray should include "
+                 "common/material_surface.glsl\n";
+    return false;
+  }
+  if (offlineSource.find("#include \"common/material_bsdf.glsl\"") ==
+      std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT direct ray should include "
+                 "common/material_bsdf.glsl\n";
+    return false;
+  }
+  if (offlineSource.find("#include LX_MATERIAL_CONTRACT_SOURCE") !=
+      std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT direct ray should not use the compile-time "
+                 "material contract source hook; hit shaders are dispatched "
+                 "through the runtime hitShaderTable\n";
+    return false;
+  }
+  if (offlineSource.find("lxDispatchRadianceHit") == std::string::npos ||
+      offlineSource.find("hitShaderIndex") == std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT direct ray should dispatch runtime hit "
+                 "shaders through hitShaderTable indices\n";
+    return false;
+  }
+  if (offlineSource.find("lxPbrDirectBrdf") != std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT primary ray should dispatch hit shaders "
+                 "instead of owning standard-pbr BRDF evaluation\n";
+    return false;
+  }
+  const auto standardPbrHitSource = readTextFile(
+      shaderDir / "common" / "materials" / "hits" /
+      "standard_pbr_radiance.glsl");
+  if (standardPbrHitSource.find("lxPbrDirectBrdf") == std::string::npos) {
+    std::cerr << "  FAIL: standard-pbr radiance hit shader should use the "
+                 "shared PBR direct BRDF\n";
+    return false;
+  }
+  if (offlineSource.find("lxEvaluateEnvironmentLightingRadiance") !=
+          std::string::npos ||
+      offlineSource.find("features/environment_lighting.glsl") !=
+          std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT direct ray must not sample IBL/"
+                 "environmentLighting\n";
+    return false;
+  }
+  const auto offlineSkyboxSource = readTextFile(
+      shaderDir / "render_paths" / "OfflineRT" /
+      "standard_pbr_primary_ray_skybox.comp");
+  if (offlineSkyboxSource.empty()) {
+    std::cerr << "  FAIL: OfflineRT skybox ray source is empty or unreadable\n";
+    return false;
+  }
+  if (offlineSkyboxSource.find("sampleGgxHalfVector") == std::string::npos ||
+      offlineSkyboxSource.find("sampleGgxVndf") == std::string::npos ||
+      offlineSkyboxSource.find("shadeOneBounceIndirect") == std::string::npos ||
+      offlineSkyboxSource.find("params.maxBounce >= 2u") ==
+          std::string::npos ||
+      offlineSkyboxSource.find("lxEvaluateSkyboxRadianceMaxMip") ==
+          std::string::npos ||
+      offlineSkyboxSource.find("shadeSecondaryDirect") == std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT skybox ray shader should expose the "
+                 "two-bounce sampling path with GGX, VNDF, max-mip diffuse, "
+                 "and secondary direct NEE\n";
+    return false;
+  }
+  if (offlineSkyboxSource.find("lxEvaluateEnvironmentLightingRadiance") !=
+          std::string::npos ||
+      offlineSkyboxSource.find("features/environment_lighting.glsl") !=
+          std::string::npos) {
+    std::cerr << "  FAIL: OfflineRT skybox ray shader must not sample IBL/"
+                 "environmentLighting\n";
+    return false;
+  }
+
+  std::cout << "  PASS: realtime PBR uses material source hooks; OfflineRT "
+               "uses runtime hitShaderTable dispatch\n";
   return true;
 }
 
@@ -540,6 +614,16 @@ static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
   if (!offline.success) {
     std::cerr << "  FAIL: OfflineRT material source variant compile failed: "
               << offline.errorMessage << "\n";
+    return false;
+  }
+  const auto offlineSkybox = ShaderCompiler::compileFile(
+      shaderDir / "render_paths" / "OfflineRT" /
+          "standard_pbr_primary_ray_skybox.comp",
+      variants);
+  if (!offlineSkybox.success) {
+    std::cerr << "  FAIL: OfflineRT skybox ray material source variant "
+                 "compile failed: "
+              << offlineSkybox.errorMessage << "\n";
     return false;
   }
 
@@ -888,7 +972,9 @@ static bool testIblBakeShaderContracts(const std::filesystem::path &shaderDir) {
   if (!expectBinding(bindings, "CameraUBO", ShaderPropertyType::UniformBuffer,
                      0, 0) ||
       !expectBinding(bindings, "SkyboxMap", ShaderPropertyType::TextureCube, 1,
-                     0)) {
+                     0) ||
+      !expectBinding(bindings, "SkyboxUBO", ShaderPropertyType::UniformBuffer,
+                     1, 1)) {
     std::cerr << "  FAIL: skybox background bindings mismatch\n";
     return false;
   }
