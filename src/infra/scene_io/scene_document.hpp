@@ -162,6 +162,10 @@ public:
   bool hasEditorCamera() const;
   const EditorCameraState &editorCamera() const;
   void setEditorCamera(const EditorCameraState &state);
+  [[nodiscard]] std::optional<std::string>
+  editorRealtimeRenderPathGraph() const;
+  void setEditorRealtimeRenderPathGraph(std::string uri);
+  void clearEditorRealtimeRenderPathGraph();
 
 private:
   std::shared_ptr<void> m_impl;

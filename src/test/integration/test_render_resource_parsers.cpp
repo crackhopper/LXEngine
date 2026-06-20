@@ -3698,6 +3698,7 @@ void testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads() {
   };
   const ExpectedAsset assets[] = {
       {"assets/render_paths/forward_main.render-path.yaml", 4},
+      {"assets/render_paths/helmet_skybox_forward_editor.render-path.yaml", 5},
       {"assets/render_paths/deferred_main.render-path.yaml", 4},
       {"assets/render_paths/deferred_bloom.render-path.yaml", 4},
   };
@@ -3779,6 +3780,56 @@ root:
          "environment node should retain bake.enabled");
   EXPECT(objectNode.bake.ibl.has_value() && objectNode.bake.ibl->enabled,
          "object node should retain top-level bake.ibl.enabled");
+}
+
+void testSceneDocumentParsesEditorRealtimeRenderPathGraph() {
+  const auto parsed =
+      parseSceneYaml("lxe_editor_render_path_graph.scene.yaml", R"(
+scene:
+  name: EditorRenderPathGraph
+root:
+  nodeName: scene_root
+  name: ""
+editor:
+  realtimeRenderPathGraph: assets/render_paths/helmet_skybox_forward_editor.render-path.yaml
+  editorCamera:
+    position: [1.0, 2.0, 3.0]
+    rotationEulerDeg: [4.0, 5.0, 6.0]
+    fovY: 35.0
+    nearPlane: 0.1
+    farPlane: 200.0
+)");
+
+  const auto graph = parsed.editorRealtimeRenderPathGraph();
+  EXPECT(graph.has_value(), "scene editor render path graph should parse");
+  EXPECT(graph.value_or("") ==
+             "assets/render_paths/helmet_skybox_forward_editor.render-path.yaml",
+         "scene editor render path graph should preserve URI");
+
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() /
+      "lxe_editor_render_path_graph_roundtrip.scene.yaml";
+  LX_infra::scene_io::saveSceneDocument(path, parsed);
+  const auto roundTripped = LX_infra::scene_io::loadSceneDocument(path);
+  EXPECT(roundTripped.editorRealtimeRenderPathGraph() == graph,
+         "scene editor render path graph should round-trip through save");
+}
+
+void testSceneDocumentRejectsUnknownEditorField() {
+  expectThrowsContaining(
+      []() {
+        (void)parseSceneYaml("lxe_unknown_editor_field.scene.yaml", R"(
+scene:
+  name: UnknownEditorField
+root:
+  nodeName: scene_root
+  name: ""
+editor:
+  renderPathGraph: assets/render_paths/forward_main.render-path.yaml
+)");
+      },
+      "unsupported editor field: renderPathGraph",
+      "scene editor block should reject misspelled render-path fields");
 }
 
 void testOfflineSceneLoaderRegistersEnvironmentNodeFeatureFromFileUri() {
@@ -4316,6 +4367,8 @@ int main() {
   testParserAdapterLoadsEnvironmentFeatureTextureDependency();
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   testSceneDocumentParsesEnvironmentNodeAndBakeMarkers();
+  testSceneDocumentParsesEditorRealtimeRenderPathGraph();
+  testSceneDocumentRejectsUnknownEditorField();
   testOfflineSceneLoaderRegistersEnvironmentNodeFeatureFromFileUri();
   testOfflineSceneLoaderResolvesCacheEnvironmentFeatureUri();
   testOfflineSceneLoaderRejectsMultipleEnvironmentNodes();

@@ -58,6 +58,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -118,9 +119,10 @@ loadRuntimeGraphicsShaderPayload(const LX_core::ResourceUri &shaderUri) {
 }
 
 LX_core::RenderPathGraph
-loadRenderPathGraphAsset(const char *assetPath,
+loadRenderPathGraphAsset(std::string_view assetPath,
                          LX_core::RenderPath expectedRenderPath) {
-  const auto graphPath = resolveRuntimePath(assetPath);
+  const std::string assetPathText(assetPath);
+  const auto graphPath = resolveRuntimePath(assetPathText);
   std::ifstream file(graphPath);
   if (!file.is_open()) {
     throw std::runtime_error("failed to open RenderPathGraph asset: " +
@@ -130,10 +132,10 @@ loadRenderPathGraphAsset(const char *assetPath,
   const std::string yamlText((std::istreambuf_iterator<char>(file)),
                              std::istreambuf_iterator<char>());
   LX_infra::RenderPathGraphResourceParser parser;
-  auto parsed = parser.parse(assetPath, yamlText);
+  auto parsed = parser.parse(assetPathText, yamlText);
   if (!parsed.renderPathGraph.has_value()) {
     std::string message = "RenderPathGraph asset did not parse: ";
-    message += assetPath;
+    message += assetPathText;
     for (const std::string &diagnostic : parsed.diagnostics) {
       message += "\n  ";
       message += diagnostic;
@@ -143,24 +145,25 @@ loadRenderPathGraphAsset(const char *assetPath,
   if (parsed.renderPathGraph->renderPath != expectedRenderPath) {
     throw std::runtime_error("RenderPathGraph asset declares the wrong "
                              "renderPath: " +
-                             std::string(assetPath));
+                             assetPathText);
   }
   return std::move(*parsed.renderPathGraph);
 }
 
 void applyToneMappingFeatureSettingsFromGraphAsset(
-    const char *graphAssetPath, const LX_core::RenderPathGraph &graph,
+    std::string_view graphAssetPath, const LX_core::RenderPathGraph &graph,
     LX_core::backend::VulkanPostProcessSettings &settings) {
+  const std::string graphAssetPathText(graphAssetPath);
   for (const auto &featureDependency : graph.features) {
     if (featureDependency.slot != "toneMapping") {
       continue;
     }
 
-    const auto graphPath = resolveRuntimePath(graphAssetPath);
+    const auto graphPath = resolveRuntimePath(graphAssetPathText);
     const std::string &featureUri = featureDependency.uri.string();
     auto featurePath = graphPath.parent_path() / std::filesystem::path(featureUri);
     if (!std::filesystem::exists(featurePath) &&
-        std::string_view(graphAssetPath).starts_with("assets/") &&
+        graphAssetPath.starts_with("assets/") &&
         featureUri.find("://") == std::string::npos) {
       featurePath = resolveRuntimePath(std::filesystem::path("assets") /
                                        std::filesystem::path(featureUri));
@@ -195,12 +198,13 @@ void applyToneMappingFeatureSettingsFromGraphAsset(
   }
 }
 
-std::filesystem::path resolveGraphFeatureAssetPath(const char *graphAssetPath,
+std::filesystem::path resolveGraphFeatureAssetPath(std::string_view graphAssetPath,
                                                    const std::string &featureUri) {
-  const auto graphPath = resolveRuntimePath(graphAssetPath);
+  const std::string graphAssetPathText(graphAssetPath);
+  const auto graphPath = resolveRuntimePath(graphAssetPathText);
   auto featurePath = graphPath.parent_path() / std::filesystem::path(featureUri);
   if (!std::filesystem::exists(featurePath) &&
-      std::string_view(graphAssetPath).starts_with("assets/") &&
+      graphAssetPath.starts_with("assets/") &&
       featureUri.find("://") == std::string::npos) {
     featurePath = resolveRuntimePath(std::filesystem::path("assets") /
                                      std::filesystem::path(featureUri));
@@ -209,7 +213,7 @@ std::filesystem::path resolveGraphFeatureAssetPath(const char *graphAssetPath,
 }
 
 void registerRenderFeatureDependenciesFromGraphAsset(
-    LX_core::Scene &scene, const char *graphAssetPath,
+    LX_core::Scene &scene, std::string_view graphAssetPath,
     const LX_core::RenderPathGraph &graph) {
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
@@ -1242,8 +1246,19 @@ bool liveRenderViewSelectionChanged(
     return false;
   }
   return lhs->visibleMask != rhs->visibleMask ||
+         lhs->realtimeRenderPathGraph != rhs->realtimeRenderPathGraph ||
          lhs->previewEnabled != rhs->previewEnabled ||
          lhs->editorOverlayVisible != rhs->editorOverlayVisible;
+}
+
+bool liveRenderViewRenderPathGraphChanged(
+    const std::optional<LX_core::gpu::LiveRenderView> &lhs,
+    const std::optional<LX_core::gpu::LiveRenderView> &rhs) {
+  const auto graph = [](const auto &view) -> std::string_view {
+    return view.has_value() ? std::string_view(view->realtimeRenderPathGraph)
+                            : std::string_view{};
+  };
+  return graph(lhs) != graph(rhs);
 }
 
 } // namespace
@@ -1298,6 +1313,8 @@ public:
   void setLiveRenderView(std::optional<LX_core::gpu::LiveRenderView> view) {
     const bool selectionChanged =
         liveRenderViewSelectionChanged(m_liveRenderView, view);
+    const bool renderPathGraphChanged =
+        liveRenderViewRenderPathGraphChanged(m_liveRenderView, view);
     m_liveRenderView = std::move(view);
     if (selectionChanged) {
       m_liveRenderViewSelectionGeneration =
@@ -1308,6 +1325,9 @@ public:
     if (m_scene && m_liveRenderView.has_value()) {
       (void)m_scene->resources().updateLiveRenderCameraUboResource(
           m_liveRenderView->cameraResource);
+    }
+    if (m_scene && renderPathGraphChanged) {
+      initScene(m_scene);
     }
   }
   [[nodiscard]] LX_core::gpu::LiveRenderSubmissionStats
@@ -1903,10 +1923,15 @@ public:
           throw std::runtime_error(message);
         };
     if (deferredMode) {
-      const char *deferredGraphAsset =
-          m_postProcessSettings.bloomEnabled
-              ? kDefaultDeferredBloomRenderPathGraphAsset
-              : kDefaultDeferredRenderPathGraphAsset;
+      const bool hasViewSelectedGraph =
+          m_liveRenderView.has_value() &&
+          !m_liveRenderView->realtimeRenderPathGraph.empty();
+      const std::string deferredGraphAsset =
+          hasViewSelectedGraph
+              ? m_liveRenderView->realtimeRenderPathGraph
+              : (m_postProcessSettings.bloomEnabled
+                     ? kDefaultDeferredBloomRenderPathGraphAsset
+                     : kDefaultDeferredRenderPathGraphAsset);
       const LX_core::RenderPathGraph deferredRenderPathGraph =
           loadRenderPathGraphAsset(deferredGraphAsset,
                                    LX_core::RenderPath::Deferred);
@@ -1914,18 +1939,21 @@ public:
           deferredGraphAsset, deferredRenderPathGraph, m_postProcessSettings);
       registerRenderFeatureDependenciesFromGraphAsset(
           *m_scene, deferredGraphAsset, deferredRenderPathGraph);
-      const std::vector<LX_core::StringID> deferredPasses =
-          m_postProcessSettings.bloomEnabled
-              ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
-                                               LX_core::Pass_Deferred,
-                                               LX_core::Pass_DeferredLighting,
-                                               LX_core::Pass_DebugOverlay}
-              : std::vector<LX_core::StringID>{
-                    LX_core::Pass_Shadow, LX_core::Pass_Deferred,
-                    LX_core::Pass_DeferredLighting,
-                    LX_core::Pass_DebugOverlay};
-      LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
-                                              deferredPasses, deferredPasses);
+      if (!hasViewSelectedGraph) {
+        const std::vector<LX_core::StringID> deferredPasses =
+            m_postProcessSettings.bloomEnabled
+                ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
+                                                 LX_core::Pass_Deferred,
+                                                 LX_core::Pass_DeferredLighting,
+                                                 LX_core::Pass_DebugOverlay}
+                : std::vector<LX_core::StringID>{
+                      LX_core::Pass_Shadow, LX_core::Pass_Deferred,
+                      LX_core::Pass_DeferredLighting,
+                      LX_core::Pass_DebugOverlay};
+        LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
+                                                deferredPasses,
+                                                deferredPasses);
+      }
       resolveMaterialSourceVariantsOrThrow(
           *m_scene, deferredRenderPathGraph,
           LX_core::ResourceUri(deferredGraphAsset));
@@ -1940,10 +1968,15 @@ public:
         addGraphDeclaredPass(std::move(pass));
       }
     } else {
-      const char *forwardGraphAsset =
-          m_postProcessSettings.bloomEnabled
-              ? kDefaultForwardBloomRenderPathGraphAsset
-              : kDefaultForwardRenderPathGraphAsset;
+      const bool hasViewSelectedGraph =
+          m_liveRenderView.has_value() &&
+          !m_liveRenderView->realtimeRenderPathGraph.empty();
+      const std::string forwardGraphAsset =
+          hasViewSelectedGraph
+              ? m_liveRenderView->realtimeRenderPathGraph
+              : (m_postProcessSettings.bloomEnabled
+                     ? kDefaultForwardBloomRenderPathGraphAsset
+                     : kDefaultForwardRenderPathGraphAsset);
       const LX_core::RenderPathGraph forwardRenderPathGraph =
           loadRenderPathGraphAsset(forwardGraphAsset,
                                    LX_core::RenderPath::Forward);
@@ -1951,11 +1984,13 @@ public:
           forwardGraphAsset, forwardRenderPathGraph, m_postProcessSettings);
       registerRenderFeatureDependenciesFromGraphAsset(
           *m_scene, forwardGraphAsset, forwardRenderPathGraph);
-      const std::vector<LX_core::StringID> forwardPasses{
-          LX_core::Pass_Shadow, LX_core::Pass_Forward, LX_core::Pass_Bloom,
-          LX_core::Pass_DebugOverlay};
-      LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
-                                              forwardPasses, forwardPasses);
+      if (!hasViewSelectedGraph) {
+        const std::vector<LX_core::StringID> forwardPasses{
+            LX_core::Pass_Shadow, LX_core::Pass_Forward, LX_core::Pass_Bloom,
+            LX_core::Pass_DebugOverlay};
+        LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
+                                                forwardPasses, forwardPasses);
+      }
       resolveMaterialSourceVariantsOrThrow(
           *m_scene, forwardRenderPathGraph,
           LX_core::ResourceUri(forwardGraphAsset));

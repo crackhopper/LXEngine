@@ -562,6 +562,7 @@ LxeEditorSession::buildLiveRenderView() const {
       .cameraResource = editorView->cameraResource,
       .visibleMask = editorView->visibleMask,
       .viewportExtent = editorView->viewportExtent,
+      .realtimeRenderPathGraph = effectiveRealtimeRenderPathGraph(),
       .previewEnabled = editorView->previewEnabled,
       .editorOverlayVisible = editorView->editorOverlayVisible};
 }
@@ -697,6 +698,74 @@ LxeEditorSession::setRealtimeRenderMode(const std::string_view modeName) {
   }
 }
 
+std::string LxeEditorSession::effectiveRealtimeRenderPathGraph() const {
+  if (m_realtimeRenderPathGraphOverride.has_value()) {
+    return *m_realtimeRenderPathGraphOverride;
+  }
+  if (!m_runtime.scene()) {
+    return {};
+  }
+  const auto sceneDefault =
+      m_runtime.document().editorRealtimeRenderPathGraph();
+  return sceneDefault.value_or(std::string{});
+}
+
+LX_core::CommandResult
+LxeEditorSession::handleRenderPathCommand(
+    const std::vector<std::string> &args) {
+  if (args.size() != 1u) {
+    return makeCommandError("usage: render-path status|default|<uri>");
+  }
+
+  const auto sceneDefault =
+      m_runtime.scene() ? m_runtime.document().editorRealtimeRenderPathGraph()
+                        : std::nullopt;
+  const auto statusJson = [&]() {
+    const std::string effective = effectiveRealtimeRenderPathGraph();
+    std::ostringstream structured;
+    structured << "{\"effective\":\"" << jsonEscape(effective)
+               << "\",\"override\":";
+    if (m_realtimeRenderPathGraphOverride.has_value()) {
+      structured << "\"" << jsonEscape(*m_realtimeRenderPathGraphOverride)
+                 << "\"";
+    } else {
+      structured << "null";
+    }
+    structured << ",\"sceneDefault\":";
+    if (sceneDefault.has_value()) {
+      structured << "\"" << jsonEscape(*sceneDefault) << "\"";
+    } else {
+      structured << "null";
+    }
+    structured << "}";
+    return structured.str();
+  };
+
+  if (args[0] == "status") {
+    return makeCommandOk("realtime render path: " +
+                             effectiveRealtimeRenderPathGraph(),
+                         statusJson());
+  }
+  if (args[0] == "default") {
+    m_realtimeRenderPathGraphOverride.reset();
+    return makeCommandOk("realtime render path override cleared",
+                         statusJson());
+  }
+
+  const std::string uri = args[0];
+  if (uri.empty()) {
+    return makeCommandError("render-path uri must be non-empty");
+  }
+  const std::filesystem::path resolved = resolveRuntimePath(uri);
+  if (!std::filesystem::exists(resolved)) {
+    return makeCommandError("render-path file not found: " +
+                            resolved.generic_string());
+  }
+
+  m_realtimeRenderPathGraphOverride = uri;
+  return makeCommandOk("realtime render path set to " + uri, statusJson());
+}
+
 void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   if (!hasPendingSceneOpen()) {
     return;
@@ -742,6 +811,7 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
   }
 
   m_runtime = std::move(nextRuntime);
+  m_realtimeRenderPathGraphOverride.reset();
   m_sceneDirty = false;
   (void)nextScenePath;
   rebuildBindings(std::move(nextEditorSceneState));
@@ -1558,6 +1628,11 @@ void LxeEditorSession::rebuildBindings(
               },
       });
   registerRenderDebugCommand(*m_commandBus, m_renderDebugCommandHooks);
+  m_commandBus->registerHandler(
+      "render-path", "render-path status|default|<uri>",
+      [this](std::vector<std::string> args) {
+        return handleRenderPathCommand(args);
+      });
 
   m_ui.attach(
       m_rig, *m_commandBus, m_editorState, m_editorConfig, *m_viewportOverlay,

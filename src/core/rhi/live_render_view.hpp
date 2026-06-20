@@ -14,6 +14,7 @@ struct LiveRenderView final {
   CameraResource cameraResource;
   VisibilityLayerMask visibleMask = Layer_All & ~Layer_EditorOverlay;
   Vec2f viewportExtent{0.0f, 0.0f};
+  std::string realtimeRenderPathGraph;
   bool previewEnabled = false;
   bool editorOverlayVisible = true;
 };

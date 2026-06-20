@@ -140,6 +140,9 @@ private:
   runRealtimeRenderProfile(std::string_view profileName);
   [[nodiscard]] LX_core::CommandResult
   setRealtimeRenderMode(std::string_view modeName);
+  [[nodiscard]] std::string effectiveRealtimeRenderPathGraph() const;
+  [[nodiscard]] LX_core::CommandResult
+  handleRenderPathCommand(const std::vector<std::string> &args);
   [[nodiscard]] std::string projectSummaryJson() const;
   [[nodiscard]] EditorSceneStateDocument captureEditorSceneState() const;
   void applyEditorSceneState(const EditorSceneStateDocument &state);
@@ -170,6 +173,7 @@ private:
   DisplayCommandHooks m_displayCommandHooks;
   RenderDebugCommandHooks m_renderDebugCommandHooks;
   RealtimeRenderProfileHooks m_realtimeRenderProfileHooks;
+  std::optional<std::string> m_realtimeRenderPathGraphOverride;
   LX_core::Vec2f m_windowSize{1280.0f, 720.0f};
   usize m_bindingsGeneration = 0;
   bool m_sceneDirty = false;

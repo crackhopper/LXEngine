@@ -1899,6 +1899,11 @@ captureSceneDocument(const std::shared_ptr<SceneRuntimeData> &runtime) {
     document.setRenderProfileDocument(
         runtime->document.renderProfileDocument());
   }
+  if (const auto editorRenderPathGraph =
+          runtime->document.editorRealtimeRenderPathGraph();
+      editorRenderPathGraph.has_value()) {
+    document.setEditorRealtimeRenderPathGraph(*editorRenderPathGraph);
+  }
   const BuiltinAssetCatalog builtinAssets = loadBuiltinAssetCatalog();
 
   auto captureNode =

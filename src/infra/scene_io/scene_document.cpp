@@ -88,6 +88,7 @@ struct SceneDocumentData final {
   std::optional<LX_core::offline::RenderProfileDocument> renderProfileDocument;
   SceneNodeDocument rootNode;
   std::optional<EditorCameraState> editorCamera;
+  std::optional<std::string> editorRealtimeRenderPathGraph;
 
   SceneDocumentData() : rootNode(makeDefaultRootNode()) {}
 };
@@ -1391,7 +1392,6 @@ loadEditorCamera(const YAML::Node &node) {
 }
 
 void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
-  out << YAML::Key << "editor" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "editorCamera" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "position" << YAML::Value;
   saveVec3(out, state.position);
@@ -1401,6 +1401,23 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
   out << YAML::Key << "nearPlane" << YAML::Value << state.nearPlane;
   out << YAML::Key << "farPlane" << YAML::Value << state.farPlane;
   out << YAML::EndMap;
+}
+
+void saveEditorState(YAML::Emitter &out, const SceneDocument &document) {
+  const auto realtimeRenderPathGraph =
+      document.editorRealtimeRenderPathGraph();
+  if (!document.hasEditorCamera() && !realtimeRenderPathGraph.has_value()) {
+    return;
+  }
+
+  out << YAML::Key << "editor" << YAML::Value << YAML::BeginMap;
+  if (realtimeRenderPathGraph.has_value()) {
+    out << YAML::Key << "realtimeRenderPathGraph" << YAML::Value
+        << *realtimeRenderPathGraph;
+  }
+  if (document.hasEditorCamera()) {
+    saveEditorCamera(out, document.editorCamera());
+  }
   out << YAML::EndMap;
 }
 
@@ -1882,6 +1899,32 @@ void SceneDocument::setEditorCamera(const EditorCameraState &state) {
   std::static_pointer_cast<SceneDocumentData>(m_impl)->editorCamera = state;
 }
 
+std::optional<std::string> SceneDocument::editorRealtimeRenderPathGraph()
+    const {
+  if (!m_impl) {
+    return std::nullopt;
+  }
+  return std::static_pointer_cast<const SceneDocumentData>(m_impl)
+      ->editorRealtimeRenderPathGraph;
+}
+
+void SceneDocument::setEditorRealtimeRenderPathGraph(std::string uri) {
+  validateSceneAssetUriInternal(uri, "editor.realtimeRenderPathGraph");
+  if (!m_impl) {
+    m_impl = std::make_shared<SceneDocumentData>();
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)
+      ->editorRealtimeRenderPathGraph = std::move(uri);
+}
+
+void SceneDocument::clearEditorRealtimeRenderPathGraph() {
+  if (!m_impl) {
+    return;
+  }
+  std::static_pointer_cast<SceneDocumentData>(m_impl)
+      ->editorRealtimeRenderPathGraph.reset();
+}
+
 SceneDocument loadSceneDocument(const std::filesystem::path &path) {
   const YAML::Node root = YAML::LoadFile(path.string());
 
@@ -1931,6 +1974,22 @@ SceneDocument loadSceneDocument(const std::filesystem::path &path) {
   }
 
   if (const YAML::Node editorNode = root["editor"]; editorNode) {
+    if (!editorNode.IsMap()) {
+      throw std::runtime_error("editor must be a map");
+    }
+    for (auto it = editorNode.begin(); it != editorNode.end(); ++it) {
+      const std::string key = it->first.as<std::string>();
+      if (key == "editorCamera" || key == "realtimeRenderPathGraph") {
+        continue;
+      }
+      throw std::runtime_error("unsupported editor field: " + key);
+    }
+    if (const YAML::Node renderPathNode =
+            editorNode["realtimeRenderPathGraph"];
+        renderPathNode) {
+      const std::string uri = renderPathNode.as<std::string>();
+      document.setEditorRealtimeRenderPathGraph(uri);
+    }
     if (const auto editorCamera = loadEditorCamera(editorNode["editorCamera"]);
         editorCamera.has_value()) {
       document.setEditorCamera(*editorCamera);
@@ -1971,9 +2030,7 @@ void saveSceneDocument(const std::filesystem::path &path,
   out << YAML::Key << "root" << YAML::Value;
   saveNodeDocument(out, document.rootNode());
 
-  if (document.hasEditorCamera()) {
-    saveEditorCamera(out, document.editorCamera());
-  }
+  saveEditorState(out, document);
 
   out << YAML::EndMap;
 
