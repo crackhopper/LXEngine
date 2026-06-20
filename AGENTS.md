@@ -22,7 +22,8 @@ LXEngine is a Vulkan-based 3D renderer written in C++20 with three layers:
 
 Important executable areas:
 
-- `src/demos/lxe_editor/`: main interactive demo
+- `src/editor/`: main interactive editor (`lxe_editor`)
+- `src/tools/`: offline renderer, manager, image/asset utilities
 - `src/test/`: integration tests
 - `assets/`: runtime assets and test assets
 
@@ -32,7 +33,7 @@ This repository runs **two parallel development tracks**. They are intentionally
 
 ### Regular track (agent-driven, minimal human review)
 
-Directories: `src/core/`, `src/infra/`, `src/backend/`, `src/test/`, `src/demos/`
+Directories: `src/core/`, `src/infra/`, `src/backend/`, `src/editor/`, `src/tools/`, `src/test/`
 
 This is the original production codebase. Agents implement features and fix bugs here directly. Human review is sparse — the agent is trusted to produce correct, well-tested code.
 

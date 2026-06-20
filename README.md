@@ -1,138 +1,161 @@
 # LXEngine
 
-基于 Vulkan 的 C++20 模块化 3D 渲染器，正在往 AI-Native 小型游戏引擎方向推进。仓库围绕三层结构组织：
+LXEngine 是一个以 Vulkan 渲染器为起点、正在走向 AI Native 小型游戏引擎的 C++20 工程。当前 `0.2.0-pre` 基线关注三件事：
 
-- `src/core/` — 平台无关接口、数学、资源类型、场景图、runtime 编排
-- `src/infra/` — 窗口、资源加载、shader 编译、GUI 等基础设施实现
-- `src/backend/vulkan/` — Vulkan 渲染后端
+1. 把 realtime editor、RenderPathGraph / FrameGraph、PBR + IBL、offline compute renderer 这些渲染主干站稳。
+2. 让 scene、material、render path、pipeline、resource table 这些核心概念有清晰的代码边界。
+3. 给人类开发者和 agent 都留下可观察、可验证、可扩展的入口。
 
-交互式编辑器入口：`src/demos/lxe_editor/`。集成测试：`src/test/integration/`。
+## 当前主入口
 
-## 文档在哪里
+| 入口 | 路径 / target | 用途 |
+|---|---|---|
+| Realtime editor | `src/editor/`, target `lxe_editor` | 打开 project / scene、调材质和光源、保存场景、通过 CommandBus/API/recording 观察状态 |
+| Offline renderer | `src/tools/lxe_offline_render/`, target `lxe_offline_render` | 无窗口读取 `.scene.yaml`，运行 headless Vulkan compute renderer，输出 EXR/PNG/JSON/raw |
+| Shader smoke | target `test_shader_compiler` | 快速验证 shaderc、glslc、SPIRV-Cross 和 shader 路径 |
+| Integration tests | `src/test/integration/`, target `BuildTest` | 覆盖 shader、material、scene、pipeline、resource、editor 等集成路径 |
+| Agent/remote manager | `src/tools/lxe_manager/` | MCP 管理服务，用于启动 editor、构建、日志、录制、远端诊断 |
 
-**所有人类可读文档都在 [`notes/`](notes/)**（原 `docs/` 与 `faq/` 已并入）。
+`Renderer` 仍是 CMake project 名称和历史 bootstrap/env-probe 语境，不是当前主要交互入口。当前主要交互入口是 `lxe_editor`。
 
-| 读什么 | 去哪里 |
+## 代码结构
+
+| 路径 | 当前职责 |
 |---|---|
-| 项目速览 | [`notes/README.md`](notes/README.md) |
-| 新手上手 | [`notes/get-started.md`](notes/get-started.md) |
-| 目录职责 | [`notes/project-layout.md`](notes/project-layout.md) |
-| 三层架构 + 数据流 | [`notes/architecture.md`](notes/architecture.md) |
-| 子系统设计（维护者视角） | [`notes/subsystems/`](notes/subsystems/) |
-| 使用者视角概念 | [`notes/concepts/`](notes/concepts/) |
-| 路线图 | [`notes/roadmaps/main-roadmap/README.md`](notes/roadmaps/main-roadmap/README.md) |
-| 当前活跃需求 | [`notes/requirements/`](notes/requirements/) |
-| FAQ / 排错 | [`notes/faq/README.md`](notes/faq/README.md) |
-| 行为契约（权威） | `openspec/specs/<capability>/spec.md` |
+| `src/core/` | 平台无关核心：scene、asset、material、frame graph、pipeline identity、RHI 接口、offline 数据结构 |
+| `src/infra/` | 工具与加载层：window、ImGui、shader compiler/reflection、mesh/texture/material loader、scene I/O、offline scene compiler |
+| `src/backend/vulkan/` | Vulkan 后端：device、swapchain、resource upload、attachments、descriptor、pipeline、command buffer、present、offline compute |
+| `src/editor/` | 当前交互 editor：project/session、scene runtime、UI panels、CommandBus、HTTP/WebSocket API、recording |
+| `src/tools/` | 独立工具：offline renderer、EXR compare、image probe、glTF/material 转换、PBRT scene 转换、lxe_manager、assets-downloader |
+| `src/test/` | 集成测试和 new-track 测试入口 |
+| `src/new_common/`, `src/new_core/` | C++20 module rewrite 试验线，默认不参与普通开发，需显式 `LX_BUILD_NEW_TRACK=ON` |
+| `assets/` | runtime assets：shaders、materials、models、textures、env、scenes、render_paths |
+| `notes/` | 当前人类可读文档站点 |
+| `docs/superpowers/` | Superpowers specs/plans，记录当前设计讨论和执行计划 |
 
-### 本地启动 notes 站点（推荐）
+更细的目录说明见 [项目目录结构](notes/concepts-design/project-layout.md)。
 
-notes 按 MkDocs 站点组织，本地预览比直接读 markdown 体验好很多（左侧导航、站内搜索、Mermaid 图示、LaTeX 公式渲染）：
+## 快速构建
+
+Linux / Ninja 最短路径：
+
+```bash
+cmake -S . -B build -G Ninja
+cmake --build build --target test_shader_compiler
+./build/src/test/test_shader_compiler
+cmake --build build --target lxe_editor -j2
+./build/src/editor/lxe_editor
+```
+
+Offline renderer smoke：
+
+```bash
+cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2
+ctest --test-dir build --output-on-failure -R 'test_vulkan_offline_renderer'
+./build/src/tools/lxe_offline_render/lxe_offline_render \
+  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
+  --profile preview \
+  --samples 1 \
+  --width 64 \
+  --height 64 \
+  --max-bounce 1 \
+  --out artifacts/offline/smoke
+```
+
+常用自动化验证：
+
+```bash
+cmake --build build --target BuildTest
+ctest --test-dir build --output-on-failure -L auto -LE requires_video_device
+xvfb-run -a ctest --test-dir build --output-on-failure -L requires_video_device
+```
+
+依赖基线：
+
+- CMake 3.16+
+- C++20 编译器
+- Ninja（Linux 推荐）
+- Vulkan SDK 或系统 Vulkan 开发环境
+- `glslc`、shaderc、SPIRV-Cross
+- SDL3 或 GLFW window backend
+
+## 文档入口
+
+所有当前人类可读文档都从 `notes/` 进入。推荐启动本地站点，而不是只读散落的 Markdown：
 
 ```bash
 scripts/notes/serve_site.sh
 ```
 
-终端会打印本地访问地址（默认 `http://0.0.0.0:8110`）。脚本行为：
-
-1. 生成 `mkdocs.gen.yml`（读取 `notes/nav.yml` + `mkdocs.yml`）
-2. 停旧进程
-3. 后台启动 `mkdocs serve`
-
 常用变体：
 
 ```bash
-scripts/notes/serve_site.sh --foreground   # 前台运行（Ctrl+C 停）
-scripts/notes/serve_site.sh --build        # 仅静态构建到 .site/
+scripts/notes/serve_site.sh --foreground
+scripts/notes/serve_site.sh --build
 ```
 
-Windows 上用 `scripts/notes/serve_site.ps1`。
+| 想了解 | 当前入口 |
+|---|---|
+| 项目速览 | [notes/README.md](notes/README.md) |
+| 第一次构建和启动 | [notes/get-started.md](notes/get-started.md) |
+| 架构总览 | [notes/concepts-design/architecture.md](notes/concepts-design/architecture.md) |
+| 目录职责 | [notes/concepts-design/project-layout.md](notes/concepts-design/project-layout.md) |
+| 场景系统 | [notes/scene-system/index.md](notes/scene-system/index.md) |
+| 材质系统 | [notes/concepts/material/index.md](notes/concepts/material/index.md) |
+| 渲染管线 | [notes/concepts-design/rendering-pipeline/index.md](notes/concepts-design/rendering-pipeline/index.md) |
+| 子系统维护视角 | [notes/subsystems/index.md](notes/subsystems/index.md) |
+| 源码分析 | [notes/source_analysis/index.md](notes/source_analysis/index.md) |
+| Roadmap | [notes/roadmaps/README.md](notes/roadmaps/README.md) |
+| 当前活跃需求 | [notes/requirements/index.md](notes/requirements/index.md) |
+| 工具链说明 | [notes/tools/index.md](notes/tools/index.md) |
 
-### 面向 coding agent
+## 当前事实源
 
-- [`AGENTS.md`](AGENTS.md) — 唯一权威入口
-- [`CLAUDE.md`](CLAUDE.md) 只作索引指向 `AGENTS.md`，不维护独立副本
+旧 plan 或历史 requirement 只代表当时上下文，不代表当前权威事实源。
 
-## 快速开始（构建）
+当代码、文档和历史计划不一致时，按这个顺序判断：
 
-### 依赖
+1. `src/`、`assets/`、`CMakeLists.txt` 和当前测试。
+2. `docs/superpowers/specs/` 中仍有效的设计 spec。
+3. `notes/requirements/` 中 active requirement。
+4. `notes/concepts-design/`、`notes/concepts/`、`notes/scene-system/`、`notes/subsystems/`。
+5. `notes/source_analysis/`、`notes/roadmaps/`。
+6. `notes/requirements/finished/`、历史 plans、临时笔记。
 
-- CMake 3.16+
-- Ninja
-- C++20 编译器
-- Vulkan SDK
-- SDL3（首版主线）或 GLFW
+Roadmap 说明方向，不能单独证明能力已经实现。是否已经实现，要回到代码、当前设计 spec、active requirement 和验证命令。
 
-### Linux 构建
+## 开发工作流
 
-```bash
-mkdir -p build && cd build
-cmake .. -G Ninja
-ninja lxe_editor
-```
+当前命令入口位于 `.codex/commands/`：
 
-### Linux 测试
+| 命令 | 用途 |
+|---|---|
+| `/draft-req` | 把新想法整理成 active requirement |
+| `/finish-req` | 校验 requirement、补齐状态、归档完成项 |
+| `/update-notes` | 按当前代码更新 notes |
+| `/refresh-notes` | 重启本地 notes 站点 |
+| `/sync-design-docs` | 同步设计索引 |
+| `/init-notes` | 初始化 notes 结构 |
 
-```bash
-ninja BuildTest
-ctest --output-on-failure -L auto -LE requires_video_device
-xvfb-run -a ctest --output-on-failure -L requires_video_device
-```
-
-- `Renderer` target 是 bootstrap / env-probe 可执行，不是主要交互入口
-- 主交互 target 是 `lxe_editor`
-- 无桌面的 Linux 环境里，窗口类 Vulkan 测试通常需要 `xvfb-run`
-
-## 常用工作流
-
-命令入口位于 `.codex/commands/`（含 `opsx/` 子目录）。推荐链路：
+典型路径：
 
 ```text
-想法 / 问题
-  -> /draft-req      可选，先把需求写清
-  -> /opsx:propose   建立 OpenSpec change
-  -> /opsx:apply     实施代码与测试
-  -> /opsx:archive   归档 change 并同步 spec
-  -> /finish-req     校验并归档需求文档
-  -> /update-notes   同步 notes
-  -> /refresh-notes  刷新本地 notes 站点
+idea / problem
+  -> /draft-req      optional
+  -> Superpowers brainstorming/design
+  -> Superpowers implementation plan
+  -> implementation + verification
+  -> /finish-req
+  -> /update-notes
+  -> /refresh-notes
   -> git commit
 ```
 
-需求文件位于 `notes/requirements/`，按 `NNN-*.md` 编号顺序实施。一个 REQ 文件只覆盖一个连续实施周期；如果新需求让旧需求的一部分后置，先用 `/draft-req` 拆分旧需求，并优先改成 `NNN-a` / `NNN-b` 后缀族，避免后续编号连锁变化。
+需求文件在 `notes/requirements/`，按 `NNN-*.md` 编号顺序推进。一个 REQ 文件只覆盖一个连续实施周期；如果新需求让旧需求的一部分后置，先拆分旧需求，并优先使用 `NNN-a` / `NNN-b` 后缀族，避免后续编号连锁变化。
 
-常见短链路：
+## Coding agent 入口
 
-- 只讨论方案：`/opsx:explore`
-- 只更新 notes：`/update-notes`
-- 只同步设计索引：`/sync-design-docs`
+- [AGENTS.md](AGENTS.md) 是 coding agent 的唯一权威入口。
+- [CLAUDE.md](CLAUDE.md) 和 `.cursorrules` 只应指向 `AGENTS.md`，不维护独立项目记忆。
 
-## 目录约定
-
-| 路径 | 用途 |
-|---|---|
-| `src/` | 代码主体（三层 + demos + 测试） |
-| `assets/` | 资产（shaders / materials / models / textures / env） |
-| `notes/` | 所有人类可读文档（唯一入口，原 `docs/` 与 `faq/` 已并入） |
-| `openspec/specs/` | 当前实现契约（权威） |
-| `openspec/changes/` | 活动中的变更提案 |
-| `openspec/changes/archive/` | 已归档变更（历史记录，非当前事实源） |
-| `scripts/notes/` | notes 站点工具（`serve_site.sh` / `generate_site_config.py` / `mkdocs_hooks.py`） |
-| `scripts/source_analysis/` | 源码注释抽取工具 |
-| `src/demos/lxe_editor/` | 主交互编辑器 |
-
-## 开发原则
-
-- 改子系统前，先读对应 `openspec/specs/<capability>/spec.md`
-- 写 `notes/` 前，先读 `openspec/specs/notes-writing-style/spec.md`
-- C++ 代码遵守 `openspec/specs/cpp-style-guide/spec.md`
-- 文档只写当前可验证的事实，不保留旧目录 / 旧命令的兼容说明
-
-## 下一步阅读
-
-刚 clone 下来想搞清楚“这是什么”：
-
-1. 跑一次 `scripts/notes/serve_site.sh`，浏览器打开本地站点
-2. 读 [`notes/README.md`](notes/README.md) → [`notes/get-started.md`](notes/get-started.md) → [`notes/architecture.md`](notes/architecture.md)
-3. 挑一个感兴趣的子系统，读对应 [`notes/subsystems/*.md`](notes/subsystems/) + 其 spec
-4. 想看规划方向：[`notes/roadmaps/main-roadmap/README.md`](notes/roadmaps/main-roadmap/README.md)
+改代码前先读 `AGENTS.md`、相关 notes 设计页和当前 Superpowers spec；改 notes 前遵守 `.codex/skills/writing-notes/SKILL.md`。
