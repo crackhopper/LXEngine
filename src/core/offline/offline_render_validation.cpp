@@ -44,7 +44,7 @@ void validateOfflineUploadView(const SceneResourceTableUploadView &uploadView) {
   if (uploadView.objects.empty()) {
     throw std::runtime_error("offline render scene has no renderable objects");
   }
-  if (uploadView.materials.empty()) {
+  if (uploadView.materials.empty() && uploadView.materialRefs.empty()) {
     throw std::runtime_error("offline render scene has no upload materials");
   }
 
@@ -54,18 +54,22 @@ void validateOfflineUploadView(const SceneResourceTableUploadView &uploadView) {
   validateCountFitsU32(uploadView.primitives.size(), "primitive");
   validateCountFitsU32(uploadView.objects.size(), "object");
   validateCountFitsU32(uploadView.materials.size(), "material");
+  validateCountFitsU32(uploadView.materialRefs.size(), "material ref");
+  validateCountFitsU32(uploadView.sourceMaterialRecords.size(),
+                       "source material record");
 }
 
-void validateOfflineRenderJob(const OfflineRenderJob &job) {
-  if (job.output.width == 0 || job.output.height == 0) {
+void validateOfflineRenderInputs(const SceneResourceTable &scene,
+                                 const OutputProfile &output) {
+  if (output.width == 0 || output.height == 0) {
     throw std::runtime_error(
         "offline render output width/height must be positive");
   }
-  if (!hasActiveCamera(job.scene)) {
+  if (!hasActiveCamera(scene)) {
     throw std::runtime_error("offline render scene has no active camera");
   }
 
-  const SceneResourceTableUploadView uploadView = job.scene.buildUploadView();
+  const SceneResourceTableUploadView uploadView = scene.buildUploadView();
   validateOfflineUploadView(uploadView);
   const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
   if (bvh.nodes().empty()) {

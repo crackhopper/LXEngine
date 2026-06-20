@@ -123,6 +123,7 @@ struct SceneNodeDocument final {
   MaterialOverrideState nodeMaterialOverrides;
   MaterialOverrideState materialOverrides;
   std::optional<LX_core::SceneEnvironmentNode> environment;
+  std::optional<LX_core::SceneSkyboxNode> skybox;
   LX_core::SceneNodeBakeMarkers bake;
   std::optional<CameraNodeState> camera;
   std::optional<std::string> cameraOfflineYaml;

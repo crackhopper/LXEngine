@@ -22,6 +22,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -260,18 +261,18 @@ joinSceneResourceDiagnostics(const std::vector<std::string> &diagnostics) {
 
 void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
                                     SceneResourceTable &table,
-                                    const SceneNodeDocument &node) {
-  if (!node.environment.has_value()) {
-    return;
-  }
+                                    const SceneNodeDocument &node,
+                                    const LX_core::ResourceUri &requestedUri,
+                                    const LX_core::SceneIblBakeMarker &bake,
+                                    std::string_view fieldName) {
   if (table.hasEnvironmentNode()) {
-    throw std::runtime_error("scene contains multiple environment nodes");
+    throw std::runtime_error("scene contains multiple environment/skybox nodes");
   }
 
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   const LX_core::ResourceUri featureUri =
-      resolveSceneResourceParserUri(resolver, node.environment->featureUri);
+      resolveSceneResourceParserUri(resolver, requestedUri);
   const auto parsed = registry.parse(
       table, LX_core::SceneResourceType::RenderFeature, featureUri,
       LX_infra::SceneResourceParseContext{
@@ -281,9 +282,9 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
       parsed.metadata.state == LX_core::ResourceState::Failed ||
       !parsed.diagnostics.empty()) {
     std::string message =
-        "environment node '" + node.nodeName +
+        std::string(fieldName) + " node '" + node.nodeName +
         "' failed to load RenderFeature '" +
-        node.environment->featureUri.string() + "'";
+        requestedUri.string() + "'";
     const std::string diagnostics =
         joinSceneResourceDiagnostics(parsed.diagnostics);
     if (!diagnostics.empty()) {
@@ -296,22 +297,38 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
       table.findRenderFeatureByMetadataHandle(parsed.identity);
   if (!featureHandle.has_value()) {
     throw std::runtime_error(
-        "environment node '" + node.nodeName +
+        std::string(fieldName) + " node '" + node.nodeName +
         "' RenderFeature did not register a live payload for '" +
-        node.environment->featureUri.string() + "'");
+        requestedUri.string() + "'");
   }
   const auto resolvedFeature = table.resolve(*featureHandle);
   if (!resolvedFeature.has_value() ||
       resolvedFeature->get().feature != "environmentLighting") {
     throw std::runtime_error(
-        "environment node '" + node.nodeName +
+        std::string(fieldName) + " node '" + node.nodeName +
         "' RenderFeature must provide feature environmentLighting");
   }
   table.setEnvironmentRuntimeState(LX_core::SceneEnvironmentRuntimeState{
       .feature = *featureHandle,
       .nodePresent = true,
-      .bakeRequested = node.environment->bake.enabled,
+      .bakeRequested = bake.enabled,
   });
+}
+
+void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
+                                    SceneResourceTable &table,
+                                    const SceneNodeDocument &node) {
+  if (node.environment.has_value()) {
+    registerEnvironmentNodeFeature(resolver, table, node,
+                                   node.environment->featureUri,
+                                   node.environment->bake, "environment");
+  }
+  if (node.skybox.has_value() &&
+      node.skybox->mode == LX_core::SceneSkyboxMode::Infinite) {
+    registerEnvironmentNodeFeature(resolver, table, node,
+                                   node.skybox->featureUri, node.skybox->bake,
+                                   "skybox");
+  }
 }
 
 [[nodiscard]] CameraResource makeCameraResource(const SceneNodeDocument &node,
@@ -359,6 +376,7 @@ void registerEnvironmentNodeFeature(const OfflineAssetResolver &resolver,
   object.worldBounds = mesh.bounds.transformed(world);
   object.visibilityMask = node.visibilityMask;
   object.debugId = StringID(path);
+  object.renderType = StringID("mesh");
   object.visible = node.visibilityMask != 0;
   return object;
 }
@@ -411,29 +429,12 @@ registerMeshUri(SceneResourceTable &table, const OfflineAssetResolver &resolver,
 
 struct LoadState final {
   OfflineLoadedScene loaded;
-  OfflineShaderProvider offlineShaderProvider;
-  LX_core::IShaderSharedPtr providedOfflineShader;
   std::unordered_map<std::string, RegisteredMesh> meshByUri;
   std::unordered_map<std::string, MaterialHandle> materialByKey;
   std::unordered_map<std::string, MaterialInstanceSharedPtr> materialCache;
   bool cameraLoaded = false;
   bool directionalLightLoaded = false;
 };
-
-[[nodiscard]] LX_core::IShaderSharedPtr resolveProvidedOfflineShader(
-    LoadState &state) {
-  if (!state.offlineShaderProvider) {
-    return nullptr;
-  }
-  if (!state.providedOfflineShader) {
-    state.providedOfflineShader = state.offlineShaderProvider();
-    if (!state.providedOfflineShader) {
-      throw std::runtime_error(
-          "offline shader provider returned no shader");
-    }
-  }
-  return state.providedOfflineShader;
-}
 
 void visitNode(const OfflineAssetResolver &resolver,
                const SceneNodeDocument &node, const std::string &parentPath,
@@ -496,17 +497,13 @@ void visitNode(const OfflineAssetResolver &resolver,
 
 } // namespace
 
-OfflineSceneLoader::OfflineSceneLoader(
-    OfflineAssetResolver resolver, OfflineShaderProvider offlineShaderProvider)
-    : m_resolver(std::move(resolver)),
-      m_offlineShaderProvider(std::move(offlineShaderProvider)) {}
+OfflineSceneLoader::OfflineSceneLoader(OfflineAssetResolver resolver)
+    : m_resolver(std::move(resolver)) {}
 
 OfflineLoadedScene
 OfflineSceneLoader::load(const LX_infra::scene_io::SceneDocument &document,
                          const std::string &cameraPath) const {
   LoadState state;
-  state.offlineShaderProvider = m_offlineShaderProvider;
-  state.loaded.offlineShader = resolveProvidedOfflineShader(state);
   const std::string requestedCamera =
       cameraPath.empty() ? document.gameplayCameraPath() : cameraPath;
 

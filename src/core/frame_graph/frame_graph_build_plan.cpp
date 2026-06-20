@@ -184,10 +184,11 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.shaderUri = node.shaderUri;
   pass.stage = node.stage;
   pass.dispatch = node.dispatch;
+  pass.compute = node.compute;
   pass.input = node.input;
   pass.renderingMode = node.renderingMode;
   pass.attachments = node.attachments;
-  pass.payloads = node.payloads;
+  pass.readbacks = node.readbacks;
   pass.renderState = node.renderState;
   pass.renderPathNodeSignature = getRenderPathNodeSignature(node);
   return pass;
@@ -212,10 +213,10 @@ void validateRenderPathPassNode(const RenderPathGraph &graphAsset,
   if (const auto inputError = validateRenderPassInputContract(node)) {
     throw std::invalid_argument(prefix + " " + *inputError);
   }
-  for (const RenderPathPayloadContract &payload : node.payloads) {
-    if (!containsName(node.targets, payload.target)) {
-      throw std::invalid_argument(prefix + " payload '" + payload.name +
-                                  "' target '" + payload.target +
+  for (const RenderPathReadbackContract &readback : node.readbacks) {
+    if (!containsName(node.targets, readback.target)) {
+      throw std::invalid_argument(prefix + " readback '" + readback.name +
+                                  "' target '" + readback.target +
                                   "' is not listed in targets");
     }
   }

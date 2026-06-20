@@ -1,7 +1,9 @@
 #pragma once
 
+#include "core/frame_graph/frame_graph_executor.hpp"
 #include "core/image/tone_mapping.hpp"
-#include "core/offline/offline_render_job.hpp"
+#include "core/offline/offline_render_profile.hpp"
+#include "core/offline/offline_render_result.hpp"
 
 #include <filesystem>
 #include <string>
@@ -12,8 +14,11 @@ using OfflineToneMappingMode = LX_core::image::ToneMappingMode;
 using OfflineToneMappingSettings = LX_core::image::ToneMappingSettings;
 
 struct OfflineImageOutputRequest final {
-  LX_core::offline::OfflineRenderJob job;
-  LX_core::offline::OfflineReadbackImage image;
+  LX_core::offline::OutputProfile output;
+  LX_core::offline::OfflineRenderSettings offline;
+  std::string profileName;
+  std::filesystem::path outputPath;
+  LX_core::FrameGraphExecutionPayload payload;
   std::filesystem::path scenePath;
   std::string buildInfo = "unknown";
   OfflineToneMappingSettings toneMapping;
@@ -29,6 +34,9 @@ struct OfflineImageOutputResult final {
 
 [[nodiscard]] OfflineImageOutputResult
 writeOfflineImageOutputs(const OfflineImageOutputRequest &request);
+
+[[nodiscard]] LX_core::offline::OfflineReadbackImage
+offlineImageFromPayload(const LX_core::FrameGraphExecutionPayload &payload);
 
 [[nodiscard]] unsigned char toneMapLinearToSrgb8(float value,
                                                  const OfflineToneMappingSettings &settings);

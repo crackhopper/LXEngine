@@ -9,14 +9,39 @@ scene:
     skyboxEnabled: false
   rendering:
     shadows: false
-  defaultOutputProfile: preview
+  defaultOutputProfile: forward_no_ibl
   outputProfiles:
-    preview:
+    forward_no_ibl:
       camera: /game_cam
+      renderPathGraph: assets/render_paths/forward_offline_direct.render-path.yaml
       width: 192
       height: 192
       outputFormat: exr-png
-      outDir: artifacts/reference/damaged_helmet_direct
+      outDir: artifacts/reference/damaged_helmet_forward_no_ibl
+      backgroundColor: [0.0, 0.0, 0.0]
+    ibl_only:
+      camera: /game_cam
+      renderPathGraph: assets/render_paths/forward_offline_ibl_only.render-path.yaml
+      width: 192
+      height: 192
+      outputFormat: exr-png
+      outDir: artifacts/reference/damaged_helmet_ibl_only
+      backgroundColor: [0.0, 0.0, 0.0]
+    forward_ibl:
+      camera: /game_cam
+      renderPathGraph: assets/render_paths/forward_offline_direct_ibl.render-path.yaml
+      width: 192
+      height: 192
+      outputFormat: exr-png
+      outDir: artifacts/reference/damaged_helmet_forward_ibl
+      backgroundColor: [0.0, 0.0, 0.0]
+    raytrace:
+      camera: /game_cam
+      renderPathGraph: assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml
+      width: 192
+      height: 192
+      outputFormat: exr-png
+      outDir: artifacts/reference/damaged_helmet_raytrace
       backgroundColor: [0.0, 0.0, 0.0]
 root:
   nodeName: scene_root
@@ -52,6 +77,9 @@ root:
         uri: assets/models/damaged_helmet/DamagedHelmet.gltf
       material:
         uri: assets/scenes/generated/materials/damaged_helmet_standard_pbr.material
+      bake:
+        ibl:
+          enabled: true
     - nodeName: compare_key_light
       name: compare_key_light
       transform:
@@ -78,6 +106,21 @@ root:
         uri: assets/scenes/generated/finite_room/test_neutral_room.obj
       material:
         uri: assets/scenes/generated/finite_room/test_neutral_room_unlit.material
+      skybox:
+        mode: finite
+    - nodeName: neutral_infinite_skybox
+      name: neutral_infinite_skybox
+      transform:
+        translation: [0.0, 0.0, 0.0]
+        rotation: [1.0, 0.0, 0.0, 0.0]
+        scale: [1.0, 1.0, 1.0]
+      visibilityMask: 4294967295
+      skybox:
+        mode: infinite
+        feature:
+          uri: assets/effects/environment_lighting.render-feature.yaml
+        bake:
+          enabled: true
 editor:
   editorCamera:
     position: [4.4693, 0.706849, 1.23665]

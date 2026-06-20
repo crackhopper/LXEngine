@@ -7,9 +7,19 @@
 namespace LX_core::backend {
 
 class VulkanCommandBuffer;
+class VulkanCommandBufferManager;
+class VulkanDevice;
 class VulkanResourceManager;
 
+enum class VulkanFrameGraphExecutionMode {
+  RecordOnly,
+  ImmediateSubmitReadback,
+};
+
 struct VulkanFrameGraphExecutionTarget final {
+  VulkanFrameGraphExecutionMode mode = VulkanFrameGraphExecutionMode::RecordOnly;
+  VulkanDevice *device = nullptr;
+  VulkanCommandBufferManager *commandManager = nullptr;
   VulkanResourceManager *resourceManager = nullptr;
   VulkanCommandBuffer *commandBuffer = nullptr;
 
@@ -18,7 +28,11 @@ struct VulkanFrameGraphExecutionTarget final {
   }
 
   [[nodiscard]] bool isPartial() const {
-    return (resourceManager == nullptr) != (commandBuffer == nullptr);
+    if (mode == VulkanFrameGraphExecutionMode::RecordOnly) {
+      return (resourceManager == nullptr) != (commandBuffer == nullptr);
+    }
+    return device == nullptr || commandManager == nullptr ||
+           resourceManager == nullptr;
   }
 };
 

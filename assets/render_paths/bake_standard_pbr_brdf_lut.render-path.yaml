@@ -1,6 +1,10 @@
 schema: lxe.render-path-graph.v1
 name: StandardPbrBrdfLutBake
 renderPath: OfflineRT
+bake:
+  kind: standard-pbr-brdf-lut
+  brdfLut:
+    resolution: 256
 
 passes:
   - id: StandardPbrBrdfLut
@@ -18,11 +22,14 @@ passes:
           layers: 1
     sources: [bake.material.source]
     targets: [bake.material.brdf_lut]
-    payloads:
+    readbacks:
       - name: brdf_lut
         target: bake.material.brdf_lut
+        extentFrom: bake.material.brdf_lut.resolution
+        binding: bake.material.brdf_lut
         format: RG16Float
         kind: texture2d
+        mediaType: application/x-lxe-rg16f-texture2d
     renderState:
       cullMode: None
       depthTest: false

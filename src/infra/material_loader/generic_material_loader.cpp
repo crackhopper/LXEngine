@@ -2,6 +2,7 @@
 
 #include "core/utils/filesystem_tools.hpp"
 #include "infra/material_loader/material_resource_parser.hpp"
+#include "infra/resource_parsers/texture_resource_parser.hpp"
 
 #include <yaml-cpp/yaml.h>
 
@@ -45,12 +46,40 @@ void validateParsedMaterialV2Envelope(const ParsedMaterialResource &parsed,
   }
 }
 
+void registerTextureDependencies(const ParsedMaterialResource &parsed,
+                                 const LX_core::ResourceUri &uri,
+                                 LX_core::SceneResourceTable &table) {
+  TextureResourceParser textureParser;
+  for (const LX_core::MaterialResourceDependency &dependency :
+       parsed.dependencies) {
+    if (dependency.kind != LX_core::MaterialEnvelopeKind::Texture) {
+      continue;
+    }
+    const auto texture = textureParser.parse(
+        table, dependency.uri,
+        SceneResourceParseContext{.ownerUri = LX_core::ResourceUri{},
+                                  .textureContent = dependency.textureContent});
+    if (!texture.identity.isValid() ||
+        texture.metadata.state == LX_core::ResourceState::Failed ||
+        !texture.diagnostics.empty()) {
+      std::ostringstream message;
+      message << uri.string() << ": failed to load texture dependency '"
+              << dependency.uri.string() << "'";
+      for (const std::string &diagnostic : texture.diagnostics) {
+        message << "\n  " << diagnostic;
+      }
+      fatalLoader(message.str());
+    }
+  }
+}
+
 LX_core::MaterialInstanceSharedPtr
 loadMaterialV2EnvelopeContract(const YAML::Node &root,
                                const LX_core::ResourceUri &uri,
                                LX_core::SceneResourceTable &table) {
   ParsedMaterialResource parsed = parseMaterialV2Contract(root, uri, table);
   validateParsedMaterialV2Envelope(parsed, uri);
+  registerTextureDependencies(parsed, uri, table);
   return parsed.instance->cloneInstanceData();
 }
 

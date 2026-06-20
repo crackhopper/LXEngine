@@ -1,6 +1,6 @@
 # 渲染管线：从场景到多 Pass 提交的路线图
 
-渲染管线负责把实时 `Scene` 或离线 `OfflineRenderJob` 组织成一组有顺序的 `FramePass`，再把每个 pass 编译成可提交的 draw / dispatch input，交给 Vulkan backend 录制和提交。
+渲染管线负责把实时或离线 `Scene` 通过 `RenderPathGraph` 组织成一组有顺序的 `FramePass`，再把每个 pass 编译成可提交的 draw / dispatch input，交给 Vulkan backend 录制和提交。
 
 我们可以把它想成一条工厂生产线：`RenderPathGraph` 是流程图，`FrameGraph` 是排程表，`FramePass` 是每道工序，`RenderWorkCompiler` 把这道工序编译成 typed `RenderInput` 和 `RenderInputDesc`。Realtime 和 offline 的入口不同，但它们应该使用同一条底层 work 编译线。
 

@@ -1,64 +1,68 @@
 #include "core/frame_graph/render_work_build_context.hpp"
 
-#include "core/offline/offline_render_job.hpp"
-
 #include <stdexcept>
 
 namespace LX_core {
 
-RenderWorkBuildContext RenderWorkBuildContext::realtimeEmpty() {
-  return RenderWorkBuildContext();
-}
-
-RenderWorkBuildContext RenderWorkBuildContext::realtime(const Scene &scene) {
-  return RenderWorkBuildContext(std::cref(scene));
+RenderWorkBuildContext
+RenderWorkBuildContext::empty(RenderDomain domain) {
+  return RenderWorkBuildContext(domain, nullptr, Options{});
 }
 
 RenderWorkBuildContext
-RenderWorkBuildContext::realtime(const Scene &scene, RealtimeOptions options) {
-  return RenderWorkBuildContext(std::cref(scene), std::move(options));
+RenderWorkBuildContext::forScene(RenderDomain domain, const Scene &scene) {
+  return RenderWorkBuildContext(domain, &scene, Options{});
 }
 
-RenderWorkBuildContext
-RenderWorkBuildContext::offline(offline::OfflineRenderJob &job) {
-  return RenderWorkBuildContext(std::ref(job));
+RenderWorkBuildContext RenderWorkBuildContext::forScene(RenderDomain domain,
+                                                        const Scene &scene,
+                                                        Options options) {
+  return RenderWorkBuildContext(domain, &scene, std::move(options));
 }
 
-RenderDomain RenderWorkBuildContext::domain() const {
-  return std::holds_alternative<OfflineSource>(m_source)
-             ? RenderDomain::Offline
-             : RenderDomain::Realtime;
-}
+RenderDomain RenderWorkBuildContext::domain() const { return m_domain; }
 
-bool RenderWorkBuildContext::hasRealtimeScene() const {
-  return std::holds_alternative<RealtimeSource>(m_source);
-}
+bool RenderWorkBuildContext::hasScene() const { return m_scene != nullptr; }
 
-const Scene &RenderWorkBuildContext::realtimeScene() const {
-  if (const auto *scene = std::get_if<RealtimeSource>(&m_source)) {
-    return scene->get();
+const Scene &RenderWorkBuildContext::scene() const {
+  if (m_scene == nullptr) {
+    throw std::logic_error("RenderWorkBuildContext does not hold a scene");
   }
-  throw std::logic_error(
-      "RenderWorkBuildContext does not hold a realtime scene");
+  return *m_scene;
 }
 
-const RenderWorkBuildContext::RealtimeOptions &
-RenderWorkBuildContext::realtimeOptions() const {
-  if (domain() != RenderDomain::Realtime) {
-    throw std::logic_error(
-        "RenderWorkBuildContext does not hold realtime options");
+const SceneResourceTable &RenderWorkBuildContext::resourceTable() const {
+  return scene().resources();
+}
+
+const RenderWorkBuildContext::Options &RenderWorkBuildContext::options() const {
+  return m_options;
+}
+
+std::optional<Vec3u>
+RenderWorkBuildContext::findRuntimeExtent(StringID key) const {
+  for (const RuntimeExtent &extent : m_options.runtimeExtents) {
+    if (extent.key == key) {
+      return extent.extent;
+    }
   }
-  return m_realtimeOptions;
+  return std::nullopt;
+}
+
+std::optional<std::reference_wrapper<const RenderFeatureVolatileValue>>
+RenderWorkBuildContext::findFeatureValue(StringID key) const {
+  for (const RenderFeatureVolatileValue &value : m_options.featureValues) {
+    if (value.key == key) {
+      return std::cref(value);
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<std::reference_wrapper<
     const RenderWorkBuildContext::PassPreparationFacts>>
 RenderWorkBuildContext::findPassPreparationFacts(StringID pass) const {
-  if (domain() != RenderDomain::Realtime) {
-    return std::nullopt;
-  }
-  for (const PassPreparationFacts &facts :
-       m_realtimeOptions.passPreparationFacts) {
+  for (const PassPreparationFacts &facts : m_options.passPreparationFacts) {
     if (facts.pass == pass) {
       return std::cref(facts);
     }
@@ -66,25 +70,9 @@ RenderWorkBuildContext::findPassPreparationFacts(StringID pass) const {
   return std::nullopt;
 }
 
-offline::OfflineRenderJob &
-RenderWorkBuildContext::offlineJob() const {
-  if (const auto *job = std::get_if<OfflineSource>(&m_source)) {
-    return job->get();
-  }
-  throw std::logic_error("RenderWorkBuildContext does not hold an offline job");
-}
-
-RenderWorkBuildContext::RenderWorkBuildContext()
-    : m_source(EmptyRealtimeSource{}) {}
-
-RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene)
-    : m_source(scene) {}
-
-RenderWorkBuildContext::RenderWorkBuildContext(RealtimeSource scene,
-                                               RealtimeOptions options)
-    : m_source(scene), m_realtimeOptions(std::move(options)) {}
-
-RenderWorkBuildContext::RenderWorkBuildContext(OfflineSource job)
-    : m_source(job) {}
+RenderWorkBuildContext::RenderWorkBuildContext(RenderDomain domain,
+                                               const Scene *scene,
+                                               Options options)
+    : m_domain(domain), m_scene(scene), m_options(std::move(options)) {}
 
 } // namespace LX_core

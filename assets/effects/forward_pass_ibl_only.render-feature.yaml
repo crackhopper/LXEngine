@@ -1,0 +1,41 @@
+schema: lxe.render-feature.v1
+name: ForwardPassIblOnly
+feature: forwardPass
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+parameters:
+  render_skybox:
+    kind: bool
+    value: true
+    required: true
+  enable_tonemapping:
+    kind: bool
+    value: true
+    required: true
+  enable_gamma:
+    kind: bool
+    value: false
+    required: true
+  enable_direct_lighting:
+    kind: bool
+    value: false
+    required: true
+  enableIblLighting:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: enableIblLighting
+    required: true
+  environmentIblReady:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: environmentIblReady
+    required: true
+  standardPbrIblReady:
+    kind: bool
+    volatile: true
+    binding: PassRuntimeUBO
+    member: standardPbrIblReady
+    required: true

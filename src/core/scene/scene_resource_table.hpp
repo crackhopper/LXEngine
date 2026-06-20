@@ -53,6 +53,7 @@ struct ObjectResource final {
   BoundingBox worldBounds;
   VisibilityLayerMask visibilityMask = VisibilityMask_All;
   StringID debugId;
+  StringID renderType;
   bool visible = true;
   bool debugOnly = false;
 };
@@ -270,6 +271,10 @@ public:
   findRenderFeatureByFeatureName(std::string_view feature) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
   findRenderFeatureByMetadataHandle(ResourceIdentityHandle handle) const;
+  [[nodiscard]] std::optional<RenderPathGraphHandle>
+  findRenderPathGraphByMetadataHandle(ResourceIdentityHandle handle) const;
+  [[nodiscard]] std::optional<ShaderHandle>
+  findShader(const ResourceUri &uri) const;
   [[nodiscard]] const PassFeatureData *
   findPassFeatureDataByFeatureName(std::string_view feature) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;

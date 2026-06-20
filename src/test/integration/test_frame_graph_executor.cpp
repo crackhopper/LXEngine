@@ -125,6 +125,21 @@ public:
   bool sawGraph = false;
 };
 
+class ExecutorTestGpuResource final : public IGpuResource {
+public:
+  explicit ExecutorTestGpuResource(StringID bindingName)
+      : m_bindingName(bindingName) {}
+
+  ResourceType getType() const override { return ResourceType::StorageBuffer; }
+  const void *getRawData() const override { return m_bytes; }
+  u32 getByteSize() const override { return sizeof(m_bytes); }
+  StringID getBindingName() const override { return m_bindingName; }
+
+private:
+  StringID m_bindingName;
+  u8 m_bytes[16]{};
+};
+
 std::optional<IblBakeJobStatus>
 waitForStoppedJob(IblBakeJobService &service, BakeJobId job) {
   for (int i = 0; i < 200; ++i) {
@@ -367,6 +382,62 @@ void testExecutorUsesCompiledPassNames() {
   expect(result.ok, "executor should accept prepared work matched by pass name");
 }
 
+void testImmediateReadbackRejectsIncompleteContract() {
+  VulkanFrameGraphExecutor executor(VulkanFrameGraphExecutionTarget{
+      .mode = VulkanFrameGraphExecutionMode::ImmediateSubmitReadback,
+  });
+  FrameGraph graph = makeGraph();
+  CompiledFrameGraph compiled = graph.compile();
+  std::vector<PreparedFramePassWork> prepared;
+  prepared.push_back(makePreparedWork());
+  prepared.front().descs.front().readbacks.push_back(
+      RenderInputDesc::Readback{
+          .name = "offline.output",
+          .target = {},
+          .binding = StringID("OutputPixels"),
+          .extent = Vec3u{0u, 1u, 1u},
+      });
+
+  FrameGraphExecutionRequest request;
+  request.graph = &graph;
+  request.compiled = &compiled;
+  request.preparedPasses = prepared;
+
+  const FrameGraphExecutionResult result = executor.execute(request);
+  expect(!result.ok, "immediate readback should reject incomplete contract");
+  expect(hasDiagnostic(result, "readback target is required"),
+         "diagnostic should require readback target");
+  expect(hasDiagnostic(result, "readback descriptor resource is required"),
+         "diagnostic should require readback resource");
+  expect(hasDiagnostic(result, "readback extent is required"),
+         "diagnostic should require readback extent");
+}
+
+void testRecordOnlyIgnoresReadbackCollection() {
+  VulkanFrameGraphExecutor executor;
+  FrameGraph graph = makeGraph();
+  CompiledFrameGraph compiled = graph.compile();
+  std::vector<PreparedFramePassWork> prepared;
+  prepared.push_back(makePreparedWork());
+  prepared.front().descs.front().readbacks.push_back(
+      RenderInputDesc::Readback{
+          .name = "offline.output",
+          .target = {},
+          .binding = {},
+          .extent = Vec3u{0u, 0u, 0u},
+      });
+
+  FrameGraphExecutionRequest request;
+  request.graph = &graph;
+  request.compiled = &compiled;
+  request.preparedPasses = prepared;
+
+  const FrameGraphExecutionResult result = executor.execute(request);
+  expect(result.ok, "record-only execution should ignore readback collection");
+  expect(result.outputs.empty(),
+         "record-only execution should not collect readback payloads");
+}
+
 void testIblBakeJobServiceUsesFrameGraphExecutorInterface() {
   auto cache = std::make_shared<InterfaceProbeCacheStore>();
   auto executor = std::make_shared<InterfaceProbeFrameGraphExecutor>();
@@ -410,6 +481,8 @@ int main() {
   testMismatchedPreparedPassRejected();
   testMismatchedPreparedTargetRejected();
   testExecutorUsesCompiledPassNames();
+  testImmediateReadbackRejectsIncompleteContract();
+  testRecordOnlyIgnoresReadbackCollection();
   testIblBakeJobServiceUsesFrameGraphExecutorInterface();
   return 0;
 }

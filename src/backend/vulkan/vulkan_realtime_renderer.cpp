@@ -11,7 +11,7 @@
 #include "core/frame_graph/render_work_compiler.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/image/tone_mapping.hpp"
-#include "core/offline/offline_render_job.hpp"
+#include "core/offline/offline_render_result.hpp"
 #include "core/rhi/gpu_resource.hpp"
 #include "core/scene/components/camera_component.hpp"
 #include "core/scene/components/material_component.hpp"
@@ -1415,8 +1415,9 @@ public:
     if (!m_scene) {
       throw std::runtime_error("realtime render work requires a scene");
     }
-    return LX_core::RenderWorkBuildContext::realtime(
-        *m_scene, makeRealtimeRenderWorkOptionsForCompiledPass(std::nullopt));
+    return LX_core::RenderWorkBuildContext::forScene(
+        LX_core::RenderDomain::Realtime, *m_scene,
+        makeRealtimeRenderWorkOptionsForCompiledPass(std::nullopt));
   }
 
   void appendDescriptorResources(
@@ -1454,10 +1455,10 @@ public:
     return cascadeIndex;
   }
 
-  [[nodiscard]] LX_core::RenderWorkBuildContext::RealtimeOptions
+  [[nodiscard]] LX_core::RenderWorkBuildContext::Options
   makeRealtimeRenderWorkOptionsForCompiledPass(
       std::optional<usize> compiledPassIndex) const {
-    LX_core::RenderWorkBuildContext::RealtimeOptions options;
+    LX_core::RenderWorkBuildContext::Options options;
     if (m_liveRenderView.has_value()) {
       options.cameraResource = m_liveRenderView->cameraResource;
       options.visibleMask = m_liveRenderView->visibleMask;
@@ -1498,8 +1499,8 @@ public:
     if (!m_scene) {
       throw std::runtime_error("realtime render work requires a scene");
     }
-    return LX_core::RenderWorkBuildContext::realtime(
-        *m_scene,
+    return LX_core::RenderWorkBuildContext::forScene(
+        LX_core::RenderDomain::Realtime, *m_scene,
         makeRealtimeRenderWorkOptionsForCompiledPass(compiledPassIndex));
   }
 

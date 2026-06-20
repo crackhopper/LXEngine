@@ -4,7 +4,7 @@
 
 ## 背景
 
-当前代码已有 Vulkan/software compute direct offline renderer、`OfflineRenderJob`、SceneResourceTable upload view、EXR/PNG 输出、OfflineRT shader 基础和 offline/realtime 对比工具。`REQ-074-h/i` 会把 OfflineRT 默认路径硬切到 RenderPathGraph 配置；`REQ-075-b` 会验证新架构下 realtime/offline direct 输出一致性。
+当前代码已有 Vulkan FrameGraphExecutor-backed offline renderer、OutputProfile -> RenderPathGraph 配置、SceneResourceTable、EXR/PNG 输出、OfflineRT primary-ray shader 基础和 offline/realtime 对比工具。`REQ-075-b` 会验证新架构下 realtime/offline direct 输出一致性。
 
 在这些基础稳定之前，直接实现完整 path tracing 容易把算法问题和架构 bridge 混在一起。因此本 REQ 后置到 `REQ-075-b` 之后，目标变成“在干净架构上扩展更完整的光追效果”，而不是继续修补旧 MVP。
 

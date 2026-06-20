@@ -27,10 +27,12 @@ layout(location = 0) out vec4 outColor;
 layout(constant_id = 0) const bool render_skybox = true;
 layout(constant_id = 1) const bool enable_tonemapping = true;
 layout(constant_id = 2) const bool enable_gamma = false;
+layout(constant_id = 3) const bool enable_direct_lighting = true;
 
 #define LxForwardRenderSkybox render_skybox
 #define LxForwardEnableTonemapping enable_tonemapping
 #define LxForwardEnableGamma enable_gamma
+#define LxForwardEnableDirectLighting enable_direct_lighting
 
 // Camera
 layout(set = 0, binding = 0) uniform CameraUBO {
@@ -101,7 +103,9 @@ void main() {
         LxBsdfEvaluateOutput bsdf = lxEvaluateBsdf(bsdfInput);
 
         float NdotL = max(dot(N, L), 0.0);
-        vec3 Lo = bsdf.value * pbrInput.lightColor * NdotL * ao;
+        vec3 Lo = LxForwardEnableDirectLighting
+                      ? bsdf.value * pbrInput.lightColor * NdotL * ao
+                      : vec3(0.0);
         vec3 F0 = lxPbrF0(albedo.rgb, metallic);
 
         float NdotV = max(dot(N, V), 0.0);

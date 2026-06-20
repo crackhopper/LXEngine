@@ -295,25 +295,25 @@ TARGETS = [
     SourceAnalysisTarget(
         source="src/backend/vulkan/offline/vulkan_offline_renderer.hpp",
         output="notes/source_analysis/src/backend/vulkan/offline/vulkan_offline_renderer.md",
-        title="Vulkan Offline Renderer：从 Scene IR 到 Compute Readback",
+        title="Vulkan Offline Renderer：从 Output Profile 到 FrameGraphExecutor Readback",
         intro=textwrap.dedent(
             """\
             这一页把 offline renderer 当成一条独立实验管线来读，入口是
             [src/backend/vulkan/offline/vulkan_offline_renderer.hpp](../../../../../../src/backend/vulkan/offline/vulkan_offline_renderer.hpp)。
-            关注的问题是：为什么离线渲染不直接复用 realtime draw item，而是把
-            scene 文档加载进 `SceneResourceTable`，再通过 upload view 打包成 compute shader 的 storage buffer。
+            关注的问题是：为什么离线渲染不维护第二套 offline job graph，而是把
+            output profile 指向的 RenderPathGraph 交给统一 `FrameGraphExecutor`。
 
             可以先带着一个问题阅读：我们要怎样在不创建 swapchain 的情况下，从同一份
-            `.scene.yaml` 得到一张可复现实验图？答案就在 `OfflineRenderJob`、
-            `OfflineSceneLoader`、`offline_scene_storage_resources`、`SoftwareComputeOfflineIntegrator`
-            和 `VulkanOfflineRenderer` 的分层里。
+            `.scene.yaml` 得到 Forward/IBL/OfflineRT 多种可复现实验图？答案就在
+            `VulkanOfflineRenderRequest`、`RenderWorkCompiler`、`VulkanFrameGraphExecutor`
+            和 `OfflineImageWriter` 的分层里。
             """
         ).strip(),
         related_sources=(
-            "src/core/offline/offline_render_job.hpp",
-            "src/core/offline/offline_scene_storage_resources.hpp",
-            "src/infra/offline/offline_scene_loader.hpp",
-            "src/backend/vulkan/offline/software_compute_offline_integrator.hpp",
+            "src/backend/vulkan/offline/vulkan_offline_renderer.cpp",
+            "src/backend/vulkan/vulkan_frame_graph_executor.hpp",
+            "src/core/frame_graph/frame_graph_executor.hpp",
+            "src/core/offline/offline_render_result.hpp",
         ),
         nav_order=900,
     ),

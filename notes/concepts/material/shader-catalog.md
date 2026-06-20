@@ -8,13 +8,13 @@
 
 | 分组 | Shader 家族 | 当前入口 |
 |---|---|---|
-| 材质 / surface pass | `render_paths/Forward/pbr`、`render_paths/Deferred/pbr_gbuffer`、`techniques/OfflineRT/offline_pbr_direct_ray` | `RenderPathGraph` pass 引用 shader URI，并消费 `material.bsdf` |
+| 材质 / surface pass | `render_paths/Forward/pbr`、`render_paths/Deferred/pbr_gbuffer`、`render_paths/OfflineRT/standard_pbr_primary_ray` | `RenderPathGraph` pass 引用 shader URI，并消费 `material.bsdf` |
 | Material contract | `common/materials/*.contract.glsl` | `.material v2` 的 `bsdf.source`，用于参数/ABI reflection 和 source variant include |
 | Shadow | `render_paths/Forward/shadow_depth_only` | RenderPathGraph 的 `Shadow` pass |
 | Debug / 诊断 | `render_paths/Debug/debug_overlay`、`debug_line`、`mesh_debug`、`minimal`、`texture_cube_probe` | RenderPathGraph debug overlay、debug draw、resize 诊断或 cubemap probe |
 | HDR 输出 | `skybox`、`render_paths/Bloom/blit`、`features/tone_mapping`、`features/bloom` | RenderPathGraph / fullscreen pass 消费 HDR、tone mapping 和 bloom feature |
 | IBL bake | `equirect_to_cubemap`、`ibl_irradiance_convolve`、`ibl_prefilter_env`、`ibl_brdf_lut` | `bake_environment_ibl` / `bake_standard_pbr_brdf_lut` graph 声明 bake pass，旧手写 bake helper 已删除 |
-| Offline compute | `techniques/OfflineRT/offline_pbr_direct_ray` | CLI 默认创建 offline compute shader，再经 `RenderWorkCompiler` 进入 compute pipeline |
+| Offline compute | `render_paths/OfflineRT/standard_pbr_primary_ray` | OfflineRT render path graph 引用 compute shader，再经 `RenderWorkCompiler` 和 `FrameGraphExecutor` 进入 compute pipeline |
 | 共享片段 | `scene_lights_ubo.glsl` | GLSL include 片段，声明 scene lights UBO 结构 |
 
 ## 材质 Forward Shader
@@ -85,9 +85,9 @@ graph 明确列出 source、target、shader URI 和 readback 需求；backend �
 
 | Shader | 文件 | 用途 | 关键合同 |
 |---|---|---|---|
-| `techniques/OfflineRT/offline_pbr_direct_ray` | `techniques/OfflineRT/offline_pbr_direct_ray.comp` | 当前 CLI 默认的 camera ray compute shader；遍历 BVH、求三角形交点、做直接光/环境/高光着色，写入输出像素 buffer | scene storage buffers、frame params、`OutputPixels` 和 texture array |
+| `render_paths/OfflineRT/standard_pbr_primary_ray` | `render_paths/OfflineRT/standard_pbr_primary_ray.comp` | 当前 OfflineRT profile 的 primary ray compute shader；遍历 BVH、求三角形交点、做直接光和 miss environment 采样，写入输出 payload | scene storage buffers、frame params、BVH、environment feature、output/readback resource |
 
-`offline_pbr_direct_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧会为 `techniques/OfflineRT/offline_pbr_direct_ray` 创建 offline shader，`RenderWorkCompiler` 为 file-local `OfflineCompute` pass 生成 `RenderComputeInput`，并在 `RenderInputDesc` 里准备 compute `PipelineBuildDesc` 和 binding plan。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 `core/scene`、`core/offline` 里的 CPU 结构保持一致。
+`standard_pbr_primary_ray.comp` 不走 graphics pipeline。它用 `local_size_x = 8, local_size_y = 8` 分块调度，每个 invocation 对应一个像素采样。C++ 侧不再通过 offline shader side channel 创建它；`assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml` 的 compute pass 引用 shader URI，`RenderWorkCompiler` 生成 dispatch work 和 compute `RenderInputDesc`，`FrameGraphExecutor` 负责绑定 pipeline/resources、dispatch 和 readback。这里的合同比普通材质更像数据表 schema：字段顺序和 buffer 布局必须和 scene/resource table、render feature derived resource 里的 CPU 结构保持一致。
 
 当前 offline storage resource 集合保留这些名字，实际绑定以 shader reflection 和 binding plan 为准：
 
@@ -121,11 +121,11 @@ graph 明确列出 source、target、shader URI 和 readback 需求；backend �
 | 新增 system-owned binding | `shader_binding_ownership.hpp`、renderer 注入资源、descriptor set/binding |
 | 新增 shader/material source variant | material source resolver、specialized `.spv`、`materialTypeVariant`、pipeline identity tests |
 | 修改 post/IBL fullscreen binding | RenderPathGraph source/target、`render_paths/Post/...` fullscreen shader reflection、IBL bake renderer binding |
-| 修改 compute SSBO schema | offline shader reflection/binding plan、`RenderWorkCompiler` offline desc 构建和 `core/offline` CPU 数据结构 |
+| 修改 compute SSBO schema | OfflineRT shader reflection/binding plan、`RenderWorkCompiler` desc 构建、render feature derived resource 和 scene/resource table CPU 数据结构 |
 
 ## 我们已经学会了什么
 
-内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。surface shader 通过 material contract 和 RenderPathGraph 连接 `.material v2`；post 和 IBL bake shader 通过 fullscreen/bake source contract 消费资源；offline compute shader 用 SSBO schema 连接 `SceneResourceTableUploadView`，并通过同一套 `RenderInputDesc` / `PipelineCache` 路径执行。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
+内置 shader 不是一堆彼此无关的 GLSL 文件，而是几条渲染流水线上的合同集合。surface shader 通过 material contract 和 RenderPathGraph 连接 `.material v2`；post 和 IBL bake shader 通过 fullscreen/bake source contract 消费资源；OfflineRT compute shader 用 SSBO schema 和 render feature derived resource 连接 `SceneResourceTable`，并通过同一套 `RenderInputDesc` / `PipelineCache` / `FrameGraphExecutor` 路径执行。读 shader 时，我们先判断它在哪条流水线上工作，再检查它要求 C++ 提供哪些资源。
 
 ## 下一步
 

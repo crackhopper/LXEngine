@@ -114,11 +114,12 @@ pipeline 创建只看 `PipelineBuildDesc` / `RenderInputDesc`。upload plan 从 
 
 ## 当前边界
 
-当前 offline software-compute 仍有一个 file-local `OfflineCompute` pass
-builder，并且 shader 仍通过 `OfflineRenderJob::offlineShader` / provider
-进入 compiler preparation；这属于
-[REQ-074-h](../../requirements/074-h-offlinert-render-path-graph-compute-path.md)
-的后续 OfflineRT graph 收束，不是 realtime Forward 主线的一部分。
+当前 offline 已经通过 output profile 指向 `RenderPathGraph` asset；Forward
+offline 对比和 OfflineRT compute 都从 graph pass 进入
+`RenderWorkCompiler`。readback 是 graph/output contract，不再是 offline job
+或 file-local pass builder 的 side channel。后续 path tracing / hardware RT
+应继续扩展 render feature、material hit shader、BVH/ray program table 和 graph
+schema，而不是重新引入 offline-only compiler。
 
 ## 继续阅读
 

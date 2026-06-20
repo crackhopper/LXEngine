@@ -1,15 +1,21 @@
 #include "core/frame_graph/render_work_compiler.hpp"
 
 #include "core/asset/mesh.hpp"
+#include "core/asset/material_instance.hpp"
+#include "core/asset/texture.hpp"
 #include "core/frame_graph/pass.hpp"
+#include "core/frame_graph/render_feature_derived_resource_producer.hpp"
 #include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
-#include "core/offline/offline_render_job.hpp"
-#include "core/offline/offline_scene_storage_resources.hpp"
+#include "core/raytracing/software_bvh.hpp"
+#include "core/scene/camera.hpp"
+#include "core/scene/light.hpp"
 #include "core/scene/scene.hpp"
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -20,6 +26,9 @@ namespace {
 
 void noteDiagnostic(RenderInputDesc &desc, RenderInputDiagnosticCode code,
                     std::string message);
+void reject(RenderInputDesc &desc, RenderInputDiagnosticCode code,
+            std::string message);
+[[nodiscard]] std::string stringIdText(StringID id);
 
 struct DrawPreparationFacts final {
   StringID pipelineVariantKey;
@@ -36,6 +45,24 @@ struct ComputePreparationFacts final {
   ShaderProgramSet shaderProgram;
   IShaderSharedPtr shaderInfo;
   DescriptorResourceList descriptorResources;
+};
+
+class ComputeStorageBufferResource final : public IGpuResource {
+public:
+  ComputeStorageBufferResource(StringID bindingName,
+                               std::vector<std::byte> bytes)
+      : m_bindingName(bindingName), m_bytes(std::move(bytes)) {
+    setDirty();
+  }
+
+  ResourceType getType() const override { return ResourceType::StorageBuffer; }
+  const void *getRawData() const override { return m_bytes.data(); }
+  u32 getByteSize() const override { return static_cast<u32>(m_bytes.size()); }
+  StringID getBindingName() const override { return m_bindingName; }
+
+private:
+  StringID m_bindingName;
+  std::vector<std::byte> m_bytes;
 };
 
 [[nodiscard]] StringID shaderUriId(const FramePass &pass) {
@@ -129,6 +156,74 @@ void appendDescriptorResourceDependencies(std::vector<GpuResourceRef> &out,
 void appendDescriptorResources(DescriptorResourceList &out,
                                const DescriptorResourceList &resources) {
   out.insert(out.end(), resources.begin(), resources.end());
+}
+
+template <typename T>
+std::vector<std::byte> copyBytes(std::span<const T> values) {
+  std::vector<std::byte> bytes(sizeof(T) * values.size());
+  if (!bytes.empty()) {
+    std::memcpy(bytes.data(), values.data(), bytes.size());
+  }
+  return bytes;
+}
+
+std::vector<std::byte> copySourceMaterialRecordBytes(
+    std::span<const SourceLocalMaterialRecord> records) {
+  usize byteCount = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    byteCount += record.bytes.size();
+  }
+  std::vector<std::byte> bytes(byteCount);
+  usize cursor = 0;
+  for (const SourceLocalMaterialRecord &record : records) {
+    if (record.bytes.empty()) {
+      continue;
+    }
+    std::memcpy(bytes.data() + cursor, record.bytes.data(),
+                record.bytes.size());
+    cursor += record.bytes.size();
+  }
+  return bytes;
+}
+
+[[nodiscard]] std::span<const std::byte>
+sourceRecordBytes(const SourceLocalMaterialRecord &record) {
+  return {reinterpret_cast<const std::byte *>(record.bytes.data()),
+          record.bytes.size()};
+}
+
+template <typename T>
+[[nodiscard]] T readSourceField(std::span<const std::byte> bytes, usize offset,
+                                T fallback) {
+  if (offset + sizeof(T) > bytes.size()) {
+    return fallback;
+  }
+  T value{};
+  std::memcpy(&value, bytes.data() + offset, sizeof(T));
+  return value;
+}
+
+template <typename T>
+std::vector<std::byte> copyObjectBytes(const T &value) {
+  std::vector<std::byte> bytes(sizeof(T));
+  std::memcpy(bytes.data(), &value, sizeof(T));
+  return bytes;
+}
+
+std::vector<std::byte> zeroBytes(usize byteSize) {
+  return std::vector<std::byte>(byteSize);
+}
+
+[[nodiscard]] GpuResourceRef addComputeStorageResource(
+    const SceneResourceTable &resources, StringID bindingName,
+    std::vector<std::byte> bytes) {
+  return resources.addRenderGpuResource(
+      std::make_unique<ComputeStorageBufferResource>(bindingName,
+                                                     std::move(bytes)));
+}
+
+[[nodiscard]] u32 ceilDiv(const u32 value, const u32 divisor) {
+  return divisor == 0u ? value : (value + divisor - 1u) / divisor;
 }
 
 [[nodiscard]] std::optional<VertexLayout>
@@ -229,13 +324,13 @@ featureNameFromGraphResource(StringID resource) {
 [[nodiscard]] std::vector<ShaderSpecializationConstant>
 collectPassFeatureSpecializationConstants(
     const FramePass &pass, const RenderWorkBuildContext &context) {
-  if (!context.hasRealtimeScene()) {
+  if (!context.hasScene()) {
     return {};
   }
 
   std::vector<ShaderSpecializationConstant> constants;
   std::vector<std::string> resolvedFeatures;
-  const SceneResourceTable &resources = context.realtimeScene().resources();
+  const SceneResourceTable &resources = context.scene().resources();
   for (const FrameGraphRead &read : pass.reads) {
     const auto featureName = featureNameFromGraphResource(read.resource);
     if (!featureName.has_value()) {
@@ -270,12 +365,12 @@ collectPassFeatureSpecializationConstants(
 [[nodiscard]] DescriptorResourceList
 collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
                                   const FramePass &pass) {
-  if (!context.hasRealtimeScene()) {
+  if (!context.hasScene()) {
     return {};
   }
 
-  const Scene &scene = context.realtimeScene();
-  const auto &options = context.realtimeOptions();
+  const Scene &scene = context.scene();
+  const auto &options = context.options();
   if (options.cameraResource.has_value()) {
     return scene.getSceneLevelResources(pass.name, *options.cameraResource);
   }
@@ -283,6 +378,64 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
   const RenderTarget sceneResourceTarget =
       options.sceneResourceTarget.value_or(RenderTarget(pass.target));
   return scene.getSceneLevelResources(pass.name, sceneResourceTarget);
+}
+
+void appendDerivedFeatureResourcesForPass(const FramePass &pass,
+                                          const RenderWorkBuildContext &context,
+                                          RenderInputDesc &desc) {
+  if (!context.hasScene()) {
+    return;
+  }
+
+  const SceneResourceTable &resources = context.resourceTable();
+  std::vector<std::string> resolvedFeatures;
+  for (const FrameGraphRead &read : pass.reads) {
+    const auto featureName = featureNameFromGraphResource(read.resource);
+    if (!featureName.has_value()) {
+      continue;
+    }
+    if (std::find(resolvedFeatures.begin(), resolvedFeatures.end(),
+                  *featureName) != resolvedFeatures.end()) {
+      continue;
+    }
+    resolvedFeatures.emplace_back(*featureName);
+
+    const auto handle = resources.findRenderFeatureByFeatureName(*featureName);
+    if (!handle.has_value()) {
+      continue;
+    }
+    const auto feature = resources.resolve(*handle);
+    if (!feature.has_value()) {
+      continue;
+    }
+
+    for (const auto &[resourceName, resource] : feature->get().resources) {
+      std::string diagnostic;
+      const auto result = RenderFeatureDerivedResourceProducerRegistry::build(
+          RenderFeatureDerivedResourceRequest{
+              .feature = &feature->get(),
+              .resource = &resource,
+              .sceneResources = &resources,
+          },
+          diagnostic);
+      if (!result.has_value()) {
+        reject(desc, RenderInputDiagnosticCode::MissingResource,
+               "feature." + *featureName + ".resources." + resourceName +
+                   " could not build derived resource: " + diagnostic);
+        continue;
+      }
+      if (result->descriptorResources.empty()) {
+        reject(desc, RenderInputDiagnosticCode::MissingResource,
+               "feature." + *featureName + ".resources." + resourceName +
+                   " produced no descriptor resources");
+        continue;
+      }
+      appendDescriptorResources(desc.bindingPlan.descriptors,
+                                result->descriptorResources);
+      appendDescriptorResourceDependencies(desc.resourceDependencies,
+                                           result->descriptorResources);
+    }
+  }
 }
 
 void applyPassPreparationFacts(
@@ -338,11 +491,53 @@ void applyPassPreparationFacts(
   }
 
   if (draw.source != RenderDrawInputSource::SceneRenderable ||
-      !context.hasRealtimeScene()) {
+      !context.hasScene()) {
     return facts;
   }
 
-  const auto &renderables = context.realtimeScene().getRenderables();
+  const auto &renderables = context.scene().getRenderables();
+  if (renderables.empty() && context.domain() == RenderDomain::Offline) {
+    if (passFacts.has_value()) {
+      applyPassPreparationFacts(facts, passFacts->get());
+    }
+    if (draw.material.isValid()) {
+      const auto material = context.resourceTable().resolve(draw.material);
+      if (material.has_value()) {
+        const auto shaderProgram =
+            material->get().getPassShaderProgram(pass.name);
+        if (shaderProgram.has_value()) {
+          facts.pipelineVariantKey =
+              material->get().getMaterialTypeVariantSignature(
+                  shaderProgram->get());
+          facts.shaderProgram = shaderProgram->get();
+          facts.shaderInfo = shaderProgram->get().getShader();
+          facts.renderState = material->get().getPassRenderState(pass.name);
+        }
+      }
+    }
+    ValidatedRenderablePassData data;
+    data.pass = pass.name;
+    data.objectHandle = draw.object;
+    data.materialHandle = draw.material;
+    data.shaderProgram = facts.shaderProgram;
+    data.shaderInfo = facts.shaderInfo;
+    data.vertexBuffer = draw.vertexBuffer;
+    data.indexBuffer = draw.indexBuffer;
+    data.renderState = facts.renderState;
+    data.sortCenter = draw.sortCenter;
+    data.materialTypeSignature = draw.materialTypeSignature;
+    DescriptorResourceList sceneDescriptorResources =
+        buildSceneDescriptorResources(SceneDescriptorResourceContext{
+            .scene = context.scene(),
+            .renderable = data,
+            .pass = pass.name,
+            .target = RenderTarget(pass.target),
+            .sceneResources = collectSceneLevelResourcesForPass(context, pass),
+        });
+    appendDescriptorResources(facts.descriptorResources,
+                              sceneDescriptorResources);
+    return facts;
+  }
   if (draw.sourceRenderableIndex >= renderables.size() ||
       !renderables[draw.sourceRenderableIndex]) {
     return facts;
@@ -389,7 +584,7 @@ void applyPassPreparationFacts(
 
   DescriptorResourceList sceneDescriptorResources =
       buildSceneDescriptorResources(SceneDescriptorResourceContext{
-          .scene = context.realtimeScene(),
+          .scene = context.scene(),
           .renderable = data,
           .pass = pass.name,
           .target = RenderTarget(pass.target),
@@ -414,21 +609,8 @@ collectComputePreparationFacts(const FramePass &pass,
   if (const auto passFacts = context.findPassPreparationFacts(pass.name)) {
     applyPassPreparationFacts(facts, passFacts->get());
   }
-  if (context.domain() == RenderDomain::Offline) {
-    offline::OfflineRenderJob &job = context.offlineJob();
-    if (job.offlineShader) {
-      facts.shaderInfo = job.offlineShader;
-      facts.shaderProgram.shaderName = job.offlineShader->getShaderName();
-      facts.shaderProgram.shader = job.offlineShader;
-      facts.pipelineVariantKey =
-          StringID("offline-primary-ray:" +
-                   std::to_string(job.offlineShader->getProgramHash()));
-    }
-    offline::OfflineSceneStorageResources storageResources =
-        offline::buildOfflineSceneStorageResources(job);
-    appendDescriptorResources(facts.descriptorResources,
-                              storageResources.descriptorResources);
-  }
+  appendDescriptorResources(facts.descriptorResources,
+                            collectSceneLevelResourcesForPass(context, pass));
   return facts;
 }
 
@@ -605,6 +787,580 @@ findBindingForName(const std::vector<ShaderResourceBinding> &bindings,
   return it == bindings.end() ? nullptr : &*it;
 }
 
+[[nodiscard]] bool shaderConsumesBinding(const RenderInputDesc &desc,
+                                         StringID bindingName) {
+  return findBindingForName(desc.pipelineBuildDesc.bindings, bindingName) !=
+         nullptr;
+}
+
+[[nodiscard]] bool descAlreadyHasDescriptor(const RenderInputDesc &desc,
+                                            StringID bindingName) {
+  return findDescriptorForBinding(desc.bindingPlan.descriptors, bindingName) !=
+         nullptr;
+}
+
+void appendDescriptor(RenderInputDesc &desc,
+                      const DescriptorResourceRef &descriptor) {
+  desc.bindingPlan.descriptors.push_back(descriptor);
+  if (descriptor.isResource() && descriptor.resource().isValid()) {
+    desc.resourceDependencies.push_back(descriptor.resource());
+  }
+}
+
+void appendStorageIfConsumed(RenderInputDesc &desc,
+                             const SceneResourceTable &resources,
+                             StringID bindingName,
+                             std::vector<std::byte> bytes) {
+  if (!shaderConsumesBinding(desc, bindingName) ||
+      descAlreadyHasDescriptor(desc, bindingName)) {
+    return;
+  }
+  const GpuResourceRef resource =
+      addComputeStorageResource(resources, bindingName, std::move(bytes));
+  if (resource.isValid()) {
+    appendDescriptor(desc, DescriptorResourceRef{resource.get()});
+  }
+}
+
+void appendFrameGraphSampledResourcesForPass(
+    const FramePass &pass, const RenderWorkBuildContext &context,
+    RenderInputDesc &desc) {
+  if (!context.hasScene()) {
+    return;
+  }
+  const SceneResourceTable &resources = context.resourceTable();
+  for (const FrameGraphRead &read : pass.reads) {
+    if (read.bindingName.id == 0 ||
+        !shaderConsumesBinding(desc, read.bindingName) ||
+        descAlreadyHasDescriptor(desc, read.bindingName)) {
+      continue;
+    }
+    const GpuResourceRef resource = resources.addRenderGpuResource(
+        std::make_unique<FrameGraphSampledResource>(read.resource,
+                                                    read.bindingName));
+    if (resource.isValid()) {
+      appendDescriptor(desc, DescriptorResourceRef{resource.get()});
+    }
+  }
+}
+
+[[nodiscard]] std::optional<Vec3u>
+offlineOutputExtent(const RenderWorkBuildContext &context,
+                    RenderInputDesc &desc) {
+  const auto extent =
+      context.findRuntimeExtent(StringID("offline.output.resolution"));
+  if (!extent.has_value()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "OfflineRT compute requires runtime extent "
+           "offline.output.resolution");
+    return std::nullopt;
+  }
+  return extent;
+}
+
+[[nodiscard]] u32 parseU32RuntimeFeatureValue(
+    const RenderWorkBuildContext &context, StringID key, u32 fallback) {
+  const auto value = context.findFeatureValue(key);
+  if (!value.has_value()) {
+    return fallback;
+  }
+  try {
+    return static_cast<u32>(std::stoul(value->get().value));
+  } catch (const std::exception &) {
+    return fallback;
+  }
+}
+
+[[nodiscard]] u32 parseCompareModeRuntimeFeatureValue(
+    const RenderWorkBuildContext &context) {
+  const auto value = context.findFeatureValue(
+      StringID("feature.offlineRayTracer.compareMode"));
+  if (!value.has_value()) {
+    return 0u;
+  }
+  return value->get().value == "albedo" ? 1u : 0u;
+}
+
+struct DirectionalLightParams final {
+  Vec3f direction{0.0f, -1.0f, 0.0f};
+  Vec3f color{0.0f, 0.0f, 0.0f};
+  float intensity = 0.0f;
+};
+
+[[nodiscard]] std::optional<std::reference_wrapper<const CameraResource>>
+findActiveCamera(const SceneResourceTable &resources) {
+  const RenderSceneSnapshot snapshot = resources.buildSnapshot();
+  for (const CameraHandle handle : snapshot.cameraHandles) {
+    auto camera = resources.resolve(handle);
+    if (camera.has_value() && camera->get().active) {
+      return std::cref(camera->get());
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] DirectionalLightParams
+findFirstDirectionalLight(const SceneResourceTable &resources) {
+  const RenderSceneSnapshot snapshot = resources.buildSnapshot();
+  for (const LightHandle handle : snapshot.lightHandles) {
+    auto light = resources.resolve(handle);
+    if (!light.has_value()) {
+      continue;
+    }
+    const auto *directional =
+        dynamic_cast<const DirectionalLight *>(&light->get());
+    if (directional == nullptr) {
+      continue;
+    }
+    return DirectionalLightParams{
+        .direction = directional->getDirection().normalized(),
+        .color = directional->getColor(),
+        .intensity = directional->getIntensity(),
+    };
+  }
+  return {};
+}
+
+[[nodiscard]] SceneGpuFrameParams makeOfflineFrameParams(
+    const RenderWorkBuildContext &context,
+    const SceneResourceTableUploadView &uploadView, Vec3u extent,
+    const DescriptorResourceRef *bvhNodes) {
+  const SceneResourceTable &resources = context.resourceTable();
+  const auto camera = findActiveCamera(resources);
+  CameraRayFrame rayFrame;
+  if (camera.has_value()) {
+    CameraProjection projection = camera->get().projection;
+    if (extent.y != 0u) {
+      projection.aspect =
+          static_cast<float>(extent.x) / static_cast<float>(extent.y);
+    }
+    rayFrame = makeCameraRayFrame(camera->get().pose, projection);
+  }
+  const DirectionalLightParams light = findFirstDirectionalLight(resources);
+
+  SceneGpuFrameParams params;
+  params.eye = Vec4f{rayFrame.eye.x, rayFrame.eye.y, rayFrame.eye.z, 0.0f};
+  params.cameraRight =
+      Vec4f{rayFrame.right.x, rayFrame.right.y, rayFrame.right.z, 0.0f};
+  params.cameraUp = Vec4f{rayFrame.up.x, rayFrame.up.y, rayFrame.up.z, 0.0f};
+  params.cameraForward = Vec4f{rayFrame.forward.x, rayFrame.forward.y,
+                               rayFrame.forward.z, 0.0f};
+  params.lightDirectionIntensity =
+      Vec4f{light.direction.x, light.direction.y, light.direction.z,
+            light.intensity};
+  params.lightColorEnvironment =
+      Vec4f{light.color.x, light.color.y, light.color.z, 0.0f};
+  const Vec3f background = context.options().outputBackgroundColor;
+  params.backgroundColor =
+      Vec4f{background.x, background.y, background.z, 1.0f};
+  params.width = extent.x;
+  params.height = extent.y;
+  params.samples = parseU32RuntimeFeatureValue(
+      context, StringID("feature.offlineRayTracer.samples"), 1u);
+  params.seed = parseU32RuntimeFeatureValue(
+      context, StringID("feature.offlineRayTracer.seed"), 1u);
+  params.primitiveCount = static_cast<u32>(uploadView.primitives.size());
+  if (bvhNodes != nullptr && bvhNodes->isResource() &&
+      bvhNodes->resource().isValid()) {
+    params.bvhNodeCount =
+        bvhNodes->resource().get().getByteSize() /
+        static_cast<u32>(sizeof(SceneSoftwareBvhNode));
+  }
+  params.materialCount =
+      uploadView.materialRefs.empty()
+          ? static_cast<u32>(uploadView.materials.size())
+          : static_cast<u32>(uploadView.materialRefs.size());
+  params.maxBounce = parseU32RuntimeFeatureValue(
+      context, StringID("feature.offlineRayTracer.maxBounce"), 1u);
+  params.shadowsEnabled = 0u;
+  params.compareMode = parseCompareModeRuntimeFeatureValue(context);
+  return params;
+}
+
+DescriptorResourceRef makeSceneTextureArray(
+    const SceneResourceTable &resources,
+    std::span<const std::reference_wrapper<const CombinedTextureSampler>>
+        uploadTextures) {
+  constexpr usize kTextureDescriptorCount = 256;
+  if (uploadTextures.size() > kTextureDescriptorCount) {
+    throw std::runtime_error("OfflineRT scene texture descriptor array "
+                             "supports at most 256 textures");
+  }
+
+  std::vector<TextureSamplerRef> textures;
+  textures.reserve(kTextureDescriptorCount);
+  for (const auto &texture : uploadTextures) {
+    textures.emplace_back(texture.get());
+  }
+
+  TextureSamplerRef paddingTexture;
+  if (!uploadTextures.empty()) {
+    paddingTexture = TextureSamplerRef{uploadTextures.front().get()};
+  } else {
+    paddingTexture = resources.addRenderTextureSampler(
+        std::make_unique<CombinedTextureSampler>(createWhiteTexture()));
+  }
+  if (!paddingTexture.isValid()) {
+    throw std::runtime_error("OfflineRT scene texture descriptor padding "
+                             "missing");
+  }
+  while (textures.size() < kTextureDescriptorCount) {
+    textures.emplace_back(paddingTexture.get());
+  }
+  return DescriptorResourceRef::textureArray(StringID("SceneTextures"),
+                                             std::move(textures));
+}
+
+void appendOfflineComputeSceneResources(const FramePass &pass,
+                                        const RenderWorkBuildContext &context,
+                                        RenderInputDesc &desc) {
+  (void)pass;
+  if (!context.hasScene()) {
+    return;
+  }
+  const bool needsOfflineSceneResource = std::any_of(
+      desc.pipelineBuildDesc.bindings.begin(), desc.pipelineBuildDesc.bindings.end(),
+      [](const ShaderResourceBinding &binding) {
+        return binding.name == "ScenePositions" ||
+               binding.name == "SceneAttributeStreams" ||
+               binding.name == "SceneAttributeValues" ||
+               binding.name == "SceneIndices" || binding.name == "SceneMeshes" ||
+               binding.name == "ScenePrimitives" ||
+               binding.name == "SceneObjects" ||
+               binding.name == "SceneMaterials" ||
+               binding.name == "SceneMaterialRefs" ||
+               binding.name == "SceneSourceMaterialRecords" ||
+               binding.name == "SceneFrameParams" ||
+               binding.name == "OutputPixels" ||
+               binding.name == "SceneTextures";
+      });
+  if (!needsOfflineSceneResource) {
+    return;
+  }
+
+  const auto extent = offlineOutputExtent(context, desc);
+  if (!extent.has_value()) {
+    return;
+  }
+
+  const SceneResourceTable &resources = context.resourceTable();
+  const SceneResourceTableUploadView uploadView = resources.buildUploadView();
+  appendStorageIfConsumed(desc, resources, StringID("ScenePositions"),
+                          copyBytes(uploadView.positions));
+  appendStorageIfConsumed(desc, resources, StringID("SceneAttributeStreams"),
+                          copyBytes(uploadView.attributeStreams));
+  appendStorageIfConsumed(desc, resources, StringID("SceneAttributeValues"),
+                          copyBytes(uploadView.attributeValues));
+  appendStorageIfConsumed(desc, resources, StringID("SceneIndices"),
+                          copyBytes(uploadView.indices));
+  appendStorageIfConsumed(desc, resources, StringID("SceneMeshes"),
+                          copyBytes(uploadView.meshes));
+  appendStorageIfConsumed(desc, resources, StringID("ScenePrimitives"),
+                          copyBytes(uploadView.primitives));
+  appendStorageIfConsumed(desc, resources, StringID("SceneObjects"),
+                          copyBytes(uploadView.objects));
+  appendStorageIfConsumed(desc, resources, StringID("SceneMaterials"),
+                          copyBytes(uploadView.materials));
+  appendStorageIfConsumed(desc, resources, StringID("SceneMaterialRefs"),
+                          copyBytes(uploadView.materialRefs));
+  appendStorageIfConsumed(desc, resources,
+                          StringID("SceneSourceMaterialRecords"),
+                          copySourceMaterialRecordBytes(
+                              uploadView.sourceMaterialRecords));
+
+  if (shaderConsumesBinding(desc, StringID("SceneFrameParams")) &&
+      !descAlreadyHasDescriptor(desc, StringID("SceneFrameParams"))) {
+    const DescriptorResourceRef *bvhNodes = findDescriptorForBinding(
+        desc.bindingPlan.descriptors, StringID("SceneBvhNodes"));
+    const SceneGpuFrameParams params =
+        makeOfflineFrameParams(context, uploadView, *extent, bvhNodes);
+    appendStorageIfConsumed(desc, resources, StringID("SceneFrameParams"),
+                            copyObjectBytes(params));
+  }
+
+  if (shaderConsumesBinding(desc, StringID("OutputPixels")) &&
+      !descAlreadyHasDescriptor(desc, StringID("OutputPixels"))) {
+    const usize outputBytes = static_cast<usize>(extent->x) *
+                              static_cast<usize>(extent->y) * sizeof(Vec4f);
+    appendStorageIfConsumed(desc, resources, StringID("OutputPixels"),
+                            zeroBytes(outputBytes));
+  }
+
+  if (shaderConsumesBinding(desc, StringID("SceneTextures")) &&
+      !descAlreadyHasDescriptor(desc, StringID("SceneTextures"))) {
+    try {
+      appendDescriptor(desc, makeSceneTextureArray(resources, uploadView.textures));
+    } catch (const std::exception &error) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             std::string("OfflineRT SceneTextures resource failed: ") +
+                 error.what());
+    }
+  }
+}
+
+[[nodiscard]] u32 sourceStorageIndexForMaterial(
+    const SceneResourceTableUploadView &uploadView, MaterialHandle handle) {
+  const auto it = std::find_if(
+      uploadView.materialRefIndexByHandle.begin(),
+      uploadView.materialRefIndexByHandle.end(),
+      [handle](const SceneResourceMaterialRefUploadIndex &entry) {
+        return entry.handle == handle;
+      });
+  if (it == uploadView.materialRefIndexByHandle.end() ||
+      it->typedIndex >= uploadView.materialRefs.size()) {
+    return u32_max;
+  }
+  return uploadView.materialRefs[it->typedIndex].sourceStorageIndex;
+}
+
+[[nodiscard]] u32 primitiveIndexForParticipant(
+    const SceneResourceTableUploadView &uploadView,
+    const RenderSceneParticipant &participant) {
+  const auto objectIt = std::find_if(
+      uploadView.objectIndexByHandle.begin(), uploadView.objectIndexByHandle.end(),
+      [&participant](const SceneResourceObjectUploadIndex &entry) {
+        return entry.handle == participant.object;
+      });
+  if (objectIt == uploadView.objectIndexByHandle.end()) {
+    return u32_max;
+  }
+  const auto meshIt = std::find_if(
+      uploadView.meshIndexByHandle.begin(), uploadView.meshIndexByHandle.end(),
+      [&participant](const SceneResourceMeshUploadIndex &entry) {
+        return entry.handle == participant.mesh;
+      });
+  if (meshIt == uploadView.meshIndexByHandle.end()) {
+    return u32_max;
+  }
+  const u32 localPrimitiveIndex =
+      participant.primitiveIndex == u32_max ? 0u : participant.primitiveIndex;
+  u32 primitiveOrdinal = 0;
+  for (u32 i = 0; i < uploadView.primitives.size(); ++i) {
+    const SceneGpuPrimitiveRecord &primitive = uploadView.primitives[i];
+    if (primitive.objectIndex != objectIt->typedIndex ||
+        primitive.meshIndex != meshIt->typedIndex) {
+      continue;
+    }
+    if (primitiveOrdinal == localPrimitiveIndex) {
+      return i;
+    }
+    ++primitiveOrdinal;
+  }
+  return u32_max;
+}
+
+[[nodiscard]] u32 materialRecordIndexForHandle(
+    const SceneResourceTableUploadView &uploadView, MaterialHandle handle) {
+  const auto refIt = std::find_if(
+      uploadView.materialRefIndexByHandle.begin(),
+      uploadView.materialRefIndexByHandle.end(),
+      [handle](const SceneResourceMaterialRefUploadIndex &entry) {
+        return entry.handle == handle;
+      });
+  if (refIt != uploadView.materialRefIndexByHandle.end()) {
+    return refIt->typedIndex;
+  }
+  const auto materialIt = std::find_if(
+      uploadView.materialIndexByHandle.begin(),
+      uploadView.materialIndexByHandle.end(),
+      [handle](const SceneResourceMaterialUploadIndex &entry) {
+        return entry.handle == handle;
+      });
+  return materialIt == uploadView.materialIndexByHandle.end()
+             ? u32_max
+             : materialIt->typedIndex;
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<const PrimitiveHitGroup>>
+findPrimitiveHitGroup(const RayProgramTable &table, u32 participantIndex,
+                      u32 primitiveIndex) {
+  const auto it = std::find_if(
+      table.primitiveHitGroups.begin(), table.primitiveHitGroups.end(),
+      [participantIndex, primitiveIndex](const PrimitiveHitGroup &group) {
+        return group.participantIndex == participantIndex &&
+               group.primitiveIndex == primitiveIndex;
+      });
+  if (it == table.primitiveHitGroups.end()) {
+    return std::nullopt;
+  }
+  return std::cref(*it);
+}
+
+[[nodiscard]] std::vector<RayPrimitiveHitGroupRecord>
+buildRayPrimitiveHitGroupRecords(const SceneResourceTableUploadView &uploadView,
+                                 const RenderComputeInput &compute,
+                                 const RayProgramTable &table) {
+  std::vector<RayPrimitiveHitGroupRecord> originalRecords(
+      uploadView.primitives.size());
+  for (u32 participantIndex = 0; participantIndex < compute.sceneParticipants.size();
+       ++participantIndex) {
+    const RenderSceneParticipant &participant =
+        compute.sceneParticipants[participantIndex];
+    const u32 materialIndex =
+        materialRecordIndexForHandle(uploadView, participant.material);
+    const auto participantHitGroup =
+        findPrimitiveHitGroup(table, participantIndex, 0u);
+    const u32 participantHitGroupIndex =
+        participantHitGroup.has_value()
+            ? participantHitGroup->get().hitGroupIndex
+            : 0u;
+    u32 localPrimitiveIndex = 0;
+    for (;;) {
+      const u32 primitiveIndex =
+          primitiveIndexForParticipant(uploadView, RenderSceneParticipant{
+                                                       .object = participant.object,
+                                                       .mesh = participant.mesh,
+                                                       .material = participant.material,
+                                                       .primitiveIndex = localPrimitiveIndex});
+      if (primitiveIndex == u32_max) {
+        break;
+      }
+      originalRecords[primitiveIndex] = RayPrimitiveHitGroupRecord{
+          .hitGroupIndex = participantHitGroupIndex,
+          .materialIndex = materialIndex == u32_max ? 0u : materialIndex,
+      };
+      ++localPrimitiveIndex;
+    }
+  }
+  if (uploadView.primitives.empty()) {
+    return originalRecords;
+  }
+
+  const SceneSoftwareBvh bvh = SceneSoftwareBvh::build(uploadView);
+  std::vector<RayPrimitiveHitGroupRecord> records;
+  records.reserve(bvh.primitives().size());
+  for (const SceneSoftwareBvhPrimitive &primitive : bvh.primitives()) {
+    records.push_back(primitive.primitiveIndex < originalRecords.size()
+                          ? originalRecords[primitive.primitiveIndex]
+                          : RayPrimitiveHitGroupRecord{});
+  }
+  return records;
+}
+
+[[nodiscard]] u32 textureSlotForMaterialParameter(
+    const SceneResourceTable &resources,
+    const SceneResourceTableUploadView &uploadView,
+    const MaterialInstance &material, std::string_view parameterName,
+    u32 fallback) {
+  const StringID parameterId{std::string(parameterName)};
+  TextureHandle handle = material.getTextureHandle(parameterId);
+  if (!handle.isValid()) {
+    for (const MaterialResourceDependency &dependency :
+         material.getMaterialDependencies()) {
+      if (dependency.kind == MaterialEnvelopeKind::Texture &&
+          dependency.parameterName == parameterName) {
+        if (const auto texture = resources.findTexture(dependency.uri)) {
+          handle = *texture;
+          break;
+        }
+      }
+    }
+  }
+  if (!handle.isValid()) {
+    return fallback;
+  }
+  const auto it = std::find_if(
+      uploadView.textureIndexByHandle.begin(), uploadView.textureIndexByHandle.end(),
+      [handle](const SceneResourceTextureUploadIndex &entry) {
+        return entry.handle == handle;
+      });
+  return it == uploadView.textureIndexByHandle.end() ? fallback
+                                                      : it->typedIndex;
+}
+
+[[nodiscard]] std::vector<RayMaterialRecord>
+buildRayMaterialRecords(const SceneResourceTable &resources,
+                        const SceneResourceTableUploadView &uploadView,
+                        const RenderComputeInput &compute,
+                        const RayProgramTable &table) {
+  std::vector<RayMaterialRecord> records(
+      std::max(uploadView.materialRefs.size(), uploadView.materials.size()));
+  for (u32 participantIndex = 0; participantIndex < compute.sceneParticipants.size();
+       ++participantIndex) {
+    const RenderSceneParticipant &participant =
+        compute.sceneParticipants[participantIndex];
+    const u32 materialIndex =
+        materialRecordIndexForHandle(uploadView, participant.material);
+    if (materialIndex == u32_max || materialIndex >= records.size()) {
+      continue;
+    }
+    const auto material = resources.resolve(participant.material);
+    if (!material.has_value()) {
+      continue;
+    }
+    const auto hitGroup =
+        findPrimitiveHitGroup(table, participantIndex, 0u);
+    const u32 hitGroupIndex =
+        hitGroup.has_value() ? hitGroup->get().hitGroupIndex : 0u;
+    RayMaterialRecord record;
+    record.hitGroupIndex = hitGroupIndex;
+    const u32 white = textureSlotForMaterialParameter(
+        resources, uploadView, material->get(), "baseColorTexture", 0u);
+    record.baseColorTexture = white;
+    record.metallicRoughnessTexture = textureSlotForMaterialParameter(
+        resources, uploadView, material->get(), "metallicRoughnessTexture",
+        white);
+    record.normalTexture = textureSlotForMaterialParameter(
+        resources, uploadView, material->get(), "normalTexture", white);
+    record.occlusionTexture = textureSlotForMaterialParameter(
+        resources, uploadView, material->get(), "occlusionTexture", white);
+    record.emissiveTexture = textureSlotForMaterialParameter(
+        resources, uploadView, material->get(), "emissiveTexture", white);
+
+    if (const auto baseColor =
+            material->get().getMaterialEnvelope(StringID("baseColor"));
+        baseColor.has_value() && baseColor->get().rgbValue.has_value()) {
+      const Vec3f rgb = *baseColor->get().rgbValue;
+      record.baseColor = Vec4f{rgb.x, rgb.y, rgb.z, 1.0f};
+    }
+    if (const auto metallic =
+            material->get().getMaterialEnvelope(StringID("metallic"));
+        metallic.has_value() && metallic->get().floatValue.has_value()) {
+      record.metallic = *metallic->get().floatValue;
+    }
+    if (const auto roughness =
+            material->get().getMaterialEnvelope(StringID("roughness"));
+        roughness.has_value() && roughness->get().floatValue.has_value()) {
+      record.roughness = *roughness->get().floatValue;
+    }
+    if (const auto emissive =
+            material->get().getMaterialEnvelope(StringID("emissive"));
+        emissive.has_value() && emissive->get().rgbValue.has_value()) {
+      const Vec3f rgb = *emissive->get().rgbValue;
+      record.emissive = Vec4f{rgb.x, rgb.y, rgb.z, 0.0f};
+    }
+    records[materialIndex] = record;
+  }
+  return records;
+}
+
+void appendRayProgramResources(const RenderWorkBuildContext &context,
+                               const RenderComputeInput &compute,
+                               RenderInputDesc &desc) {
+  if (!desc.rayProgramTable.has_value() || !context.hasScene()) {
+    return;
+  }
+  const SceneResourceTable &resources = context.resourceTable();
+  const SceneResourceTableUploadView uploadView = resources.buildUploadView();
+  if (shaderConsumesBinding(desc, StringID("RayPrimitiveHitGroups")) &&
+      !descAlreadyHasDescriptor(desc, StringID("RayPrimitiveHitGroups"))) {
+    const auto records = buildRayPrimitiveHitGroupRecords(
+        uploadView, compute, *desc.rayProgramTable);
+    appendStorageIfConsumed(desc, resources, StringID("RayPrimitiveHitGroups"),
+                            copyBytes(std::span<const RayPrimitiveHitGroupRecord>(
+                                records.data(), records.size())));
+  }
+  if (shaderConsumesBinding(desc, StringID("RayMaterialRecords")) &&
+      !descAlreadyHasDescriptor(desc, StringID("RayMaterialRecords"))) {
+    const auto records =
+        buildRayMaterialRecords(resources, uploadView, compute,
+                                *desc.rayProgramTable);
+    appendStorageIfConsumed(desc, resources, StringID("RayMaterialRecords"),
+                            copyBytes(std::span<const RayMaterialRecord>(
+                                records.data(), records.size())));
+  }
+}
+
 void validateBakeTextureDimension(const std::string &sourceName,
                                   const DescriptorResourceRef &descriptor,
                                   const ShaderResourceBinding &binding,
@@ -665,19 +1421,76 @@ void validateBakeSourcePayloads(const FramePass &pass, RenderInputDesc &desc) {
   }
 }
 
-void validateBakeOutputPayloads(const FramePass &pass, const RenderInput &input,
-                                RenderInputDesc &desc) {
-  if (pass.payloads.empty()) {
+void resolveReadbackContracts(const FramePass &pass,
+                              const RenderWorkBuildContext &context,
+                              RenderInputDesc &desc) {
+  for (const RenderPathReadbackContract &contract : pass.readbacks) {
+    if (contract.name.empty()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "readback contract requires a name");
+      continue;
+    }
+    if (contract.target.empty()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "readback '" + contract.name + "' requires a target");
+      continue;
+    }
+    if (contract.extentFrom.empty()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "readback '" + contract.name + "' requires an extent source");
+      continue;
+    }
+    const StringID bindingName =
+        contract.binding.empty() ? StringID{} : StringID(contract.binding);
+    const DescriptorResourceRef *descriptor = nullptr;
+    if (bindingName.id != 0) {
+      descriptor =
+          findDescriptorForBinding(desc.bindingPlan.descriptors, bindingName);
+      if (descriptor == nullptr || !descriptor->isResource() ||
+          !descriptor->resource().isValid() ||
+          isFrameGraphPlaceholderResource(*descriptor)) {
+        reject(desc, RenderInputDiagnosticCode::MissingResource,
+               "readback '" + contract.name +
+                   "' requires a live descriptor resource for binding '" +
+                   contract.binding + "'");
+        continue;
+      }
+    }
+
+    const std::optional<Vec3u> extent =
+        context.findRuntimeExtent(StringID(contract.extentFrom));
+    if (!extent.has_value()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "readback '" + contract.name +
+                 "' requires runtime extent '" + contract.extentFrom + "'");
+      continue;
+    }
+
+    desc.readbacks.push_back(RenderInputDesc::Readback{
+        .name = contract.name,
+        .target = StringID(contract.target),
+        .extentKey = StringID(contract.extentFrom),
+        .binding = bindingName,
+        .format = contract.format,
+        .kind = contract.kind,
+        .mediaType = contract.mediaType,
+        .extent = *extent,
+        .resource = descriptor != nullptr ? descriptor->resource()
+                                          : GpuResourceRef{},
+    });
+  }
+}
+
+void validateBakeOutputPayloads(const FramePass &pass, RenderInputDesc &desc) {
+  if (pass.readbacks.empty()) {
     return;
   }
   if (pass.input.kind != RenderPassInputKind::ComputeDispatch) {
     return;
   }
-  const auto *compute = dynamic_cast<const RenderComputeInput *>(&input);
-  if (compute == nullptr || !compute->readbackResource.has_value() ||
-      compute->readbackResource->id == 0) {
+  if (desc.readbacks.empty()) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
-           "bake compute payload requires a typed readback payload");
+           "bake compute payload requires a typed readback resource");
   }
 }
 
@@ -771,14 +1584,14 @@ void validateEnvironmentLightingFeatureBindings(
   if (skyboxMap == nullptr && ubo == nullptr) {
     return;
   }
-  if (!context.hasRealtimeScene()) {
+  if (!context.hasScene()) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.environmentLighting requires a realtime scene resource "
            "table");
     return;
   }
 
-  const SceneResourceTable &resources = context.realtimeScene().resources();
+  const SceneResourceTable &resources = context.scene().resources();
   const auto environmentState = resources.environmentRuntimeState();
   if (!environmentState.has_value() || !environmentState->nodePresent) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
@@ -850,12 +1663,22 @@ void validateSurfaceLightingFeatureRead(const FramePass &pass,
   return parameter.value == "true" || parameter.value == "1";
 }
 
+[[nodiscard]] bool volatileFeatureBoolValue(
+    const RenderFeatureVolatileValue &value) {
+  return value.value == "true" || value.value == "1";
+}
+
 [[nodiscard]] bool surfaceLightingIblEnabled(
     const RenderWorkBuildContext &context) {
-  if (!context.hasRealtimeScene()) {
+  const auto runtimeValue = context.findFeatureValue(
+      StringID("feature.surfaceLighting.enableIblLighting"));
+  if (runtimeValue.has_value()) {
+    return volatileFeatureBoolValue(runtimeValue->get());
+  }
+  if (!context.hasScene()) {
     return false;
   }
-  const SceneResourceTable &resources = context.realtimeScene().resources();
+  const SceneResourceTable &resources = context.scene().resources();
   const auto featureHandle =
       resources.findRenderFeatureByFeatureName("surfaceLighting");
   if (!featureHandle.has_value()) {
@@ -895,6 +1718,129 @@ void validateSurfaceLightingIblBakeSources(
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.surfaceLighting enableIblLighting=true requires "
            "scene.materialIblBake source for standard-pbr");
+  }
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<const RenderFeature>>
+findPassHitShaderTableFeature(const FramePass &pass,
+                              const RenderWorkBuildContext &context) {
+  if (!context.hasScene()) {
+    return std::nullopt;
+  }
+  const SceneResourceTable &resources = context.resourceTable();
+  for (const FrameGraphRead &read : pass.reads) {
+    const auto featureName = featureNameFromGraphResource(read.resource);
+    if (!featureName.has_value()) {
+      continue;
+    }
+    const auto handle = resources.findRenderFeatureByFeatureName(*featureName);
+    if (!handle.has_value()) {
+      continue;
+    }
+    const auto feature = resources.resolve(*handle);
+    if (feature.has_value() && feature->get().hitShaderTable.has_value()) {
+      return std::cref(feature->get());
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::reference_wrapper<const RayHitGroupProgram>>
+findHitGroupProgram(const RayProgramTable &table, StringID materialType,
+                    const ResourceUri &uri) {
+  const std::string materialTypeText = stringIdText(materialType);
+  const auto it = std::find_if(
+      table.hitGroups.begin(), table.hitGroups.end(),
+      [&](const RayHitGroupProgram &program) {
+        const std::string hitGroupMaterialType =
+            stringIdText(program.materialType);
+        const bool materialTypeMatches =
+            materialTypeText == hitGroupMaterialType ||
+            materialTypeText.rfind(hitGroupMaterialType + "-", 0) == 0;
+        return materialTypeMatches &&
+               program.uri == uri;
+      });
+  if (it == table.hitGroups.end()) {
+    return std::nullopt;
+  }
+  return std::cref(*it);
+}
+
+void buildRayProgramTable(const FramePass &pass,
+                          const RenderWorkBuildContext &context,
+                          const RenderComputeInput &compute,
+                          RenderInputDesc &desc) {
+  if (compute.sceneParticipants.empty()) {
+    return;
+  }
+
+  const auto feature = findPassHitShaderTableFeature(pass, context);
+  if (!feature.has_value()) {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "scene-consuming ray compute pass requires a RenderFeature "
+           "hitShaderTable");
+    return;
+  }
+  const RenderFeatureHitShaderTable &featureTable =
+      *feature->get().hitShaderTable;
+  if (featureTable.payload != "radiance") {
+    reject(desc, RenderInputDiagnosticCode::MissingResource,
+           "only radiance hit shader payload is supported");
+    return;
+  }
+
+  RayProgramTable table;
+  table.payload = RayProgramPayload::Radiance;
+  table.dispatchFunction = StringID(featureTable.dispatchFunction);
+  table.hitGroups.reserve(featureTable.entries.size());
+  for (const RenderFeatureHitShaderTableEntry &entry : featureTable.entries) {
+    table.hitGroups.push_back(RayHitGroupProgram{
+        .index = entry.index,
+        .materialType = StringID(entry.materialType),
+        .uri = entry.uri,
+        .function = entry.function,
+    });
+  }
+
+  const SceneResourceTable &resources = context.resourceTable();
+  for (u32 i = 0; i < compute.sceneParticipants.size(); ++i) {
+    const RenderSceneParticipant &participant = compute.sceneParticipants[i];
+    if (!participant.material.isValid()) {
+      reject(desc, RenderInputDiagnosticCode::MaterialRequired,
+             "ray participant is missing a material handle");
+      continue;
+    }
+    const auto material = resources.resolve(participant.material);
+    if (!material.has_value()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "ray participant material handle is unresolved");
+      continue;
+    }
+    const auto hitUri = material->get().getRadianceHitShaderUri();
+    if (!hitUri.has_value()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "standard-pbr material is missing hit.radiance.uri");
+      continue;
+    }
+    const auto program =
+        findHitGroupProgram(table, participant.materialTypeSignature,
+                            hitUri->get());
+    if (!program.has_value()) {
+      reject(desc, RenderInputDiagnosticCode::MissingResource,
+             "material hit.radiance.uri is not present in hitShaderTable");
+      continue;
+    }
+    table.primitiveHitGroups.push_back(PrimitiveHitGroup{
+        .participantIndex = i,
+        .primitiveIndex = participant.primitiveIndex == u32_max
+                              ? 0u
+                              : participant.primitiveIndex,
+        .hitGroupIndex = program->get().index,
+    });
+  }
+
+  if (desc.accepted()) {
+    desc.rayProgramTable = std::move(table);
   }
 }
 
@@ -961,6 +1907,21 @@ void rejectFatalPipelineFacts(RenderInputDesc &desc) {
       });
 }
 
+[[nodiscard]] bool materialTypeAllowed(const RenderSceneParticipant &participant,
+                                       const FramePass &pass) {
+  if (pass.input.material.types.empty()) {
+    return true;
+  }
+  if (participant.materialTypeSignature.id == 0) {
+    return false;
+  }
+  return std::any_of(
+      pass.input.material.types.begin(), pass.input.material.types.end(),
+      [&participant](const std::string &type) {
+        return materialTypeMatches(participant.materialTypeSignature, type);
+      });
+}
+
 [[nodiscard]] std::string stringIdText(StringID id) {
   if (id.id == 0) {
     return {};
@@ -994,9 +1955,30 @@ void rejectFatalPipelineFacts(RenderInputDesc &desc) {
                      });
 }
 
+[[nodiscard]] bool objectClassAllowed(const RenderSceneParticipant &participant,
+                                      const FramePass &pass) {
+  const std::vector<std::string> &classes = pass.input.object.renderClasses;
+  if (classes.empty()) {
+    return true;
+  }
+
+  const std::string renderType = stringIdText(participant.objectRenderType);
+  return std::any_of(
+      classes.begin(), classes.end(),
+      [&participant, &renderType](const std::string &renderClass) {
+        if (isDebugObjectClass(renderClass)) {
+          return participant.debugOnly || isDebugObjectClass(renderType);
+        }
+        if (!renderType.empty()) {
+          return renderType == renderClass;
+        }
+        return false;
+      });
+}
+
 [[nodiscard]] VisibilityLayerMask
 resolveVisibleMask(const Scene &scene, const FramePass &pass,
-                   const RenderWorkBuildContext::RealtimeOptions &options) {
+                   const RenderWorkBuildContext::Options &options) {
   VisibilityLayerMask visibleMask = 0;
   if (options.cameraResource.has_value()) {
     visibleMask = options.cameraResource->cullingMask;
@@ -1025,12 +2007,12 @@ resolveVisibleMask(const Scene &scene, const FramePass &pass,
 
 void fillSceneDrawCommand(const Scene &scene,
                           const ValidatedRenderablePassData &validatedData,
-                          RenderDrawInput &draw) {
-  if (draw.indexBuffer.isValid()) {
+                          RenderSceneParticipant &participant) {
+  if (participant.indexBuffer.isValid()) {
     const auto *indexBuffer =
-        dynamic_cast<const IndexBuffer *>(&draw.indexBuffer.get());
+        dynamic_cast<const IndexBuffer *>(&participant.indexBuffer.get());
     if (indexBuffer != nullptr && indexBuffer->indexCount() > 0) {
-      draw.drawCommands.push_back(RenderDrawCommand{
+      participant.drawCommands.push_back(RenderDrawCommand{
           .indexCount = static_cast<u32>(indexBuffer->indexCount()),
           .instanceCount = 1,
           .firstInstance = 0,
@@ -1039,10 +2021,10 @@ void fillSceneDrawCommand(const Scene &scene,
     }
   }
 
-  if (draw.mesh.isValid()) {
-    const auto mesh = scene.resources().resolve(draw.mesh);
+  if (participant.mesh.isValid()) {
+    const auto mesh = scene.resources().resolve(participant.mesh);
     if (mesh.has_value() && mesh->get().getIndexCount() > 0) {
-      draw.drawCommands.push_back(RenderDrawCommand{
+      participant.drawCommands.push_back(RenderDrawCommand{
           .indexCount = mesh->get().getIndexCount(),
           .instanceCount = 1,
           .firstIndex = mesh->get().getIndexOffset(),
@@ -1053,31 +2035,119 @@ void fillSceneDrawCommand(const Scene &scene,
   }
 }
 
-void fillRenderType(const IRenderable &renderable, RenderDrawInput &draw) {
-  draw.debugOnly = renderable.isDebugOnlyRenderable();
+void fillRenderType(const IRenderable &renderable,
+                    RenderSceneParticipant &participant) {
+  participant.debugOnly = renderable.isDebugOnlyRenderable();
   if (const auto renderType = renderable.getRenderType()) {
-    draw.objectRenderType = *renderType;
-  } else if (draw.debugOnly) {
-    draw.objectRenderType = StringID("debug.mesh");
+    participant.objectRenderType = *renderType;
+  } else if (participant.debugOnly) {
+    participant.objectRenderType = StringID("debug.mesh");
   }
 }
 
 void fillRawRenderableResources(const IRenderable &renderable,
-                                RenderDrawInput &draw) {
-  draw.vertexBuffer = renderable.getVertexBuffer();
-  draw.indexBuffer = renderable.getIndexBuffer();
-  if (!draw.drawCommands.empty() || !draw.indexBuffer.isValid()) {
+                                RenderSceneParticipant &participant) {
+  participant.vertexBuffer = renderable.getVertexBuffer();
+  participant.indexBuffer = renderable.getIndexBuffer();
+  if (!participant.drawCommands.empty() || !participant.indexBuffer.isValid()) {
     return;
   }
   const auto *indexBuffer =
-      dynamic_cast<const IndexBuffer *>(&draw.indexBuffer.get());
+      dynamic_cast<const IndexBuffer *>(&participant.indexBuffer.get());
   if (indexBuffer != nullptr && indexBuffer->indexCount() > 0) {
-    draw.drawCommands.push_back(RenderDrawCommand{
+    participant.drawCommands.push_back(RenderDrawCommand{
         .indexCount = static_cast<u32>(indexBuffer->indexCount()),
         .instanceCount = 1,
         .firstInstance = 0,
     });
   }
+}
+
+[[nodiscard]] StringID materialTypeSignatureFor(
+    const MaterialInstance &material, const RenderState &renderState) {
+  const std::string &bsdfType = material.getBsdfType();
+  const std::string normalizedType =
+      (bsdfType.empty() ? std::string("<unspecified>") : bsdfType) + "-" +
+      (renderState.blendEnable ? "transparent" : "opaque");
+  return StringID(normalizedType);
+}
+
+[[nodiscard]] std::vector<RenderSceneParticipant>
+selectResourceTableParticipants(const FramePass &pass,
+                                const RenderWorkBuildContext &context,
+                                bool applyInputFilters,
+                                VisibilityLayerMask visibleMask) {
+  const SceneResourceTable &resources = context.resourceTable();
+  const RenderSceneSnapshot snapshot = resources.buildSnapshot();
+  std::vector<RenderSceneParticipant> participants;
+  participants.reserve(snapshot.objectHandles.size());
+
+  for (usize objectIndex = 0; objectIndex < snapshot.objectHandles.size();
+       ++objectIndex) {
+    const ObjectHandle objectHandle = snapshot.objectHandles[objectIndex];
+    const auto object = resources.resolve(objectHandle);
+    if (!object.has_value() || !object->get().visible ||
+        (object->get().visibilityMask & visibleMask) == 0) {
+      continue;
+    }
+    const auto mesh = resources.resolve(object->get().mesh);
+    const auto material = resources.resolve(object->get().material);
+    if (!mesh.has_value() || !material.has_value()) {
+      continue;
+    }
+
+    GpuResourceRef vertexBuffer;
+    GpuResourceRef indexBuffer;
+    if (const GeometryStorageHandle storageHandle =
+            mesh->get().getGeometryStorageHandle();
+        storageHandle.isValid()) {
+      const auto storage = resources.resolve(storageHandle);
+      if (storage.has_value()) {
+        vertexBuffer = GpuResourceRef{storage->get().getVertexBuffer()};
+        indexBuffer = GpuResourceRef{storage->get().getIndexBuffer()};
+      }
+    } else {
+      vertexBuffer = GpuResourceRef{mesh->get().getVertexBuffer()};
+      indexBuffer = GpuResourceRef{mesh->get().getIndexBuffer()};
+    }
+
+    RenderSceneParticipant participant;
+    participant.sourceRenderableIndex = static_cast<u32>(objectIndex);
+    participant.debugId =
+        object->get().debugId.id != 0 ? object->get().debugId
+                                      : StringID("offline.object");
+    participant.object = objectHandle;
+    participant.mesh = object->get().mesh;
+    participant.material = object->get().material;
+    participant.vertexBuffer = vertexBuffer;
+    participant.indexBuffer = indexBuffer;
+    participant.primitiveIndex = 0;
+    participant.sortCenter = object->get().worldBounds.isValid()
+                                 ? object->get().worldBounds.getCenter()
+                                 : Vec3f{};
+    participant.objectDataSignature = StringID("BindlessObjectData.v1");
+    participant.objectRenderType = object->get().renderType;
+    participant.materialTypeSignature =
+        materialTypeSignatureFor(material->get(), pass.renderState);
+    participant.debugOnly = object->get().debugOnly;
+    if (mesh->get().getIndexCount() > 0) {
+      participant.drawCommands.push_back(RenderDrawCommand{
+          .indexCount = mesh->get().getIndexCount(),
+          .instanceCount = 1,
+          .firstIndex = mesh->get().getIndexOffset(),
+          .firstInstance = 0,
+      });
+    }
+
+    if (applyInputFilters &&
+        (!objectClassAllowed(participant, pass) ||
+         !materialTypeAllowed(participant, pass))) {
+      continue;
+    }
+    participants.push_back(std::move(participant));
+  }
+
+  return participants;
 }
 
 void buildFullscreenInput(const FramePass &pass,
@@ -1092,21 +2162,25 @@ void buildFullscreenInput(const FramePass &pass,
   out.push_back(std::move(draw));
 }
 
-void buildSceneRenderableInputs(
-    const FramePass &pass, const RenderWorkBuildContext &context,
-    std::vector<std::unique_ptr<RenderInput>> &out) {
-  if (context.domain() != RenderDomain::Realtime ||
-      !context.hasRealtimeScene()) {
+[[nodiscard]] std::vector<RenderSceneParticipant>
+selectSceneParticipants(const FramePass &pass,
+                        const RenderWorkBuildContext &context,
+                        bool applyInputFilters) {
+  if (!context.hasScene()) {
     throw std::logic_error(
-        "RenderWorkCompiler scene-renderables input requires a realtime scene");
+        "RenderWorkCompiler scene input requires a scene");
   }
 
-  const Scene &scene = context.realtimeScene();
+  const Scene &scene = context.scene();
   const VisibilityLayerMask visibleMask =
-      resolveVisibleMask(scene, pass, context.realtimeOptions());
+      resolveVisibleMask(scene, pass, context.options());
 
-  const usize firstPassInput = out.size();
+  std::vector<RenderSceneParticipant> participants;
   const auto &renderables = scene.getRenderables();
+  if (renderables.empty() && context.domain() == RenderDomain::Offline) {
+    return selectResourceTableParticipants(pass, context, applyInputFilters,
+                                           visibleMask);
+  }
   for (usize renderableIndex = 0; renderableIndex < renderables.size();
        ++renderableIndex) {
     const auto &renderable = renderables[renderableIndex];
@@ -1117,33 +2191,88 @@ void buildSceneRenderableInputs(
       continue;
     }
 
-    auto draw = std::make_unique<RenderDrawInput>();
-    draw->source = RenderDrawInputSource::SceneRenderable;
-    draw->sourceRenderableIndex = static_cast<u32>(renderableIndex);
-    draw->pass = pass.name;
-    draw->debugId = renderable->getDebugId().id != 0
-                        ? renderable->getDebugId()
-                        : StringID(renderable->getNodeName());
-    draw->inputIndex = out.size();
-    draw->objectDataSignature = StringID("BindlessObjectData.v1");
-    fillRenderType(*renderable, *draw);
-    fillRawRenderableResources(*renderable, *draw);
+    RenderSceneParticipant participant;
+    participant.sourceRenderableIndex = static_cast<u32>(renderableIndex);
+    participant.debugId = renderable->getDebugId().id != 0
+                              ? renderable->getDebugId()
+                              : StringID(renderable->getNodeName());
+    participant.objectDataSignature = StringID("BindlessObjectData.v1");
+    fillRenderType(*renderable, participant);
+    fillRawRenderableResources(*renderable, participant);
 
     const auto validated = renderable->getValidatedPassData(pass.name);
     if (validated.has_value()) {
       const ValidatedRenderablePassData &data = validated->get();
-      draw->object = data.objectHandle;
-      draw->mesh = resolveObjectMesh(scene, data.objectHandle);
-      draw->material = data.materialHandle;
-      draw->vertexBuffer = data.vertexBuffer;
-      draw->indexBuffer = data.indexBuffer;
-      draw->primitiveIndex = 0;
-      draw->sortCenter = data.sortCenter;
-      draw->materialTypeSignature = data.materialTypeSignature;
-      draw->drawCommands.clear();
-      fillSceneDrawCommand(scene, data, *draw);
+      participant.object = data.objectHandle;
+      participant.mesh = resolveObjectMesh(scene, data.objectHandle);
+      participant.material = data.materialHandle;
+      participant.vertexBuffer = data.vertexBuffer;
+      participant.indexBuffer = data.indexBuffer;
+      participant.primitiveIndex = 0;
+      participant.sortCenter = data.sortCenter;
+      participant.materialTypeSignature = data.materialTypeSignature;
+      participant.drawCommands.clear();
+      fillSceneDrawCommand(scene, data, participant);
     }
 
+    if (applyInputFilters &&
+        (!objectClassAllowed(participant, pass) ||
+         !materialTypeAllowed(participant, pass))) {
+      continue;
+    }
+    participants.push_back(std::move(participant));
+  }
+  if (participants.empty() && context.domain() == RenderDomain::Offline) {
+    return selectResourceTableParticipants(pass, context, applyInputFilters,
+                                           visibleMask);
+  }
+  return participants;
+}
+
+void copyParticipantToDrawInput(const RenderSceneParticipant &participant,
+                                RenderDrawInput &draw) {
+  draw.sourceRenderableIndex = participant.sourceRenderableIndex;
+  draw.debugId = participant.debugId;
+  draw.object = participant.object;
+  draw.mesh = participant.mesh;
+  draw.material = participant.material;
+  draw.vertexBuffer = participant.vertexBuffer;
+  draw.indexBuffer = participant.indexBuffer;
+  draw.primitiveIndex = participant.primitiveIndex;
+  draw.sortCenter = participant.sortCenter;
+  draw.objectDataSignature = participant.objectDataSignature;
+  draw.objectRenderType = participant.objectRenderType;
+  draw.materialTypeSignature = participant.materialTypeSignature;
+  draw.debugOnly = participant.debugOnly;
+  draw.drawCommands = participant.drawCommands;
+}
+
+[[nodiscard]] bool computeInputRequestsSceneParticipants(
+    const RenderPassInputContract &input) {
+  return !input.object.renderClasses.empty() || !input.material.types.empty() ||
+         !input.material.required || input.geometry.has_value();
+}
+
+void buildSceneRenderableInputs(
+    const FramePass &pass, const RenderWorkBuildContext &context,
+    std::vector<std::unique_ptr<RenderInput>> &out) {
+  const usize firstPassInput = out.size();
+  const bool applyInputFilters = context.domain() == RenderDomain::Offline;
+  std::vector<RenderSceneParticipant> participants =
+      selectSceneParticipants(pass, context, applyInputFilters);
+  if (pass.input.batching.mode == RenderPassBatchingMode::Material) {
+    std::stable_sort(participants.begin(), participants.end(),
+                     [](const RenderSceneParticipant &lhs,
+                        const RenderSceneParticipant &rhs) {
+                       return stringIdText(lhs.materialTypeSignature) <
+                              stringIdText(rhs.materialTypeSignature);
+                     });
+  }
+  for (const RenderSceneParticipant &participant : participants) {
+    auto draw = std::make_unique<RenderDrawInput>();
+    draw->source = RenderDrawInputSource::SceneRenderable;
+    draw->pass = pass.name;
+    copyParticipantToDrawInput(participant, *draw);
     out.push_back(std::move(draw));
   }
 
@@ -1189,8 +2318,8 @@ geometryContractMatches(const FramePass &pass,
     }
     return indexBuffer->getTopology() == pass.input.geometry->topology;
   }
-  if (draw.mesh.isValid() && context.hasRealtimeScene()) {
-    const Scene &scene = context.realtimeScene();
+  if (draw.mesh.isValid() && context.hasScene()) {
+    const Scene &scene = context.scene();
     const auto mesh = scene.resources().resolve(draw.mesh);
     if (mesh.has_value()) {
       return mesh->get().getIndexBuffer().getTopology() ==
@@ -1310,12 +2439,21 @@ void RenderWorkCompiler::buildInputs(
     compute->pass = pass.name;
     compute->debugId = stablePassDebugId(pass);
     compute->inputIndex = outInputs.size();
-    if (context.domain() == RenderDomain::Offline) {
-      offline::OfflineRenderJob &job = context.offlineJob();
-      compute->groupCountX = (job.output.width + 7u) / 8u;
-      compute->groupCountY = (job.output.height + 7u) / 8u;
-      compute->groupCountZ = 1u;
-      compute->readbackResource = StringID("OutputPixels");
+    if (pass.compute.has_value()) {
+      const auto extent =
+          context.findRuntimeExtent(StringID(pass.compute->dispatchFrom));
+      if (extent.has_value()) {
+        compute->groupCountX =
+            ceilDiv(extent->x, pass.compute->localSize.x);
+        compute->groupCountY =
+            ceilDiv(extent->y, pass.compute->localSize.y);
+        compute->groupCountZ =
+            ceilDiv(extent->z, pass.compute->localSize.z);
+      }
+    }
+    if (computeInputRequestsSceneParticipants(pass.input)) {
+      compute->sceneParticipants =
+          selectSceneParticipants(pass, context, true);
     }
     outInputs.push_back(std::move(compute));
     return;
@@ -1365,6 +2503,18 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
       fillPreparedFacts(pass, context, *compute, desc);
       if (pass.input.kind == RenderPassInputKind::ComputeDispatch) {
         validateComputeDesc(pass, *compute, desc);
+        if (desc.accepted()) {
+          appendDerivedFeatureResourcesForPass(pass, context, desc);
+        }
+        if (desc.accepted()) {
+          appendOfflineComputeSceneResources(pass, context, desc);
+        }
+        if (desc.accepted()) {
+          buildRayProgramTable(pass, context, *compute, desc);
+        }
+        if (desc.accepted()) {
+          appendRayProgramResources(context, *compute, desc);
+        }
       } else {
         reject(desc, RenderInputDiagnosticCode::UnsupportedInputContract,
                "compute input does not match pass input contract");
@@ -1383,10 +2533,16 @@ std::vector<RenderInputDesc> RenderWorkCompiler::prepare(
       validateSurfaceLightingIblBakeSources(pass, context, desc);
     }
     if (desc.accepted()) {
+      appendFrameGraphSampledResourcesForPass(pass, context, desc);
+    }
+    if (desc.accepted()) {
       validateBakeSourcePayloads(pass, desc);
     }
     if (desc.accepted()) {
-      validateBakeOutputPayloads(pass, input, desc);
+      resolveReadbackContracts(pass, context, desc);
+    }
+    if (desc.accepted()) {
+      validateBakeOutputPayloads(pass, desc);
     }
     if (desc.accepted()) {
       validateBindingPlanCompleteness(desc);

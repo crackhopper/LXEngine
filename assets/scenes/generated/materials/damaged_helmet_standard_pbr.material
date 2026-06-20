@@ -14,3 +14,6 @@ bsdf:
     normalTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_normal.jpg }
     occlusionTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_AO.jpg }
     emissiveTexture: { kind: texture, valueType: rgb, uri: ../../../models/damaged_helmet/Default_emissive.jpg }
+hit:
+  radiance:
+    uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl

@@ -18,6 +18,10 @@ struct FrameGraphExecutionRequest final {
 
 struct FrameGraphExecutionPayload final {
   std::string name;
+  std::string target;
+  std::string format;
+  RenderPathOutputKind kind = RenderPathOutputKind::Buffer;
+  Vec3u extent{1u, 1u, 1u};
   std::string mediaType;
   std::vector<u8> bytes;
 };

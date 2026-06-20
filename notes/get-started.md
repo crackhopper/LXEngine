@@ -10,7 +10,7 @@
 | 验证 shader 编译 | `cmake --build build --target test_shader_compiler && ./build/src/test/test_shader_compiler` |
 | 构建 editor | `cmake --build build --target lxe_editor -j2` |
 | 启动 editor | `./build/src/editor/lxe_editor` |
-| 构建 offline ray tracer | `cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2` |
+| 构建 offline ray tracer | `cmake --build build --target CompileShaders lxe_offline_render test_render_work_compiler -j2` |
 
 如果我们只想确认机器环境是否正常，先跑 `test_shader_compiler`。它不需要窗口，能最快暴露 `shaderc`、`glslc`、SPIRV-Cross 和 shader 文件路径问题。
 
@@ -19,7 +19,7 @@
 | 入口 | 当前用途 | 适合第一天做什么 |
 |---|---|---|
 | `lxe_editor` | 交互式实时 editor，负责打开 project、加载 scene、创建节点、调材质和保存场景 | 打开当前 Helmet/PBR scene，保存 scene |
-| `lxe_offline_render` | headless offline ray tracer / compute renderer，读取同一份 scene，输出 EXR/PNG/JSON/raw readback | 对 Helmet compare scene 跑 64x64 smoke |
+| `lxe_offline_render` | headless offline renderer，读取同一份 scene 的 output profile / render path graph，输出 EXR/PNG/JSON/raw readback | 对 Helmet scene 跑 64x64 raytrace smoke |
 | `test_shader_compiler` | shader 编译与反射 smoke | 检查本机 shader 工具链 |
 | `test_vulkan_offline_renderer` | headless Vulkan offline renderer smoke | 排查 Vulkan device / offline backend 基础问题 |
 
@@ -45,18 +45,16 @@ cmake --build build --target lxe_editor -j2
 
 ## 跑通 Offline Ray Tracer Smoke
 
-Offline ray tracer 像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行把 scene 编译成 `SceneResourceTable`，再通过 offline `FrameGraph` 生成 compute work，最后输出线性 float 图。
+Offline ray tracer 像一间独立实验室：我们仍然用 editor/scene YAML 搭场景，但渲染时不创建窗口和 swapchain，而是从命令行选择 output profile，让 profile 指向的 render path graph 通过 `FrameGraphExecutor` 执行，最后输出线性 float 图。
 
 ```bash
-cmake --build build --target CompileShaders lxe_offline_render test_vulkan_offline_renderer -j2
-ctest --test-dir build --output-on-failure -R 'test_vulkan_offline_renderer'
+cmake --build build --target CompileShaders lxe_offline_render test_render_work_compiler -j2
+ctest --test-dir build --output-on-failure -R 'test_render_work_compiler'
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
-  --profile preview \
-  --samples 1 \
+  --scene assets/scenes/generated/helmet_standard_pbr.scene.yaml \
+  --profile raytrace \
   --width 64 \
   --height 64 \
-  --max-bounce 1 \
   --out artifacts/offline/smoke
 ```
 
@@ -71,7 +69,7 @@ artifacts/offline/smoke.rgba32f
 
 `.exr` 是 scene-linear HDR 主输出，`.png` 是 tone-mapped preview，`.json` 记录 scene/profile/buildInfo 等复现信息，`.rgba32f` 是调试输出：每个像素 RGBA 四个 32-bit float。
 
-当前 offline ray tracer 是 software-compute MVP：它已经打通 scene 文件、`SceneResourceTable`、offline `RenderComputeInput` / `RenderInputDesc`、Vulkan compute dispatch、readback 和输出文件。多 bounce path tracing、高质量材质参考和更完整的 AOV 仍在后续 offline 教程中逐步展开。
+当前 offline ray tracer 已经硬切到统一 FrameGraphExecutor 流程：它打通 scene 文件、`SceneResourceTable`、render path graph、`RenderInputDesc`、Vulkan graphics/compute pass、readback payload 和输出文件。多 bounce path tracing、高质量材质参考和更完整的 AOV 仍在后续 offline 教程中逐步展开。
 
 ## 环境准备
 

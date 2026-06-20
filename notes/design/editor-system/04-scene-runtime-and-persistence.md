@@ -82,9 +82,9 @@ runtime / renderer，直接使用仓库里的 `.scene.yaml`；要验证 project 
 `LxeEditorSession::initialize()` 会尝试恢复这个 project；如果失败或没有
 记录，当前 editor 会回到内置启动 scene：
 `assets/scenes/generated/helmet_standard_pbr.scene.yaml`。远程诊断可以直接
-`scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml`，或打开
-PBR/IBL 验收场景
-`assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml`。
+`scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml`；这同一份场景
+也包含 PBR/IBL 验收所需的 skybox、bake marker、helmet、方向光和 output
+profiles。
 
 本地 editor 文件分工如下：
 

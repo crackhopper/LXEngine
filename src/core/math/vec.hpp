@@ -206,6 +206,7 @@ operator*(S s, const VecBase<Derived, T, N> &v) {
 // ===================== 类型别名 =====================
 using Vec2i = Vec2<i32>;
 using Vec3i = Vec3<i32>;
+using Vec3u = Vec3<u32>;
 using Vec4i = Vec4<i32>;
 
 using Vec2f = Vec2<f32>;

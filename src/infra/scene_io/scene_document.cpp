@@ -682,6 +682,86 @@ loadSceneEnvironmentNode(const YAML::Node &node, const char *fieldName) {
   return environment;
 }
 
+[[nodiscard]] LX_core::SceneSkyboxMode
+loadSceneSkyboxMode(const YAML::Node &node, const char *fieldName) {
+  const std::string mode = loadRequiredString(node, fieldName);
+  if (mode == "finite") {
+    return LX_core::SceneSkyboxMode::Finite;
+  }
+  if (mode == "infinite") {
+    return LX_core::SceneSkyboxMode::Infinite;
+  }
+  throw std::runtime_error(std::string(fieldName) +
+                           " must be finite or infinite");
+}
+
+[[nodiscard]] LX_core::SceneSkyboxNode
+loadSceneSkyboxNode(const YAML::Node &node, const char *fieldName) {
+  if (!node) {
+    throw std::runtime_error(std::string(fieldName) + " is missing");
+  }
+  if (!node.IsMap()) {
+    throw std::runtime_error(std::string(fieldName) + " must be a map");
+  }
+
+  LX_core::SceneSkyboxNode skybox;
+  bool hasMode = false;
+  bool hasFeatureUri = false;
+  bool hasBake = false;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    const std::string key = it->first.as<std::string>();
+    const YAML::Node value = it->second;
+    if (key == "mode") {
+      skybox.mode =
+          loadSceneSkyboxMode(value, (std::string(fieldName) + ".mode").c_str());
+      hasMode = true;
+    } else if (key == "feature") {
+      if (!value.IsMap()) {
+        throw std::runtime_error(std::string(fieldName) +
+                                 ".feature must be a map");
+      }
+      for (auto featureIt = value.begin(); featureIt != value.end();
+           ++featureIt) {
+        const std::string featureKey = featureIt->first.as<std::string>();
+        if (featureKey == "uri") {
+          const std::string uri =
+              loadRequiredString(featureIt->second,
+                                 (std::string(fieldName) + ".feature.uri")
+                                     .c_str());
+          validateSceneAssetUriInternal(
+              uri, (std::string(fieldName) + ".feature.uri").c_str());
+          skybox.featureUri = LX_core::ResourceUri(uri);
+          hasFeatureUri = true;
+        } else {
+          throw std::runtime_error(std::string(fieldName) + ".feature." +
+                                   featureKey + " is not supported");
+        }
+      }
+    } else if (key == "bake") {
+      skybox.bake =
+          loadSceneIblBakeMarker(value,
+                                 (std::string(fieldName) + ".bake").c_str());
+      hasBake = true;
+    } else {
+      throw std::runtime_error(std::string(fieldName) + "." + key +
+                               " is not supported");
+    }
+  }
+  if (!hasMode) {
+    throw std::runtime_error(std::string(fieldName) + ".mode is required");
+  }
+  if (skybox.mode == LX_core::SceneSkyboxMode::Infinite && !hasFeatureUri) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".feature.uri is required for infinite skybox");
+  }
+  if (skybox.mode == LX_core::SceneSkyboxMode::Infinite && !hasBake) {
+    throw std::runtime_error(std::string(fieldName) +
+                             ".bake.enabled is required for infinite skybox");
+  }
+  LX_core::validateSceneSkyboxNode(skybox, fieldName);
+  return skybox;
+}
+
 [[nodiscard]] LX_core::SceneNodeBakeMarkers
 loadSceneNodeBakeMarkers(const YAML::Node &node, const char *fieldName) {
   LX_core::SceneNodeBakeMarkers bake;
@@ -722,6 +802,25 @@ void saveSceneEnvironmentNode(YAML::Emitter &out,
   out << YAML::EndMap;
   out << YAML::Key << "bake" << YAML::Value;
   saveSceneIblBakeMarker(out, environment.bake);
+  out << YAML::EndMap;
+}
+
+void saveSceneSkyboxNode(YAML::Emitter &out,
+                         const LX_core::SceneSkyboxNode &skybox) {
+  out << YAML::Key << "skybox" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "mode" << YAML::Value
+      << (skybox.mode == LX_core::SceneSkyboxMode::Finite ? "finite"
+                                                          : "infinite");
+  if (!skybox.featureUri.empty()) {
+    out << YAML::Key << "feature" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "uri" << YAML::Value << skybox.featureUri.string();
+    out << YAML::EndMap;
+  }
+  if (skybox.mode == LX_core::SceneSkyboxMode::Infinite ||
+      skybox.bake.enabled) {
+    out << YAML::Key << "bake" << YAML::Value;
+    saveSceneIblBakeMarker(out, skybox.bake);
+  }
   out << YAML::EndMap;
 }
 
@@ -901,6 +1000,8 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
     }
     if (key == "camera") {
       profile.cameraPath = value.as<std::string>();
+    } else if (key == "renderPathGraph") {
+      profile.renderPathGraph = LX_core::ResourceUri(value.as<std::string>());
     } else if (key == "width") {
       profile.width = value.as<u32>();
     } else if (key == "height") {
@@ -923,6 +1024,10 @@ loadOutputProfile(const YAML::Node &node, const std::string &name) {
   if (profile.cameraPath.empty()) {
     throw std::runtime_error("output profile " + name +
                              " camera must be non-empty");
+  }
+  if (profile.renderPathGraph.empty()) {
+    throw std::runtime_error("output profile " + name +
+                             " renderPathGraph must be non-empty");
   }
   if (profile.width == 0 || profile.height == 0) {
     throw std::runtime_error("output profile " + name +
@@ -1124,6 +1229,8 @@ void saveOutputProfile(YAML::Emitter &out,
                        const LX_core::offline::OutputProfile &profile) {
   out << YAML::BeginMap;
   out << YAML::Key << "camera" << YAML::Value << profile.cameraPath;
+  out << YAML::Key << "renderPathGraph" << YAML::Value
+      << profile.renderPathGraph.string();
   out << YAML::Key << "width" << YAML::Value << profile.width;
   out << YAML::Key << "height" << YAML::Value << profile.height;
   out << YAML::Key << "outputFormat" << YAML::Value << profile.outputFormat;
@@ -1297,6 +1404,9 @@ void saveEditorCamera(YAML::Emitter &out, const EditorCameraState &state) {
     entry.environment =
         loadSceneEnvironmentNode(environmentNode, "nodes[].environment");
   }
+  if (const auto skyboxNode = node["skybox"]; skyboxNode) {
+    entry.skybox = loadSceneSkyboxNode(skyboxNode, "nodes[].skybox");
+  }
   entry.bake = loadSceneNodeBakeMarkers(node["bake"], "nodes[].bake");
   if (const auto cameraNode = node["camera"]; cameraNode) {
     const auto legacyEye =
@@ -1353,8 +1463,8 @@ void validateExplicitRootNode(const SceneNodeDocument &rootNode) {
       !rootNode.proceduralMaterial.empty() ||
       !rootNode.nodeMaterialOverrides.empty() ||
       !rootNode.materialOverrides.empty() ||
-      rootNode.environment.has_value() || rootNode.bake.ibl.has_value() ||
-      rootNode.camera.has_value() ||
+      rootNode.environment.has_value() || rootNode.skybox.has_value() ||
+      rootNode.bake.ibl.has_value() || rootNode.camera.has_value() ||
       rootNode.cameraOfflineYaml.has_value() || rootNode.light.has_value() ||
       rootNode.offlineYaml.has_value()) {
     throw std::runtime_error("scene document root payload is unsupported");
@@ -1398,6 +1508,9 @@ void saveNodeDocument(YAML::Emitter &out, const SceneNodeDocument &node) {
   saveMaterialOverrideState(out, "materialOverrides", node.materialOverrides);
   if (node.environment.has_value()) {
     saveSceneEnvironmentNode(out, *node.environment);
+  }
+  if (node.skybox.has_value()) {
+    saveSceneSkyboxNode(out, *node.skybox);
   }
   saveSceneNodeBakeMarkers(out, node.bake);
   if (node.camera.has_value()) {

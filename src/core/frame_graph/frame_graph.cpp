@@ -39,6 +39,19 @@ framePassGeometrySignature(const RenderPathGeometryContract &geometry) {
 }
 
 [[nodiscard]] StringID
+framePassBatchingSignature(RenderPassBatchingMode mode) {
+  switch (mode) {
+  case RenderPassBatchingMode::None:
+    return StringID("batching.mode=none");
+  case RenderPassBatchingMode::All:
+    return StringID("batching.mode=all");
+  case RenderPassBatchingMode::Material:
+    return StringID("batching.mode=material");
+  }
+  return StringID("batching.mode=unknown");
+}
+
+[[nodiscard]] StringID
 framePassAttachmentSignature(const RenderPathAttachmentContract &attachment) {
   const auto usage = static_cast<u32>(attachment.attachmentUsage);
   return StringID("attachment:target=" + attachment.target + ";format=" +
@@ -95,7 +108,7 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   fields.reserve(14 + pass.input.object.renderClasses.size() +
                  pass.input.material.types.size() + pass.reads.size() +
                  pass.writes.size() + pass.attachments.size() +
-                 pass.payloads.size());
+                 pass.readbacks.size());
   fields.push_back(
       StringID("pass=" + GlobalStringTable::get().toDebugString(pass.name)));
   fields.push_back(StringID("shader=" + pass.shaderUri.string()));
@@ -106,6 +119,16 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
       pass.dispatch == RenderPassDispatch::Draw         ? "dispatch=draw"
       : pass.dispatch == RenderPassDispatch::Fullscreen ? "dispatch=fullscreen"
                                                         : "dispatch=compute"));
+  if (pass.compute.has_value()) {
+    fields.push_back(StringID("compute.dispatchFrom=" +
+                              pass.compute->dispatchFrom));
+    fields.push_back(StringID("compute.localSize=" +
+                              std::to_string(pass.compute->localSize.x) +
+                              "x" +
+                              std::to_string(pass.compute->localSize.y) +
+                              "x" +
+                              std::to_string(pass.compute->localSize.z)));
+  }
   fields.push_back(pass.renderState.getPipelineSignature());
   fields.push_back(pass.target.getPipelineSignature());
   if (pass.renderingMode.has_value()) {
@@ -123,6 +146,7 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   fields.push_back(StringID(pass.input.material.required
                                 ? "material.required=true"
                                 : "material.required=false"));
+  fields.push_back(framePassBatchingSignature(pass.input.batching.mode));
   for (const std::string &type : pass.input.material.types) {
     fields.push_back(StringID("material.type=" + type));
   }
@@ -141,11 +165,15 @@ StringID getFramePassRenderPathNodeSignature(const FramePass &pass) {
   for (const RenderPathAttachmentContract &attachment : pass.attachments) {
     fields.push_back(framePassAttachmentSignature(attachment));
   }
-  for (const RenderPathPayloadContract &payload : pass.payloads) {
-    fields.push_back(StringID("payload:name=" + payload.name +
-                              ";target=" + payload.target +
-                              ";format=" + payload.format +
-                              ";kind=" + payload.kind));
+  for (const RenderPathReadbackContract &readback : pass.readbacks) {
+    fields.push_back(
+        StringID("readback:name=" + readback.name +
+                 ";target=" + readback.target +
+                 ";extentFrom=" + readback.extentFrom +
+                 ";binding=" + readback.binding +
+                 ";format=" + readback.format +
+                 ";kind=" + std::to_string(static_cast<u32>(readback.kind)) +
+                 ";mediaType=" + readback.mediaType));
   }
 
   return GlobalStringTable::get().compose(TypeTag::RenderPathNode, fields);
@@ -400,7 +428,7 @@ FrameGraph::compile(const GraphResourceRegistry &registry) const {
   for (const usize passIndex : sorted) {
     const auto &pass = m_passes[passIndex];
     out.m_passes.push_back(CompiledFrameGraphPass{
-        pass.name, pass.target, pass.reads, pass.writes, pass.payloads,
+        pass.name, pass.target, pass.reads, pass.writes, pass.readbacks,
         passIndex});
   }
 

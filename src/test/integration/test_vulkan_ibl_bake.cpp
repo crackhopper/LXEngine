@@ -559,6 +559,66 @@ void expectValidatedOutputs(const OutputFileCacheStore &cache,
              TextureDimension::Texture2D, 256, 1, 1);
 }
 
+void testBakeRenderPathsUseGenericReadbacks() {
+  const std::vector<std::pair<std::filesystem::path, usize>> cases = {
+      {repoRootForTest() / "assets/render_paths/"
+                               "bake_environment_ibl.render-path.yaml",
+       2},
+      {repoRootForTest() / "assets/render_paths/"
+                               "bake_standard_pbr_brdf_lut.render-path.yaml",
+       1},
+  };
+
+  for (const auto &[path, expectedReadbackCount] : cases) {
+    const std::string text = readTextFile(path);
+    expect(text.find("payloads:") == std::string::npos,
+           "bake render-path assets must not author legacy payloads");
+    usize readbackCount = 0;
+    std::string::size_type offset = 0;
+    while ((offset = text.find("readbacks:", offset)) != std::string::npos) {
+      ++readbackCount;
+      offset += std::string("readbacks:").size();
+    }
+    expect(readbackCount == expectedReadbackCount,
+           "bake render-path assets should author generic readbacks");
+  }
+}
+
+void testNegativeBaselineCacheStillConsumesBareExecutionPayloads() {
+  const std::filesystem::path root =
+      makeTempDir("vulkan_ibl_bake_legacy_payload_baseline");
+  const IblBakeItem environment = makeEnvironmentItem();
+  OutputFileCacheStore cache(root);
+  LX_infra::IblBakeManifestParser parser;
+
+  FrameGraphExecutionResult execution;
+  execution.ok = true;
+  execution.outputs.push_back(FrameGraphExecutionPayload{
+      .name = "diffuse_sh9",
+      .mediaType = "application/x-yaml",
+      .bytes = toBytes(parser.writeSh9IrradiancePayload(makeSh9Payload(0x31))),
+  });
+  execution.outputs.push_back(FrameGraphExecutionPayload{
+      .name = "specular_prefilter",
+      .mediaType = "image/ktx2",
+      .bytes = makeKtx2Payload(specularDesc(), 0x41),
+  });
+
+  const IblBakeCacheWriteResult written = cache.write(environment, execution);
+  expect(written.ok,
+         "negative baseline: IBL cache still accepts executor outputs by "
+         "payload name/mediaType/bytes without graph readback metadata");
+  const std::filesystem::path envDir = cache.itemDir(environment);
+  expect(std::filesystem::exists(envDir / "manifest.yaml"),
+         "negative baseline: bare execution payloads should still publish an "
+         "environment manifest");
+  expectSh9(envDir / "diffuse_sh9.yaml");
+  expectKtx2(envDir / "specular_prefilter.ktx2",
+             TextureFormat::RGBA16Float, TextureDimension::TextureCube, 256,
+             9, 6);
+  std::filesystem::remove_all(root);
+}
+
 void testBakeCommandWritesPayloadsCacheHitsAndForceReplaces() {
   const std::filesystem::path root = makeTempDir("vulkan_ibl_bake_output");
   const IblBakeItem environment = makeEnvironmentItem();
@@ -627,7 +687,8 @@ void testBakeCommandWritesPayloadsCacheHitsAndForceReplaces() {
 
 void testBakeCommandWritesInspectableNeutralSmokeArtifacts() {
   const std::filesystem::path root =
-      repoRootForTest() / "artifacts/smoke/ibl-neutral/bake-cache";
+      std::filesystem::current_path() /
+      "test-output/ibl_bake_smoke/neutral/bake-cache";
   std::filesystem::remove_all(root);
 
   const IblBakeItem environment = makeEnvironmentItem();
@@ -665,6 +726,36 @@ void testBakeCommandWritesInspectableNeutralSmokeArtifacts() {
   expect(manifest.find(std::string(kNeutralEnvironmentHash)) !=
              std::string::npos,
          "neutral smoke manifest should record the neutral KTX2 source hash");
+
+  const std::filesystem::path environmentDir = cache->itemDir(environment);
+  const std::filesystem::path materialDir = cache->itemDir(material);
+  const std::filesystem::path diffusePath = environmentDir / "diffuse_sh9.yaml";
+  const std::filesystem::path specularPath =
+      environmentDir / "specular_prefilter.ktx2";
+  const std::filesystem::path brdfPath = materialDir / "brdf_lut.ktx2";
+  expect(std::filesystem::exists(diffusePath),
+         "neutral smoke should leave diffuse SH output");
+  expect(std::filesystem::exists(specularPath),
+         "neutral smoke should leave specular prefilter output");
+  expect(std::filesystem::exists(brdfPath),
+         "neutral smoke should leave BRDF LUT output");
+
+  const std::filesystem::path summaryPath = root.parent_path() / "summary.txt";
+  writeTextFile(summaryPath,
+                "neutral IBL bake smoke artifacts\nroot: " +
+                    std::filesystem::absolute(root).generic_string() +
+                    "\nenvironment_manifest: " +
+                    std::filesystem::absolute(manifestPath).generic_string() +
+                    "\ndiffuse_sh9: " +
+                    std::filesystem::absolute(diffusePath).generic_string() +
+                    "\nspecular_prefilter: " +
+                    std::filesystem::absolute(specularPath).generic_string() +
+                    "\nmaterial_manifest: " +
+                    std::filesystem::absolute(materialDir / "manifest.yaml")
+                        .generic_string() +
+                    "\nbrdf_lut: " +
+                    std::filesystem::absolute(brdfPath).generic_string() +
+                    "\n");
 
   std::cout << "[smoke] neutral IBL bake artifacts: "
             << std::filesystem::absolute(root).generic_string() << '\n';
@@ -727,6 +818,8 @@ void testMetadataOnlyCacheIsInvalid() {
 } // namespace
 
 int main() {
+  testBakeRenderPathsUseGenericReadbacks();
+  testNegativeBaselineCacheStillConsumesBareExecutionPayloads();
   testBakeCommandWritesPayloadsCacheHitsAndForceReplaces();
   testBakeCommandWritesInspectableNeutralSmokeArtifacts();
   testMissingExecutionPayloadFailsWithoutManifestCommit();

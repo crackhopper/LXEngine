@@ -1,5 +1,4 @@
 #include "backend/vulkan/offline/vulkan_offline_renderer.hpp"
-#include "backend/vulkan/offline/offline_compute_shader.hpp"
 #include "core/offline/offline_render_profile.hpp"
 #include "core/offline/offline_render_validation.hpp"
 #include "infra/build_info/build_info.hpp"
@@ -67,27 +66,24 @@ int main(int argc, char **argv) {
         LX_core::offline::resolveRenderProfileDocument(profiles, args.overrides);
 
     LX_infra::offline::OfflineAssetResolver resolver(args.scenePath);
-    LX_infra::offline::OfflineSceneLoader loader(
-        resolver, [] {
-          return LX_core::backend::offline::createOfflineComputeShader(
-              "techniques/OfflineRT/offline_pbr_direct_ray");
-        });
+    LX_infra::offline::OfflineSceneLoader loader(resolver);
     auto loaded = loader.load(document, resolved.output.cameraPath);
     for (const auto &warning : loaded.warnings) {
       std::cerr << "[offline warning] " << warning << '\n';
     }
 
-    LX_core::offline::OfflineRenderJob job;
-    job.scene = std::move(loaded.table);
-    job.output = resolved.output;
-    job.offline = resolved.offline;
-    job.offlineShader = std::move(loaded.offlineShader);
-    job.profileName = resolved.profileName;
-    job.outputPath = resolved.outputPath.value_or("");
-
-    LX_core::offline::validateOfflineRenderJob(job);
     LX_core::backend::offline::VulkanOfflineRenderer renderer;
-    const auto image = renderer.render(job);
+    LX_core::backend::offline::VulkanOfflineRenderRequest renderRequest;
+    renderRequest.scene = std::move(loaded.table);
+    renderRequest.output = resolved.output;
+    renderRequest.offline = resolved.offline;
+    renderRequest.profileName = resolved.profileName;
+    renderRequest.outputPath = resolved.outputPath.value_or("");
+    renderRequest.renderPathGraphUri = resolved.output.renderPathGraph;
+    LX_core::offline::validateOfflineRenderInputs(renderRequest.scene,
+                                                  renderRequest.output);
+    const auto renderResult = renderer.render(std::move(renderRequest));
+    const auto &image = renderResult.image;
     if (image.rgba.empty()) {
       throw std::runtime_error("offline render readback was empty");
     }
@@ -97,8 +93,11 @@ int main(int argc, char **argv) {
       }
     }
     LX_infra::offline::OfflineImageOutputRequest outputRequest;
-    outputRequest.job = std::move(job);
-    outputRequest.image = image;
+    outputRequest.output = resolved.output;
+    outputRequest.offline = resolved.offline;
+    outputRequest.profileName = resolved.profileName;
+    outputRequest.outputPath = resolved.outputPath.value_or("");
+    outputRequest.payload = renderResult.payload;
     outputRequest.scenePath = args.scenePath;
     outputRequest.buildInfo = buildInfo;
     const auto outputs =
@@ -107,7 +106,7 @@ int main(int argc, char **argv) {
         (static_cast<usize>(image.height / 2) * image.width + image.width / 2) *
         4;
     std::cout << "lxe_offline_render completed " << image.width << "x"
-              << image.height << " samples=" << job.offline.samples
+              << image.height << " samples=" << resolved.offline.samples
               << " center=(" << image.rgba[center + 0] << ", "
               << image.rgba[center + 1] << ", " << image.rgba[center + 2]
               << ") exr=" << outputs.exrPath.string()

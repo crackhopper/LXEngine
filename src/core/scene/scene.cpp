@@ -250,6 +250,11 @@ makeCameraResource(const CameraComponent &cameraComponent) {
   object.worldBounds = node.getWorldBounds();
   object.visibilityMask = node.getVisibilityLayerMask();
   object.debugId = node.getDebugId();
+  if (const auto renderType = node.getRenderType()) {
+    object.renderType = *renderType;
+  } else if (meshHandle.isValid()) {
+    object.renderType = StringID("mesh");
+  }
   object.visible = true;
   object.debugOnly = node.isDebugOnlyRenderable();
   return object;
@@ -443,13 +448,17 @@ Scene::getSceneLevelResources(StringID pass,
   }
 
   bool hasForwardLightUbo = false;
-  for (const LightHandle lightHandle : m_lightHandles) {
+  std::vector<LightHandle> lightHandles = m_lightHandles;
+  if (lightHandles.empty()) {
+    lightHandles = m_resources.buildSnapshot().lightHandles;
+  }
+  for (const LightHandle lightHandle : lightHandles) {
     const auto resolvedLight = m_resources.resolve(lightHandle);
     if (!resolvedLight.has_value()) {
       continue;
     }
     const LightBase &light = resolvedLight->get();
-    if (!light.getSceneNode()) {
+    if (!light.getSceneNode() && !m_lightHandles.empty()) {
       continue;
     }
     if (!light.supportsPass(pass)) {

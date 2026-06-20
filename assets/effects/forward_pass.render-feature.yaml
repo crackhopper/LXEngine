@@ -17,6 +17,10 @@ parameters:
     kind: bool
     value: false
     required: true
+  enable_direct_lighting:
+    kind: bool
+    value: true
+    required: true
   enableIblLighting:
     kind: bool
     volatile: true

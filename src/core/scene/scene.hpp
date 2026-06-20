@@ -57,6 +57,14 @@ public:
       m_sceneName = "Scene";
     }
   }
+  Scene(std::string sceneName, SceneResourceTable resources)
+      : m_sceneName(std::move(sceneName)),
+        m_resources(std::move(resources)),
+        m_rootNode(SceneNode::createPathRoot()) {
+    if (m_sceneName.empty()) {
+      m_sceneName = "Scene";
+    }
+  }
   ~Scene();
 
   static auto create(std::string sceneName,

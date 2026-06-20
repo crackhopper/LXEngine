@@ -144,25 +144,28 @@ Shadow depth target 和 swapchain forward target 不是同一种 render target s
 
 ```mermaid
 flowchart TD
-    yaml[".scene.yaml\nscene + offlineRender profiles"]
+    yaml[".scene.yaml\nscene + outputProfiles"]
     sceneio["infra/scene_io\nSceneDocument"]
     realtime["lxe_editor + VulkanRealtimeRenderer\nFrameGraph / swapchain"]
-    compiler["infra/offline\nOfflineSceneLoader"]
+    loader["infra/offline\nOfflineSceneLoader"]
     table["core/scene\nSceneResourceTable"]
-    graph["core/frame_graph\nOffline FrameGraph"]
-    executor["backend/vulkan/offline\nOfflineRenderGraphExecutor"]
-    dump[".rgba32f readback"]
+    profile["OutputProfile\nrenderPathGraph"]
+    graph["core/frame_graph\nFrameGraph"]
+    executor["backend/vulkan\nFrameGraphExecutor"]
+    dump["EXR/PNG/JSON/raw readback"]
 
     yaml --> sceneio
     sceneio --> realtime
-    sceneio --> compiler
-    compiler --> table
+    sceneio --> loader
+    sceneio --> profile
+    loader --> table
+    profile --> graph
     table --> graph
     graph --> executor
     executor --> dump
 ```
 
-当前 offline MVP 的命令入口是 `src/tools/lxe_offline_render/lxe_offline_render`。它不依赖 editor UI，只复用 scene 文档、路径解析、`SceneResourceTable`、core math/offline 数据结构、FrameGraph 和 Vulkan 基础设施。
+当前 offline 命令入口是 `src/tools/lxe_offline_render/lxe_offline_render`。它不依赖 editor UI，只复用 scene 文档、路径解析、`SceneResourceTable`、core math/offline 数据结构、RenderPathGraph/FrameGraph 和 Vulkan `FrameGraphExecutor` 基础设施。
 
 ## 当前能力和 pending 边界
 
@@ -172,7 +175,7 @@ flowchart TD
 | Shadow / CSM | 4 个 directional shadow cascade，forward 读取 `ShadowMap0..3` | shadow debug visualization 仍可继续扩展 |
 | Forward output | forward HDR scene color、post process、bloom 和 swapchain 输出链路 | 更完整的 post stack 和调试 dump 仍可扩展 |
 | Material / lighting | Blinn-Phong、shadow pass、PBR + scene-level IBL 资源合同、Damaged Helmet neutral IBL 验证场景 | 更完整的 PBR texture set 和 local probe |
-| Offline renderer | scene profile、SceneResourceTable、Vulkan compute software-compute MVP、shared RenderWork flow、`.rgba32f` readback | EXR/PNG、真实 HDR environment sampling、多 bounce path tracing、hardware RT |
+| Offline renderer | output profile、SceneResourceTable、RenderPathGraph、FrameGraphExecutor、EXR/PNG/JSON/raw readback、Forward/IBL/OfflineRT Helmet 对比 | 多 bounce path tracing、hardware RT、denoiser、AOV |
 | Deferred | 存在 `Pass_Deferred` 常量和方向 | G-Buffer / Deferred renderer 还未实现 |
 | Editor integration | ImGui editor、CommandBus、API/recording | Web Editor、engine-level CLI/MCP、AssetRegistry/hot reload 仍在 pending |
 

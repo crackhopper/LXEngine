@@ -102,6 +102,10 @@ void validateShaderLevelParameter(
 
   if (!parameter.member.empty()) {
     if (binding->get().type != ShaderPropertyType::UniformBuffer) {
+      if (parameter.binding == "SceneFrameParams" &&
+          binding->get().type == ShaderPropertyType::StorageBuffer) {
+        return;
+      }
       diagnostics.push_back(makeError(
           name, "shader ABI binding '" + parameter.binding +
                     "' is not a UniformBuffer"));
@@ -151,6 +155,10 @@ void validatePassLevelParameter(
       return;
     }
     if (binding->get().type != ShaderPropertyType::UniformBuffer) {
+      if (parameter.binding == "SceneFrameParams" &&
+          binding->get().type == ShaderPropertyType::StorageBuffer) {
+        return;
+      }
       diagnostics.push_back(makeError(
           name, "shader ABI binding '" + parameter.binding +
                     "' is not a UniformBuffer"));

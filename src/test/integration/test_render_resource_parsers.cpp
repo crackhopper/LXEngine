@@ -598,10 +598,11 @@ void testForwardPassRenderFeatureAssetParses() {
              feature.shader->uri ==
                  LX_core::ResourceUri("render_paths/Forward/pbr"),
          "forwardPass should declare Forward pbr shader ABI owner");
-  EXPECT(feature.parameters.size() == 6,
+  EXPECT(feature.parameters.size() == 7,
          "forwardPass should declare flow switches and volatile IBL fields");
   for (const char *name :
-       {"render_skybox", "enable_tonemapping", "enable_gamma"}) {
+       {"render_skybox", "enable_tonemapping", "enable_gamma",
+        "enable_direct_lighting"}) {
     EXPECT(feature.parameters.find(name) != feature.parameters.end(),
            std::string("forwardPass should declare ") + name);
     if (feature.parameters.find(name) != feature.parameters.end()) {
@@ -630,6 +631,124 @@ void testForwardPassRenderFeatureAssetParses() {
              std::string("volatile IBL pass field must not define value: ") +
                  name);
     }
+  }
+}
+
+void testOfflineRayTracerRenderFeatureAssetParses() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse(
+      "assets/effects/offline_ray_tracer.render-feature.yaml",
+      readTextFile("assets/effects/offline_ray_tracer.render-feature.yaml"));
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "offlineRayTracer feature asset should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "offlineRayTracer feature asset should not emit diagnostics");
+  if (!parsed.renderFeature.has_value()) {
+    return;
+  }
+
+  const auto &feature = *parsed.renderFeature;
+  EXPECT(feature.feature == "offlineRayTracer",
+         "offlineRayTracer feature key should be retained");
+  EXPECT(feature.level == LX_core::RenderFeatureLevel::Pass,
+         "offlineRayTracer should be pass-level");
+  EXPECT(feature.shader.has_value() &&
+             feature.shader->uri ==
+                 LX_core::ResourceUri(
+                     "render_paths/OfflineRT/standard_pbr_primary_ray"),
+         "offlineRayTracer should declare its primary shader ABI owner");
+
+  EXPECT(feature.parameters.size() == 4,
+         "offlineRayTracer should declare volatile runtime controls");
+  for (const char *name : {"samples", "maxBounce", "seed", "compareMode"}) {
+    const auto parameter = feature.parameters.find(name);
+    EXPECT(parameter != feature.parameters.end(),
+           std::string("offlineRayTracer should declare volatile ") + name);
+    if (parameter != feature.parameters.end()) {
+      EXPECT(parameter->second.volatileRuntime,
+             std::string("runtime control should be volatile: ") + name);
+      EXPECT(parameter->second.binding == "SceneFrameParams",
+             std::string("runtime control should use SceneFrameParams: ") +
+                 name);
+      EXPECT(parameter->second.member == name,
+             std::string("runtime control member mismatch: ") + name);
+    }
+  }
+
+  const auto acceleration = feature.resources.find("acceleration");
+  EXPECT(acceleration != feature.resources.end(),
+         "offlineRayTracer should declare a derived acceleration resource");
+  if (acceleration != feature.resources.end()) {
+    const auto &resource = acceleration->second;
+    EXPECT(resource.api == LX_core::RenderFeatureResourceApi::SceneAcceleration,
+           "acceleration resource should use scene acceleration API");
+    EXPECT(resource.function == "buildSceneAcceleration",
+           "acceleration resource should retain producer function");
+    EXPECT(resource.implementation ==
+               LX_core::RenderFeatureResourceImplementation::SoftwareBvh,
+           "offlineRayTracer should use software BVH in this slice");
+    EXPECT(resource.derived,
+           "acceleration resource should be marked derived");
+    EXPECT(resource.volatileRuntime,
+           "acceleration resource should be marked volatile");
+    EXPECT(resource.source == "scene.selection",
+           "acceleration resource should derive from selected scene data");
+    EXPECT(resource.output.kind == "storage-buffer",
+           "software BVH should output a storage buffer");
+    EXPECT(resource.output.binding == "SceneBvhNodes",
+           "software BVH should bind SceneBvhNodes");
+    EXPECT(resource.output.layout == "struct-array",
+           "software BVH should retain output layout");
+    EXPECT(resource.output.elementType == "LxSceneBvhNode",
+           "software BVH should retain node element type");
+    EXPECT(resource.required,
+           "acceleration resource should be required");
+  }
+
+  EXPECT(feature.hitShaderTable.has_value(),
+         "offlineRayTracer should declare a hit shader table");
+  if (feature.hitShaderTable.has_value()) {
+    const auto &table = *feature.hitShaderTable;
+    EXPECT(table.payload == "radiance",
+           "hit shader table should retain radiance payload");
+    EXPECT(table.dispatchFunction == "lxDispatchRadianceHit",
+           "hit shader table should retain software dispatch function");
+    EXPECT(table.entries.size() == 2,
+           "offlineRayTracer should declare standard-pbr and unlit hit "
+           "shader entries");
+    bool foundStandardPbr = false;
+    bool foundUnlitTexture = false;
+    for (const auto &entry : table.entries) {
+      if (entry.materialType == "standard-pbr") {
+        foundStandardPbr = true;
+        EXPECT(entry.index == 0,
+               "standard-pbr radiance hit shader should use group 0");
+        EXPECT(entry.uri ==
+                   LX_core::ResourceUri(
+                       "assets://shaders/glsl/common/materials/hits/"
+                       "standard_pbr_radiance.glsl"),
+               "standard-pbr hit shader entry should retain material hit URI");
+        EXPECT(entry.function == "lxHitStandardPbrRadiance",
+               "standard-pbr hit shader entry should retain function name");
+      }
+      if (entry.materialType == "unlit-texture") {
+        foundUnlitTexture = true;
+        EXPECT(entry.index == 1,
+               "unlit-texture radiance hit shader should use group 1");
+        EXPECT(entry.uri ==
+                   LX_core::ResourceUri(
+                       "assets://shaders/glsl/common/materials/hits/"
+                       "unlit_texture_radiance.glsl"),
+               "unlit-texture hit shader entry should retain material hit URI");
+        EXPECT(entry.function == "lxHitUnlitTextureRadiance",
+               "unlit-texture hit shader entry should retain function name");
+      }
+    }
+    EXPECT(foundStandardPbr,
+           "hit shader table should contain standard-pbr entry");
+    EXPECT(foundUnlitTexture,
+           "hit shader table should contain unlit-texture entry");
   }
 }
 
@@ -1331,7 +1450,7 @@ parameters:
          "diagnostic should name wrong numeric value");
 }
 
-void testRenderFeatureRequiredBufferUsesUriNotValue() {
+void testRenderFeatureRejectsDescriptorResourcesUnderParameters() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse("memory://feature-required-buffer", R"(
 schema: lxe.render-feature.v1
@@ -1348,20 +1467,13 @@ parameters:
     required: true
 )");
 
-  EXPECT(parsed.renderFeature.has_value(),
-         "required buffer parameter with uri should parse without value");
-  EXPECT(parsed.diagnostics.empty(),
-         "required buffer parameter with uri should not emit diagnostics");
-  if (parsed.renderFeature.has_value()) {
-    const auto &parameter = parsed.renderFeature->parameters.at("sampleBuffer");
-    EXPECT(parameter.uri == LX_core::ResourceUri("assets/buffers/sample.bin"),
-           "required buffer uri should be retained");
-    EXPECT(parameter.value.empty(),
-           "required buffer parameter should not need scalar value");
-  }
+  EXPECT(!parsed.renderFeature.has_value(),
+         "descriptor buffer parameter should not parse as a parameter");
+  EXPECT(hasDiagnosticContaining(parsed, "parameters.sampleBuffer.uri"),
+         "diagnostic should reject descriptor resource under parameters");
 
-  const auto missingUri =
-      parser.parse("memory://feature-required-buffer-missing-uri", R"(
+  const auto storageBuffer =
+      parser.parse("memory://feature-storage-buffer-parameter", R"(
 schema: lxe.render-feature.v1
 name: BufferFeature
 feature: bufferFeature
@@ -1370,15 +1482,16 @@ shader:
   uri: features/buffer_feature
 parameters:
   sampleBuffer:
-    kind: buffer
+    kind: storage-buffer
+    uri: assets/buffers/sample.bin
     binding: SampleBuffer
     required: true
 )");
 
-  EXPECT(!missingUri.renderFeature.has_value(),
-         "required buffer parameter without uri should fail");
-  EXPECT(hasDiagnosticContaining(missingUri, "parameters.sampleBuffer.uri"),
-         "diagnostic should name missing buffer uri");
+  EXPECT(!storageBuffer.renderFeature.has_value(),
+         "storage-buffer parameter should not parse as a parameter");
+  EXPECT(hasDiagnosticContaining(storageBuffer, "parameters.sampleBuffer.uri"),
+         "diagnostic should reject storage-buffer parameter uri");
 }
 
 void testTextureResourceParserUsesDeclaredContentFormat() {
@@ -1460,6 +1573,148 @@ void testMaterialParserAnnotatesTextureDependencyContent() {
          "normalTexture dependency should be normal data");
   EXPECT(contentFor("occlusionTexture") == LX_core::TextureContent::Occlusion,
          "occlusionTexture dependency should be occlusion data");
+}
+
+void testMaterialParserParsesRadianceHitShaderUri() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const LX_core::ResourceUri materialUri(
+      "assets/scenes/generated/materials/damaged_helmet_standard_pbr.material");
+  const auto parsed =
+      parser.parse(table, materialUri, readTextFile(materialUri.string()));
+
+  EXPECT(parsed.diagnostics.empty(),
+         "helmet standard-pbr material hit shader should parse cleanly");
+  EXPECT(parsed.instance != nullptr,
+         "parsed material should produce a material instance");
+  if (parsed.instance != nullptr) {
+    const auto radianceUri = parsed.instance->getRadianceHitShaderUri();
+    EXPECT(radianceUri.has_value(),
+           "standard-pbr material should declare hit.radiance.uri");
+    if (radianceUri.has_value()) {
+      EXPECT(radianceUri->get() ==
+                 LX_core::ResourceUri(
+                     "assets://shaders/glsl/common/materials/hits/"
+                     "standard_pbr_radiance.glsl"),
+             "hit.radiance.uri should point at the unified material shader "
+             "tree");
+    }
+  }
+}
+
+void testMaterialParserRejectsUnsupportedHitPayloadKeys() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const LX_core::ResourceUri materialUri(
+      "assets/scenes/generated/materials/damaged_helmet_standard_pbr.material");
+  const std::string badText =
+      readTextFile(materialUri.string()) +
+      "  shadow:\n"
+      "    uri: assets://shaders/glsl/common/materials/hits/"
+      "standard_pbr_shadow.glsl\n";
+
+  const auto parsed = parser.parse(table, materialUri, badText);
+  EXPECT(parsed.instance == nullptr,
+         "unsupported hit payload should fail material parsing");
+  EXPECT(hasDiagnosticContaining(parsed,
+                                 "unsupported material hit payload"),
+         "diagnostic should name unsupported hit payload keys");
+}
+
+void testMaterialParserRejectsUnsupportedRadianceHitFields() {
+  LX_core::SceneResourceTable table;
+  LX_infra::MaterialResourceParser parser;
+  const LX_core::ResourceUri materialUri(
+      "assets/scenes/generated/materials/damaged_helmet_standard_pbr.material");
+  std::string badText = readTextFile(materialUri.string());
+  const std::string uriLine =
+      "    uri: assets://shaders/glsl/common/materials/hits/"
+      "standard_pbr_radiance.glsl";
+  const std::size_t uriPos = badText.find(uriLine);
+  EXPECT(uriPos != std::string::npos,
+         "test fixture should contain hit.radiance.uri");
+  if (uriPos != std::string::npos) {
+    badText.insert(uriPos + uriLine.size(), "\n    function: badFunction");
+  }
+
+  const auto parsed = parser.parse(table, materialUri, badText);
+  EXPECT(parsed.instance == nullptr,
+         "unsupported radiance hit field should fail material parsing");
+  EXPECT(hasDiagnosticContaining(parsed,
+                                 "unsupported radiance hit field"),
+         "diagnostic should reject unsupported radiance hit fields");
+}
+
+void testStandardPbrRadianceHitShaderSourceMarker() {
+  const std::string source = readTextFile(
+      "assets/shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl");
+  EXPECT(source.find("LX_HIT_SHADER_BEGIN") != std::string::npos,
+         "hit shader source should carry the source-text marker");
+  EXPECT(source.find("payload: radiance") != std::string::npos,
+         "hit shader marker should document the radiance payload");
+  EXPECT(source.find("function: lxHitStandardPbrRadiance") !=
+             std::string::npos,
+         "hit shader marker should document the dispatch function");
+  EXPECT(source.find("lxHitStandardPbrRadiance(") != std::string::npos,
+         "hit shader source should define the documented function");
+}
+
+void testUnlitTextureRadianceHitShaderSourceMarker() {
+  const std::string source = readTextFile(
+      "assets/shaders/glsl/common/materials/hits/unlit_texture_radiance.glsl");
+  EXPECT(source.find("LX_HIT_SHADER_BEGIN") != std::string::npos,
+         "unlit hit shader source should carry the source-text marker");
+  EXPECT(source.find("payload: radiance") != std::string::npos,
+         "unlit hit shader marker should document the radiance payload");
+  EXPECT(source.find("function: lxHitUnlitTextureRadiance") !=
+             std::string::npos,
+         "unlit hit shader marker should document the dispatch function");
+  EXPECT(source.find("lxHitUnlitTextureRadiance(") != std::string::npos,
+         "unlit hit shader source should define the documented function");
+}
+
+void testOfflinePrimaryRayShaderSourceMarker() {
+  const std::string source = readTextFile(
+      "assets/shaders/glsl/render_paths/OfflineRT/"
+      "standard_pbr_primary_ray.comp");
+  EXPECT(source.find("source-text: OfflineRT standard-pbr primary ray shader") !=
+             std::string::npos,
+         "primary ray shader should carry the source-text marker");
+  EXPECT(source.find("SceneBvhNodes") != std::string::npos,
+         "primary ray shader should declare the software BVH binding");
+  EXPECT(source.find("RayPrimitiveHitGroups") != std::string::npos,
+         "primary ray shader must consume hitShaderTable primitive hit groups");
+  EXPECT(source.find("lxDispatchRadianceHit") != std::string::npos,
+         "primary ray shader must dispatch through the RenderFeature hit "
+         "shader table");
+  EXPECT(source.find("OutputPixels") != std::string::npos,
+         "primary ray shader should declare the output binding");
+}
+
+void testOfflineRayTracerHitShaderTableMatchesPrimaryRayDispatchSwitch() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed =
+      parser.parse("assets/effects/offline_ray_tracer.render-feature.yaml",
+                   readTextFile(
+                       "assets/effects/offline_ray_tracer.render-feature.yaml"));
+  EXPECT(parsed.renderFeature.has_value(),
+         "offlineRayTracer feature should parse for hit dispatch audit");
+  if (!parsed.renderFeature.has_value() ||
+      !parsed.renderFeature->hitShaderTable.has_value()) {
+    return;
+  }
+
+  const std::string source = readTextFile(
+      "assets/shaders/glsl/render_paths/OfflineRT/"
+      "standard_pbr_primary_ray.comp");
+  EXPECT(source.find("lxDispatchRadianceHit(") != std::string::npos,
+         "primary ray shader should define the hitShaderTable dispatch "
+         "function");
+  for (const auto &entry : parsed.renderFeature->hitShaderTable->entries) {
+    EXPECT(source.find(entry.function) != std::string::npos,
+           "primary ray shader dispatch switch should reference hit function " +
+               entry.function);
+  }
 }
 
 // REQ-073-e2 Task 2 keeps the default render-path assets as positive coverage
@@ -1766,11 +2021,11 @@ void testBakeRenderPathGraphAssetsParseAndCompile() {
     const char *path;
     const char *name;
     std::size_t passCount;
-    std::size_t payloadCount;
+    std::size_t readbackCount;
   };
   const BakeAsset assets[] = {
       {"assets/render_paths/bake_environment_ibl.render-path.yaml",
-       "EnvironmentIblBake", 3, 3},
+       "EnvironmentIblBake", 3, 2},
       {"assets/render_paths/bake_standard_pbr_brdf_lut.render-path.yaml",
        "StandardPbrBrdfLutBake", 1, 1},
   };
@@ -1796,17 +2051,20 @@ void testBakeRenderPathGraphAssetsParseAndCompile() {
            std::string(asset.path) + " should retain graph name");
     EXPECT(graph.renderPath == LX_core::RenderPath::OfflineRT,
            std::string(asset.path) + " should use OfflineRT domain");
+    EXPECT(graph.bake.has_value(),
+           std::string(asset.path) + " should retain bake parameter block");
     EXPECT(graph.passes.size() == asset.passCount,
            std::string(asset.path) + " should retain bake pass count");
-    std::size_t payloadCount = 0;
+    std::size_t readbackCount = 0;
     for (const LX_core::RenderPassNode &pass : graph.passes) {
-      payloadCount += pass.payloads.size();
-      EXPECT(!pass.payloads.empty(),
-             std::string(asset.path) +
-                 " every bake pass should declare payload outputs");
+      readbackCount += pass.readbacks.size();
+      if (pass.input.kind == LX_core::RenderPassInputKind::ComputeDispatch) {
+        EXPECT(pass.compute.has_value(),
+               pass.id + " should declare compute dispatch facts");
+      }
     }
-    EXPECT(payloadCount == asset.payloadCount,
-           std::string(asset.path) + " should retain payload count");
+    EXPECT(readbackCount == asset.readbackCount,
+           std::string(asset.path) + " should retain readback count");
 
     const LX_core::FrameGraph frameGraph =
         LX_core::buildFrameGraphFromRenderPathGraph(
@@ -1817,13 +2075,13 @@ void testBakeRenderPathGraphAssetsParseAndCompile() {
            std::string(asset.path) +
                " should compile into a bake FrameGraph plan");
     if (compiled.isValid()) {
-      std::size_t compiledPayloadCount = 0;
+      std::size_t compiledReadbackCount = 0;
       for (const LX_core::CompiledFrameGraphPass &pass : compiled.getPasses()) {
-        compiledPayloadCount += pass.payloads.size();
+        compiledReadbackCount += pass.readbacks.size();
       }
-      EXPECT(compiledPayloadCount == asset.payloadCount,
+      EXPECT(compiledReadbackCount == asset.readbackCount,
              std::string(asset.path) +
-                 " compiled graph should retain payload contracts");
+                 " compiled graph should retain readback contracts");
       if (std::string(asset.name) == "StandardPbrBrdfLutBake" &&
           !compiled.getPasses().empty()) {
         const auto colorFormats =
@@ -1834,6 +2092,194 @@ void testBakeRenderPathGraphAssetsParseAndCompile() {
       }
     }
   }
+}
+
+void testOfflineStandardPbrRayTraceRenderPathGraphParsesAndCompiles() {
+  constexpr const char *path =
+      "assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml";
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse(path, readTextFile(path));
+  if (!parsed.diagnostics.empty()) {
+    for (const std::string &diagnostic : parsed.diagnostics) {
+      std::cerr << "[diag] " << diagnostic << '\n';
+    }
+  }
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "OfflineRT standard-pbr graph should parse");
+  EXPECT(parsed.diagnostics.empty(),
+         "OfflineRT standard-pbr graph should not emit diagnostics");
+  if (!parsed.renderPathGraph.has_value()) {
+    return;
+  }
+
+  const auto &graph = *parsed.renderPathGraph;
+  EXPECT(graph.name == "OfflineStandardPbrRayTrace",
+         "OfflineRT graph should retain graph name");
+  EXPECT(graph.renderPath == LX_core::RenderPath::OfflineRT,
+         "OfflineRT graph should use OfflineRT render domain");
+  EXPECT(graph.passes.size() == 1,
+         "OfflineRT graph should declare one primary ray compute pass");
+  if (!graph.passes.empty()) {
+    const LX_core::RenderPassNode &pass = graph.passes.front();
+    EXPECT(pass.id == "OfflinePrimaryRay",
+           "OfflineRT graph should name the primary ray pass");
+    EXPECT(pass.stage == LX_core::RenderPassStage::Compute &&
+               pass.dispatch == LX_core::RenderPassDispatch::Compute,
+           "OfflineRT pass should be a compute dispatch");
+    EXPECT(pass.input.kind == LX_core::RenderPassInputKind::ComputeDispatch,
+           "OfflineRT pass should use compute-dispatch input");
+    EXPECT(pass.input.batching.mode == LX_core::RenderPassBatchingMode::All,
+           "OfflineRT pass should batch all scene participants into one "
+           "compute input");
+    EXPECT(pass.compute.has_value(),
+           "OfflineRT compute pass should declare dispatch facts");
+    EXPECT(renderPassHasSource(pass, "feature.offlineRayTracer"),
+           "OfflineRT pass should consume feature.offlineRayTracer");
+    EXPECT(pass.readbacks.size() == 1,
+           "OfflineRT pass should declare offline.output readback");
+    if (!pass.readbacks.empty()) {
+      EXPECT(pass.readbacks.front().target == "offline.output",
+             "OfflineRT readback should target offline.output");
+      EXPECT(pass.readbacks.front().binding == "OutputPixels",
+             "OfflineRT readback should name the output binding");
+    }
+  }
+
+  const LX_core::FrameGraph frameGraph =
+      LX_core::buildFrameGraphFromRenderPathGraph(
+          graph, LX_core::GraphResourceRegistry::makeDefault());
+  const auto compiled =
+      frameGraph.compile(LX_core::GraphResourceRegistry::makeDefault());
+  EXPECT(compiled.isValid(),
+         "OfflineRT graph asset should compile into a FrameGraph plan");
+  if (compiled.isValid()) {
+    EXPECT(compiled.getPasses().size() == 1,
+           "compiled OfflineRT graph should keep one pass");
+    EXPECT(compiled.getPasses().front().readbacks.size() == 1,
+           "compiled OfflineRT graph should retain offline.output readback");
+  }
+}
+
+void testRenderPathGraphBatchingModesAreParsedAndValidated() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://batching-good", R"(
+schema: lxe.render-path-graph.v1
+name: BatchingGood
+renderPath: Forward
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      material:
+        type: [standard-pbr]
+      batching:
+        mode: material
+      geometry:
+        vertex: position-only
+        topology: triangle-list
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+    sources: [geometry.vertex, scene.camera]
+    targets: [hdr.color]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+)");
+
+  EXPECT(parsed.renderPathGraph.has_value(),
+         "scene-renderables should accept material batching mode");
+  if (parsed.renderPathGraph.has_value()) {
+    EXPECT(parsed.renderPathGraph->passes.front().input.batching.mode ==
+               LX_core::RenderPassBatchingMode::Material,
+           "parser should retain material batching mode");
+  }
+
+  const auto badCompute = parser.parse("memory://batching-bad-compute", R"(
+schema: lxe.render-path-graph.v1
+name: BatchingBadCompute
+renderPath: OfflineRT
+passes:
+  - id: OfflinePrimaryRay
+    stage: compute
+    dispatch: compute
+    shader: render_paths/OfflineRT/standard_pbr_primary_ray
+    compute:
+      dispatchFrom: offline.output.resolution
+      localSize: [8, 8, 1]
+    input:
+      kind: compute-dispatch
+      batching:
+        mode: material
+    sources: [feature.offlineRayTracer]
+    targets: [offline.output]
+    readbacks:
+      - name: offline.output
+        target: offline.output
+        extentFrom: offline.output.resolution
+        binding: OutputPixels
+        format: RGBA32Float
+        kind: image2d
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!badCompute.renderPathGraph.has_value(),
+         "compute-dispatch should reject material batching mode");
+  EXPECT(hasDiagnosticContaining(badCompute,
+                                 "compute-dispatch input only accepts"),
+         "diagnostic should name compute batching restriction");
+
+  const auto badRasterAll = parser.parse("memory://batching-bad-raster-all",
+                                         R"(
+schema: lxe.render-path-graph.v1
+name: BatchingBadRasterAll
+renderPath: Forward
+passes:
+  - id: Forward
+    stage: raster
+    dispatch: draw
+    shader: render_paths/Forward/pbr
+    input:
+      kind: scene-renderables
+      batching:
+        mode: all
+      geometry:
+        vertex: position-only
+        topology: triangle-list
+    rendering:
+      mode: dynamic
+      attachments:
+        - target: hdr.color
+          format: RGBA16Float
+          samples: 1
+          layers: 1
+    sources: [geometry.vertex, scene.camera]
+    targets: [hdr.color]
+    renderState:
+      cullMode: Back
+      depthTest: true
+      depthWrite: true
+      depthOp: LessEqual
+)");
+
+  EXPECT(!badRasterAll.renderPathGraph.has_value(),
+         "scene-renderables should reject all batching mode");
+  EXPECT(hasDiagnosticContaining(badRasterAll,
+                                 "reserved for scene-wide compute-dispatch"),
+         "diagnostic should reserve all mode for compute scene payloads");
 }
 
 void testBakeRenderPathGraphAssetsResolveShaderPayloads() {
@@ -1902,15 +2348,15 @@ parameters:
          "diagnostic should reject renderState");
 }
 
-void testRenderFeatureResourcesAreExplicitlyNotImplemented() {
+void testRenderFeatureRejectsOrdinaryResourcesUnderResources() {
   LX_infra::RenderFeatureResourceParser parser;
   const auto parsed = parser.parse("memory://feature-with-resources", R"(
 schema: lxe.render-feature.v1
 name: FeatureWithResources
-feature: toneMapping
-level: shader
+feature: offlineRayTracer
+level: pass
 shader:
-  uri: features/tone_mapping
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
 resources:
   exposureLut:
     uri: textures/exposure_lut.ktx
@@ -1921,11 +2367,317 @@ parameters:
 )");
 
   EXPECT(!parsed.renderFeature.has_value(),
-         "render feature resources must not be silently ignored");
-  EXPECT(hasDiagnosticContaining(parsed, "resources"),
-         "diagnostic should include resources field");
-  EXPECT(hasDiagnosticContaining(parsed, "resources not implemented"),
-         "diagnostic should state resources are not implemented");
+         "ordinary descriptor resources must not be accepted under resources");
+  EXPECT(hasDiagnosticContaining(parsed, "resources.exposureLut.uri"),
+         "diagnostic should reject unmodeled resource fields");
+  EXPECT(hasDiagnosticContaining(parsed, "resources.exposureLut.api"),
+         "diagnostic should require a feature resource API");
+}
+
+void testRenderFeatureRejectsRayProgramsField() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-ray-programs", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+rayPrograms:
+  radiance: render_paths/OfflineRT/standard_pbr_primary_ray
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "rayPrograms must be rejected as the wrong feature field");
+  EXPECT(hasDiagnosticContaining(parsed, "rayPrograms"),
+         "diagnostic should name rayPrograms");
+  EXPECT(hasDiagnosticContaining(parsed, "hitShaderTable"),
+         "diagnostic should point authors at hitShaderTable");
+}
+
+void testRenderFeatureRejectsUnsupportedResourceApiImplementation() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-bad-acceleration", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+resources:
+  acceleration:
+    api: arbitrary-code
+    function: buildOtherThing
+    implementation: cpu-list
+    derived: true
+    volatile: true
+    source: scene.selection
+    output:
+      kind: storage-buffer
+      binding: SceneBvhNodes
+      layout: struct-array
+      elementType: LxSceneBvhNode
+    required: true
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "unsupported feature resource API and implementation should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "resources.acceleration.api"),
+         "diagnostic should reject unsupported API");
+  EXPECT(hasDiagnosticContaining(parsed,
+                                 "resources.acceleration.implementation"),
+         "diagnostic should reject unsupported implementation");
+  EXPECT(hasDiagnosticContaining(parsed, "resources.acceleration.function"),
+         "diagnostic should reject unsupported function");
+}
+
+void testRenderFeatureAcceptsHardwareRtAccelerationShape() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-hardware-rt", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+resources:
+  acceleration:
+    api: scene-acceleration
+    function: buildSceneAcceleration
+    implementation: hardware-rt
+    derived: true
+    volatile: true
+    source: scene.selection
+    output:
+      kind: acceleration-structure
+      binding: SceneAcceleration
+    required: true
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(parsed.renderFeature.has_value(),
+         "hardware-rt acceleration shape should parse for future lowering");
+  EXPECT(parsed.diagnostics.empty(),
+         "hardware-rt acceleration shape should not emit diagnostics");
+  if (parsed.renderFeature.has_value()) {
+    const auto &resource =
+        parsed.renderFeature->resources.at("acceleration");
+    EXPECT(resource.implementation ==
+               LX_core::RenderFeatureResourceImplementation::HardwareRayTracing,
+           "hardware-rt implementation enum should be retained");
+    EXPECT(resource.output.kind == "acceleration-structure",
+           "hardware-rt output kind should be retained");
+  }
+}
+
+void testRenderFeatureRejectsIblBakeOutputsAsResources() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-ibl-bake-resource", R"(
+schema: lxe.render-feature.v1
+name: EnvironmentBake
+feature: environmentLighting
+level: pass
+shader:
+  uri: render_paths/Forward/pbr
+resources:
+  diffuse_sh9:
+    api: scene-acceleration
+    function: buildSceneAcceleration
+    implementation: software-bvh
+    derived: true
+    volatile: true
+    source: scene.selection
+    output:
+      kind: storage-buffer
+      binding: SceneBvhNodes
+    required: true
+parameters:
+  enabled:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "IBL bake outputs must stay graph readbacks, not feature resources");
+  EXPECT(hasDiagnosticContaining(parsed, "resources.diffuse_sh9"),
+         "diagnostic should name the IBL bake output resource");
+  EXPECT(hasDiagnosticContaining(parsed, "graph readbacks"),
+         "diagnostic should point IBL bake outputs at graph readbacks");
+}
+
+void testRenderFeatureRejectsSystemOwnedResourceBinding() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-system-binding-resource",
+                                   R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+resources:
+  acceleration:
+    api: scene-acceleration
+    function: buildSceneAcceleration
+    implementation: software-bvh
+    derived: true
+    volatile: true
+    source: scene.selection
+    output:
+      kind: storage-buffer
+      binding: SceneTextures
+      layout: struct-array
+      elementType: LxSceneBvhNode
+    required: true
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "system-owned scene/material bindings should not be feature "
+         "resources");
+  EXPECT(hasDiagnosticContaining(parsed,
+                                 "resources.acceleration.output.binding"),
+         "diagnostic should name the system-owned binding");
+}
+
+void testRenderFeatureRejectsDuplicateHitShaderTableEntries() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-duplicate-hit-table", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+hitShaderTable:
+  payload: radiance
+  dispatchFunction: lxDispatchRadianceHit
+  entries:
+    - index: 0
+      materialType: standard-pbr
+      uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
+      function: lxHitStandardPbrRadiance
+    - index: 0
+      materialType: standard-pbr
+      uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
+      function: lxHitStandardPbrRadiance
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "duplicate hit table indices and URIs should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "duplicate hit shader table index"),
+         "diagnostic should reject duplicate hit table indices");
+  EXPECT(hasDiagnosticContaining(parsed, "duplicate hit shader table uri"),
+         "diagnostic should reject duplicate hit table URIs");
+}
+
+void testRenderFeatureRejectsHitShaderTableWrongPayloadAndFields() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-bad-hit-table", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+hitShaderTable:
+  payload: shadow
+  payloads: [radiance, radiance]
+  dispatchFunction: lxDispatchRadianceHit
+  entries:
+    - index: 0
+      materialType: standard-pbr
+      uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
+      function: lxHitStandardPbrRadiance
+      payload: radiance
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "unsupported or duplicated payload authoring should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "hitShaderTable.payload"),
+         "diagnostic should reject non-radiance payload");
+  EXPECT(hasDiagnosticContaining(parsed, "hitShaderTable.payloads"),
+         "diagnostic should reject alternate payload list");
+  EXPECT(hasDiagnosticContaining(parsed, "hitShaderTable.entries[0].payload"),
+         "diagnostic should reject per-entry payloads");
+}
+
+void testRenderFeatureRejectsAuthoredPrimitiveHitGroups() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-authored-hit-groups", R"(
+schema: lxe.render-feature.v1
+name: OfflineRayTracer
+feature: offlineRayTracer
+level: pass
+shader:
+  uri: render_paths/OfflineRT/standard_pbr_primary_ray
+PrimitiveHitGroups:
+  - primitive: 0
+    hitGroup: 0
+parameters:
+  enableDirectLighting:
+    kind: bool
+    value: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "PrimitiveHitGroups must be derived, not authored in YAML");
+  EXPECT(hasDiagnosticContaining(parsed, "PrimitiveHitGroups"),
+         "diagnostic should name authored PrimitiveHitGroups");
+}
+
+void testRenderFeatureRejectsHitShaderTableOnShaderLevelFeature() {
+  LX_infra::RenderFeatureResourceParser parser;
+  const auto parsed = parser.parse("memory://feature-shader-hit-table", R"(
+schema: lxe.render-feature.v1
+name: SurfaceLighting
+feature: surfaceLighting
+level: shader
+shader:
+  uri: features/surface_lighting
+hitShaderTable:
+  payload: radiance
+  dispatchFunction: lxDispatchRadianceHit
+  entries:
+    - index: 0
+      materialType: standard-pbr
+      uri: assets://shaders/glsl/common/materials/hits/standard_pbr_radiance.glsl
+      function: lxHitStandardPbrRadiance
+parameters:
+  enableIblLighting:
+    kind: bool
+    value: true
+    binding: SurfaceLightingUBO
+    member: enableIblLighting
+    required: true
+)");
+
+  EXPECT(!parsed.renderFeature.has_value(),
+         "shader-level features must not own a hit shader table");
+  EXPECT(hasDiagnosticContaining(parsed, "hitShaderTable"),
+         "diagnostic should name hitShaderTable level violation");
 }
 
 void testRenderFeatureRejectsUnknownParameterFields() {
@@ -2225,17 +2977,20 @@ passes:
          "diagnostic should include empty targets field");
 }
 
-void testBakeRenderPathGraphRejectsMissingPayloadDeclaration() {
+void testBakeRenderPathGraphRejectsMissingReadbackDeclaration() {
   LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse("memory://bake-missing-payload", R"(
+  const auto parsed = parser.parse("memory://bake-missing-readback", R"(
 schema: lxe.render-path-graph.v1
-name: BakeMissingPayload
+name: BakeMissingReadback
 renderPath: OfflineRT
 passes:
   - id: BakeEnvironmentDiffuse
     stage: compute
     dispatch: compute
     shader: render_paths/Bake/environment_diffuse_sh9
+    compute:
+      dispatchFrom: bake.environment.diffuse_sh9.resolution
+      localSize: [1, 1, 1]
     input:
       kind: compute-dispatch
     sources: [bake.environment.cubemap]
@@ -2248,22 +3003,25 @@ passes:
 )");
 
   EXPECT(!parsed.renderPathGraph.has_value(),
-         "bake graph without payload declaration should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "payload"),
-         "diagnostic should name missing bake payload declaration");
+         "bake graph without readback declaration should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "readback"),
+         "diagnostic should name missing bake readback declaration");
 }
 
-void testBakeRenderPathGraphRejectsPayloadMissingFormat() {
+void testBakeRenderPathGraphRejectsLegacyPayloadsField() {
   LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse("memory://bake-payload-missing-format", R"(
+  const auto parsed = parser.parse("memory://bake-legacy-payloads", R"(
 schema: lxe.render-path-graph.v1
-name: BakePayloadMissingFormat
+name: BakeLegacyPayloads
 renderPath: OfflineRT
 passes:
   - id: BakeEnvironmentDiffuse
     stage: compute
     dispatch: compute
     shader: render_paths/Bake/environment_diffuse_sh9
+    compute:
+      dispatchFrom: bake.environment.diffuse_sh9.resolution
+      localSize: [1, 1, 1]
     input:
       kind: compute-dispatch
     sources: [bake.environment.cubemap]
@@ -2280,30 +3038,36 @@ passes:
 )");
 
   EXPECT(!parsed.renderPathGraph.has_value(),
-         "bake payload without format should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "payloads[0].format"),
-         "diagnostic should name missing bake payload format");
+         "legacy payloads field should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "legacy payloads field is removed"),
+         "diagnostic should tell authors to use readbacks");
 }
 
-void testBakeRenderPathGraphRejectsPayloadWithoutTarget() {
+void testBakeRenderPathGraphRejectsReadbackMissingFormat() {
   LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse("memory://bake-payload-without-target", R"(
+  const auto parsed = parser.parse("memory://bake-readback-missing-format", R"(
 schema: lxe.render-path-graph.v1
-name: BakePayloadWithoutTarget
+name: BakeReadbackMissingFormat
 renderPath: OfflineRT
 passes:
   - id: BakeEnvironmentDiffuse
     stage: compute
     dispatch: compute
     shader: render_paths/Bake/environment_diffuse_sh9
+    compute:
+      dispatchFrom: bake.environment.diffuse_sh9.resolution
+      localSize: [1, 1, 1]
     input:
       kind: compute-dispatch
     sources: [bake.environment.cubemap]
     targets: [bake.environment.diffuse_sh9]
-    payloads:
+    readbacks:
       - name: diffuse_sh9
-        format: SH9RgbFloat
+        target: bake.environment.diffuse_sh9
+        extentFrom: bake.environment.diffuse_sh9.resolution
+        binding: BakeDiffuseSh9
         kind: sh9
+        mediaType: application/x-lxe-sh9-rgb-float
     renderState:
       cullMode: None
       depthTest: false
@@ -2312,16 +3076,54 @@ passes:
 )");
 
   EXPECT(!parsed.renderPathGraph.has_value(),
-         "bake payload without target should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "payloads[0].target"),
-         "diagnostic should name missing bake payload target");
+         "bake readback without format should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "readbacks[0].format"),
+         "diagnostic should name missing bake readback format");
 }
 
-void testBakeRenderPathGraphRejectsPayloadTargetFormatMismatch() {
+void testBakeRenderPathGraphRejectsReadbackWithoutTarget() {
   LX_infra::RenderPathGraphResourceParser parser;
-  const auto parsed = parser.parse("memory://bake-payload-format-mismatch", R"(
+  const auto parsed = parser.parse("memory://bake-readback-without-target", R"(
 schema: lxe.render-path-graph.v1
-name: BakePayloadFormatMismatch
+name: BakeReadbackWithoutTarget
+renderPath: OfflineRT
+passes:
+  - id: BakeEnvironmentDiffuse
+    stage: compute
+    dispatch: compute
+    shader: render_paths/Bake/environment_diffuse_sh9
+    compute:
+      dispatchFrom: bake.environment.diffuse_sh9.resolution
+      localSize: [1, 1, 1]
+    input:
+      kind: compute-dispatch
+    sources: [bake.environment.cubemap]
+    targets: [bake.environment.diffuse_sh9]
+    readbacks:
+      - name: diffuse_sh9
+        extentFrom: bake.environment.diffuse_sh9.resolution
+        binding: BakeDiffuseSh9
+        format: SH9RgbFloat
+        kind: sh9
+        mediaType: application/x-lxe-sh9-rgb-float
+    renderState:
+      cullMode: None
+      depthTest: false
+      depthWrite: false
+      depthOp: Always
+)");
+
+  EXPECT(!parsed.renderPathGraph.has_value(),
+         "bake readback without target should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "readbacks[0].target"),
+         "diagnostic should name missing bake readback target");
+}
+
+void testBakeRenderPathGraphRejectsReadbackTargetFormatMismatch() {
+  LX_infra::RenderPathGraphResourceParser parser;
+  const auto parsed = parser.parse("memory://bake-readback-format-mismatch", R"(
+schema: lxe.render-path-graph.v1
+name: BakeReadbackFormatMismatch
 renderPath: OfflineRT
 passes:
   - id: BakeMaterialBrdf
@@ -2339,11 +3141,14 @@ passes:
           layers: 1
     sources: [bake.material.source]
     targets: [bake.material.brdf_lut]
-    payloads:
+    readbacks:
       - name: brdf_lut
         target: bake.material.brdf_lut
+        extentFrom: bake.material.brdf_lut.resolution
+        binding: bake.material.brdf_lut
         format: SH9RgbFloat
         kind: sh9
+        mediaType: application/x-lxe-sh9-rgb-float
     renderState:
       cullMode: None
       depthTest: false
@@ -2352,9 +3157,9 @@ passes:
 )");
 
   EXPECT(!parsed.renderPathGraph.has_value(),
-         "bake payload target with wrong format/kind should fail");
-  EXPECT(hasDiagnosticContaining(parsed, "payloads[0]"),
-         "diagnostic should name mismatched bake payload");
+         "bake readback target with wrong format/kind should fail");
+  EXPECT(hasDiagnosticContaining(parsed, "readbacks[0]"),
+         "diagnostic should name mismatched bake readback");
 }
 
 void testRenderPathGraphRejectsUnparsedAllowedLookingFields() {
@@ -3194,7 +3999,7 @@ parameters:
       LX_infra::offline::OfflineAssetResolver{std::filesystem::current_path()}};
   expectThrowsContaining(
       [&] { (void)loader.load(document, ""); },
-      "scene contains multiple environment nodes",
+      "scene contains multiple environment/skybox nodes",
       "offline loader should reject multiple environment nodes");
 }
 
@@ -3425,6 +4230,7 @@ int main() {
   testEnvironmentLightingRenderFeatureAssetParses();
   testEnvironmentLightingRegistrationUsesCurrentFeatureParameters();
   testForwardPassRenderFeatureAssetParses();
+  testOfflineRayTracerRenderFeatureAssetParses();
   testSkyboxRenderFeatureAssetParses();
   testBloomRenderFeatureAssetParses();
   testSurfaceLightingRenderFeatureAssetParses();
@@ -3442,27 +4248,46 @@ int main() {
   testRenderFeatureAcceptsVolatilePassUniformField();
   testRenderFeatureRejectsMissingRequiredValue();
   testRenderFeatureRejectsWrongBoolAndNumericValueTypes();
-  testRenderFeatureRequiredBufferUsesUriNotValue();
+  testRenderFeatureRejectsDescriptorResourcesUnderParameters();
   testTextureResourceParserUsesDeclaredContentFormat();
   testMaterialParserAnnotatesTextureDependencyContent();
+  testMaterialParserParsesRadianceHitShaderUri();
+  testMaterialParserRejectsUnsupportedHitPayloadKeys();
+  testMaterialParserRejectsUnsupportedRadianceHitFields();
+  testStandardPbrRadianceHitShaderSourceMarker();
+  testUnlitTextureRadianceHitShaderSourceMarker();
+  testOfflinePrimaryRayShaderSourceMarker();
+  testOfflineRayTracerHitShaderTableMatchesPrimaryRayDispatchSwitch();
   testDefaultRenderPathGraphAssetParses();
   testDefaultDeferredRenderPathGraphAssetParses();
   testSurfaceLightingRenderPathAssetsDeclareBakeFacts();
   testRenderPathGraphAcceptsSurfaceLightingFeatureSources();
   testBakeRenderPathGraphAssetsParseAndCompile();
+  testOfflineStandardPbrRayTraceRenderPathGraphParsesAndCompiles();
+  testRenderPathGraphBatchingModesAreParsedAndValidated();
   testBakeRenderPathGraphAssetsResolveShaderPayloads();
   testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget();
   testParserAdapterRejectsManualGammaOnSrgbForwardTarget();
   testRenderFeatureRejectsRenderFlowFields();
-  testRenderFeatureResourcesAreExplicitlyNotImplemented();
+  testRenderFeatureRejectsOrdinaryResourcesUnderResources();
+  testRenderFeatureRejectsRayProgramsField();
+  testRenderFeatureRejectsUnsupportedResourceApiImplementation();
+  testRenderFeatureAcceptsHardwareRtAccelerationShape();
+  testRenderFeatureRejectsIblBakeOutputsAsResources();
+  testRenderFeatureRejectsSystemOwnedResourceBinding();
+  testRenderFeatureRejectsDuplicateHitShaderTableEntries();
+  testRenderFeatureRejectsHitShaderTableWrongPayloadAndFields();
+  testRenderFeatureRejectsAuthoredPrimitiveHitGroups();
+  testRenderFeatureRejectsHitShaderTableOnShaderLevelFeature();
   testRenderFeatureRejectsUnknownParameterFields();
   testRenderFeatureRejectsUnknownParameterField();
   testEnvironmentLightingFeatureRejectsMissingEnvironmentMapUri();
   testRenderPathGraphRejectsEmptyPassContracts();
-  testBakeRenderPathGraphRejectsMissingPayloadDeclaration();
-  testBakeRenderPathGraphRejectsPayloadMissingFormat();
-  testBakeRenderPathGraphRejectsPayloadWithoutTarget();
-  testBakeRenderPathGraphRejectsPayloadTargetFormatMismatch();
+  testBakeRenderPathGraphRejectsMissingReadbackDeclaration();
+  testBakeRenderPathGraphRejectsLegacyPayloadsField();
+  testBakeRenderPathGraphRejectsReadbackMissingFormat();
+  testBakeRenderPathGraphRejectsReadbackWithoutTarget();
+  testBakeRenderPathGraphRejectsReadbackTargetFormatMismatch();
   testRenderPathGraphRejectsUnparsedAllowedLookingFields();
   testLegacyRenderEffectSchemaIsRejectedByNewParser();
   testParserAdapterRejectsMissingGraphShaderDependency();

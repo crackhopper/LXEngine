@@ -1,29 +1,33 @@
 # REQ-074-h: OfflineRT RenderPathGraph Compute Path
 
-> 2026-06-15 Task 8/9 校准：`REQ-073-e2` single work compiler model 已完成。当前 offline path 通过 file-local `OfflineCompute` pass、`RenderWorkCompiler`、`RenderComputeInput` 和 `RenderInputDesc` 提交 compute dispatch；旧 offline pass token 已从 `src` / `assets` 删除。本文剩余范围是 OfflineRT graph asset、compute block / graph resource vocabulary、`OfflineRenderJob::offlineShader` side channel 删除、`createOfflineRenderFrameGraph()` 默认路径替换，以及 graph-driven pipeline desc。
+> 2026-06-20 校准：当前实现已按 Superpowers spec
+> `docs/superpowers/specs/2026-06-20-074-h-offlinert-framegraph-executor-hard-cut-design.md`
+> 硬切到 output profile -> RenderPathGraph -> FrameGraphExecutor。旧
+> Offline job / file-local graph / offline shader side channel 已不再作为
+> production 路径；本文保留为 active 需求记录，后续只接受围绕 graph schema、
+> render feature、BVH/ray program table 和 smoke gate 的补充。
 
 ## 背景
 
-OfflineRT 仍需要从“代码里拼一个离线 compute pass”推进到“RenderPathGraph asset 描述离线 compute pass”。Task 8 已完成底层 work hard cut，所以本 REQ 不再定义旧 queue/item/offline-pass-name 分支，也不再要求 backend 从旧 work item 创建 pipeline。
-
-当前完成态主线是：
+OfflineRT 已从“代码里拼一个离线 compute pass”推进到“OutputProfile 指向 RenderPathGraph asset”。当前完成态主线是：
 
 ```text
-Offline file-local OfflineCompute pass
-  -> FramePass input/compute metadata
+scene.outputProfiles.<profile>.renderPathGraph
+  -> RenderPathGraph asset
+  -> FrameGraph compile
   -> RenderWorkCompiler
-  -> RenderComputeInput
-  -> RenderInputDesc
-  -> Vulkan offline pipeline/upload/execute
+  -> prepared pass work + RenderInputDesc
+  -> Vulkan FrameGraphExecutor
+  -> FrameGraphExecutionPayload
+  -> OfflineImageWriter
 ```
 
-剩余问题不在底层 compiler 单轨，而在 OfflineRT 的图资产和默认入口：
+剩余问题不在底层 compiler 单轨，而在 OfflineRT 的后续能力：
 
-- `assets/render_paths/` 还没有默认 `offline_ray_tracer.render-path.yaml`。
-- OfflineRT shader / compute pass / sources / targets / readback 还没有完全由 graph asset 驱动。
-- RenderPass contract 仍需要完整表达 compute block 和 OfflineRT graph resources。
-- `OfflineRenderJob::offlineShader` 仍是 shader side channel，后续应由 graph pass shader URI 取代。
-- `createOfflineRenderFrameGraph()` 仍是需要替换/删除的默认路径候选；后续默认 offline path 应来自 OfflineRT graph asset。
+- 完善 graph schema 对 compute pass、readback、runtime values 和 output extents 的表达。
+- 扩展 render feature 的 BVH derived resource、ray program table 和 hardware RT pipeline extra。
+- 扩展 material scheme 的 hit shader URI 与 hit shader ABI。
+- 用 smoke/golden 证明 Helmet/BMW/package 场景不回流旧路径。
 
 历史说明：旧 queue/item/offline pass-name 模型已由 `REQ-073-e2` hard cut 删除，不能作为本 REQ 的实现目标或未来扩展点。
 
@@ -43,9 +47,9 @@ Offline file-local OfflineCompute pass
 1. 新增 OfflineRT RenderPathGraph asset，作为 pass / shader / source / target / compute dispatch 的结构入口。
 2. 扩展 RenderPass contract，使 compute pass 不需要伪造 raster-only 字段，并把 `compute` block 保存到 graph/pass metadata。
 3. 扩展 shared resource vocabulary，让 OfflineRT sources/targets 通过同一套 graph vocabulary gate 和 shader reflection validation。
-4. 让 offline integrator 从 RenderPathGraph 构建 FrameGraph，并输出 graph path diagnostics。
+4. 让 offline renderer 从 OutputProfile 的 RenderPathGraph 构建 FrameGraph，并输出 graph path diagnostics。
 5. 让 OfflineRT compute work 从 compiled `FramePass`、compute metadata、shader reflection、`RenderComputeInput` 和 offline domain payload 生成。
-6. 删除/替换 `OfflineRenderJob::offlineShader` side channel 和 `createOfflineRenderFrameGraph()` 默认路径。
+6. 保持旧 OfflineRT bridge 删除状态：不得恢复 offline shader side channel、file-local graph builder 或 offline-only executor。
 7. pipeline preload / lookup 的正向输入来自 `RenderInputDesc[].pipelineBuildDesc`，不是旧 queue-derived preload 或旧 work item。
 
 ## 非目标
@@ -61,7 +65,7 @@ Offline file-local OfflineCompute pass
 
 ### R1: OfflineRT RenderPathGraph Asset
 
-新增 `assets/render_paths/offline_ray_tracer.render-path.yaml`。
+当前默认 graph asset 是 `assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml`。
 
 最低结构：
 
@@ -74,7 +78,7 @@ passes:
   - id: OfflineCompute
     stage: compute
     dispatch: compute
-    shader: render_paths/OfflineRT/offline_pbr_direct_ray
+    shader: render_paths/OfflineRT/standard_pbr_primary_ray
     sources:
       - scene.camera
       - scene.geometry
@@ -156,20 +160,19 @@ OfflineRT SHALL 使用 `buildFrameGraphFromRenderPathGraph()` 或同一套 Rende
 - shader resource contract 校验由 graph pass shader URI、resolved shader payload 和 shader reflection 完成。
 - work compiler selection / `RenderInput` family / pipeline-facing `RenderInputDesc` 的底层规则由 `REQ-073-e2` 定义。
 - graph builder 不按 legacy pass token、shader path substring 或 offline domain special case 现场改写 reads/writes/shader/dispatch。
-- 删除或替换 `createOfflineRenderFrameGraph(output)` 的 default path；它不得作为完成态 default graph path、positive test 或 adapter。
+- 不允许恢复 file-local default graph builder；完成态 default graph path 必须来自 output profile 的 graph asset。
 
-### R5: Offline Render Job Uses Graph Reference
+### R5: Output Profile Uses Graph Reference
 
-`OfflineRenderJob` SHALL 以 RenderPathGraph / render profile 作为渲染结构输入，而不是以 `offlineShader` 作为 graph path 的主要入口。
+Output profile SHALL 以 RenderPathGraph 作为渲染结构输入。
 
 要求：
 
-- CLI/profile 可以显式选择 `assets/render_paths/offline_ray_tracer.render-path.yaml`。
-- 未指定时使用默认 OfflineRT RenderPathGraph asset。
-- output width/height、sample count、seed、max bounce 等仍来自 offline render profile。
+- CLI/profile 可以显式选择 `assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml`。
+- 未指定 `--profile` 时使用 scene 的 `defaultOutputProfile`。
+- output width/height 和输出路径来自 output profile，并可由 CLI override。
 - shader 由 RenderPathGraph pass 的 shader URI 解析。
-- 删除 `OfflineRenderJob::offlineShader` graph path side channel；历史 fixture 必须迁移或删除。
-- profile/output/default graph selection 属于 CLI、render profile resolver 或 offline job builder；这些路径不得持有 `offlineShader`。
+- profile/output/default graph selection 属于 CLI、render profile resolver 和 renderer 编排；这些路径不得持有 shader side channel。
 
 ### R6: OfflineRT RenderComputeInput Payload
 
@@ -242,11 +245,11 @@ OfflineRT graph path SHALL 保持 offline renderer 边界。
 
 ### T2: OfflineRT Graph Asset Parse
 
-解析 `assets/render_paths/offline_ray_tracer.render-path.yaml`，断言：
+解析 `assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml`，断言：
 
 - `renderPath == OfflineRT`。
 - 存在一个 `stage=compute` / `dispatch=compute` pass。
-- shader URI 为 `render_paths/OfflineRT/offline_pbr_direct_ray`。
+- shader URI 为 `render_paths/OfflineRT/standard_pbr_primary_ray`。
 - compute block 被解析并保存。
 - 不需要 raster `renderState`。
 
@@ -270,14 +273,14 @@ OfflineRT graph path SHALL 保持 offline renderer 边界。
 - 测试使用 `GraphResourceRegistry::makeDefault()`，不得创建 OfflineRT-specific registry 来绕过 realtime 默认校验。
 - required binding 缺失、graph source/target 与 shader reflection binding contract 不匹配时失败。
 
-### T5: Offline Job Graph Selection
+### T5: Output Profile Graph Selection
 
-构造 default offline job，断言：
+构造 default output profile 解析，断言：
 
-- job 解析默认 OfflineRT graph asset。
+- profile 解析默认 OfflineRT graph asset。
 - shader 来自 graph pass shader URI。
-- profile/output 参数进入 `offline.profile` / `offline.output` mapping。
-- `offlineShader` side channel 不再存在于 job input 或 fixture。
+- output 参数进入 target/readback mapping。
+- shader side channel 不再存在于正向输入或 fixture。
 
 ### T6: Compiler And Pipeline Desc
 
@@ -303,7 +306,7 @@ OfflineRT graph path SHALL 保持 offline renderer 边界。
 
 ## 修改范围
 
-- `assets/render_paths/offline_ray_tracer.render-path.yaml`。
+- `assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml`。
 - `assets/shaders/glsl/render_paths/OfflineRT/...`。
 - RenderPathGraph parser / pass contract / compute block DTO。
 - `GraphResourceRegistry::makeDefault()` and shader reflection resource contract tests。
@@ -346,6 +349,6 @@ OfflineRT graph path SHALL 保持 offline renderer 边界。
 
 - 添加默认 OfflineRT RenderPathGraph asset。
 - 完整建模 compute block 和 OfflineRT resource vocabulary。
-- 用 graph pass shader URI 替换 `OfflineRenderJob::offlineShader` side channel。
-- 删除/替换 `createOfflineRenderFrameGraph()` 默认路径。
+- 保持 graph pass shader URI 作为唯一正向 shader 来源。
+- 保持 file-local graph builder 删除状态。
 - 从 graph-driven `RenderInputDesc[].pipelineBuildDesc` 完成 OfflineRT pipeline desc / preload 事实。

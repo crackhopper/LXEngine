@@ -1547,6 +1547,36 @@ SceneResourceTable::findRenderFeatureByMetadataHandle(
   return std::nullopt;
 }
 
+std::optional<RenderPathGraphHandle>
+SceneResourceTable::findRenderPathGraphByMetadataHandle(
+    ResourceIdentityHandle handle) const {
+  for (u32 i = 0; i < m_renderPathGraphs.size(); ++i) {
+    const auto &entry = m_renderPathGraphs[i];
+    if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
+        entry.metadataHandle == handle) {
+      return RenderPathGraphHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<ShaderHandle>
+SceneResourceTable::findShader(const ResourceUri &uri) const {
+  for (u32 i = 0; i < m_shaders.size(); ++i) {
+    const auto &entry = m_shaders[i];
+    if (entry.state != SceneResourceEntryState::Alive || !entry.resource) {
+      continue;
+    }
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
+    if (metadata != nullptr && metadata->type == SceneResourceType::Shader &&
+        metadata->uri == uri) {
+      return ShaderHandle{i, entry.generation};
+    }
+  }
+  return std::nullopt;
+}
+
 const PassFeatureData *SceneResourceTable::findPassFeatureDataByFeatureName(
     std::string_view feature) const {
   const auto it = std::find_if(
@@ -3797,7 +3827,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       primitiveRecord.indexOffset =
           meshRecord.indexOffset + triangleIndexOffset;
       primitiveRecord.meshIndex = meshRecordIndex;
-      primitiveRecord.materialIndex = materialRecord.materialIndex;
+      primitiveRecord.materialIndex =
+          materialRecord.materialRefIndex != u32_max
+              ? materialRecord.materialRefIndex
+              : materialRecord.materialIndex;
       primitiveRecord.objectIndex = objectRecordIndex;
       m_gpuPrimitives.push_back(primitiveRecord);
     }

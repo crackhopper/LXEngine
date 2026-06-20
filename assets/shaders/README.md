@@ -11,6 +11,7 @@ Realtime RenderPath GLSL sources live under render-path-specific directories:
 - `assets/shaders/glsl/render_paths/Post/*.frag`
 - `assets/shaders/glsl/render_paths/Debug/*.vert`
 - `assets/shaders/glsl/render_paths/Debug/*.frag`
+- `assets/shaders/glsl/render_paths/OfflineRT/*.comp`
 
 Example:
 - `assets/shaders/glsl/render_paths/Forward/pbr.vert`
@@ -21,9 +22,7 @@ Example:
 - `assets/shaders/glsl/render_paths/Post/post_process.frag`
 - `assets/shaders/glsl/render_paths/Debug/debug_overlay.vert`
 - `assets/shaders/glsl/render_paths/Debug/debug_overlay.frag`
-
-`assets/shaders/glsl/techniques/OfflineRT` remains under `techniques/` until
-the OfflineRT migration owned by `REQ-073-g/h`.
+- `assets/shaders/glsl/render_paths/OfflineRT/standard_pbr_primary_ray.comp`
 
 RenderPathGraph pass shader URIs are strict: graph-authored pass shaders must
 use `render_paths/...` names, such as `render_paths/Post/post_process`. Root
@@ -42,6 +41,7 @@ The Vulkan backend loads shaders from the runtime asset tree:
 - `assets/shaders/glsl/render_paths/Post/<shaderName>.frag.spv`
 - `assets/shaders/glsl/render_paths/Debug/<shaderName>.vert.spv`
 - `assets/shaders/glsl/render_paths/Debug/<shaderName>.frag.spv`
+- `assets/shaders/glsl/render_paths/OfflineRT/<shaderName>.comp.spv`
 
 So for `shaderName = pbr`, the loader expects:
 

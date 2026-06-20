@@ -4,7 +4,7 @@ PBR + IBL 教程像搭一间固定灯光的产品摄影棚：environment feature
 
 ## 这一组教程解决什么
 
-当前代码已经具备 cubemap/mip 资源形状、PBR shader 的 scene-level IBL binding 合同、Vulkan IBL bake、Forward HDR 目标、Bloom 输出，以及可加载的 helmet neutral IBL 场景。`SceneRuntime` 从 environment node 和 object bake marker 收集 bake 请求；`IblBakeJobService` 通过 `FrameGraphExecutor` 执行 bake，并让 PBR draw input 消费 baked scene-level IBL resources。
+当前代码已经具备 cubemap/mip 资源形状、PBR shader 的 scene-level IBL binding 合同、Vulkan IBL bake、Forward HDR 目标、Bloom 输出，以及可加载的 Helmet 标准 PBR 场景。`SceneRuntime` 从 infinite skybox node 和 object bake marker 收集 bake 请求；`IblBakeJobService` 通过 `FrameGraphExecutor` 执行 bake，并让 PBR draw input 消费 baked scene-level IBL resources。
 
 | 对象 | 作用 | 当前文件 |
 |---|---|---|
@@ -12,11 +12,11 @@ PBR + IBL 教程像搭一间固定灯光的产品摄影棚：environment feature
 | Surface lighting feature | PBR 是否启用 IBL 和 bake ready flags | `assets/effects/surface_lighting.render-feature.yaml` |
 | PBR material | Helmet 的 standard-pbr 参数和贴图 | `assets/scenes/generated/materials/damaged_helmet_standard_pbr.material` |
 | IBL bindings | scene-level 资源注入点 | `IrradianceMap` / `PrefilteredEnvMap` / `BrdfLut` / `EnvironmentLightingUBO` / `SurfaceLightingUBO` |
-| Helmet IBL scene | 可打开的验证场景 | `assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml` |
+| Helmet IBL scene | 可打开的验证场景 | `assets/scenes/generated/helmet_standard_pbr.scene.yaml` |
 
 ## 阅读顺序
 
-1. [打开 Helmet neutral IBL 场景](01-helmet-neutral-ibl-scene.md)：从 scene YAML 看相机、environment node、object bake marker 和 PBR Helmet。
+1. [打开 Helmet standard PBR 场景](01-helmet-neutral-ibl-scene.md)：从 scene YAML 看相机、skybox node、object bake marker、PBR Helmet 和 output profiles。
 2. [资源与 Shader 合同](02-resource-and-shader-contract.md)：解释 `.material`、PBR shader binding、scene-level IBL 资源的边界。
 3. [HDR 到屏幕的 Post 流程](03-hdr-post-process-flow.md)：解释 Forward HDR、tone mapping、gamma 和 bloom。
 4. [验证与排错](04-verify-and-debug.md)：用测试、editor 命令和 render dump 验证链路。
@@ -36,4 +36,4 @@ PBR + IBL 教程像搭一间固定灯光的产品摄影棚：environment feature
 
 ## 下一步
 
-进入 [01 打开 Helmet neutral IBL 场景](01-helmet-neutral-ibl-scene.md)。
+进入 [01 打开 Helmet standard PBR 场景](01-helmet-neutral-ibl-scene.md)。

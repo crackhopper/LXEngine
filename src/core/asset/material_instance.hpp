@@ -44,6 +44,10 @@ struct MaterialParameterValue final {
   Vec4f vectorValue{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
+struct MaterialHitShaderContract final {
+  std::optional<ResourceUri> radianceUri;
+};
+
 /*
 @source_analysis.section MaterialInstance：surface envelope 的运行时账本
 `MaterialInstance` 不再只是 `MaterialTemplate` 的参数副本。071/073 之后，它同时承担
@@ -170,6 +174,11 @@ public:
   [[nodiscard]] std::optional<
       std::reference_wrapper<const MaterialContractReflection>>
   getMaterialContractReflection() const;
+  void setHitShaderContract(MaterialHitShaderContract contract);
+  [[nodiscard]] const MaterialHitShaderContract &getHitShaderContract() const;
+  void setRadianceHitShaderUri(ResourceUri uri);
+  [[nodiscard]] std::optional<std::reference_wrapper<const ResourceUri>>
+  getRadianceHitShaderUri() const;
   void setRenderClass(std::string renderClass);
   [[nodiscard]] const std::string &getRenderClass() const;
   void setMaterialTags(std::vector<std::string> tags);
@@ -220,6 +229,7 @@ private:
   StringID m_materialSourceSignature;
   std::string m_materialSourceReflectionHash;
   std::optional<MaterialContractReflection> m_materialContractReflection;
+  MaterialHitShaderContract m_hitShaderContract;
   std::string m_renderClass;
   std::vector<std::string> m_tags;
   std::unordered_map<std::string, std::string> m_authoringMetadata;

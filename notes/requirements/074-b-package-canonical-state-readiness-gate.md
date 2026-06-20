@@ -27,7 +27,7 @@ package 会把当前场景的 canonical resource state 固化为二进制。`REQ
 - SceneResourceTable persisted state 不包含 backend pointer。
 - persisted material state 不包含 shader/pass/render state。
 - persisted render flow 来自 RenderPathGraph resource。
-- persisted offline render flow 来自 `offline_ray_tracer.render-path.yaml` 或 equivalent OfflineRT RenderPathGraph resource。
+- persisted offline render flow 来自 `offline_standard_pbr_raytrace.render-path.yaml` 或 equivalent OfflineRT RenderPathGraph resource。
 - texture/material/object indices 可由 resource table canonical state 重建。
 - texture encoding/compression metadata 可由 resource table canonical state 重建或直接持久化。
 - audit 输出“可序列化 canonical state”报告，供 `REQ-074-c/d` 消费。

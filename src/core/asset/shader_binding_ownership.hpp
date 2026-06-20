@@ -58,6 +58,8 @@ inline constexpr std::string_view kSystemOwnedBindings[] = {
     "SceneMaterials",
     "SceneMaterialRefs",
     "SceneSourceMaterialRecords",
+    "RayPrimitiveHitGroups",
+    "RayMaterialRecords",
     "SceneBvhNodes",
     "SceneFrameParams",
     "OutputPixels",
@@ -126,6 +128,7 @@ getExpectedTypeForSystemBinding(std::string_view name) {
       name == "SceneObjects" || name == "SceneDraws" ||
       name == "SceneMaterials" || name == "SceneMaterialRefs" ||
       name == "SceneSourceMaterialRecords" ||
+      name == "RayPrimitiveHitGroups" || name == "RayMaterialRecords" ||
       name == "SceneBvhNodes" || name == "SceneFrameParams" ||
       name == "OutputPixels")
     return ShaderPropertyType::StorageBuffer;

@@ -2,12 +2,12 @@
 
 这个 use case 用于让 Codex 通过 `lxe_manager` MCP 驱动远端
 `lxe_editor`，验证
-`assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml` 能展示当前
+`assets/scenes/generated/helmet_standard_pbr.scene.yaml` 能展示当前
 PBR + IBL + Forward HDR/Bloom 链路。它面向实现验收，不是逐像素截图基准。
 
 ## 目标
 
-- 打开当前 Helmet neutral IBL scene asset，确认 scene/runtime 状态稳定。
+- 打开当前 Helmet standard PBR scene asset，确认 scene/runtime 状态稳定。
 - dump `hdr.color`，确认 Forward HDR attachment 可诊断。
 - 目检或截图确认 Damaged Helmet、直射光和 IBL 结果可见。
 
@@ -22,20 +22,21 @@ PBR + IBL + Forward HDR/Bloom 链路。它面向实现验收，不是逐像素�
 
 ## 场景和坐标
 
-- 场景：`assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml`
+- 场景：`assets/scenes/generated/helmet_standard_pbr.scene.yaml`
 - 关键节点：
   - `/game_cam`
-  - `/neutral_environment`
+  - `/neutral_infinite_skybox`
+  - `/finite_neutral_room`
   - `/compare_key_light`
   - `/damaged_helmet`
 - 推荐 dump 路径：
-  `data/debug/dump/helmet-neutral-ibl-hdr.bmp`
+  `data/debug/dump/helmet-standard-pbr-hdr.bmp`
 
 ## 业务步骤
 
 1. 查询 editor 状态和 build identity。
-2. 执行 `scene open assets/scenes/generated/helmet_neutral_ibl_full.scene.yaml`。
-3. 等待 `state summary` 中 `sceneName` 为 `helmet_neutral_ibl_full`。
+2. 执行 `scene open assets/scenes/generated/helmet_standard_pbr.scene.yaml`。
+3. 等待 `state summary` 中 `sceneName` 为 `helmet_standard_pbr` 或显示当前 Helmet Standard PBR scene 已加载。
 4. 执行 `state cameras`，确认 active gameplay camera 是 `/game_cam`。
 5. 执行 `preview on`，让 viewport 使用 gameplay camera。
 6. 执行 `render debug dump hdr.color data/debug/dump/helmet-neutral-ibl-hdr.bmp`。
@@ -58,6 +59,7 @@ PBR + IBL + Forward HDR/Bloom 链路。它面向实现验收，不是逐像素�
 - `hdr.color` dump 失败：先执行 `state summary`，确认 scene 已完成加载；
   再确认当前 renderer 已至少绘制过一帧。
 - 画面纯黑：确认 `neutral_environment` 的 `environment.feature.uri` 可读，
+  `neutral_infinite_skybox` 的 `skybox.mode` 为 `infinite`，
   `damaged_helmet` 的 `bake.ibl.enabled` 为 true，且 render resource parser 测试通过。
 - Helmet 没有 IBL 观感：运行 `test_render_resource_parsers` 和
   `test_shader_compiler`，确认 graph/material/shader 合同仍然接通，再 dump

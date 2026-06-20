@@ -3,8 +3,11 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <initializer_list>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace LX_infra {
@@ -48,11 +51,167 @@ void rejectRootFields(ParsedRenderPathGraphResource &result,
     }
     const std::string key = it->first.as<std::string>();
     if (key == "schema" || key == "name" || key == "renderPath" ||
-        key == "features" || key == "passes") {
+        key == "features" || key == "bake" || key == "passes") {
       continue;
     }
     addDiagnostic(result, uri, key, "unsupported render path graph field");
   }
+}
+
+bool rejectUnsupportedBakeFields(ParsedRenderPathGraphResource &result,
+                                 const LX_core::ResourceUri &uri,
+                                 const YAML::Node &node,
+                                 const std::string &field,
+                                 std::initializer_list<std::string_view>
+                                     allowedFields);
+
+std::optional<LX_core::RenderPathBakeConfig>
+parseBakeConfig(ParsedRenderPathGraphResource &result,
+                const LX_core::ResourceUri &uri, const YAML::Node &bake) {
+  if (!bake) {
+    return std::nullopt;
+  }
+  if (!bake.IsMap()) {
+    addDiagnostic(result, uri, "bake", "bake must be a map");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = bake.begin(); it != bake.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, uri, "bake",
+                    "bake field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "kind" || key == "environment" || key == "brdfLut") {
+      continue;
+    }
+    addDiagnostic(result, uri, "bake." + key,
+                  "unsupported bake parameter field");
+    valid = false;
+  }
+  valid &= requireField(result, uri, bake["kind"], "bake.kind");
+  if (!valid) {
+    return std::nullopt;
+  }
+
+  LX_core::RenderPathBakeConfig config;
+  config.kind = bake["kind"].as<std::string>();
+  if (config.kind == "environment-ibl") {
+    const YAML::Node environment = bake["environment"];
+    if (!environment || !environment.IsMap()) {
+      addDiagnostic(result, uri, "bake.environment",
+                    "environment-ibl bake requires environment block");
+      return std::nullopt;
+    }
+    valid &= rejectUnsupportedBakeFields(
+        result, uri, environment, "bake.environment",
+        {"cubemap", "diffuse", "specular"});
+    const YAML::Node cubemap = environment["cubemap"];
+    const YAML::Node diffuse = environment["diffuse"];
+    const YAML::Node specular = environment["specular"];
+    valid &= requireField(result, uri, cubemap, "bake.environment.cubemap");
+    valid &= requireField(result, uri, diffuse, "bake.environment.diffuse");
+    valid &= requireField(result, uri, specular, "bake.environment.specular");
+    if (!valid || !cubemap.IsMap() || !diffuse.IsMap() || !specular.IsMap()) {
+      addDiagnostic(result, uri, "bake.environment",
+                    "cubemap, diffuse, and specular must be maps");
+      return std::nullopt;
+    }
+    valid &= rejectUnsupportedBakeFields(
+        result, uri, cubemap, "bake.environment.cubemap",
+        {"resolution", "faces"});
+    valid &= rejectUnsupportedBakeFields(
+        result, uri, diffuse, "bake.environment.diffuse", {"kind", "order"});
+    valid &= rejectUnsupportedBakeFields(
+        result, uri, specular, "bake.environment.specular",
+        {"resolution", "mips", "faces"});
+    LX_core::EnvironmentIblBakeConfig environmentConfig;
+    valid &= requireField(result, uri, cubemap["resolution"],
+                          "bake.environment.cubemap.resolution");
+    valid &= requireField(result, uri, cubemap["faces"],
+                          "bake.environment.cubemap.faces");
+    valid &= requireField(result, uri, diffuse["kind"],
+                          "bake.environment.diffuse.kind");
+    valid &= requireField(result, uri, diffuse["order"],
+                          "bake.environment.diffuse.order");
+    valid &= requireField(result, uri, specular["resolution"],
+                          "bake.environment.specular.resolution");
+    valid &= requireField(result, uri, specular["mips"],
+                          "bake.environment.specular.mips");
+    valid &= requireField(result, uri, specular["faces"],
+                          "bake.environment.specular.faces");
+    if (!valid) {
+      return std::nullopt;
+    }
+    environmentConfig.cubemapResolution = cubemap["resolution"].as<u32>();
+    environmentConfig.cubemapFaces = cubemap["faces"].as<u32>();
+    environmentConfig.diffuseKind = diffuse["kind"].as<std::string>();
+    environmentConfig.diffuseOrder = diffuse["order"].as<u32>();
+    environmentConfig.specularResolution =
+        specular["resolution"].as<u32>();
+    environmentConfig.specularMips = specular["mips"].as<std::string>();
+    environmentConfig.specularFaces = specular["faces"].as<u32>();
+    if (environmentConfig.diffuseKind != "sh9") {
+      addDiagnostic(result, uri, "bake.environment.diffuse.kind",
+                    "expected sh9");
+      return std::nullopt;
+    }
+    config.environment = environmentConfig;
+    return config;
+  }
+
+  if (config.kind == "standard-pbr-brdf-lut") {
+    const YAML::Node brdfLut = bake["brdfLut"];
+    if (!brdfLut || !brdfLut.IsMap()) {
+      addDiagnostic(result, uri, "bake.brdfLut",
+                    "standard-pbr-brdf-lut bake requires brdfLut block");
+      return std::nullopt;
+    }
+    valid &= rejectUnsupportedBakeFields(result, uri, brdfLut, "bake.brdfLut",
+                                         {"resolution"});
+    valid &= requireField(result, uri, brdfLut["resolution"],
+                          "bake.brdfLut.resolution");
+    if (!valid) {
+      return std::nullopt;
+    }
+    LX_core::StandardPbrBrdfLutBakeConfig brdfConfig;
+    brdfConfig.resolution = brdfLut["resolution"].as<u32>();
+    config.standardPbrBrdfLut = brdfConfig;
+    return config;
+  }
+
+  addDiagnostic(result, uri, "bake.kind",
+                "expected environment-ibl or standard-pbr-brdf-lut");
+  return std::nullopt;
+}
+
+bool rejectUnsupportedBakeFields(ParsedRenderPathGraphResource &result,
+                                 const LX_core::ResourceUri &uri,
+                                 const YAML::Node &node,
+                                 const std::string &field,
+                                 std::initializer_list<std::string_view>
+                                     allowedFields) {
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, uri, field,
+                    "bake field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    const bool allowed =
+        std::any_of(allowedFields.begin(), allowedFields.end(),
+                    [&](std::string_view allowed) { return key == allowed; });
+    if (!allowed) {
+      addDiagnostic(result, uri, field + "." + key,
+                    "unsupported bake parameter field");
+      valid = false;
+    }
+  }
+  return valid;
 }
 
 std::optional<LX_core::RenderPassNode>
@@ -155,6 +314,7 @@ void parseRenderPathGraph(ParsedRenderPathGraphResource &result,
     return;
   }
   graph.renderPath = *renderPath;
+  graph.bake = parseBakeConfig(result, uri, root["bake"]);
   parseFeatureDependencies(result, uri, root["features"], graph);
 
   for (const auto &passNode : root["passes"]) {

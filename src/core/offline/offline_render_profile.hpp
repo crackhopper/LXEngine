@@ -2,6 +2,7 @@
 
 #include "core/platform/types.hpp"
 #include "core/math/vec.hpp"
+#include "core/resource/resource_uri.hpp"
 #include "core/scene/camera.hpp"
 
 #include <filesystem>
@@ -23,6 +24,8 @@ struct OutputCameraOverrides final {
 
 struct OutputProfile final {
   std::string cameraPath = "/game_cam";
+  ResourceUri renderPathGraph{
+      "assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml"};
   u32 width = 512;
   u32 height = 512;
   std::string outputFormat = "exr-png";

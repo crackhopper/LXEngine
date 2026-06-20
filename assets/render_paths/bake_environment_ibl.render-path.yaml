@@ -1,6 +1,19 @@
 schema: lxe.render-path-graph.v1
 name: EnvironmentIblBake
 renderPath: OfflineRT
+bake:
+  kind: environment-ibl
+  environment:
+    cubemap:
+      resolution: 256
+      faces: 6
+    diffuse:
+      kind: sh9
+      order: 2
+    specular:
+      resolution: 256
+      mips: auto
+      faces: 6
 
 passes:
   - id: EnvironmentToCubemap
@@ -18,11 +31,6 @@ passes:
           layers: 6
     sources: [bake.environment.source]
     targets: [bake.environment.cubemap]
-    payloads:
-      - name: environment_cubemap
-        target: bake.environment.cubemap
-        format: RGBA16Float
-        kind: cubemap
     renderState:
       cullMode: None
       depthTest: false
@@ -34,15 +42,21 @@ passes:
     stage: compute
     dispatch: compute
     shader: render_paths/Bake/environment_diffuse_sh9
+    compute:
+      dispatchFrom: bake.environment.diffuse_sh9.resolution
+      localSize: [1, 1, 1]
     input:
       kind: compute-dispatch
     sources: [bake.environment.cubemap]
     targets: [bake.environment.diffuse_sh9]
-    payloads:
+    readbacks:
       - name: diffuse_sh9
         target: bake.environment.diffuse_sh9
+        extentFrom: bake.environment.diffuse_sh9.resolution
+        binding: BakeDiffuseSh9
         format: SH9RgbFloat
         kind: sh9
+        mediaType: application/x-lxe-sh9-rgb-float
     renderState:
       cullMode: None
       depthTest: false
@@ -54,15 +68,21 @@ passes:
     stage: compute
     dispatch: compute
     shader: render_paths/Bake/environment_specular_prefilter
+    compute:
+      dispatchFrom: bake.environment.specular_prefilter.resolution
+      localSize: [8, 8, 1]
     input:
       kind: compute-dispatch
     sources: [bake.environment.cubemap]
     targets: [bake.environment.specular_prefilter]
-    payloads:
+    readbacks:
       - name: specular_prefilter
         target: bake.environment.specular_prefilter
+        extentFrom: bake.environment.specular_prefilter.resolution
+        binding: BakeSpecularPrefilter
         format: RGBA16Float
         kind: cubemap
+        mediaType: application/x-lxe-rgba16f-cubemap
     renderState:
       cullMode: None
       depthTest: false

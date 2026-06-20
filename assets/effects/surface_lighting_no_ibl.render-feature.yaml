@@ -1,0 +1,37 @@
+schema: lxe.render-feature.v1
+name: SurfaceLightingNoIbl
+feature: surfaceLighting
+level: shader
+shader:
+  uri: features/surface_lighting
+parameters:
+  enableIblLighting:
+    kind: bool
+    value: false
+    binding: SurfaceLightingUBO
+    member: enableIblLighting
+    required: true
+  diffuseIblIntensity:
+    kind: float
+    value: 1.0
+    binding: SurfaceLightingUBO
+    member: diffuseIblIntensity
+    required: true
+  specularIblIntensity:
+    kind: float
+    value: 1.0
+    binding: SurfaceLightingUBO
+    member: specularIblIntensity
+    required: true
+  environmentIblReady:
+    kind: bool
+    value: false
+    binding: SurfaceLightingUBO
+    member: environmentIblReady
+    required: true
+  standardPbrIblReady:
+    kind: bool
+    value: false
+    binding: SurfaceLightingUBO
+    member: standardPbrIblReady
+    required: true

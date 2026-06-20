@@ -231,6 +231,27 @@ compileRepresentativeMaterialVariantShaderPayload(
   return false;
 }
 
+[[nodiscard]] std::optional<bool> shaderProvidesRayHitDispatch(
+    const LX_core::ResourceUri &graphUri, const LX_core::ResourceUri &shaderUri,
+    const std::vector<LX_core::ResourceUri> &sourceUris,
+    std::vector<std::string> &diagnostics) {
+  for (const LX_core::ResourceUri &sourceUri : sourceUris) {
+    std::string readDiagnostic;
+    const auto text = readTextFile(sourceUri, readDiagnostic);
+    if (!text.has_value()) {
+      diagnostics.push_back(
+          "RenderPathGraph '" + graphUri.string() +
+          "' failed to inspect Shader '" + shaderUri.string() + "' source '" +
+          sourceUri.string() + "': " + readDiagnostic);
+      return std::nullopt;
+    }
+    if (text->find("lxDispatchRadianceHit") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool passDeclaresMaterialBsdf(
     const LX_core::RenderPassNode &pass) {
   return std::find(pass.sources.begin(), pass.sources.end(), "material.bsdf") !=
@@ -450,6 +471,16 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
             context.ownerUri, canonicalUri, kRenderPathGraphParserName,
             shaderDiagnostics);
       }
+      const std::optional<bool> providesRayHitDispatch =
+          shaderProvidesRayHitDispatch(canonicalUri, pass.shaderUri,
+                                       shaderSourceUris.sourceUris,
+                                       shaderDiagnostics);
+      if (!providesRayHitDispatch.has_value()) {
+        return makeFailedParse(
+            table, LX_core::SceneResourceType::RenderPathGraph,
+            context.ownerUri, canonicalUri, kRenderPathGraphParserName,
+            shaderDiagnostics);
+      }
       const bool declaresMaterialBsdf = passDeclaresMaterialBsdf(pass);
       if (*requiresMaterialSourceVariant && !declaresMaterialBsdf) {
         return makeFailedParse(
@@ -460,7 +491,8 @@ resolveAssetDependencyUri(const LX_core::ResourceUri &ownerUri,
              "' requires LX_MATERIAL_CONTRACT_SOURCE but the pass does not "
              "declare material.bsdf in sources"});
       }
-      if (!*requiresMaterialSourceVariant && declaresMaterialBsdf) {
+      if (!*requiresMaterialSourceVariant && declaresMaterialBsdf &&
+          !*providesRayHitDispatch) {
         return makeFailedParse(
             table, LX_core::SceneResourceType::RenderPathGraph,
             context.ownerUri, canonicalUri, kRenderPathGraphParserName,

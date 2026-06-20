@@ -2,8 +2,11 @@
 
 #include "infra/image/rgba_image_io.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
 
@@ -38,18 +41,38 @@ namespace {
   return out;
 }
 
+float halfToFloat(u16 value) {
+  const u16 sign = static_cast<u16>((value >> 15u) & 0x1u);
+  const u16 exponent =
+      static_cast<u16>((value >> 10u) & 0x1fu);
+  const u16 mantissa = static_cast<u16>(value & 0x03ffu);
+  const float signScale = sign == 0 ? 1.0f : -1.0f;
+  if (exponent == 0) {
+    if (mantissa == 0) {
+      return signScale * 0.0f;
+    }
+    return signScale * std::ldexp(static_cast<float>(mantissa), -24);
+  }
+  if (exponent == 31) {
+    return mantissa == 0 ? signScale * std::numeric_limits<float>::infinity()
+                         : std::numeric_limits<float>::quiet_NaN();
+  }
+  return signScale * std::ldexp(1.0f + static_cast<float>(mantissa) / 1024.0f,
+                                static_cast<int>(exponent) - 15);
+}
+
 [[nodiscard]] std::filesystem::path makeDefaultBasePath(
     const OfflineImageOutputRequest &request) {
   const std::filesystem::path outDir =
-      request.job.output.outDir.empty()
+      request.output.outDir.empty()
           ? std::filesystem::path("artifacts")
-          : request.job.output.outDir;
+          : request.output.outDir;
   return outDir / "render";
 }
 
 [[nodiscard]] std::filesystem::path resolveBasePath(
     const OfflineImageOutputRequest &request) {
-  std::filesystem::path out = request.job.outputPath;
+  std::filesystem::path out = request.outputPath;
   if (out.empty()) {
     return makeDefaultBasePath(request);
   }
@@ -69,20 +92,9 @@ namespace {
   return stem.empty() ? "unknown" : stem;
 }
 
-void validateImage(const LX_core::offline::OfflineReadbackImage &image) {
-  if (image.width == 0 || image.height == 0) {
-    throw std::runtime_error("offline image output requires non-zero dimensions");
-  }
-  const usize expected = image.pixelCount() * 4;
-  if (image.rgba.size() != expected) {
-    throw std::runtime_error("offline image output expected RGBA32F buffer size " +
-                             std::to_string(expected) + ", got " +
-                             std::to_string(image.rgba.size()));
-  }
-}
-
 void writeMetadata(const std::filesystem::path &path,
                    const OfflineImageOutputRequest &request,
+                   const LX_core::offline::OfflineReadbackImage &image,
                    const OfflineImageOutputResult &result) {
   std::ofstream stream(path);
   if (!stream.is_open()) {
@@ -92,16 +104,22 @@ void writeMetadata(const std::filesystem::path &path,
   stream << "  \"scenePath\": \"" << jsonEscape(request.scenePath.string()) << "\",\n";
   stream << "  \"sceneName\": \"" << jsonEscape(sceneNameFromPath(request.scenePath)) << "\",\n";
   stream << "  \"cameraPath\": \""
-         << jsonEscape(request.job.output.cameraPath) << "\",\n";
+         << jsonEscape(request.output.cameraPath) << "\",\n";
   stream << "  \"profile\": \""
-         << jsonEscape(request.job.profileName) << "\",\n";
-  stream << "  \"width\": " << request.image.width << ",\n";
-  stream << "  \"height\": " << request.image.height << ",\n";
-  stream << "  \"samples\": " << request.job.offline.samples << ",\n";
-  stream << "  \"maxBounce\": " << request.job.offline.maxBounce << ",\n";
-  stream << "  \"seed\": " << request.job.offline.seed << ",\n";
+         << jsonEscape(request.profileName) << "\",\n";
+  stream << "  \"width\": " << image.width << ",\n";
+  stream << "  \"height\": " << image.height << ",\n";
+  stream << "  \"samples\": " << request.offline.samples << ",\n";
+  stream << "  \"maxBounce\": " << request.offline.maxBounce << ",\n";
+  stream << "  \"seed\": " << request.offline.seed << ",\n";
+  stream << "  \"readback\": {\n";
+  stream << "    \"name\": \"" << jsonEscape(request.payload.name) << "\",\n";
+  stream << "    \"target\": \"" << jsonEscape(request.payload.target) << "\",\n";
+  stream << "    \"format\": \"" << jsonEscape(request.payload.format) << "\",\n";
+  stream << "    \"mediaType\": \"" << jsonEscape(request.payload.mediaType) << "\"\n";
+  stream << "  },\n";
   stream << "  \"outputFormat\": \""
-         << jsonEscape(request.job.output.outputFormat) << "\",\n";
+         << jsonEscape(request.output.outputFormat) << "\",\n";
   stream << "  \"exrStorage\": \"rgba-half-scene-linear\",\n";
   stream << "  \"pngPreview\": {\n";
   stream << "    \"toneMapping\": \""
@@ -127,7 +145,8 @@ unsigned char toneMapLinearToSrgb8(
 
 OfflineImageOutputResult
 writeOfflineImageOutputs(const OfflineImageOutputRequest &request) {
-  validateImage(request.image);
+  const LX_core::offline::OfflineReadbackImage image =
+      offlineImageFromPayload(request.payload);
   const std::filesystem::path basePath = resolveBasePath(request);
   if (const auto parent = basePath.parent_path(); !parent.empty()) {
     std::filesystem::create_directories(parent);
@@ -143,16 +162,61 @@ writeOfflineImageOutputs(const OfflineImageOutputRequest &request) {
   result.rawPath = basePath;
   result.rawPath.replace_extension(".rgba32f");
 
-  LX_infra::image::writeRgba32fExr(result.exrPath, request.image);
-  LX_infra::image::writeToneMappedPng(result.pngPath, request.image,
+  LX_infra::image::writeRgba32fExr(result.exrPath, image);
+  LX_infra::image::writeToneMappedPng(result.pngPath, image,
                                       request.toneMapping);
   if (request.writeRawRgba32f) {
-    LX_infra::image::writeRawRgba32f(result.rawPath, request.image);
+    LX_infra::image::writeRawRgba32f(result.rawPath, image);
   } else {
     result.rawPath.clear();
   }
-  writeMetadata(result.metadataPath, request, result);
+  writeMetadata(result.metadataPath, request, image, result);
   return result;
+}
+
+LX_core::offline::OfflineReadbackImage
+offlineImageFromPayload(const LX_core::FrameGraphExecutionPayload &payload) {
+  if (payload.format != "RGBA32Float" && payload.format != "RGBA16Float") {
+    throw std::runtime_error(
+        "offline image output expected RGBA32Float or RGBA16Float payload");
+  }
+  if (payload.kind != LX_core::RenderPathOutputKind::Image2D) {
+    throw std::runtime_error("offline image output expected image2d payload");
+  }
+  if (payload.mediaType != "application/x-lxe-rgba32f-image2d" &&
+      payload.mediaType != "application/x-lxe-rgba16f-image2d") {
+    throw std::runtime_error(
+        "offline image output expected RGBA float image2d payload");
+  }
+  if (payload.extent.x == 0 || payload.extent.y == 0) {
+    throw std::runtime_error("offline image output requires non-zero dimensions");
+  }
+
+  const usize pixelCount =
+      static_cast<usize>(payload.extent.x) * static_cast<usize>(payload.extent.y);
+  const usize expectedBytes =
+      payload.format == "RGBA32Float" ? pixelCount * 4u * sizeof(float)
+                                      : pixelCount * 4u * sizeof(u16);
+  if (payload.bytes.size() != expectedBytes) {
+    throw std::runtime_error("offline image output expected RGBA32F byte size " +
+                             std::to_string(expectedBytes) + ", got " +
+                             std::to_string(payload.bytes.size()));
+  }
+
+  LX_core::offline::OfflineReadbackImage image;
+  image.width = payload.extent.x;
+  image.height = payload.extent.y;
+  image.rgba.resize(pixelCount * 4u);
+  if (payload.format == "RGBA32Float") {
+    std::memcpy(image.rgba.data(), payload.bytes.data(), payload.bytes.size());
+  } else {
+    const auto *halfPixels =
+        reinterpret_cast<const u16 *>(payload.bytes.data());
+    for (usize i = 0; i < image.rgba.size(); ++i) {
+      image.rgba[i] = halfToFloat(halfPixels[i]);
+    }
+  }
+  return image;
 }
 
 } // namespace LX_infra::offline

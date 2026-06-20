@@ -2,23 +2,20 @@
 
 Offline renderer 像一间独立的渲染实验室：editor 和 realtime renderer 负责搭景、调材质、保存场景；offline renderer 读取同一份 scene，把它加载进统一的 `SceneResourceTable`，再通过 offline `FrameGraph` 和 `RenderWorkCompiler` 生成一个 compute `RenderInput` / `RenderInputDesc`，最后在 headless Vulkan backend 中 dispatch 并 readback。
 
-当前实现已经能从 `assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml` 读取 output profile、离线 settings、相机、glTF mesh、材质常量、方向光和 background color。`software-compute` integrator 会构建 offline `FrameGraph`，由 `RenderWorkCompiler` 把 `SceneResourceTable` 上传视图、CPU BVH、frame params 和 output buffer 收敛成 compute input、binding plan 和 pipeline build desc，再复用 backend 的 pipeline / descriptor / command buffer 执行路径。它还不是完整 path tracer，但已经把“scene 文件 → SceneResourceTable → offline RenderInputDesc → Vulkan compute dispatch → readback → 输出文件”的主链路打通了。
+当前实现已经能从 `assets/scenes/generated/helmet_standard_pbr.scene.yaml` 读取 output profile、相机、glTF mesh、standard-pbr 材质、方向光、IBL/skybox 节点和 render path graph。`lxe_offline_render` 不再维护独立 offline job / offline work graph；它把被选中的 `OutputProfile.renderPathGraph` 交给 `FrameGraphExecutor`，由 `RenderWorkCompiler` 从 `SceneResourceTable`、render feature、material 和 readback contract 准备 pass work，再让 Vulkan backend 执行 raster 或 compute pass 并返回 payload。它还不是完整 path tracer，但已经把“同一份 scene → 不同 output profile / render path graph → FrameGraphExecutor → readback payload → 输出文件”的主链路打通了。
 
 ## 核心对象
 
 | 对象 | 当前角色 | 实验室类比 |
 |---|---|---|
-| `scene.offlineRender` | 在 scene YAML 里声明离线 profile | 实验参数单 |
+| `scene.outputProfiles` | 在同一 scene YAML 里声明输出 profile 与 render path graph | 实验参数单 |
 | `OfflineSceneLoader` | 把 editor scene 文档加载进 `SceneResourceTable` | 把布景清单整理成标准样品 |
 | `SceneResourceTable` | 离线、实时和 bindless 共用的 scene GPU 数据合同 | 标准化样品 |
-| `SceneResourceTableUploadView` | 导出 indexed GPU records | 装入实验仪器的托盘 |
-| `SceneSoftwareBvh` | 基于 primitive / vertex / index / object 关系构建 BVH | 空间索引目录 |
-| `backend::offline::VulkanOfflineRenderer` | 选择显式 offline integrator | 实验调度台 |
-| `software-compute` | 构建 offline FrameGraph 并运行 headless compute | 实验仪器本体 |
-| `OfflineCompute` pass | 当前离线 compute pass，定义在 offline work graph 内部 | 单项实验流程 |
-| `RenderComputeInput` | 描述一次 offline compute dispatch 和 readback resource | 可执行工单 |
-| `RenderInputDesc` | 描述 pipeline、binding plan、资源依赖和诊断 | 实验仪器配置单 |
-| `offline_pbr_direct_ray.comp` | 当前 CLI 默认 integrator shader | 第一版实验程序 |
+| `RenderPathGraph` | profile 选择的 pass DAG，声明 pass、目标、readback 和 feature | 实验流程图 |
+| `RenderWorkCompiler` | 把 graph pass 准备成 draw/dispatch work 与 `RenderInputDesc` | 可执行工单生成器 |
+| `FrameGraphExecutor` | 统一执行 raster / compute pass，并生成 readback payload | 实验仪器本体 |
+| `offline_standard_pbr_raytrace.render-path.yaml` | OfflineRT raytrace profile 使用的 compute graph | 光追实验流程 |
+| `forward_offline_*.render-path.yaml` | Forward 对比 profile 使用的 raster graph | 光栅对比流程 |
 | `OfflineImageWriter` | 写出 EXR / PNG / JSON / raw dump | 实验记录员 |
 
 ## 阅读顺序
@@ -33,15 +30,15 @@ Offline renderer 像一间独立的渲染实验室：editor 和 realtime rendere
 
 | 能力 | 当前状态 | 说明 |
 |---|---|---|
-| Headless Vulkan compute | 可用 | 不依赖 swapchain；通过 offline `FrameGraph` 生成 compute work |
-| Scene YAML profile | 可用 | `preview` / `mvp` / `reference` 可在同一 scene 内共存 |
-| Realtime/offline render input 共享主干 | 可用 | offline 走 `RenderWorkBuildContext::offline`、`RenderComputeInput`、`RenderInputDesc`、pipeline cache 和 command buffer |
+| Headless Vulkan raster/compute | 可用 | 不依赖 swapchain；通过 `FrameGraphExecutor` 执行 profile 指定的 render path graph |
+| Scene YAML profile | 可用 | `forward_no_ibl` / `ibl_only` / `forward_ibl` / `raytrace` 在同一 scene 内共存 |
+| Realtime/offline render input 共享主干 | 可用 | offline 复用 `RenderWorkCompiler`、`RenderInputDesc`、pipeline cache、descriptor 和 command buffer |
 | 方向光 | 可用 | 当前取第一个 directional light，没有 shadow map |
-| 环境 / 背景 | 部分可用 | 当前 shader 读取 output profile 的 `backgroundColor`；HDR environment 纹理采样仍在后续阶段 |
+| 环境 / 背景 | 可用 | scene skybox 支持 finite/infinite；Forward IBL 和 OfflineRT miss path 都能消费 infinite environment |
 | 材质 | 部分可用 | 支持 baseColor、metallic、roughness、emissive 的打包路径 |
 | 输出文件 | 可用 | 当前 CLI 写 `.exr`、`.png`、`.json` 和 `.rgba32f` |
-| Compare mode | 可用 | `compareMode: shaded` 或 `albedo` 进入 `SceneFrameParams.compareMode` |
-| 多 bounce path tracing | 未实现 | 当前 shader 是 software-compute + 相机 ray + 直接光 + 简单反射 |
+| Forward / IBL 对比 | 可用 | 同一 scene 可跑 direct-only、IBL-only、direct+IBL |
+| 多 bounce path tracing | 未实现 | 当前 OfflineRT 是 primary ray + direct lighting + miss environment sampling |
 
 ## 继续阅读
 

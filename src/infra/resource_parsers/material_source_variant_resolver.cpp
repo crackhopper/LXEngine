@@ -137,6 +137,28 @@ struct TypeSourceFacts final {
   return false;
 }
 
+[[nodiscard]] std::optional<bool> shaderProvidesRayHitDispatch(
+    const LX_core::ResourceUri &graphUri, const LX_core::RenderPassNode &pass,
+    const std::vector<LX_core::ResourceUri> &sourceUris,
+    std::vector<std::string> &diagnostics) {
+  for (const LX_core::ResourceUri &sourceUri : sourceUris) {
+    std::ifstream file(pathFromUri(sourceUri));
+    if (!file) {
+      diagnostics.push_back(
+          "MaterialSourceVariantResolver graph=" + graphUri.string() +
+          " pass=" + pass.id + " shader=" + pass.shaderUri.string() +
+          " failed to inspect source=" + sourceUri.string());
+      return std::nullopt;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    if (buffer.str().find("lxDispatchRadianceHit") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool passAllowsType(const LX_core::RenderPassNode &pass,
                                   const std::string &type) {
   if (pass.input.material.types.empty()) {
@@ -342,6 +364,12 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
     if (!requiresMaterialSourceVariant.has_value()) {
       return result;
     }
+    const std::optional<bool> providesRayHitDispatch =
+        shaderProvidesRayHitDispatch(graphUri, pass, sourceUris.sourceUris,
+                                     result.diagnostics);
+    if (!providesRayHitDispatch.has_value()) {
+      return result;
+    }
     const bool declaresMaterialBsdf = passRequiresMaterialBsdf(pass);
     if (*requiresMaterialSourceVariant && !declaresMaterialBsdf) {
       result.diagnostics.push_back(
@@ -351,7 +379,8 @@ resolveMaterialSourceVariants(LX_core::SceneResourceTable &table,
           "material.bsdf in sources");
       return result;
     }
-    if (!*requiresMaterialSourceVariant && declaresMaterialBsdf) {
+    if (!*requiresMaterialSourceVariant && declaresMaterialBsdf &&
+        !*providesRayHitDispatch) {
       result.diagnostics.push_back(
           "MaterialSourceVariantResolver graph=" + graphUri.string() +
           " pass=" + pass.id + " declares material.bsdf but shader=" +

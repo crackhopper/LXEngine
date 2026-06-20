@@ -106,7 +106,7 @@ void addDiagnostic(ParsedMaterialResource &result,
 
 [[nodiscard]] bool isAllowedRootField(std::string_view name) {
   return name == "schema" || name == "bsdf" || name == "renderClass" ||
-         name == "tags" || name == "metadata";
+         name == "tags" || name == "metadata" || name == "hit";
 }
 
 [[nodiscard]] LX_core::TextureContent
@@ -143,7 +143,7 @@ textureContentForMaterialParameter(std::string_view parameterName) {
     if (!isAllowedRootField(key)) {
       addDiagnostic(result, uri, "root." + key,
                     "unknown material v2 root field; use schema, bsdf, "
-                    "renderClass, tags, or metadata");
+                    "hit, renderClass, tags, or metadata");
       valid = false;
     }
   }
@@ -197,6 +197,84 @@ parseAuthoringMetadata(const YAML::Node &root, const LX_core::ResourceUri &uri,
     metadata.emplace(it->first.as<std::string>(), it->second.as<std::string>());
   }
   return metadata;
+}
+
+[[nodiscard]] bool isAllowedHitRadianceField(std::string_view name) {
+  return name == "uri";
+}
+
+[[nodiscard]] std::optional<LX_core::MaterialHitShaderContract>
+parseHitShaderContract(const YAML::Node &root, LX_core::SceneResourceTable &table,
+                       const LX_core::ResourceUri &uri,
+                       ParsedMaterialResource &result) {
+  const YAML::Node hitNode = root["hit"];
+  if (!hitNode) {
+    return std::nullopt;
+  }
+  if (!hitNode.IsMap()) {
+    addDiagnostic(result, uri, "hit", "hit must be a map");
+    return std::nullopt;
+  }
+
+  LX_core::MaterialHitShaderContract contract;
+  for (auto it = hitNode.begin(); it != hitNode.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, uri, "hit",
+                    "hit payload names must be scalar strings");
+      continue;
+    }
+
+    const std::string payload = it->first.as<std::string>();
+    if (payload != "radiance") {
+      addDiagnostic(result, uri, "hit." + payload,
+                    "unsupported material hit payload; 074-h supports only "
+                    "radiance");
+      continue;
+    }
+
+    const YAML::Node radianceNode = it->second;
+    if (!radianceNode.IsMap()) {
+      addDiagnostic(result, uri, "hit.radiance",
+                    "radiance hit payload must be a map");
+      continue;
+    }
+
+    for (auto fieldIt = radianceNode.begin(); fieldIt != radianceNode.end();
+         ++fieldIt) {
+      if (!fieldIt->first.IsScalar()) {
+        addDiagnostic(result, uri, "hit.radiance",
+                      "radiance hit fields must be scalar strings");
+        continue;
+      }
+      const std::string field = fieldIt->first.as<std::string>();
+      if (!isAllowedHitRadianceField(field)) {
+        addDiagnostic(result, uri, "hit.radiance." + field,
+                      "unsupported radiance hit field; use uri");
+      }
+    }
+
+    const YAML::Node uriNode = radianceNode["uri"];
+    if (!uriNode || !uriNode.IsScalar()) {
+      addDiagnostic(result, uri, "hit.radiance.uri",
+                    "missing scalar radiance hit shader uri");
+      continue;
+    }
+    const std::string shaderUri = uriNode.as<std::string>();
+    if (shaderUri.empty()) {
+      addDiagnostic(result, uri, "hit.radiance.uri",
+                    "missing scalar radiance hit shader uri");
+      continue;
+    }
+    contract.radianceUri =
+        table.resolveUri(uri, LX_core::ResourceUri(shaderUri));
+  }
+
+  if (!contract.radianceUri.has_value()) {
+    addDiagnostic(result, uri, "hit.radiance.uri",
+                  "missing scalar radiance hit shader uri");
+  }
+
+  return contract;
 }
 
 [[nodiscard]] std::optional<MaterialParameterEnvelope>
@@ -547,6 +625,10 @@ MaterialResourceParser::parse(LX_core::SceneResourceTable &table,
   instance->setMaterialSourceReflectionHash(contract.reflectionHash);
   instance->setMaterialSourceSignature(contract.sourceSignature());
   instance->setMaterialContractReflection(contract);
+  if (const auto hitContract =
+          parseHitShaderContract(root, table, uri, result)) {
+    instance->setHitShaderContract(*hitContract);
+  }
   if (const YAML::Node renderClassNode = root["renderClass"]) {
     if (!renderClassNode.IsScalar()) {
       addDiagnostic(result, uri, "renderClass",

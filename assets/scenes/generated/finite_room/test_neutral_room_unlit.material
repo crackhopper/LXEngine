@@ -5,3 +5,6 @@ bsdf:
   source: assets://shaders/glsl/common/materials/unlit_texture.contract.glsl
   parameters:
     baseColorTexture: { kind: texture, valueType: rgb, uri: textures/test_neutral_room_srgb.png }
+hit:
+  radiance:
+    uri: assets://shaders/glsl/common/materials/hits/unlit_texture_radiance.glsl

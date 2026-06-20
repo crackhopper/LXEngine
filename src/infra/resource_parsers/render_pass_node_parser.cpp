@@ -155,6 +155,9 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "material.bsdf",
       "scene.camera",
       "scene.lights",
+      "scene.geometry",
+      "scene.materials",
+      "scene.textures",
       "scene.environmentBake",
       "scene.materialIblBake",
       "shadow.main",
@@ -167,6 +170,7 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "debug.final.unorm_manual_srgb",
       "debug.ramp.srgb",
       "debug.ramp.unorm_manual_srgb",
+      "offline.output",
       "bake.environment.source",
       "bake.environment.cubemap",
       "bake.environment.diffuse_sh9",
@@ -183,6 +187,7 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "feature.toneMapping",
       "feature.environmentLighting",
       "feature.surfaceLighting",
+      "feature.offlineRayTracer",
       "feature.bloom",
       "bloom.threshold",
       "bloom.blur_h",
@@ -237,12 +242,15 @@ bool rejectUnsupportedFields(const YAML::Node &node,
     }
     const std::string key = it->first.as<std::string>();
     if (key == "id" || key == "shader" || key == "stage" || key == "dispatch" ||
-        key == "rendering" || key == "input" || key == "sources" ||
-        key == "targets" || key == "payloads" || key == "renderState" ||
-        key == "writeMode") {
+        key == "compute" || key == "rendering" || key == "input" ||
+        key == "sources" || key == "targets" || key == "readbacks" ||
+        key == "renderState" || key == "writeMode") {
       continue;
     }
-    if (key == "enginePass") {
+    if (key == "payloads") {
+      addDiagnostic(result, fieldPrefix + ".payloads",
+                    "legacy payloads field is removed; use readbacks");
+    } else if (key == "enginePass") {
       addDiagnostic(result, fieldPrefix + ".enginePass",
                     "legacy enginePass bridge is removed; pass name is the "
                     "runtime pass identity");
@@ -561,6 +569,56 @@ parseMaterialInputFilter(const YAML::Node &node,
   return material;
 }
 
+std::optional<LX_core::RenderPassBatchingContract>
+parseBatchingContract(const YAML::Node &node,
+                      RenderPassNodeParseResult &result,
+                      const std::string &field) {
+  LX_core::RenderPassBatchingContract batching;
+  if (!node) {
+    return batching;
+  }
+  if (!node.IsMap()) {
+    addDiagnostic(result, field, "batching contract must be a map");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field,
+                    "batching contract field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "mode") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported batching contract field");
+    valid = false;
+  }
+  if (!node["mode"] || !node["mode"].IsScalar()) {
+    addDiagnostic(result, field + ".mode", "missing scalar batching mode");
+    return std::nullopt;
+  }
+  const std::string mode = node["mode"].as<std::string>();
+  if (mode == "none") {
+    batching.mode = LX_core::RenderPassBatchingMode::None;
+  } else if (mode == "all") {
+    batching.mode = LX_core::RenderPassBatchingMode::All;
+  } else if (mode == "material") {
+    batching.mode = LX_core::RenderPassBatchingMode::Material;
+  } else {
+    addDiagnostic(result, field + ".mode",
+                  "unknown batching mode; expected none, all, or material");
+    return std::nullopt;
+  }
+  if (!valid) {
+    return std::nullopt;
+  }
+  return batching;
+}
+
 std::optional<LX_core::RenderPassInputContract>
 parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
                    const std::string &field, LX_core::RenderPassStage stage,
@@ -579,7 +637,7 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
     }
     const std::string key = it->first.as<std::string>();
     if (key == "kind" || key == "object" || key == "material" ||
-        key == "geometry") {
+        key == "batching" || key == "geometry") {
       continue;
     }
     addDiagnostic(result, field + "." + key,
@@ -588,12 +646,18 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
   }
 
   auto kind = parseInputKind(node["kind"], result, field + ".kind");
+  auto batching =
+      parseBatchingContract(node["batching"], result, field + ".batching");
   if (!valid || !kind.has_value()) {
     return std::nullopt;
   }
 
   LX_core::RenderPassInputContract input;
   input.kind = *kind;
+  if (!batching.has_value()) {
+    return std::nullopt;
+  }
+  input.batching = *batching;
 
   if (input.kind == LX_core::RenderPassInputKind::FullscreenTriangle) {
     if (stage != LX_core::RenderPassStage::Raster ||
@@ -619,6 +683,11 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
                     "fullscreen-triangle input does not accept geometry");
       rejectedField = true;
     }
+    if (input.batching.mode != LX_core::RenderPassBatchingMode::None) {
+      addDiagnostic(result, field + ".batching",
+                    "fullscreen-triangle input only accepts batching.mode none");
+      rejectedField = true;
+    }
     return rejectedField ? std::nullopt
                          : std::optional<LX_core::RenderPassInputContract>(
                                std::move(input));
@@ -631,25 +700,37 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
                     "compute-dispatch input requires compute dispatch");
       return std::nullopt;
     }
-    bool rejectedField = false;
-    if (node["object"]) {
-      addDiagnostic(result, field + ".object",
-                    "compute-dispatch input does not accept object filter");
-      rejectedField = true;
-    }
-    if (node["material"]) {
-      addDiagnostic(result, field + ".material",
-                    "compute-dispatch input does not accept material filter");
-      rejectedField = true;
-    }
+    auto object =
+        parseObjectInputFilter(node["object"], result, field + ".object");
+    auto material =
+        parseMaterialInputFilter(node["material"], result, field + ".material");
+    std::optional<LX_core::RenderPathGeometryContract> geometry;
+    bool geometryValid = true;
     if (node["geometry"]) {
-      addDiagnostic(result, field + ".geometry",
-                    "compute-dispatch input does not accept geometry");
-      rejectedField = true;
+      auto parsedGeometry =
+          parseGeometryContract(node["geometry"], result, field + ".geometry");
+      if (parsedGeometry.has_value()) {
+        geometry = *parsedGeometry;
+      } else {
+        geometryValid = false;
+      }
     }
-    return rejectedField ? std::nullopt
-                         : std::optional<LX_core::RenderPassInputContract>(
-                               std::move(input));
+    if (!valid || !object.has_value() || !material.has_value() ||
+        !geometryValid) {
+      return std::nullopt;
+    }
+    if (!node["batching"]) {
+      input.batching.mode = LX_core::RenderPassBatchingMode::All;
+    }
+    if (input.batching.mode != LX_core::RenderPassBatchingMode::All) {
+      addDiagnostic(result, field + ".batching",
+                    "compute-dispatch input only accepts batching.mode all");
+      return std::nullopt;
+    }
+    input.object = std::move(*object);
+    input.material = std::move(*material);
+    input.geometry = geometry;
+    return input;
   }
 
   auto object =
@@ -676,6 +757,11 @@ parseInputContract(const YAML::Node &node, RenderPassNodeParseResult &result,
   input.material = std::move(*material);
   input.geometry = geometry;
 
+  if (input.batching.mode == LX_core::RenderPassBatchingMode::All) {
+    addDiagnostic(result, field + ".batching",
+                  "batching.mode all is reserved for scene-wide compute-dispatch input");
+    return std::nullopt;
+  }
   if (!input.geometry.has_value()) {
     addDiagnostic(result, field + ".geometry",
                   "scene-renderables input requires geometry");
@@ -848,117 +934,214 @@ void validateResourceVocabulary(const std::vector<std::string> &resources,
   return name.rfind("bake.", 0) == 0;
 }
 
-[[nodiscard]] bool
-passUsesBakeResources(const std::vector<std::string> &sources,
-                      const std::vector<std::string> &targets) {
-  return std::any_of(sources.begin(), sources.end(), isBakeResourceName) ||
-         std::any_of(targets.begin(), targets.end(), isBakeResourceName);
+[[nodiscard]] bool isBakeReadbackTarget(const std::string &name) {
+  return name == "bake.environment.diffuse_sh9" ||
+         name == "bake.environment.specular_prefilter" ||
+         name == "bake.material.brdf_lut";
 }
 
-[[nodiscard]] bool isKnownBakePayloadFormat(const std::string &format) {
-  return format == "RGBA16Float" || format == "RG16Float" ||
-         format == "SH9RgbFloat";
+[[nodiscard]] bool passTargetsBakeReadbackResource(
+    const std::vector<std::string> &targets) {
+  return std::any_of(targets.begin(), targets.end(), isBakeReadbackTarget);
 }
 
-[[nodiscard]] bool isKnownBakePayloadKind(const std::string &kind) {
-  return kind == "cubemap" || kind == "sh9" || kind == "texture2d";
+[[nodiscard]] bool isKnownBakeReadbackFormat(const std::string &format) {
+  return format == "RGBA16Float" || format == "RGBA32Float" ||
+         format == "RG16Float" || format == "SH9RgbFloat";
 }
 
-[[nodiscard]] bool
-bakePayloadMatchesTarget(const LX_core::RenderPathPayloadContract &payload) {
-  if (payload.target == "bake.environment.cubemap" ||
-      payload.target == "bake.environment.specular_prefilter") {
-    return payload.format == "RGBA16Float" && payload.kind == "cubemap";
+std::optional<LX_core::RenderPathOutputKind>
+parseReadbackKind(const std::string &kind) {
+  if (kind == "buffer") {
+    return LX_core::RenderPathOutputKind::Buffer;
   }
-  if (payload.target == "bake.environment.diffuse_sh9") {
-    return payload.format == "SH9RgbFloat" && payload.kind == "sh9";
+  if (kind == "image2d") {
+    return LX_core::RenderPathOutputKind::Image2D;
   }
-  if (payload.target == "bake.material.brdf_lut") {
-    return payload.format == "RG16Float" && payload.kind == "texture2d";
+  if (kind == "cubemap") {
+    return LX_core::RenderPathOutputKind::Cubemap;
+  }
+  if (kind == "sh9") {
+    return LX_core::RenderPathOutputKind::Sh9;
+  }
+  if (kind == "texture2d") {
+    return LX_core::RenderPathOutputKind::Texture2D;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool
+bakeReadbackMatchesTarget(const LX_core::RenderPathReadbackContract &readback) {
+  if (readback.target == "bake.environment.cubemap" ||
+      readback.target == "bake.environment.specular_prefilter") {
+    return readback.format == "RGBA16Float" &&
+           readback.kind == LX_core::RenderPathOutputKind::Cubemap;
+  }
+  if (readback.target == "bake.environment.diffuse_sh9") {
+    return readback.format == "SH9RgbFloat" &&
+           readback.kind == LX_core::RenderPathOutputKind::Sh9;
+  }
+  if (readback.target == "bake.material.brdf_lut") {
+    return readback.format == "RG16Float" &&
+           readback.kind == LX_core::RenderPathOutputKind::Texture2D;
   }
   return true;
 }
 
-std::vector<LX_core::RenderPathPayloadContract> parsePayloadContracts(
+std::optional<LX_core::Vec3u>
+parseLocalSize(const YAML::Node &node, RenderPassNodeParseResult &result,
+               const std::string &field) {
+  if (!node || !node.IsSequence() || node.size() != 3) {
+    addDiagnostic(result, field, "must be a sequence of three integers");
+    return std::nullopt;
+  }
+  return LX_core::Vec3u{node[0].as<u32>(), node[1].as<u32>(),
+                        node[2].as<u32>()};
+}
+
+std::optional<LX_core::RenderPassComputeContract>
+parseComputeContract(const YAML::Node &node, RenderPassNodeParseResult &result,
+                     const std::string &field) {
+  if (!node || !node.IsMap()) {
+    addDiagnostic(result, field, "missing required compute contract");
+    return std::nullopt;
+  }
+  bool valid = true;
+  for (auto it = node.begin(); it != node.end(); ++it) {
+    if (!it->first.IsScalar()) {
+      addDiagnostic(result, field, "compute field names must be scalar strings");
+      valid = false;
+      continue;
+    }
+    const std::string key = it->first.as<std::string>();
+    if (key == "dispatchFrom" || key == "localSize") {
+      continue;
+    }
+    addDiagnostic(result, field + "." + key,
+                  "unsupported compute contract field");
+    valid = false;
+  }
+  valid &= requireField(node["dispatchFrom"], result, field + ".dispatchFrom");
+  valid &= requireField(node["localSize"], result, field + ".localSize");
+  auto localSize = parseLocalSize(node["localSize"], result, field + ".localSize");
+  if (!valid || !localSize.has_value()) {
+    return std::nullopt;
+  }
+  LX_core::RenderPassComputeContract compute;
+  compute.dispatchFrom = node["dispatchFrom"].as<std::string>();
+  compute.localSize = *localSize;
+  if (compute.dispatchFrom.empty()) {
+    addDiagnostic(result, field + ".dispatchFrom", "must not be empty");
+    return std::nullopt;
+  }
+  if (compute.localSize.x == 0u || compute.localSize.y == 0u ||
+      compute.localSize.z == 0u) {
+    addDiagnostic(result, field + ".localSize", "must be non-zero");
+    return std::nullopt;
+  }
+  return compute;
+}
+
+std::vector<LX_core::RenderPathReadbackContract> parseReadbackContracts(
     const YAML::Node &node, const std::vector<std::string> &targets,
     RenderPassNodeParseResult &result, const std::string &field) {
-  std::vector<LX_core::RenderPathPayloadContract> payloads;
+  std::vector<LX_core::RenderPathReadbackContract> readbacks;
   if (!node) {
-    return payloads;
+    return readbacks;
   }
   if (!node.IsSequence()) {
-    addDiagnostic(result, field, "payloads must be a sequence");
-    return payloads;
+    addDiagnostic(result, field, "readbacks must be a sequence");
+    return readbacks;
   }
-  payloads.reserve(node.size());
+  readbacks.reserve(node.size());
   for (std::size_t i = 0; i < node.size(); ++i) {
-    const YAML::Node payloadNode = node[i];
+    const YAML::Node readbackNode = node[i];
     const std::string prefix = field + "[" + std::to_string(i) + "]";
-    if (!payloadNode || !payloadNode.IsMap()) {
-      addDiagnostic(result, prefix, "payload must be a map");
+    if (!readbackNode || !readbackNode.IsMap()) {
+      addDiagnostic(result, prefix, "readback must be a map");
       continue;
     }
     bool valid = true;
-    for (auto it = payloadNode.begin(); it != payloadNode.end(); ++it) {
+    for (auto it = readbackNode.begin(); it != readbackNode.end(); ++it) {
       if (!it->first.IsScalar()) {
         addDiagnostic(result, prefix,
-                      "payload field names must be scalar strings");
+                      "readback field names must be scalar strings");
         valid = false;
         continue;
       }
       const std::string key = it->first.as<std::string>();
-      if (key == "name" || key == "target" || key == "format" ||
-          key == "kind") {
+      if (key == "name" || key == "target" || key == "extentFrom" ||
+          key == "binding" || key == "format" || key == "kind" ||
+          key == "mediaType") {
         continue;
       }
       addDiagnostic(result, prefix + "." + key,
-                    "unsupported payload contract field");
+                    "unsupported readback contract field");
       valid = false;
     }
-    valid &= requireField(payloadNode["name"], result, prefix + ".name");
-    valid &= requireField(payloadNode["target"], result, prefix + ".target");
-    valid &= requireField(payloadNode["format"], result, prefix + ".format");
-    valid &= requireField(payloadNode["kind"], result, prefix + ".kind");
+    valid &= requireField(readbackNode["name"], result, prefix + ".name");
+    valid &= requireField(readbackNode["target"], result, prefix + ".target");
+    valid &=
+        requireField(readbackNode["extentFrom"], result, prefix + ".extentFrom");
+    valid &= requireField(readbackNode["format"], result, prefix + ".format");
+    valid &= requireField(readbackNode["kind"], result, prefix + ".kind");
+    valid &=
+        requireField(readbackNode["mediaType"], result, prefix + ".mediaType");
     if (!valid) {
       continue;
     }
-    LX_core::RenderPathPayloadContract payload;
-    payload.name = payloadNode["name"].as<std::string>();
-    payload.target = payloadNode["target"].as<std::string>();
-    payload.format = payloadNode["format"].as<std::string>();
-    payload.kind = payloadNode["kind"].as<std::string>();
-    if (payload.name.empty()) {
+    LX_core::RenderPathReadbackContract readback;
+    readback.name = readbackNode["name"].as<std::string>();
+    readback.target = readbackNode["target"].as<std::string>();
+    readback.extentFrom = readbackNode["extentFrom"].as<std::string>();
+    if (readbackNode["binding"]) {
+      readback.binding = readbackNode["binding"].as<std::string>();
+    }
+    readback.format = readbackNode["format"].as<std::string>();
+    readback.mediaType = readbackNode["mediaType"].as<std::string>();
+    auto kind = parseReadbackKind(readbackNode["kind"].as<std::string>());
+    if (!kind.has_value()) {
+      addDiagnostic(result, prefix + ".kind", "unknown readback kind");
+      valid = false;
+    } else {
+      readback.kind = *kind;
+    }
+    if (readback.name.empty()) {
       addDiagnostic(result, prefix + ".name", "must not be empty");
       valid = false;
     }
-    if (payload.target.empty()) {
+    if (readback.target.empty()) {
       addDiagnostic(result, prefix + ".target", "must not be empty");
       valid = false;
     }
-    if (std::find(targets.begin(), targets.end(), payload.target) ==
+    if (readback.extentFrom.empty()) {
+      addDiagnostic(result, prefix + ".extentFrom", "must not be empty");
+      valid = false;
+    }
+    if (readback.mediaType.empty()) {
+      addDiagnostic(result, prefix + ".mediaType", "must not be empty");
+      valid = false;
+    }
+    if (std::find(targets.begin(), targets.end(), readback.target) ==
         targets.end()) {
       addDiagnostic(result, prefix + ".target",
-                    "payload target must be listed in targets");
+                    "readback target must be listed in targets");
       valid = false;
     }
-    if (!isKnownBakePayloadFormat(payload.format)) {
-      addDiagnostic(result, prefix + ".format", "unknown bake payload format");
+    if (!isKnownBakeReadbackFormat(readback.format)) {
+      addDiagnostic(result, prefix + ".format", "unknown readback format");
       valid = false;
     }
-    if (!isKnownBakePayloadKind(payload.kind)) {
-      addDiagnostic(result, prefix + ".kind", "unknown bake payload kind");
-      valid = false;
-    }
-    if (valid && !bakePayloadMatchesTarget(payload)) {
+    if (valid && !bakeReadbackMatchesTarget(readback)) {
       addDiagnostic(result, prefix,
-                    "bake payload format/kind does not match target");
+                    "readback format/kind does not match target");
       valid = false;
     }
     if (valid) {
-      payloads.push_back(std::move(payload));
+      readbacks.push_back(std::move(readback));
     }
   }
-  return payloads;
+  return readbacks;
 }
 
 } // namespace
@@ -1030,13 +1213,23 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   std::vector<std::string> targets = parseStringList(node["targets"]);
   validateResourceVocabulary(sources, result, fieldPrefix + ".sources");
   validateResourceVocabulary(targets, result, fieldPrefix + ".targets");
-  const bool bakePass = passUsesBakeResources(sources, targets);
-  if (bakePass && (!node["payloads"] || node["payloads"].size() == 0)) {
-    addDiagnostic(result, fieldPrefix + ".payloads",
-                  "bake pass requires payload declaration");
+  const bool bakePass = passTargetsBakeReadbackResource(targets);
+  if (bakePass && (!node["readbacks"] || node["readbacks"].size() == 0)) {
+    addDiagnostic(result, fieldPrefix + ".readbacks",
+                  "bake pass requires readback declaration");
   }
-  auto payloads = parsePayloadContracts(node["payloads"], targets, result,
-                                        fieldPrefix + ".payloads");
+  std::optional<LX_core::RenderPassComputeContract> compute;
+  if (*stage == LX_core::RenderPassStage::Compute ||
+      *dispatch == LX_core::RenderPassDispatch::Compute ||
+      input->kind == LX_core::RenderPassInputKind::ComputeDispatch) {
+    compute =
+        parseComputeContract(node["compute"], result, fieldPrefix + ".compute");
+  } else if (node["compute"]) {
+    addDiagnostic(result, fieldPrefix + ".compute",
+                  "compute contract is only valid for compute dispatch passes");
+  }
+  auto readbacks = parseReadbackContracts(node["readbacks"], targets, result,
+                                          fieldPrefix + ".readbacks");
   const YAML::Node rendering = node["rendering"];
   std::vector<LX_core::RenderPathAttachmentContract> attachments;
   if (rendering) {
@@ -1055,12 +1248,13 @@ parseRenderPassNodeContract(const std::string &passName, const YAML::Node &node,
   pass.shaderUri = node["shader"].as<std::string>();
   pass.stage = *stage;
   pass.dispatch = *dispatch;
+  pass.compute = compute;
   pass.input = std::move(*input);
   pass.renderingMode = renderingMode;
   pass.attachments = std::move(attachments);
   pass.sources = std::move(sources);
   pass.targets = std::move(targets);
-  pass.payloads = std::move(payloads);
+  pass.readbacks = std::move(readbacks);
   pass.renderState = *renderState;
   if (const auto writeMode = node["writeMode"]) {
     pass.writeMode = writeMode.as<std::string>();

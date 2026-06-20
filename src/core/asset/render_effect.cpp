@@ -15,6 +15,18 @@ namespace {
   return "unknown";
 }
 
+[[nodiscard]] const char *batchingModeName(RenderPassBatchingMode mode) {
+  switch (mode) {
+  case RenderPassBatchingMode::None:
+    return "none";
+  case RenderPassBatchingMode::All:
+    return "all";
+  case RenderPassBatchingMode::Material:
+    return "material";
+  }
+  return "unknown";
+}
+
 [[nodiscard]] StringID renderingModeSignature(RenderPathNodeRenderingMode mode) {
   return StringID(mode == RenderPathNodeRenderingMode::Dynamic
                       ? "rendering=dynamic"
@@ -64,6 +76,9 @@ validateRenderPassInputContract(const RenderPassNode &node) {
       return std::string("input.kind '") + inputKindName(input.kind) +
              "' requires raster draw";
     }
+    if (input.batching.mode == RenderPassBatchingMode::All) {
+      return "input.batching.mode 'all' is reserved for scene-wide compute-dispatch input";
+    }
     if (!input.geometry.has_value()) {
       return "input.geometry is required for scene-renderables input";
     }
@@ -83,6 +98,9 @@ validateRenderPassInputContract(const RenderPassNode &node) {
     if (input.geometry.has_value()) {
       return "input.geometry is not accepted for fullscreen-triangle input";
     }
+    if (input.batching.mode != RenderPassBatchingMode::None) {
+      return "input.batching.mode is not accepted for fullscreen-triangle input";
+    }
     break;
   case RenderPassInputKind::ComputeDispatch:
     if (node.stage != RenderPassStage::Compute ||
@@ -90,14 +108,8 @@ validateRenderPassInputContract(const RenderPassNode &node) {
       return std::string("input.kind '") + inputKindName(input.kind) +
              "' requires compute dispatch";
     }
-    if (!input.object.renderClasses.empty()) {
-      return "input.object is not accepted for compute-dispatch input";
-    }
-    if (!input.material.types.empty() || !input.material.required) {
-      return "input.material is not accepted for compute-dispatch input";
-    }
-    if (input.geometry.has_value()) {
-      return "input.geometry is not accepted for compute-dispatch input";
+    if (input.batching.mode != RenderPassBatchingMode::All) {
+      return "compute-dispatch input only accepts input.batching.mode 'all'";
     }
     break;
   }
@@ -136,6 +148,8 @@ StringID getRenderPathNodeSignature(const RenderPassNode &node) {
   fields.push_back(StringID(input.material.required
                                 ? "material.required=true"
                                 : "material.required=false"));
+  fields.push_back(StringID(std::string("batching.mode=") +
+                            batchingModeName(input.batching.mode)));
   for (const std::string &type : input.material.types) {
     fields.push_back(StringID("material.type=" + type));
   }

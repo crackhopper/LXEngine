@@ -364,18 +364,18 @@ joinSceneResourceDiagnostics(const std::vector<std::string> &diagnostics) {
 void registerEnvironmentNodeFeature(
     LX_core::SceneResourceTable &resourceTable,
     const std::vector<std::filesystem::path> &assetRoots,
-    const SceneNodeDocument &nodeDocument) {
-  if (!nodeDocument.environment.has_value()) {
-    return;
-  }
+    const SceneNodeDocument &nodeDocument,
+    const LX_core::ResourceUri &requestedFeatureUri,
+    const LX_core::SceneIblBakeMarker &bake,
+    std::string_view fieldName) {
   if (resourceTable.hasEnvironmentNode()) {
-    throw std::runtime_error("scene contains multiple environment nodes");
+    throw std::runtime_error("scene contains multiple environment/skybox nodes");
   }
 
   LX_infra::SceneResourceParserRegistry registry;
   LX_infra::registerRenderResourceParsers(registry);
   const LX_core::ResourceUri featureUri = resolveSceneResourceParserUri(
-      assetRoots, nodeDocument.environment->featureUri);
+      assetRoots, requestedFeatureUri);
   const auto parsed = registry.parse(
       resourceTable, LX_core::SceneResourceType::RenderFeature, featureUri,
       LX_infra::SceneResourceParseContext{
@@ -385,9 +385,9 @@ void registerEnvironmentNodeFeature(
       parsed.metadata.state == LX_core::ResourceState::Failed ||
       !parsed.diagnostics.empty()) {
     std::string message =
-        "environment node '" + nodeDocument.nodeName +
+        std::string(fieldName) + " node '" + nodeDocument.nodeName +
         "' failed to load RenderFeature '" +
-        nodeDocument.environment->featureUri.string() + "'";
+        featureUri.string() + "'";
     const std::string diagnostics =
         joinSceneResourceDiagnostics(parsed.diagnostics);
     if (!diagnostics.empty()) {
@@ -400,23 +400,41 @@ void registerEnvironmentNodeFeature(
       resourceTable.findRenderFeatureByMetadataHandle(parsed.identity);
   if (!featureHandle.has_value()) {
     throw std::runtime_error(
-        "environment node '" + nodeDocument.nodeName +
+        std::string(fieldName) + " node '" + nodeDocument.nodeName +
         "' RenderFeature did not register a live payload for '" +
-        nodeDocument.environment->featureUri.string() + "'");
+        featureUri.string() + "'");
   }
   const auto resolvedFeature = resourceTable.resolve(*featureHandle);
   if (!resolvedFeature.has_value() ||
       resolvedFeature->get().feature != "environmentLighting") {
     throw std::runtime_error(
-        "environment node '" + nodeDocument.nodeName +
+        std::string(fieldName) + " node '" + nodeDocument.nodeName +
         "' RenderFeature must provide feature environmentLighting");
   }
   resourceTable.setEnvironmentRuntimeState(
       LX_core::SceneEnvironmentRuntimeState{
           .feature = *featureHandle,
           .nodePresent = true,
-          .bakeRequested = nodeDocument.environment->bake.enabled,
+          .bakeRequested = bake.enabled,
       });
+}
+
+void registerEnvironmentNodeFeature(
+    LX_core::SceneResourceTable &resourceTable,
+    const std::vector<std::filesystem::path> &assetRoots,
+    const SceneNodeDocument &nodeDocument) {
+  if (nodeDocument.environment.has_value()) {
+    registerEnvironmentNodeFeature(
+        resourceTable, assetRoots, nodeDocument,
+        nodeDocument.environment->featureUri, nodeDocument.environment->bake,
+        "environment");
+  }
+  if (nodeDocument.skybox.has_value() &&
+      nodeDocument.skybox->mode == LX_core::SceneSkyboxMode::Infinite) {
+    registerEnvironmentNodeFeature(resourceTable, assetRoots, nodeDocument,
+                                   nodeDocument.skybox->featureUri,
+                                   nodeDocument.skybox->bake, "skybox");
+  }
 }
 
 [[nodiscard]] LX_core::CombinedTextureSamplerSharedPtr

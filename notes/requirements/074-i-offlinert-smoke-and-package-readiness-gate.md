@@ -1,6 +1,9 @@
 # REQ-074-i: OfflineRT Smoke And Package Readiness Gate
 
-> 2026-06-14 再校准：OfflineRT old bridge deletion 已并入 `REQ-074-h`。本 REQ 不再负责删除 `OfflineShaderProvider`、`offlineShader`、`ensureOfflineRayTracePass()`、`createOfflineRenderFrameGraph()` 或 `Pass_OfflineRayTrace` 默认分支；这些默认路径 hard cut 必须在 `REQ-074-h` 完成。本 REQ 只作为 hard cut 后的 Helmet/BMW offline smoke 和 package readiness gate。
+> 2026-06-20 再校准：OfflineRT old bridge deletion 已并入并落实到
+> `REQ-074-h` / 074-h Superpowers spec。本文只作为 hard cut 后的
+> Helmet/BMW offline smoke 和 package readiness gate；不得恢复旧 provider、
+> shader side channel、file-local graph builder 或 offline-only executor。
 
 ## 背景
 
@@ -20,7 +23,7 @@
 ## 目标
 
 1. 用 Helmet 和 BMW M6 证明 hard cut 后的 OfflineRT 默认路径可诊断、可运行或明确拒绝 unsupported feature。
-2. 证明 OfflineRT 默认路径只通过 RenderPathGraph、SceneResourceTable、FrameGraph、offline `RenderDrawInput` 派生 / compute compiler 和 shared pipeline path 工作。
+2. 证明 OfflineRT 默认路径只通过 OutputProfile、RenderPathGraph、SceneResourceTable、FrameGraph、compute compiler 和 shared FrameGraphExecutor path 工作。
 3. 收窄 legacy token audit allowlist，防止旧 bridge 在 package 前回流。
 4. 给 `REQ-074-b` 提供 package readiness 证据。
 
@@ -37,13 +40,10 @@
 
 运行 legacy bridge audit，确认 production 默认路径和 ordinary positive tests 中不再正向引用：
 
-- `OfflineShaderProvider`
-- `OfflineRenderJob::offlineShader` / `offlineShader`
-- `ensureOfflineRayTracePass`
-- `createOfflineRenderFrameGraph`
-- `Pass_OfflineRayTrace` 默认 work branch
-- `OfflinePrimaryRayCompute`
-- `techniques/OfflineRT`
+- old shader provider / shader side channel
+- file-local OfflineRT graph builder
+- old pass-token default work branch
+- old OfflineRT shader URI under `techniques/OfflineRT`
 
 这些 token 只允许出现在：
 
@@ -56,11 +56,11 @@
 
 Helmet OfflineRT direct render SHALL：
 
-- 使用默认 `assets/render_paths/offline_ray_tracer.render-path.yaml`。
+- 使用默认 `assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml`。
 - 使用 `render_paths/OfflineRT/...` shader URI。
-- 从 SceneResourceTable upload view 构建 offline descriptor resources。
-- 通过 offline `RenderDrawInput` 派生 / compute compiler 生成 compute dispatch。
-- 通过 shared resource manager / pipeline cache 创建或复用 compute pipeline。
+- 从 SceneResourceTable 和 render feature derived resource 构建 descriptor resources。
+- 通过 compute compiler 生成 dispatch work。
+- 通过 shared FrameGraphExecutor / resource manager / pipeline cache 创建或复用 compute pipeline。
 - 输出非全黑图像，或输出明确 diagnostic 说明缺失的 supported feature。
 
 不得回退到旧 provider、旧 material pass injection 或 hardcoded FrameGraph。

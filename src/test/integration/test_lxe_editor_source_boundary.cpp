@@ -33,6 +33,12 @@ bool fileContains(const std::filesystem::path &path,
   return readText(path).find(needle) != std::string::npos;
 }
 
+void expectFileContains(const std::filesystem::path &path,
+                        const std::string &needle,
+                        const std::string &message) {
+  EXPECT(fileContains(path, needle), message);
+}
+
 struct LegacyTokenAudit final {
   std::string token;
   std::vector<std::string> allowedPathSubstrings;
@@ -134,6 +140,9 @@ void expectNoDisallowedLegacyTokens(
         if (!entry.is_regular_file() || !isAuditedTextFile(entry.path())) {
           continue;
         }
+        if (entry.path().filename() == "test_lxe_editor_source_boundary.cpp") {
+          continue;
+        }
 
         std::ifstream in(entry.path());
         std::string line;
@@ -190,6 +199,36 @@ int main() {
   const auto editorDir = sourceRoot / "src" / "editor";
   const auto rootCMake = sourceRoot / "CMakeLists.txt";
   const auto demosCMake = sourceRoot / "src" / "demos" / "CMakeLists.txt";
+  const auto offlineJobHeader =
+      sourceRoot / "src" / "core" / "offline" / "offline_render_job.hpp";
+  const auto offlineGraphHeader =
+      sourceRoot / "src" / "core" / "offline" / "offline_render_work_graph.hpp";
+  const auto offlineGraphSource =
+      sourceRoot / "src" / "core" / "offline" / "offline_render_work_graph.cpp";
+  const auto renderInputHeader =
+      sourceRoot / "src" / "core" / "frame_graph" / "render_input.hpp";
+  const auto renderWorkCompilerSource =
+      sourceRoot / "src" / "core" / "frame_graph" / "render_work_compiler.cpp";
+  const auto renderPassParserSource =
+      sourceRoot / "src" / "infra" / "resource_parsers" /
+      "render_pass_node_parser.cpp";
+  const auto offlineExecutorHeader =
+      sourceRoot / "src" / "backend" / "vulkan" / "offline" /
+      "offline_render_graph_executor.hpp";
+  const auto offlineExecutorSource =
+      sourceRoot / "src" / "backend" / "vulkan" / "offline" /
+      "offline_render_graph_executor.cpp";
+  const auto softwareIntegratorSource =
+      sourceRoot / "src" / "backend" / "vulkan" / "offline" /
+      "software_compute_offline_integrator.cpp";
+  const auto offlineCliSource =
+      sourceRoot / "src" / "tools" / "lxe_offline_render" / "main.cpp";
+  const auto bakeEnvironmentGraph =
+      sourceRoot / "assets" / "render_paths" /
+      "bake_environment_ibl.render-path.yaml";
+  const auto bakeBrdfGraph =
+      sourceRoot / "assets" / "render_paths" /
+      "bake_standard_pbr_brdf_lut.render-path.yaml";
   const std::string docsSuperpowersPath = "docs/superpowers";
   const std::string notesSuperpowersPath = "notes/superpowers";
 
@@ -203,6 +242,40 @@ int main() {
          "root CMake must add src/editor");
   EXPECT(!fileContains(demosCMake, "lxe_editor"),
          "src/demos/CMakeLists.txt must not add lxe_editor");
+
+  EXPECT(!std::filesystem::exists(offlineJobHeader),
+         "OfflineRenderJob header must be removed after FrameGraphExecutor "
+         "OfflineRT migration");
+  EXPECT(!std::filesystem::exists(offlineGraphHeader),
+         "hardcoded OfflineRT FrameGraph header must be removed");
+  EXPECT(!std::filesystem::exists(offlineGraphSource),
+         "hardcoded OfflineRT FrameGraph source must be removed");
+  EXPECT(!std::filesystem::exists(offlineExecutorHeader),
+         "legacy OfflineRenderGraphExecutor header must be removed");
+  EXPECT(!std::filesystem::exists(offlineExecutorSource),
+         "legacy OfflineRenderGraphExecutor source must be removed");
+  EXPECT(!std::filesystem::exists(softwareIntegratorSource),
+         "legacy software_compute_offline_integrator source must be removed");
+  EXPECT(!fileContains(offlineCliSource, "offlineShader"),
+         "lxe_offline_render must not wire an offline shader side channel");
+  EXPECT(!fileContains(offlineCliSource, "OfflineRenderJob"),
+         "lxe_offline_render must not construct OfflineRenderJob");
+  EXPECT(fileContains(offlineCliSource, "VulkanOfflineRenderRequest"),
+         "lxe_offline_render should build the FrameGraphExecutor-backed "
+         "offline render request");
+  EXPECT(!fileContains(renderInputHeader, "readbackResource"),
+         "RenderComputeInput::readbackResource must stay removed");
+  EXPECT(!fileContains(renderWorkCompilerSource, "compute->readbackResource"),
+         "RenderWorkCompiler must not inject a single compute readback "
+         "resource");
+  expectFileContains(
+      renderPassParserSource, "\"payloads\"",
+      "render-path parser should keep a narrow diagnostic for rejected legacy "
+      "payloads");
+  EXPECT(!fileContains(bakeEnvironmentGraph, "payloads:"),
+         "environment IBL bake graph must use readbacks, not legacy payloads");
+  EXPECT(!fileContains(bakeBrdfGraph, "payloads:"),
+         "BRDF LUT bake graph must use readbacks, not legacy payloads");
 
   expectNoHits(filesContaining(sourceRoot / "src",
                                {legacyCoreInc,
@@ -233,6 +306,18 @@ int main() {
         "notes/requirements", docsSuperpowersPath, notesSuperpowersPath}},
       {"feature.iblLighting", // named-negative-legacy-token-audit
        {docsSuperpowersPath, notesSuperpowersPath}},
+      {"OfflineRenderJob", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
+      {"offlineShader", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
+      {"createOfflineRenderFrameGraph", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
+      {"OfflineRenderGraphExecutor", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
+      {"software_compute_offline_integrator", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
+      {"techniques/OfflineRT", // named-negative-legacy-token-audit
+       {"notes/", docsSuperpowersPath, notesSuperpowersPath}},
   };
   const std::vector<LegacyTokenLineMarkerAllowance> lineMarkerAllowances = {
       {"src/test/integration/test_lxe_editor_source_boundary.cpp",

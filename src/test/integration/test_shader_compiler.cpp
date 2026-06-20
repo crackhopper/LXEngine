@@ -417,7 +417,8 @@ static bool testPbrShadersUseMaterialAccessorAbi(
       {"Deferred GBuffer",
        shaderDir / "render_paths" / "Deferred" / "pbr_gbuffer.frag"},
       {"OfflineRT direct ray",
-       shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp"},
+       shaderDir / "render_paths" / "OfflineRT" /
+           "standard_pbr_primary_ray.comp"},
   };
 
   for (const auto &shader : shaders) {
@@ -533,7 +534,8 @@ static bool testMaterialSourceVariantCompilesVariantOnlyShaders(
   }
 
   const auto offline = ShaderCompiler::compileFile(
-      shaderDir / "techniques" / "OfflineRT" / "offline_pbr_direct_ray.comp",
+      shaderDir / "render_paths" / "OfflineRT" /
+          "standard_pbr_primary_ray.comp",
       variants);
   if (!offline.success) {
     std::cerr << "  FAIL: OfflineRT material source variant compile failed: "

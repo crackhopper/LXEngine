@@ -356,6 +356,7 @@ MaterialInstance::SharedPtr MaterialInstance::cloneInstanceData() const {
       uniqueClone->m_materialSourceReflectionHash;
   clone->m_materialContractReflection =
       uniqueClone->m_materialContractReflection;
+  clone->m_hitShaderContract = uniqueClone->m_hitShaderContract;
   clone->m_renderClass = uniqueClone->m_renderClass;
   clone->m_tags = uniqueClone->m_tags;
   clone->m_authoringMetadata = uniqueClone->m_authoringMetadata;
@@ -398,6 +399,7 @@ MaterialInstance::UniquePtr MaterialInstance::cloneInstanceDataUnique() const {
   clone->m_materialSourceSignature = m_materialSourceSignature;
   clone->m_materialSourceReflectionHash = m_materialSourceReflectionHash;
   clone->m_materialContractReflection = m_materialContractReflection;
+  clone->m_hitShaderContract = m_hitShaderContract;
   clone->m_renderClass = m_renderClass;
   clone->m_tags = m_tags;
   clone->m_authoringMetadata = m_authoringMetadata;
@@ -658,6 +660,33 @@ MaterialInstance::getMaterialContractReflection() const {
     return std::nullopt;
   }
   return std::cref(*m_materialContractReflection);
+}
+
+void MaterialInstance::setHitShaderContract(MaterialHitShaderContract contract) {
+  if (m_hitShaderContract.radianceUri == contract.radianceUri) {
+    return;
+  }
+  activateEnvelopeStorage();
+  m_hitShaderContract = std::move(contract);
+  markMaterialStateDirty();
+}
+
+const MaterialHitShaderContract &MaterialInstance::getHitShaderContract() const {
+  return m_hitShaderContract;
+}
+
+void MaterialInstance::setRadianceHitShaderUri(ResourceUri uri) {
+  MaterialHitShaderContract contract = m_hitShaderContract;
+  contract.radianceUri = std::move(uri);
+  setHitShaderContract(std::move(contract));
+}
+
+std::optional<std::reference_wrapper<const ResourceUri>>
+MaterialInstance::getRadianceHitShaderUri() const {
+  if (!m_hitShaderContract.radianceUri.has_value()) {
+    return std::nullopt;
+  }
+  return std::cref(*m_hitShaderContract.radianceUri);
 }
 
 void MaterialInstance::setRenderClass(std::string renderClass) {

@@ -1,21 +1,44 @@
 #pragma once
 
-#include "core/offline/offline_render_job.hpp"
+#include "core/frame_graph/frame_graph_executor.hpp"
+#include "core/offline/offline_render_profile.hpp"
+#include "core/offline/offline_render_result.hpp"
+#include "core/resource/resource_uri.hpp"
+#include "core/scene/scene_resource_table.hpp"
+
+#include <filesystem>
+#include <memory>
+#include <string>
 
 namespace LX_core::backend::offline {
 
 /*
-@source_analysis.section VulkanOfflineRenderer 是离线积分器协调入口
-`VulkanOfflineRenderer` 是离线渲染实验场当前的 Vulkan 后端入口。它接收
-`OfflineRenderJob`，先做 core 层 job 校验，再根据显式 integrator 名称选择离线
-积分器。具体 headless Vulkan device、compute pipeline、buffer 上传、dispatch 和
-readback 生命周期由被选中的 integrator 管理。
+@source_analysis.section Offline render request 是 headless executor 的边界
+`VulkanOfflineRenderRequest` 不再表达一套 offline-only job graph。它把
+offline CLI/profile resolver 已经决定好的事实交给 Vulkan 后端：scene resource
+table、选中的 output profile、离线 runtime 参数、profile 名、输出路径和
+RenderPathGraph URI。这样 backend 不需要猜 shader、pass 或 readback 目标；它只需
+加载 graph、编译 FrameGraph、准备 pass work，再交给统一 `FrameGraphExecutor`。
 
-它和 realtime 路径复用 core `FrameGraph` / `RenderInputDesc` / resource table
-输入链路；差异收敛在 integrator 的执行目标和 Vulkan headless 管线。离线渲染会在
-job 的 `SceneResourceTable` 内建立 render-scope storage/output 资源，所以 render
-入口接收可变 job，而不是把临时资源塞进独立旁路。
+`VulkanOfflineRenderResult` 同样保持很薄：executor 的 payload 是真实 readback 合同，
+`OfflineReadbackImage` 是 writer 需要的线性 RGBA 图像视图。文件格式、PNG tone
+mapping 和 metadata 写出留给 infra/offline writer，而不是混进 Vulkan 执行层。
 */
+struct VulkanOfflineRenderRequest final {
+  SceneResourceTable scene;
+  LX_core::offline::OutputProfile output;
+  LX_core::offline::OfflineRenderSettings offline;
+  std::string profileName;
+  std::filesystem::path outputPath;
+  ResourceUri renderPathGraphUri{
+      "assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml"};
+};
+
+struct VulkanOfflineRenderResult final {
+  FrameGraphExecutionPayload payload;
+  LX_core::offline::OfflineReadbackImage image;
+};
+
 class VulkanOfflineRenderer final {
 public:
   VulkanOfflineRenderer();
@@ -24,8 +47,11 @@ public:
   VulkanOfflineRenderer(const VulkanOfflineRenderer &) = delete;
   VulkanOfflineRenderer &operator=(const VulkanOfflineRenderer &) = delete;
 
-  [[nodiscard]] LX_core::offline::OfflineReadbackImage
-  render(LX_core::offline::OfflineRenderJob &job);
+  [[nodiscard]] VulkanOfflineRenderResult render(VulkanOfflineRenderRequest request);
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace LX_core::backend::offline

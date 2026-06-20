@@ -53,6 +53,67 @@ struct RenderDrawCommand final {
   u32 firstInstance = 0;
 };
 
+struct RenderSceneParticipant final {
+  u32 sourceRenderableIndex = u32_max;
+  StringID debugId;
+  ObjectHandle object;
+  MeshHandle mesh;
+  MaterialHandle material;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
+  u32 primitiveIndex = u32_max;
+  Vec3f sortCenter{};
+  StringID objectDataSignature;
+  StringID objectRenderType;
+  StringID materialTypeSignature;
+  bool debugOnly = false;
+  std::vector<RenderDrawCommand> drawCommands;
+};
+
+enum class RayProgramPayload {
+  Radiance,
+};
+
+struct RayHitGroupProgram final {
+  u32 index = 0;
+  StringID materialType;
+  ResourceUri uri;
+  std::string function;
+};
+
+struct PrimitiveHitGroup final {
+  u32 participantIndex = 0;
+  u32 primitiveIndex = 0;
+  u32 hitGroupIndex = 0;
+};
+
+struct alignas(16) RayPrimitiveHitGroupRecord final {
+  u32 hitGroupIndex = 0;
+  u32 materialIndex = 0;
+  u32 reserved0 = 0;
+  u32 reserved1 = 0;
+};
+
+struct alignas(16) RayMaterialRecord final {
+  u32 hitGroupIndex = 0;
+  u32 baseColorTexture = u32_max;
+  float metallic = 0.0f;
+  float roughness = 1.0f;
+  u32 metallicRoughnessTexture = u32_max;
+  u32 normalTexture = u32_max;
+  u32 occlusionTexture = u32_max;
+  u32 emissiveTexture = u32_max;
+  Vec4f baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+  Vec4f emissive{0.0f, 0.0f, 0.0f, 0.0f};
+};
+
+struct RayProgramTable final {
+  RayProgramPayload payload = RayProgramPayload::Radiance;
+  StringID dispatchFunction;
+  std::vector<RayHitGroupProgram> hitGroups;
+  std::vector<PrimitiveHitGroup> primitiveHitGroups;
+};
+
 struct RenderInput {
   virtual ~RenderInput() = default;
   [[nodiscard]] virtual RenderInputKind kind() const = 0;
@@ -91,7 +152,7 @@ struct RenderComputeInput final : RenderInput {
   u32 groupCountX = 1;
   u32 groupCountY = 1;
   u32 groupCountZ = 1;
-  std::optional<StringID> readbackResource;
+  std::vector<RenderSceneParticipant> sceneParticipants;
 };
 
 struct RenderInputBindingPlan final {
@@ -108,6 +169,18 @@ struct RenderInputStats final {
 };
 
 struct RenderInputDesc final {
+  struct Readback final {
+    std::string name;
+    StringID target;
+    StringID extentKey;
+    StringID binding;
+    std::string format;
+    RenderPathOutputKind kind = RenderPathOutputKind::Buffer;
+    std::string mediaType;
+    Vec3u extent{1u, 1u, 1u};
+    GpuResourceRef resource;
+  };
+
   RenderInputStatus status = RenderInputStatus::Rejected;
   usize inputIndex = 0;
   StringID pass;
@@ -118,6 +191,8 @@ struct RenderInputDesc final {
   StringID shaderVariantKey;
   StringID reflectionIdentity;
   RenderInputBindingPlan bindingPlan;
+  std::vector<Readback> readbacks;
+  std::optional<RayProgramTable> rayProgramTable;
   std::vector<GpuResourceRef> resourceDependencies;
   std::vector<RenderInputDiagnostic> diagnostics;
   RenderInputStats stats;

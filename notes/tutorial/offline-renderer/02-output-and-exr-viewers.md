@@ -6,9 +6,8 @@ Offline renderer 的输出像一份实验记录：EXR 保存原始测量值，PN
 
 ```bash
 ./build/src/tools/lxe_offline_render/lxe_offline_render \
-  --scene assets/scenes/realtime_offline_compare_helmet_pbr.scene.yaml \
-  --profile preview \
-  --samples 1 \
+  --scene assets/scenes/generated/helmet_standard_pbr.scene.yaml \
+  --profile raytrace \
   --width 64 \
   --height 64 \
   --out artifacts/offline/smoke
@@ -40,6 +39,19 @@ Offline renderer 的输出像一份实验记录：EXR 保存原始测量值，PN
 | RGBA32F | scene-linear HDR | 否 | 四通道 float 原样写出 |
 
 PNG 的 tone mapping 逻辑与实时 post shader 对齐：先乘 exposure，再走 ACES 或 Reinhard；当前离线输出层默认使用 ACES。EXR 不做 tone mapping，所以在普通图片工具里直接看 EXR 可能显得过亮、过暗或曝光不对；这不是渲染失败，而是查看器如何把 HDR 映射到显示器的问题。
+
+同一份 scene 可以用不同 profile 输出对比图：
+
+```bash
+for profile in forward_no_ibl ibl_only forward_ibl raytrace; do
+  ./build/src/tools/lxe_offline_render/lxe_offline_render \
+    --scene assets/scenes/generated/helmet_standard_pbr.scene.yaml \
+    --profile "$profile" \
+    --out "artifacts/offline/$profile"
+done
+```
+
+这四张图分别覆盖 Forward direct-only、Forward IBL-only、Forward direct+IBL 和 OfflineRT primary-ray direct lighting。区别来自 `OutputProfile.renderPathGraph`，不是来自四份 scene。
 
 ## 配置 EXR 查看工具
 

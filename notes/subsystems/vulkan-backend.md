@@ -91,16 +91,17 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 
 这样做的结果是：CPU 侧的 pick / project 公式继续使用“上正下负”的 OpenGL 风格 NDC，GPU 侧由 Vulkan projection matrix 完成后端适配；viewport 不再插入第二次镜像。
 
-## 离线 Integrator 边界
+## 离线 FrameGraphExecutor 边界
 
-离线 renderer 像一台无窗口实验设备：入口仍在 Vulkan backend，但场景数据来自 core 层统一资源表。`VulkanOfflineRenderer::render(job)` 只做显式 integrator 选择；当前 `software-compute` integrator 会构建 offline `FrameGraph`，让 `RenderWorkCompiler` 产出 `RenderComputeInput` 和 `RenderInputDesc`，再交给 offline graph executor 执行。
+离线 renderer 像一台无窗口实验设备：入口仍在 Vulkan backend，但场景数据来自 core 层统一资源表。`VulkanOfflineRenderer` 读取 output profile 指向的 render path graph，让 `RenderWorkCompiler` 产出 draw/dispatch work 和 `RenderInputDesc`，再交给统一的 `VulkanFrameGraphExecutor` 执行。
 
-| Integrator | 当前职责 | 数据入口 |
+| 路径 | 当前职责 | 数据入口 |
 |---|---|---|
-| `software-compute` | 初始化 headless `VulkanDevice`，创建 offline FrameGraph，预构建 compute pipeline，按 pass upload plan 同步 SSBO，dispatch `offline_pbr_direct_ray.comp`，readback `OfflineReadbackImage` | `SceneResourceTableUploadView` + `SceneSoftwareBvh` + `RenderInputDesc` |
-| `hardware-ray-tracing` | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录 | `SceneResourceTableUploadView` |
+| Forward offline graph | 初始化 headless `VulkanDevice`，创建 offscreen attachments，执行 graphics pass，readback attachment payload | `Scene` + `SceneResourceTable` + Forward render path graph |
+| OfflineRT graph | 执行 compute pass，绑定 scene/material/feature resources，dispatch `standard_pbr_primary_ray.comp`，readback payload | `Scene` + `SceneResourceTable` + BVH derived resource + `RenderInputDesc` |
+| hardware-ray-tracing | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录和 ray program table feature | `SceneResourceTable` + hardware RT feature |
 
-`software-compute` 的 descriptor contract 使用统一 block 名：`SceneVertices`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 `OutputPixels`。这些名字由 shader reflection 测试和 integrator 的 descriptor validation 同时保护。
+OfflineRT 的 descriptor contract 使用统一 block 名：`ScenePositions`、`SceneAttributeStreams`、`SceneAttributeValues`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 output/readback resource。这些名字由 shader reflection、render feature parser、work compiler 和 executor validation 共同保护。
 
 ## 从哪里进入源码
 
@@ -109,6 +110,6 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 - pipeline：`src/backend/vulkan/details/pipelines/`
 - descriptor：`src/backend/vulkan/details/descriptors/`
 - draw 命令：`src/backend/vulkan/details/commands/`
-- offline integrator：`src/backend/vulkan/offline/software_compute_offline_integrator.cpp`
-- offline graph executor：`src/backend/vulkan/offline/offline_render_graph_executor.cpp`
-- offline shader wrapper：`src/backend/vulkan/offline/offline_compute_shader.cpp`
+- offline renderer 编排：`src/backend/vulkan/offline/vulkan_offline_renderer.cpp`
+- unified executor：`src/backend/vulkan/vulkan_frame_graph_executor.cpp`
+- OfflineRT shader：`assets/shaders/glsl/render_paths/OfflineRT/standard_pbr_primary_ray.comp`

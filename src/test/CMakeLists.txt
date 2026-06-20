@@ -95,6 +95,22 @@ set_tests_properties(test_generate_finite_skybox_room PROPERTIES
   LABELS "auto;headless_ok"
 )
 
+if(TARGET lxe_offline_render)
+  add_test(
+    NAME test_offline_rt_cli_smoke
+    COMMAND
+      ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_offline_rt_cli_smoke.py
+      --source-dir ${CMAKE_SOURCE_DIR}
+      --binary-dir ${CMAKE_BINARY_DIR}
+      --renderer $<TARGET_FILE:lxe_offline_render>
+  )
+  set_tests_properties(test_offline_rt_cli_smoke PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    LABELS "auto;headless_ok"
+  )
+endif()
+
 # Shader compiler coverage stays standalone so it can validate shaderc and
 # SPIRV-Cross without linking the full infra/backend libraries.
 add_executable(test_shader_compiler
