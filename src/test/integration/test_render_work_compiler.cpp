@@ -4154,7 +4154,7 @@ void testAttachedMaterialReplacementReleasesOldMaterialTextures() {
          "leaking another object");
 }
 
-void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
+void testLightPropertyChangesDirtyVolatileOnly() {
   auto scene = Scene::create("light_dirty");
   auto lightNode = SceneNode::create("point_light");
   scene->addRenderable(lightNode);
@@ -4175,15 +4175,12 @@ void testLightPropertyChangesDirtyDescriptorSelectionOnly() {
   EXPECT(scene->runtimeNodeGeneration() == beforeRuntime,
          "light property changes should not advance runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
-             beforeSelection + 1,
-         "light property changes should refresh prepared descriptor resource "
-         "selection");
-  EXPECT(scene->resources().descriptorUploadGeneration() ==
-             beforeDescriptor + 1,
-         "light property changes should refresh descriptor upload plans");
-  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile,
-         "point light aggregate updates should not use dirty-host-buffer-only "
-         "generation");
+             beforeSelection,
+         "light property changes should not rebuild render inputs");
+  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor,
+         "light property changes should not rebuild descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile + 1,
+         "light property changes should dirty volatile upload only");
 }
 
 void testLightPassMembershipDirtiesDescriptorSelectionOnly() {
@@ -4250,7 +4247,7 @@ void testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection() {
          "upload plans");
 }
 
-void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
+void testLightNodeTransformDirtiesVolatileOnly() {
   auto scene = Scene::create("light_transform_dirty");
   auto lightNode = SceneNode::create("point_light_transform");
   scene->addRenderable(lightNode);
@@ -4260,17 +4257,19 @@ void testLightNodeTransformDirtiesDescriptorSelectionOnly() {
   const u64 beforeSelection =
       scene->resources().descriptorResourceSelectionGeneration();
   const u64 beforeDescriptor = scene->resources().descriptorUploadGeneration();
+  const u64 beforeVolatile = scene->resources().volatileUploadGeneration();
   lightNode->setTranslation(Vec3f{2.0f, 3.0f, 4.0f});
 
   EXPECT(
       scene->runtimeNodeGeneration() == beforeRuntime,
       "light transform should not advance structural runtime node generation");
   EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
-             beforeSelection + 1,
-         "light transform should refresh aggregate light descriptor selection");
-  EXPECT(scene->resources().descriptorUploadGeneration() ==
-             beforeDescriptor + 1,
-         "light transform should refresh descriptor upload plans");
+             beforeSelection,
+         "light transform should not rebuild render inputs");
+  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor,
+         "light transform should not rebuild descriptor upload plans");
+  EXPECT(scene->resources().volatileUploadGeneration() == beforeVolatile + 1,
+         "light transform should dirty volatile upload only");
 }
 
 void testDirectionalLightNodeTransformRefreshesDirectionalUbo() {
@@ -4347,14 +4346,14 @@ void testParentTransformSyncsDescendantRuntimeResources() {
   EXPECT(
       scene->runtimeNodeGeneration() == beforeRuntime,
       "parent transform should not advance structural runtime node generation");
-  EXPECT(scene->resources().descriptorResourceSelectionGeneration() >
+  EXPECT(scene->resources().descriptorResourceSelectionGeneration() ==
              beforeSelection,
-         "parent transform should refresh descendant object/light descriptor "
-         "selection");
-  EXPECT(scene->resources().descriptorUploadGeneration() > beforeDescriptor,
-         "parent transform should refresh descendant descriptor upload plans");
+         "parent transform should not rebuild descendant object/light "
+         "descriptor selection");
+  EXPECT(scene->resources().descriptorUploadGeneration() == beforeDescriptor,
+         "parent transform should not rebuild descriptor upload plans");
   EXPECT(scene->resources().volatileUploadGeneration() > beforeVolatile,
-         "parent transform should refresh descendant camera UBO data");
+         "parent transform should refresh descendant runtime upload data");
   EXPECT(approxEqual(objectTranslation.x, 4.0f) &&
              approxEqual(objectTranslation.y, 5.0f) &&
              approxEqual(objectTranslation.z, 6.0f),
@@ -4510,10 +4509,10 @@ int main() {
   testAttachedRenderableComponentLifecycleSyncsResources();
   testAttachedMeshReplacementReleasesOldSceneResources();
   testAttachedMaterialReplacementReleasesOldMaterialTextures();
-  testLightPropertyChangesDirtyDescriptorSelectionOnly();
+  testLightPropertyChangesDirtyVolatileOnly();
   testLightPassMembershipDirtiesDescriptorSelectionOnly();
   testDirectionalCascadeRefreshDoesNotDirtyDescriptorSelection();
-  testLightNodeTransformDirtiesDescriptorSelectionOnly();
+  testLightNodeTransformDirtiesVolatileOnly();
   testDirectionalLightNodeTransformRefreshesDirectionalUbo();
   testParentTransformSyncsDescendantRuntimeResources();
   testHierarchyChangeSyncsRuntimeResources();

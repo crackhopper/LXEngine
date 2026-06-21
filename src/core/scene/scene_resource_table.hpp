@@ -375,6 +375,7 @@ public:
   void markBakedResourceDirty();
   void markCameraSelectionDirty();
   void markLightRuntimeDirty();
+  void markLightResourceSelectionDirty();
   [[nodiscard]] RenderSceneSnapshot buildSnapshot() const;
   // Returned spans are backed by this table's cached GPU record storage.
   // The view is valid until the next mutating SceneResourceTable call or the

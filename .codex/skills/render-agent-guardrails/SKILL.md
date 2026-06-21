@@ -75,6 +75,12 @@ Hard constraints:
   differences are target/swapchain/readback plumbing. A visual fix is not done
   until editor and offline/profile paths are checked against the same scene and
   render path semantics.
+- Runtime parameter changes are upload facts, not structural facts. Light
+  transforms/direction/intensity, camera matrices, material parameter values,
+  render-feature runtime values, and other volatile GPU payload updates must not
+  set command metadata `scene.rebuild=true`, rebuild the scene, rebuild the
+  FrameGraph, or recompile render work. They should mark the relevant resource
+  dirty and flow through upload/sync.
 - `src/test` is not a legacy-token exemption zone. Ordinary smoke, command,
   shader, scene-loader, resource, or editor tests that still use old fixtures as
   positive coverage must be migrated or deleted. Only named negative audits may

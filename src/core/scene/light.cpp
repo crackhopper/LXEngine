@@ -106,6 +106,24 @@ void emitLightPropertyChanged(const std::weak_ptr<Scene> &weakScene,
   });
 }
 
+void emitLightResourceSelectionChanged(const std::weak_ptr<Scene> &weakScene,
+                                       const std::weak_ptr<SceneNode> &weakNode) {
+  const auto scene = weakScene.lock();
+  const auto node = weakNode.lock();
+  if (!scene || !node) {
+    return;
+  }
+
+  scene->resources().markLightResourceSelectionDirty();
+  scene->events().emit(SceneEvent{
+      .domain = SceneEventDomain::Runtime,
+      .type = SceneEventType::SceneNodeChanged,
+      .path = node->getPath(),
+      .stableNodeName = node->getNodeName(),
+      .aspects = {SceneNodeAspect::LightProperties},
+  });
+}
+
 template <typename PassRange>
 bool replaceSupportedPasses(std::unordered_set<StringID, StringID::Hash> &dst,
                             const PassRange &passes) {
@@ -463,13 +481,13 @@ BoundingBox DirectionalLight::getDebugLocalBounds() const {
 void DirectionalLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 
 void DirectionalLight::setSupportedPasses(const std::vector<StringID> &passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 
@@ -565,13 +583,13 @@ BoundingBox PointLight::getDebugLocalBounds() const {
 void PointLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 
 void PointLight::setSupportedPasses(const std::vector<StringID> &passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 
@@ -678,13 +696,13 @@ BoundingBox SpotLight::getDebugLocalBounds() const {
 void SpotLight::setSupportedPasses(
     const std::initializer_list<StringID> passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 
 void SpotLight::setSupportedPasses(const std::vector<StringID> &passes) {
   if (replaceSupportedPasses(m_supportedPasses, passes)) {
-    emitLightPropertyChanged();
+    emitLightResourceSelectionChanged(m_scene, m_node);
   }
 }
 

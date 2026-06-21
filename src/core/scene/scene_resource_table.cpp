@@ -1005,6 +1005,10 @@ void SceneResourceTable::markCameraSelectionDirty() {
 }
 
 void SceneResourceTable::markLightRuntimeDirty() {
+  markVolatileUploadDirty();
+}
+
+void SceneResourceTable::markLightResourceSelectionDirty() {
   markDescriptorResourceSelectionDirty();
 }
 

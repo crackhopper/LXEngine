@@ -66,6 +66,12 @@ CommandBus 不直接拥有 `EngineLoop`，所以一些全局副作用由 session
 
 这让 handler 保持局部：它描述“发生了什么”，session 决定这些结果如何作用到主循环。
 
+`scene.rebuild=true` 只能用于结构性变化，例如新增/删除节点、替换会改变 pass 参与或
+资源选择的组件、改变材质 URI 这类会影响 render work 的事实。light transform /
+direction / intensity、camera 矩阵、材质参数值、render feature runtime value 这类
+参数变化只是 runtime/volatile 数据更新，必须通过 dirty resource upload 进入后端，
+不能请求 scene rebuild 或 FrameGraph rebuild。
+
 ## structured JSON 给机器看，message 给人看
 
 `CommandResult` 同时服务 Console 和远程工具：
