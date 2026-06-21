@@ -84,8 +84,6 @@ passes:
       - feature.skybox
       - feature.environmentLighting
       - feature.surfaceLighting
-      - scene.environmentBake
-      - scene.materialIblBake
       - feature.toneMapping
     targets: [hdr.color, depth.main]
     renderState:

@@ -7,6 +7,8 @@ features:
     uri: effects/tone_mapping.render-feature.yaml
   surfaceLighting:
     uri: effects/surface_lighting.render-feature.yaml
+  environmentLighting:
+    uri: effects/environment_lighting.render-feature.yaml
 
 passes:
   - id: Forward
@@ -40,8 +42,7 @@ passes:
       - scene.camera
       - scene.lights
       - feature.surfaceLighting
-      - scene.environmentBake
-      - scene.materialIblBake
+      - feature.environmentLighting
     targets: [hdr.color, depth.main]
     renderState:
       cullMode: Back

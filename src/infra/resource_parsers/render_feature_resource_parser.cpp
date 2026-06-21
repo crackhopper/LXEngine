@@ -241,8 +241,7 @@ parseResourceImplementation(ParsedRenderFeatureResource &result,
 
 bool isIblBakeOutputResourceName(const std::string &name) {
   return name == "diffuse_sh9" || name == "specular_prefilter" ||
-         name == "brdf_lut" || name == "scene.environmentBake" ||
-         name == "scene.materialIblBake";
+         name == "brdf_lut";
 }
 
 bool isSystemOwnedResourceBinding(const std::string &binding) {

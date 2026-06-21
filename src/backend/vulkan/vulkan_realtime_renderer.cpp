@@ -1195,6 +1195,7 @@ bool liveRenderViewSelectionChanged(
   }
   return lhs->visibleMask != rhs->visibleMask ||
          lhs->realtimeRenderPathGraph != rhs->realtimeRenderPathGraph ||
+         lhs->runtimeExtents != rhs->runtimeExtents ||
          lhs->previewEnabled != rhs->previewEnabled ||
          lhs->editorOverlayVisible != rhs->editorOverlayVisible;
 }
@@ -1430,6 +1431,15 @@ public:
     if (m_liveRenderView.has_value()) {
       options.cameraResource = m_liveRenderView->cameraResource;
       options.visibleMask = m_liveRenderView->visibleMask;
+      options.runtimeExtents.reserve(m_liveRenderView->runtimeExtents.size());
+      for (const LX_core::gpu::LiveRenderRuntimeExtent &extent :
+           m_liveRenderView->runtimeExtents) {
+        options.runtimeExtents.push_back(
+            LX_core::RenderWorkBuildContext::RuntimeExtent{
+                .key = extent.key,
+                .extent = extent.extent,
+            });
+      }
     }
     options.passPreparationFacts.reserve(m_basePassPreparationFacts.size() + 1);
     for (const auto &[_, facts] : m_basePassPreparationFacts) {
@@ -2516,6 +2526,12 @@ public:
     m_liveRenderView = LX_core::gpu::LiveRenderView{
         .cameraResource = outputCameraResource,
         .visibleMask = outputCullingMask & ~LX_core::Layer_EditorOverlay,
+        .realtimeRenderPathGraph = output.renderPathGraph.string(),
+        .runtimeExtents =
+            {LX_core::gpu::LiveRenderRuntimeExtent{
+                .key = LX_core::StringID("offline.output.resolution"),
+                .extent = LX_core::Vec3u{output.width, output.height, 1u},
+            }},
     };
     initScene(m_scene);
 
@@ -2579,10 +2595,38 @@ public:
       }
     }
 
-    const auto colorRef = LX_core::FrameGraphResourceRef::colorAttachment(
-        LX_core::StringID("swapchain.color"));
-    const VkFormat colorFormat =
-        toVkFormat(swapchainLikeTarget.colorFormat);
+    LX_core::StringID outputAttachmentName("swapchain.color");
+    VkFormat colorFormat = toVkFormat(swapchainLikeTarget.colorFormat);
+    for (auto passIt = m_frameGraph.getPasses().rbegin();
+         passIt != m_frameGraph.getPasses().rend(); ++passIt) {
+      bool foundReadback = false;
+      for (auto readbackIt = passIt->readbacks.rbegin();
+           readbackIt != passIt->readbacks.rend(); ++readbackIt) {
+        if (readbackIt->kind != LX_core::RenderPathOutputKind::Image2D ||
+            readbackIt->target.empty()) {
+          continue;
+        }
+        outputAttachmentName = LX_core::StringID(readbackIt->target);
+        const auto attachmentIt = std::find_if(
+            passIt->attachments.begin(), passIt->attachments.end(),
+            [&](const LX_core::RenderPathAttachmentContract &attachment) {
+              return !attachment.depth && attachment.target == readbackIt->target;
+            });
+        if (attachmentIt == passIt->attachments.end()) {
+          throw std::runtime_error(
+              "realtime profile readback target attachment is missing: " +
+              readbackIt->target);
+        }
+        colorFormat = toVkFormat(attachmentIt->format);
+        foundReadback = true;
+        break;
+      }
+      if (foundReadback) {
+        break;
+      }
+    }
+    const auto colorRef =
+        LX_core::FrameGraphResourceRef::colorAttachment(outputAttachmentName);
     const VkDeviceSize byteSize =
         dumpByteSize(colorFormat, output.width, output.height);
     auto readback = VulkanBuffer::create(
@@ -2615,7 +2659,7 @@ public:
         colorRef.name);
     if (!colorAttachment.has_value() || !colorAttachment->get().texture) {
       throw std::runtime_error(
-          "realtime profile output did not produce swapchain.color");
+          "realtime profile output did not produce requested color attachment");
     }
     transitionFrameGraphAttachment(
         colorRef, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -2638,9 +2682,16 @@ public:
                                                  device().getGraphicsQueue());
 
     const void *mapped = readback->map();
-    const std::vector<unsigned char> rgba =
-        makeRgbaPixelsFromDump(colorFormat, output.width, output.height,
-                               mapped);
+    std::vector<unsigned char> rgba;
+    std::optional<LX_core::offline::OfflineReadbackImage> linearImage;
+    if (colorFormat == VK_FORMAT_R16G16B16A16_SFLOAT ||
+        colorFormat == VK_FORMAT_R32G32B32A32_SFLOAT) {
+      linearImage = makeRgba32fImageFromDump(colorFormat, output.width,
+                                             output.height, mapped);
+    } else {
+      rgba = makeRgbaPixelsFromDump(colorFormat, output.width, output.height,
+                                    mapped);
+    }
     readback->unmap();
 
     const std::filesystem::path outputDir = basePath.parent_path();
@@ -2658,11 +2709,16 @@ public:
         .width = output.width,
         .height = output.height,
     };
-    LX_infra::image::writeRawRgba8Png(result.cpuSrgbPngPath, output.width,
-                                      output.height, rgba);
+    if (linearImage.has_value()) {
+      LX_infra::image::writeToneMappedPng(result.cpuSrgbPngPath, *linearImage,
+                                          LX_core::image::ToneMappingSettings{});
+    } else {
+      LX_infra::image::writeRawRgba8Png(result.cpuSrgbPngPath, output.width,
+                                        output.height, rgba);
+    }
     writeRealtimeProfileMetadata(
         result.metadataPath, result,
-        "available: direct offscreen swapchain-format readback", debugInfo);
+        "available: realtime profile graph readback", debugInfo);
     return result;
   }
 

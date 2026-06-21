@@ -114,8 +114,7 @@ passes:
       - depth.main
       - feature.toneMapping
       - feature.surfaceLighting
-      - scene.environmentBake
-      - scene.materialIblBake
+      - feature.environmentLighting
     targets: [swapchain.color]
     renderState:
       cullMode: None

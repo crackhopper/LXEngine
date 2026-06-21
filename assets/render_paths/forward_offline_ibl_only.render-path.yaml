@@ -9,6 +9,8 @@ features:
     uri: effects/tone_mapping.render-feature.yaml
   surfaceLighting:
     uri: effects/surface_lighting.render-feature.yaml
+  environmentLighting:
+    uri: effects/footprint_court_environment_lighting.render-feature.yaml
 
 passes:
   - id: Forward
@@ -45,8 +47,7 @@ passes:
       - scene.lights
       - feature.forwardPass
       - feature.surfaceLighting
-      - scene.environmentBake
-      - scene.materialIblBake
+      - feature.environmentLighting
       - feature.toneMapping
     targets: [hdr.color, depth.main]
     readbacks:

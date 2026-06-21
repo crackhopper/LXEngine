@@ -45,8 +45,6 @@ passes:
       - scene.lights
       - feature.forwardPass
       - feature.surfaceLighting
-      - scene.environmentBake
-      - scene.materialIblBake
       - feature.toneMapping
     targets: [hdr.color, depth.main]
     readbacks:

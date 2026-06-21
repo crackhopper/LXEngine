@@ -158,8 +158,6 @@ bool isKnownRenderPathResourceName(const std::string &name) {
       "scene.geometry",
       "scene.materials",
       "scene.textures",
-      "scene.environmentBake",
-      "scene.materialIblBake",
       "shadow.main",
       "hdr.color",
       "depth.main",

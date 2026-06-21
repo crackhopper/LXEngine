@@ -358,15 +358,6 @@ resolvePassFeature(const FramePass &pass, const SceneResourceTable &resources,
   return ResolvedPassFeature{.handle = *handle, .feature = std::cref(feature->get())};
 }
 
-[[nodiscard]] bool passReadsSource(const FramePass &pass,
-                                   std::string_view source) {
-  const StringID sourceId{std::string(source)};
-  return std::any_of(pass.reads.begin(), pass.reads.end(),
-                     [&](const FrameGraphRead &read) {
-                       return read.resource == sourceId;
-                     });
-}
-
 void appendValidResources(DescriptorResourceList &out,
                           std::vector<GpuResourceRef> resources) {
   for (const GpuResourceRef &resource : resources) {
@@ -386,6 +377,7 @@ void appendPassFeatureSceneResources(DescriptorResourceList &out,
     }
     if (*featureName == "environmentLighting") {
       appendValidResources(out, resources.getEnvironmentLightingResources());
+      appendValidResources(out, resources.getIblEnvironmentResources());
     } else if (*featureName == "skybox") {
       const auto feature = resolvePassFeature(pass, resources, *featureName);
       if (feature.has_value()) {
@@ -405,10 +397,6 @@ void appendPassFeatureSceneResources(DescriptorResourceList &out,
     } else if (*featureName == "bloom") {
       appendValidResources(out, resources.getBloomResources());
     }
-  }
-  if (passReadsSource(pass, "scene.environmentBake") ||
-      passReadsSource(pass, "scene.materialIblBake")) {
-    appendValidResources(out, resources.getIblEnvironmentResources());
   }
 }
 
@@ -1691,23 +1679,17 @@ void validateEnvironmentLightingFeatureBindings(
   }
 
   const SceneResourceTable &resources = context.scene().resources();
-  const auto environmentState = resources.environmentRuntimeState();
-  if (!environmentState.has_value() || !environmentState->nodePresent) {
-    reject(desc, RenderInputDiagnosticCode::MissingResource,
-           "feature.environmentLighting requires a scene environment node");
-    return;
-  }
-
-  const auto resolvedFeature = resources.resolve(environmentState->feature);
+  const auto resolvedFeature =
+      resolvePassFeature(pass, resources, "environmentLighting");
   if (!resolvedFeature.has_value()) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.environmentLighting RenderFeature payload is unresolved");
     return;
   }
-  const RenderFeature &feature = resolvedFeature->get();
+  const RenderFeature &feature = resolvedFeature->feature.get();
   if (feature.feature != "environmentLighting") {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
-           "scene environment node RenderFeature payload is not "
+           "feature.environmentLighting RenderFeature payload is not "
            "environmentLighting");
     return;
   }
@@ -1874,15 +1856,10 @@ void validateSurfaceLightingIblBakeSources(
   if (!surfaceLightingIblEnabled(pass, context)) {
     return;
   }
-  if (!passUsesSource(pass, "scene.environmentBake")) {
+  if (!passUsesFeature(pass, "feature.environmentLighting")) {
     reject(desc, RenderInputDiagnosticCode::MissingResource,
            "feature.surfaceLighting enableIblLighting=true requires "
-           "scene.environmentBake source");
-  }
-  if (!passUsesSource(pass, "scene.materialIblBake")) {
-    reject(desc, RenderInputDiagnosticCode::MissingResource,
-           "feature.surfaceLighting enableIblLighting=true requires "
-           "scene.materialIblBake source for standard-pbr");
+           "feature.environmentLighting source");
   }
 }
 

@@ -3,11 +3,21 @@
 #include "core/math/vec.hpp"
 #include "core/platform/types.hpp"
 #include "core/scene/scene_resource_table.hpp"
+#include "core/utils/string_table.hpp"
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace LX_core::gpu {
+
+struct LiveRenderRuntimeExtent final {
+  StringID key;
+  Vec3u extent{1u, 1u, 1u};
+
+  [[nodiscard]] bool operator==(const LiveRenderRuntimeExtent &) const =
+      default;
+};
 
 struct LiveRenderView final {
   std::string cameraPath;
@@ -15,6 +25,7 @@ struct LiveRenderView final {
   VisibilityLayerMask visibleMask = Layer_All & ~Layer_EditorOverlay;
   Vec2f viewportExtent{0.0f, 0.0f};
   std::string realtimeRenderPathGraph;
+  std::vector<LiveRenderRuntimeExtent> runtimeExtents;
   bool previewEnabled = false;
   bool editorOverlayVisible = true;
 };

@@ -1781,8 +1781,6 @@ void testDefaultRenderPathGraphAssetParses() {
     for (const char *source : {"feature.forwardPass", "feature.skybox",
                                "feature.environmentLighting",
                                "feature.surfaceLighting",
-                               "scene.environmentBake",
-                               "scene.materialIblBake",
                                "feature.toneMapping"}) {
       EXPECT(renderPassHasSource(graph.passes[1], source),
              std::string("default Forward pass should consume ") + source);
@@ -1861,8 +1859,7 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
            "until deferred background participates in the lighting pass");
     for (const char *source : {"feature.toneMapping",
                                "feature.surfaceLighting",
-                               "scene.environmentBake",
-                               "scene.materialIblBake"}) {
+                               "feature.environmentLighting"}) {
       EXPECT(renderPassHasSource(graph.passes[2], source),
              std::string("default DeferredLighting pass should consume ") +
                  source);
@@ -1936,8 +1933,7 @@ void testSurfaceLightingRenderPathAssetsDeclareBakeFacts() {
       continue;
     }
     for (const char *source : {"feature.surfaceLighting",
-                               "scene.environmentBake",
-                               "scene.materialIblBake"}) {
+                               "feature.environmentLighting"}) {
       EXPECT(renderPassHasSource(*pass, source),
              std::string(asset.path) + " " + asset.featurePass +
                  " should consume " + source);
@@ -1954,6 +1950,8 @@ renderPath: Forward
 features:
   surfaceLighting:
     uri: assets/effects/surface_lighting.render-feature.yaml
+  environmentLighting:
+    uri: assets/effects/environment_lighting.render-feature.yaml
 passes:
   - id: Forward
     stage: raster
@@ -1968,7 +1966,7 @@ passes:
           format: RGBA16Float
           samples: 1
           layers: 1
-    sources: [feature.surfaceLighting, scene.environmentBake, scene.materialIblBake]
+    sources: [feature.surfaceLighting, feature.environmentLighting]
     targets: [hdr.color]
     renderState:
       cullMode: None
@@ -1988,7 +1986,7 @@ passes:
           format: BGRA8Srgb
           samples: 1
           layers: 1
-    sources: [hdr.color, feature.surfaceLighting, scene.environmentBake, scene.materialIblBake]
+    sources: [hdr.color, feature.surfaceLighting, feature.environmentLighting]
     targets: [swapchain.color]
     renderState:
       cullMode: None
@@ -2006,9 +2004,10 @@ passes:
     return;
   }
   const auto &graph = *parsed.renderPathGraph;
-  EXPECT(graph.features.size() == 1 &&
+  EXPECT(graph.features.size() == 2 &&
              graph.features.front().slot == "surfaceLighting",
-         "graph should retain one surfaceLighting feature dependency");
+         "graph should retain surfaceLighting and environmentLighting feature "
+         "dependencies");
   EXPECT(graph.passes.size() == 2,
          "graph should retain Forward and DeferredLighting passes");
   if (graph.passes.size() == 2) {
@@ -2016,10 +2015,8 @@ passes:
       EXPECT(std::find(pass.sources.begin(), pass.sources.end(),
                        "feature.surfaceLighting") != pass.sources.end(),
              pass.id + " should consume feature.surfaceLighting");
-      EXPECT(renderPassHasSource(pass, "scene.environmentBake"),
-             pass.id + " should consume scene.environmentBake");
-      EXPECT(renderPassHasSource(pass, "scene.materialIblBake"),
-             pass.id + " should consume scene.materialIblBake");
+      EXPECT(renderPassHasSource(pass, "feature.environmentLighting"),
+             pass.id + " should consume feature.environmentLighting");
     }
   }
   const LX_core::FrameGraph frameGraph =

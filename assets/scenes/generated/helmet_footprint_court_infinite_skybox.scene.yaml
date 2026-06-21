@@ -113,18 +113,6 @@ root:
         shadowStrength: 1.0
         shadowDistance: 80.0
         shadowCascadeCount: 1
-    - nodeName: footprint_court_environment
-      name: footprint_court_environment
-      transform:
-        translation: [0.0, 0.0, 0.0]
-        rotation: [1.0, 0.0, 0.0, 0.0]
-        scale: [1.0, 1.0, 1.0]
-      visibilityMask: 4294967295
-      environment:
-        feature:
-          uri: assets/effects/footprint_court_environment_lighting.render-feature.yaml
-        bake:
-          enabled: true
     - nodeName: footprint_court_infinite_skybox
       name: footprint_court_infinite_skybox
       transform:
