@@ -548,21 +548,34 @@ const SceneRuntime &LxeEditorSession::runtime() const { return m_runtime; }
 
 std::optional<LX_core::gpu::LiveRenderView>
 LxeEditorSession::buildLiveRenderView() const {
-  if (!m_runtime.scene()) {
+  return buildLiveRenderViewForRuntime(m_runtime);
+}
+
+std::optional<LX_core::gpu::LiveRenderView>
+LxeEditorSession::buildLiveRenderViewForRuntime(
+    const SceneRuntime &runtime) const {
+  if (!runtime.scene()) {
     return std::nullopt;
   }
 
   const auto editorView = LX_editor::buildEditorRenderView(
-      m_editorState, *m_runtime.scene(), m_windowSize);
+      m_editorState, *runtime.scene(), m_windowSize);
   if (!editorView.has_value()) {
     return std::nullopt;
+  }
+  std::string renderPathGraph;
+  if (m_realtimeRenderPathGraphOverride.has_value()) {
+    renderPathGraph = *m_realtimeRenderPathGraphOverride;
+  } else if (const auto sceneGraph =
+                 runtime.document().editorRealtimeRenderPathGraph()) {
+    renderPathGraph = *sceneGraph;
   }
   return LX_core::gpu::LiveRenderView{
       .cameraPath = editorView->cameraPath,
       .cameraResource = editorView->cameraResource,
       .visibleMask = editorView->visibleMask,
       .viewportExtent = editorView->viewportExtent,
-      .realtimeRenderPathGraph = effectiveRealtimeRenderPathGraph(),
+      .realtimeRenderPathGraph = std::move(renderPathGraph),
       .previewEnabled = editorView->previewEnabled,
       .editorOverlayVisible = editorView->editorOverlayVisible};
 }
@@ -705,19 +718,19 @@ std::string LxeEditorSession::effectiveRealtimeRenderPathGraph() const {
   if (!m_runtime.scene()) {
     return {};
   }
-  const auto sceneDefault =
+  const auto sceneGraph =
       m_runtime.document().editorRealtimeRenderPathGraph();
-  return sceneDefault.value_or(std::string{});
+  return sceneGraph.value_or(std::string{});
 }
 
 LX_core::CommandResult
 LxeEditorSession::handleRenderPathCommand(
     const std::vector<std::string> &args) {
   if (args.size() != 1u) {
-    return makeCommandError("usage: render-path status|default|<uri>");
+    return makeCommandError("usage: render-path status|scene|<uri>");
   }
 
-  const auto sceneDefault =
+  const auto sceneGraph =
       m_runtime.scene() ? m_runtime.document().editorRealtimeRenderPathGraph()
                         : std::nullopt;
   const auto statusJson = [&]() {
@@ -731,9 +744,9 @@ LxeEditorSession::handleRenderPathCommand(
     } else {
       structured << "null";
     }
-    structured << ",\"sceneDefault\":";
-    if (sceneDefault.has_value()) {
-      structured << "\"" << jsonEscape(*sceneDefault) << "\"";
+    structured << ",\"sceneGraph\":";
+    if (sceneGraph.has_value()) {
+      structured << "\"" << jsonEscape(*sceneGraph) << "\"";
     } else {
       structured << "null";
     }
@@ -746,9 +759,9 @@ LxeEditorSession::handleRenderPathCommand(
                              effectiveRealtimeRenderPathGraph(),
                          statusJson());
   }
-  if (args[0] == "default") {
+  if (args[0] == "scene") {
     m_realtimeRenderPathGraphOverride.reset();
-    return makeCommandOk("realtime render path override cleared",
+    return makeCommandOk("realtime render path reset to scene graph",
                          statusJson());
   }
 
@@ -789,11 +802,11 @@ void LxeEditorSession::flushPendingSceneOpen(LX_core::gpu::EngineLoop &loop) {
       }
       nextRuntime.loadFromDocumentPath(*nextScenePath);
     }
-    loop.startScene(nextRuntime.scene());
+    loop.startScene(nextRuntime.scene(),
+                    buildLiveRenderViewForRuntime(nextRuntime));
   } catch (const std::exception &error) {
     try {
-      loop.startScene(m_runtime.scene());
-      loop.setLiveRenderView(buildLiveRenderView());
+      loop.startScene(m_runtime.scene(), buildLiveRenderView());
     } catch (const std::exception &restoreError) {
       if (m_consolePanel) {
         m_consolePanel->appendSystemLine(

@@ -113,6 +113,8 @@ public:
   [[nodiscard]] const SceneRuntime &runtime() const;
   [[nodiscard]] std::optional<LX_core::gpu::LiveRenderView>
   buildLiveRenderView() const;
+  [[nodiscard]] std::optional<LX_core::gpu::LiveRenderView>
+  buildLiveRenderViewForRuntime(const SceneRuntime &runtime) const;
   [[nodiscard]] std::optional<std::string> currentProjectId() const;
   [[nodiscard]] std::optional<std::string> currentProjectDisplayName() const;
   [[nodiscard]] std::optional<std::string> currentProjectActiveScene() const;

@@ -127,7 +127,7 @@ root:
         bake:
           enabled: false
 editor:
-  realtimeRenderPathGraph: assets/render_paths/helmet_skybox_forward_ibl.render-path.yaml
+  realtimeRenderPathGraph: assets/render_paths/helmet_skybox_forward_editor.render-path.yaml
   editorCamera:
     position: [4.4693, 0.706849, 1.23665]
     rotationEulerDeg: [-8.02275, 73.8241, 0.0]

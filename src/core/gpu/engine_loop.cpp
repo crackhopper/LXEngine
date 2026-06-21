@@ -18,13 +18,16 @@ void EngineLoop::initialize(WindowSharedPtr window, RendererSharedPtr renderer) 
   DebugDraw::reset();
 }
 
-void EngineLoop::startScene(SceneSharedPtr scene) {
+void EngineLoop::startScene(SceneSharedPtr scene,
+                            std::optional<LiveRenderView> liveRenderView) {
   validateInitialized();
   m_scene = std::move(scene);
+  m_liveRenderView = std::move(liveRenderView);
   if (!m_scene) {
     throw std::runtime_error("EngineLoop::startScene requires a valid scene");
   }
   DebugDraw::attachScene(m_scene);
+  m_renderer->setLiveRenderView(m_liveRenderView);
   m_renderer->initScene(m_scene);
   m_renderer->setLiveRenderView(m_liveRenderView);
   m_rebuildRequested = false;

@@ -63,15 +63,6 @@
 namespace {
 constexpr const char *kBloomBlurHShaderName = "render_paths/Post/bloom_blur_h";
 constexpr const char *kBloomBlurVShaderName = "render_paths/Post/bloom_blur_v";
-constexpr const char *kDefaultForwardRenderPathGraphAsset =
-    "assets/render_paths/forward_main.render-path.yaml";
-constexpr const char *kDefaultForwardBloomRenderPathGraphAsset =
-    "assets/render_paths/forward_main.render-path.yaml";
-constexpr const char *kDefaultDeferredRenderPathGraphAsset =
-    "assets/render_paths/deferred_main.render-path.yaml";
-constexpr const char *kDefaultDeferredBloomRenderPathGraphAsset =
-    "assets/render_paths/deferred_bloom.render-path.yaml";
-
 bool strictBindlessValidationEnabled() {
   return expEnvEnabled("LXE_STRICT_BINDLESS_VALIDATION");
 }
@@ -1884,33 +1875,19 @@ public:
       const bool hasViewSelectedGraph =
           m_liveRenderView.has_value() &&
           !m_liveRenderView->realtimeRenderPathGraph.empty();
+      if (!hasViewSelectedGraph) {
+        throw std::runtime_error(
+            "Realtime Deferred rendering requires "
+            "scene.editor.realtimeRenderPathGraph");
+      }
       const std::string deferredGraphAsset =
-          hasViewSelectedGraph
-              ? m_liveRenderView->realtimeRenderPathGraph
-              : (m_postProcessSettings.bloomEnabled
-                     ? kDefaultDeferredBloomRenderPathGraphAsset
-                     : kDefaultDeferredRenderPathGraphAsset);
+          m_liveRenderView->realtimeRenderPathGraph;
       const LX_core::RenderPathGraph deferredRenderPathGraph =
           loadRenderPathGraphAsset(*m_scene, deferredGraphAsset,
                                    LX_core::RenderPath::Deferred);
       applyToneMappingFeatureSettings(m_scene->resources(),
                                       deferredRenderPathGraph,
                                       m_postProcessSettings);
-      if (!hasViewSelectedGraph) {
-        const std::vector<LX_core::StringID> deferredPasses =
-            m_postProcessSettings.bloomEnabled
-                ? std::vector<LX_core::StringID>{LX_core::Pass_Shadow,
-                                                 LX_core::Pass_Deferred,
-                                                 LX_core::Pass_DeferredLighting,
-                                                 LX_core::Pass_DebugOverlay}
-                : std::vector<LX_core::StringID>{
-                      LX_core::Pass_Shadow, LX_core::Pass_Deferred,
-                      LX_core::Pass_DeferredLighting,
-                      LX_core::Pass_DebugOverlay};
-        LX_core::validateRenderPathGraphPassSet(deferredRenderPathGraph,
-                                                deferredPasses,
-                                                deferredPasses);
-      }
       resolveMaterialSourceVariantsOrThrow(
           *m_scene, deferredRenderPathGraph,
           LX_core::ResourceUri(deferredGraphAsset));
@@ -1928,25 +1905,19 @@ public:
       const bool hasViewSelectedGraph =
           m_liveRenderView.has_value() &&
           !m_liveRenderView->realtimeRenderPathGraph.empty();
+      if (!hasViewSelectedGraph) {
+        throw std::runtime_error(
+            "Realtime Forward rendering requires "
+            "scene.editor.realtimeRenderPathGraph");
+      }
       const std::string forwardGraphAsset =
-          hasViewSelectedGraph
-              ? m_liveRenderView->realtimeRenderPathGraph
-              : (m_postProcessSettings.bloomEnabled
-                     ? kDefaultForwardBloomRenderPathGraphAsset
-                     : kDefaultForwardRenderPathGraphAsset);
+          m_liveRenderView->realtimeRenderPathGraph;
       const LX_core::RenderPathGraph forwardRenderPathGraph =
           loadRenderPathGraphAsset(*m_scene, forwardGraphAsset,
                                    LX_core::RenderPath::Forward);
       applyToneMappingFeatureSettings(m_scene->resources(),
                                       forwardRenderPathGraph,
                                       m_postProcessSettings);
-      if (!hasViewSelectedGraph) {
-        const std::vector<LX_core::StringID> forwardPasses{
-            LX_core::Pass_Shadow, LX_core::Pass_Forward, LX_core::Pass_Bloom,
-            LX_core::Pass_DebugOverlay};
-        LX_core::validateRenderPathGraphPassSet(forwardRenderPathGraph,
-                                                forwardPasses, forwardPasses);
-      }
       resolveMaterialSourceVariantsOrThrow(
           *m_scene, forwardRenderPathGraph,
           LX_core::ResourceUri(forwardGraphAsset));

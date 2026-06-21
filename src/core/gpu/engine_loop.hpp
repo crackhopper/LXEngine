@@ -14,7 +14,8 @@ public:
   using UpdateHook = std::function<void(Scene &, const Clock &)>;
 
   void initialize(WindowSharedPtr window, RendererSharedPtr renderer);
-  void startScene(SceneSharedPtr scene);
+  void startScene(SceneSharedPtr scene,
+                  std::optional<LiveRenderView> liveRenderView = std::nullopt);
   void setLiveRenderView(std::optional<LiveRenderView> view);
   [[nodiscard]] LiveRenderSubmissionStats liveRenderSubmissionStats() const;
   void setUpdateHook(UpdateHook hook);

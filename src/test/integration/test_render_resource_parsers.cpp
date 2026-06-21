@@ -22,6 +22,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <vector>
 
 #ifndef LXE_SOURCE_DIR
 #define LXE_SOURCE_DIR ""
@@ -59,6 +60,16 @@ bool renderPathGraphHasPass(const LX_core::RenderPathGraph &graph,
   return std::any_of(
       graph.passes.begin(), graph.passes.end(),
       [&](const LX_core::RenderPassNode &pass) { return pass.id == passId; });
+}
+
+bool renderPathGraphWritesTarget(const LX_core::RenderPathGraph &graph,
+                                 const std::string &target) {
+  return std::any_of(
+      graph.passes.begin(), graph.passes.end(),
+      [&](const LX_core::RenderPassNode &pass) {
+        return std::find(pass.targets.begin(), pass.targets.end(), target) !=
+               pass.targets.end();
+      });
 }
 
 class FakeShader final : public LX_core::IShader {
@@ -3812,6 +3823,55 @@ editor:
          "scene editor render path graph should round-trip through save");
 }
 
+void testGeneratedSceneEditorRenderPathGraphsAreLiveSwapchainGraphs() {
+  struct ExpectedScene final {
+    const char *scenePath;
+    bool requiresEnvironmentLighting;
+  };
+  const ExpectedScene scenes[] = {
+      {"assets/scenes/generated/helmet_standard_pbr.scene.yaml", true},
+      {"assets/scenes/generated/helmet_footprint_court_finite_box.scene.yaml",
+       true},
+      {"assets/scenes/generated/helmet_footprint_court_infinite_skybox.scene.yaml",
+       true},
+  };
+
+  LX_infra::RenderPathGraphResourceParser parser;
+  for (const ExpectedScene &expected : scenes) {
+    const auto document =
+        LX_infra::scene_io::loadSceneDocument(expected.scenePath);
+    const auto graphUri = document.editorRealtimeRenderPathGraph();
+    EXPECT(graphUri.has_value(),
+           std::string(expected.scenePath) +
+               " should declare editor.realtimeRenderPathGraph");
+    if (!graphUri.has_value()) {
+      continue;
+    }
+
+    const auto parsed = parser.parse(*graphUri, readTextFile(*graphUri));
+    EXPECT(parsed.renderPathGraph.has_value(),
+           std::string(expected.scenePath) +
+               " editor render path graph should parse");
+    EXPECT(parsed.diagnostics.empty(),
+           std::string(expected.scenePath) +
+               " editor render path graph should not emit diagnostics");
+    if (!parsed.renderPathGraph.has_value()) {
+      continue;
+    }
+
+    const LX_core::RenderPathGraph &graph = *parsed.renderPathGraph;
+    EXPECT(renderPathGraphWritesTarget(graph, "swapchain.color"),
+           std::string(expected.scenePath) +
+               " editor render path graph must write swapchain.color; "
+               "export/readback-only graphs are not valid live editor graphs");
+    if (expected.requiresEnvironmentLighting) {
+      EXPECT(renderPathGraphHasFeature(graph, "environmentLighting"),
+             std::string(expected.scenePath) +
+                 " editor render path graph should keep surface IBL enabled");
+    }
+  }
+}
+
 void testSceneDocumentRejectsUnknownEditorField() {
   expectThrowsContaining(
       []() {
@@ -4365,6 +4425,7 @@ int main() {
   testDefaultRenderPathGraphAssetsResolveLiveShaderPayloads();
   testSceneDocumentParsesEnvironmentNodeAndBakeMarkers();
   testSceneDocumentParsesEditorRealtimeRenderPathGraph();
+  testGeneratedSceneEditorRenderPathGraphsAreLiveSwapchainGraphs();
   testSceneDocumentRejectsUnknownEditorField();
   testOfflineSceneLoaderRegistersEnvironmentNodeFeatureFromFileUri();
   testOfflineSceneLoaderResolvesCacheEnvironmentFeatureUri();

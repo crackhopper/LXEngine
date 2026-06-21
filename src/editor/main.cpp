@@ -1247,7 +1247,7 @@ int main(int argc, char **argv) {
     LX_core::DebugDraw::setMaterialProvider([] {
       return createDebugOverlayMaterial();
     });
-    loop.startScene(session.scene());
+    loop.startScene(session.scene(), session.buildLiveRenderView());
 
     ui.attachClock(loop.getClock());
 
