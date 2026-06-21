@@ -9,7 +9,7 @@ scene:
     skyboxEnabled: false
   rendering:
     shadows: false
-  defaultOutputProfile: forward_no_ibl
+  defaultOutputProfile: forward_ibl
   outputProfiles:
     forward_no_ibl:
       camera: /game_cam
@@ -108,19 +108,8 @@ root:
           uri: assets/scenes/generated/finite_room/test_neutral_room.obj
         material:
           uri: assets/scenes/generated/finite_room/test_neutral_room_unlit.material
-    - nodeName: neutral_environment
-      name: neutral_environment
-      transform:
-        translation: [0.0, 0.0, 0.0]
-        rotation: [1.0, 0.0, 0.0, 0.0]
-        scale: [1.0, 1.0, 1.0]
-      visibilityMask: 4294967295
-      environment:
-        feature:
-          uri: assets/effects/environment_lighting.render-feature.yaml
-        bake:
-          enabled: true
 editor:
+  realtimeRenderPathGraph: assets/render_paths/helmet_standard_pbr_forward_editor.render-path.yaml
   editorCamera:
     position: [4.4693, 0.706849, 1.23665]
     rotationEulerDeg: [-8.02275, 73.8241, 0.0]

@@ -21,7 +21,7 @@ scene:
       backgroundColor: [0.0, 0.0, 0.0]
     forward-IBL:
       camera: /game_cam
-      renderPathGraph: assets/render_paths/forward_offline_direct_ibl.render-path.yaml
+      renderPathGraph: assets/render_paths/helmet_footprint_finite_forward_ibl.render-path.yaml
       width: 960
       height: 540
       outputFormat: exr-png
