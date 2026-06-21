@@ -49,6 +49,32 @@ Hard constraints:
 - Remove superseded legacy implementation and tests in the same slice. If a
   legacy test remains only as a negative audit, rename/comment it so it clearly
   proves rejection rather than preserving old behavior.
+- Scene authoring, RenderPathGraph authoring, and RenderFeature authoring are
+  separate contracts. Do not satisfy a missing graph/feature dependency by
+  injecting scene nodes, duplicating skybox/environment nodes, or adding
+  filename/path-based C++ branches.
+- Finite skybox nodes are ordinary scene geometry with ordinary material
+  binding. Infinite skyboxes are graph/render-feature background effects and
+  ray-miss resources. Do not special-case finite skybox materials in code.
+- IBL lighting and visible skybox background are independent. A render path may
+  show an infinite skybox background without surface IBL only when the graph
+  explicitly omits `feature.environmentLighting`; do not infer IBL from a
+  skybox node or remove IBL from an editor graph without explicit intent.
+- Batching mode is a contract, not a performance hint. Raster
+  `batching.mode: material` must group by material source/layout and bind the
+  matching shader variant plus matching source-material storage. Raster shaders
+  must not read a mixed-layout global source-material array. `batching.mode:
+  all` is only valid when the shader defines a uniform runtime-dispatch ABI
+  such as OfflineRT ray hit tables/material records.
+- Ray visibility belongs in ray program data such as hit shader table entries
+  and derived primitive flags. Do not fix shadow, miss, or visibility problems
+  by checking scene node names, material names, mesh paths, or skybox modes in
+  backend/shader code.
+- Editor realtime, realtime profile render, and offline render must consume the
+  same RenderPathGraph/FrameGraph/RenderWorkCompiler facts. The only accepted
+  differences are target/swapchain/readback plumbing. A visual fix is not done
+  until editor and offline/profile paths are checked against the same scene and
+  render path semantics.
 - `src/test` is not a legacy-token exemption zone. Ordinary smoke, command,
   shader, scene-loader, resource, or editor tests that still use old fixtures as
   positive coverage must be migrated or deleted. Only named negative audits may
@@ -97,6 +123,11 @@ When evaluating an agent result, lead with findings:
 | Test integrity | Tests check only source strings or positive examples, not behavior-breaking negative cases |
 | Payload truth | A dependency is considered ready from metadata alone without a live typed payload |
 | Build hygiene | Touched targets pass but emit new warnings that hide ownership, lifetime, or handle bugs |
+| Skybox boundary | Finite skybox is handled by special-case material/texture code, or infinite skybox is represented by duplicate geometry nodes |
+| IBL/background coupling | A graph shows skybox but silently drops/adds surface IBL, or editor uses a no-IBL graph where the scene/profile expects IBL |
+| Batching/layout mismatch | A raster material batch binds source-material records from a different material source layout, or `all` batching is used without a shader-side runtime dispatch table |
+| Ray visibility special-case | A finite skybox or unlit material is skipped for shadows by node/path/material-name checks instead of a hit table / primitive flag contract |
+| Parity gap | A fix is verified only in offline/profile render while editor live uses a different graph, or vice versa |
 
 ## Task Template
 

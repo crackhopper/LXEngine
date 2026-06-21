@@ -1,7 +1,7 @@
 #include "core/frame_graph/render_work_compiler.hpp"
 
-#include "core/asset/mesh.hpp"
 #include "core/asset/material_instance.hpp"
+#include "core/asset/mesh.hpp"
 #include "core/asset/texture.hpp"
 #include "core/frame_graph/pass.hpp"
 #include "core/frame_graph/render_feature_derived_resource_producer.hpp"
@@ -214,9 +214,9 @@ std::vector<std::byte> zeroBytes(usize byteSize) {
   return std::vector<std::byte>(byteSize);
 }
 
-[[nodiscard]] GpuResourceRef addComputeStorageResource(
-    const SceneResourceTable &resources, StringID bindingName,
-    std::vector<std::byte> bytes) {
+[[nodiscard]] GpuResourceRef
+addComputeStorageResource(const SceneResourceTable &resources,
+                          StringID bindingName, std::vector<std::byte> bytes) {
   return resources.addRenderGpuResource(
       std::make_unique<ComputeStorageBufferResource>(bindingName,
                                                      std::move(bytes)));
@@ -323,11 +323,11 @@ featureNameFromGraphResource(StringID resource) {
 
 [[nodiscard]] const RenderPathFeatureDependency *
 findPassFeatureDependency(const FramePass &pass, std::string_view featureName) {
-  const auto it = std::find_if(
-      pass.features.begin(), pass.features.end(),
-      [&](const RenderPathFeatureDependency &dependency) {
-        return dependency.slot == featureName;
-      });
+  const auto it =
+      std::find_if(pass.features.begin(), pass.features.end(),
+                   [&](const RenderPathFeatureDependency &dependency) {
+                     return dependency.slot == featureName;
+                   });
   return it == pass.features.end() ? nullptr : &*it;
 }
 
@@ -355,7 +355,8 @@ resolvePassFeature(const FramePass &pass, const SceneResourceTable &resources,
   if (feature->get().feature != featureName) {
     return std::nullopt;
   }
-  return ResolvedPassFeature{.handle = *handle, .feature = std::cref(feature->get())};
+  return ResolvedPassFeature{.handle = *handle,
+                             .feature = std::cref(feature->get())};
 }
 
 void appendValidResources(DescriptorResourceList &out,
@@ -492,7 +493,8 @@ void appendDerivedFeatureResourcesForPass(const FramePass &pass,
       continue;
     }
 
-    for (const auto &[resourceName, resource] : feature->feature.get().resources) {
+    for (const auto &[resourceName, resource] :
+         feature->feature.get().resources) {
       std::string diagnostic;
       const auto result = RenderFeatureDerivedResourceProducerRegistry::build(
           RenderFeatureDerivedResourceRequest{
@@ -945,8 +947,9 @@ offlineOutputExtent(const RenderWorkBuildContext &context,
   return extent;
 }
 
-[[nodiscard]] u32 parseU32RuntimeFeatureValue(
-    const RenderWorkBuildContext &context, StringID key, u32 fallback) {
+[[nodiscard]] u32
+parseU32RuntimeFeatureValue(const RenderWorkBuildContext &context, StringID key,
+                            u32 fallback) {
   const auto value = context.findFeatureValue(key);
   if (!value.has_value()) {
     return fallback;
@@ -958,8 +961,8 @@ offlineOutputExtent(const RenderWorkBuildContext &context,
   }
 }
 
-[[nodiscard]] u32 parseCompareModeRuntimeFeatureValue(
-    const RenderWorkBuildContext &context) {
+[[nodiscard]] u32
+parseCompareModeRuntimeFeatureValue(const RenderWorkBuildContext &context) {
   const auto value = context.findFeatureValue(
       StringID("feature.offlineRayTracer.compareMode"));
   if (!value.has_value()) {
@@ -1008,10 +1011,10 @@ findFirstDirectionalLight(const SceneResourceTable &resources) {
   return {};
 }
 
-[[nodiscard]] SceneGpuFrameParams makeOfflineFrameParams(
-    const RenderWorkBuildContext &context,
-    const SceneResourceTableUploadView &uploadView, Vec3u extent,
-    const DescriptorResourceRef *bvhNodes) {
+[[nodiscard]] SceneGpuFrameParams
+makeOfflineFrameParams(const RenderWorkBuildContext &context,
+                       const SceneResourceTableUploadView &uploadView,
+                       Vec3u extent, const DescriptorResourceRef *bvhNodes) {
   const SceneResourceTable &resources = context.resourceTable();
   const auto camera = findActiveCamera(resources);
   CameraRayFrame rayFrame;
@@ -1030,11 +1033,10 @@ findFirstDirectionalLight(const SceneResourceTable &resources) {
   params.cameraRight =
       Vec4f{rayFrame.right.x, rayFrame.right.y, rayFrame.right.z, 0.0f};
   params.cameraUp = Vec4f{rayFrame.up.x, rayFrame.up.y, rayFrame.up.z, 0.0f};
-  params.cameraForward = Vec4f{rayFrame.forward.x, rayFrame.forward.y,
-                               rayFrame.forward.z, 0.0f};
-  params.lightDirectionIntensity =
-      Vec4f{light.direction.x, light.direction.y, light.direction.z,
-            light.intensity};
+  params.cameraForward =
+      Vec4f{rayFrame.forward.x, rayFrame.forward.y, rayFrame.forward.z, 0.0f};
+  params.lightDirectionIntensity = Vec4f{light.direction.x, light.direction.y,
+                                         light.direction.z, light.intensity};
   params.lightColorEnvironment =
       Vec4f{light.color.x, light.color.y, light.color.z, 0.0f};
   const Vec3f background = context.options().outputBackgroundColor;
@@ -1049,14 +1051,12 @@ findFirstDirectionalLight(const SceneResourceTable &resources) {
   params.primitiveCount = static_cast<u32>(uploadView.primitives.size());
   if (bvhNodes != nullptr && bvhNodes->isResource() &&
       bvhNodes->resource().isValid()) {
-    params.bvhNodeCount =
-        bvhNodes->resource().get().getByteSize() /
-        static_cast<u32>(sizeof(SceneSoftwareBvhNode));
+    params.bvhNodeCount = bvhNodes->resource().get().getByteSize() /
+                          static_cast<u32>(sizeof(SceneSoftwareBvhNode));
   }
-  params.materialCount =
-      uploadView.materialRefs.empty()
-          ? static_cast<u32>(uploadView.materials.size())
-          : static_cast<u32>(uploadView.materialRefs.size());
+  params.materialCount = uploadView.materialRefs.empty()
+                             ? static_cast<u32>(uploadView.materials.size())
+                             : static_cast<u32>(uploadView.materialRefs.size());
   params.maxBounce = parseU32RuntimeFeatureValue(
       context, StringID("feature.offlineRayTracer.maxBounce"), 1u);
   params.shadowsEnabled = context.scene().renderSettings().shadows ? 1u : 0u;
@@ -1105,22 +1105,24 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
   if (!context.hasScene()) {
     return;
   }
-  const bool needsOfflineSceneResource = std::any_of(
-      desc.pipelineBuildDesc.bindings.begin(), desc.pipelineBuildDesc.bindings.end(),
-      [](const ShaderResourceBinding &binding) {
-        return binding.name == "ScenePositions" ||
-               binding.name == "SceneAttributeStreams" ||
-               binding.name == "SceneAttributeValues" ||
-               binding.name == "SceneIndices" || binding.name == "SceneMeshes" ||
-               binding.name == "ScenePrimitives" ||
-               binding.name == "SceneObjects" ||
-               binding.name == "SceneMaterials" ||
-               binding.name == "SceneMaterialRefs" ||
-               binding.name == "SceneSourceMaterialRecords" ||
-               binding.name == "SceneFrameParams" ||
-               binding.name == "OutputPixels" ||
-               binding.name == "SceneTextures";
-      });
+  const bool needsOfflineSceneResource =
+      std::any_of(desc.pipelineBuildDesc.bindings.begin(),
+                  desc.pipelineBuildDesc.bindings.end(),
+                  [](const ShaderResourceBinding &binding) {
+                    return binding.name == "ScenePositions" ||
+                           binding.name == "SceneAttributeStreams" ||
+                           binding.name == "SceneAttributeValues" ||
+                           binding.name == "SceneIndices" ||
+                           binding.name == "SceneMeshes" ||
+                           binding.name == "ScenePrimitives" ||
+                           binding.name == "SceneObjects" ||
+                           binding.name == "SceneMaterials" ||
+                           binding.name == "SceneMaterialRefs" ||
+                           binding.name == "SceneSourceMaterialRecords" ||
+                           binding.name == "SceneFrameParams" ||
+                           binding.name == "OutputPixels" ||
+                           binding.name == "SceneTextures";
+                  });
   if (!needsOfflineSceneResource) {
     return;
   }
@@ -1150,10 +1152,9 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
                           copyBytes(uploadView.materials));
   appendStorageIfConsumed(desc, resources, StringID("SceneMaterialRefs"),
                           copyBytes(uploadView.materialRefs));
-  appendStorageIfConsumed(desc, resources,
-                          StringID("SceneSourceMaterialRecords"),
-                          copySourceMaterialRecordBytes(
-                              uploadView.sourceMaterialRecords));
+  appendStorageIfConsumed(
+      desc, resources, StringID("SceneSourceMaterialRecords"),
+      copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords));
 
   if (shaderConsumesBinding(desc, StringID("SceneFrameParams")) &&
       !descAlreadyHasDescriptor(desc, StringID("SceneFrameParams"))) {
@@ -1176,7 +1177,8 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
   if (shaderConsumesBinding(desc, StringID("SceneTextures")) &&
       !descAlreadyHasDescriptor(desc, StringID("SceneTextures"))) {
     try {
-      appendDescriptor(desc, makeSceneTextureArray(resources, uploadView.textures));
+      appendDescriptor(desc,
+                       makeSceneTextureArray(resources, uploadView.textures));
     } catch (const std::exception &error) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
              std::string("OfflineRT SceneTextures resource failed: ") +
@@ -1185,14 +1187,15 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
   }
 }
 
-[[nodiscard]] u32 sourceStorageIndexForMaterial(
-    const SceneResourceTableUploadView &uploadView, MaterialHandle handle) {
-  const auto it = std::find_if(
-      uploadView.materialRefIndexByHandle.begin(),
-      uploadView.materialRefIndexByHandle.end(),
-      [handle](const SceneResourceMaterialRefUploadIndex &entry) {
-        return entry.handle == handle;
-      });
+[[nodiscard]] u32
+sourceStorageIndexForMaterial(const SceneResourceTableUploadView &uploadView,
+                              MaterialHandle handle) {
+  const auto it =
+      std::find_if(uploadView.materialRefIndexByHandle.begin(),
+                   uploadView.materialRefIndexByHandle.end(),
+                   [handle](const SceneResourceMaterialRefUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
   if (it == uploadView.materialRefIndexByHandle.end() ||
       it->typedIndex >= uploadView.materialRefs.size()) {
     return u32_max;
@@ -1200,14 +1203,15 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
   return uploadView.materialRefs[it->typedIndex].sourceStorageIndex;
 }
 
-[[nodiscard]] u32 primitiveIndexForParticipant(
-    const SceneResourceTableUploadView &uploadView,
-    const RenderSceneParticipant &participant) {
-  const auto objectIt = std::find_if(
-      uploadView.objectIndexByHandle.begin(), uploadView.objectIndexByHandle.end(),
-      [&participant](const SceneResourceObjectUploadIndex &entry) {
-        return entry.handle == participant.object;
-      });
+[[nodiscard]] u32
+primitiveIndexForParticipant(const SceneResourceTableUploadView &uploadView,
+                             const RenderSceneParticipant &participant) {
+  const auto objectIt =
+      std::find_if(uploadView.objectIndexByHandle.begin(),
+                   uploadView.objectIndexByHandle.end(),
+                   [&participant](const SceneResourceObjectUploadIndex &entry) {
+                     return entry.handle == participant.object;
+                   });
   if (objectIt == uploadView.objectIndexByHandle.end()) {
     return u32_max;
   }
@@ -1236,23 +1240,24 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
   return u32_max;
 }
 
-[[nodiscard]] u32 materialRecordIndexForHandle(
-    const SceneResourceTableUploadView &uploadView, MaterialHandle handle) {
-  const auto refIt = std::find_if(
-      uploadView.materialRefIndexByHandle.begin(),
-      uploadView.materialRefIndexByHandle.end(),
-      [handle](const SceneResourceMaterialRefUploadIndex &entry) {
-        return entry.handle == handle;
-      });
+[[nodiscard]] u32
+materialRecordIndexForHandle(const SceneResourceTableUploadView &uploadView,
+                             MaterialHandle handle) {
+  const auto refIt =
+      std::find_if(uploadView.materialRefIndexByHandle.begin(),
+                   uploadView.materialRefIndexByHandle.end(),
+                   [handle](const SceneResourceMaterialRefUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
   if (refIt != uploadView.materialRefIndexByHandle.end()) {
     return refIt->typedIndex;
   }
-  const auto materialIt = std::find_if(
-      uploadView.materialIndexByHandle.begin(),
-      uploadView.materialIndexByHandle.end(),
-      [handle](const SceneResourceMaterialUploadIndex &entry) {
-        return entry.handle == handle;
-      });
+  const auto materialIt =
+      std::find_if(uploadView.materialIndexByHandle.begin(),
+                   uploadView.materialIndexByHandle.end(),
+                   [handle](const SceneResourceMaterialUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
   return materialIt == uploadView.materialIndexByHandle.end()
              ? u32_max
              : materialIt->typedIndex;
@@ -1260,7 +1265,7 @@ void appendOfflineComputeSceneResources(const FramePass &pass,
 
 [[nodiscard]] std::optional<std::reference_wrapper<const PrimitiveHitShader>>
 findPrimitiveHitShader(const RayProgramTable &table, u32 participantIndex,
-                      u32 primitiveIndex) {
+                       u32 primitiveIndex) {
   const auto it = std::find_if(
       table.primitiveHitShaders.begin(), table.primitiveHitShaders.end(),
       [participantIndex, primitiveIndex](const PrimitiveHitShader &group) {
@@ -1274,12 +1279,13 @@ findPrimitiveHitShader(const RayProgramTable &table, u32 participantIndex,
 }
 
 [[nodiscard]] std::vector<RayPrimitiveHitShaderRecord>
-buildRayPrimitiveHitShaderRecords(const SceneResourceTableUploadView &uploadView,
-                                 const RenderComputeInput &compute,
-                                 const RayProgramTable &table) {
+buildRayPrimitiveHitShaderRecords(
+    const SceneResourceTableUploadView &uploadView,
+    const RenderComputeInput &compute, const RayProgramTable &table) {
   std::vector<RayPrimitiveHitShaderRecord> originalRecords(
       uploadView.primitives.size());
-  for (u32 participantIndex = 0; participantIndex < compute.sceneParticipants.size();
+  for (u32 participantIndex = 0;
+       participantIndex < compute.sceneParticipants.size();
        ++participantIndex) {
     const RenderSceneParticipant &participant =
         compute.sceneParticipants[participantIndex];
@@ -1291,20 +1297,25 @@ buildRayPrimitiveHitShaderRecords(const SceneResourceTableUploadView &uploadView
         participantHitShader.has_value()
             ? participantHitShader->get().hitShaderIndex
             : 0u;
+    const u32 participantFlags = !participantHitShader.has_value() ||
+                                         participantHitShader->get().castsShadow
+                                     ? 1u
+                                     : 0u;
     u32 localPrimitiveIndex = 0;
     for (;;) {
-      const u32 primitiveIndex =
-          primitiveIndexForParticipant(uploadView, RenderSceneParticipant{
-                                                       .object = participant.object,
-                                                       .mesh = participant.mesh,
-                                                       .material = participant.material,
-                                                       .primitiveIndex = localPrimitiveIndex});
+      const u32 primitiveIndex = primitiveIndexForParticipant(
+          uploadView,
+          RenderSceneParticipant{.object = participant.object,
+                                 .mesh = participant.mesh,
+                                 .material = participant.material,
+                                 .primitiveIndex = localPrimitiveIndex});
       if (primitiveIndex == u32_max) {
         break;
       }
       originalRecords[primitiveIndex] = RayPrimitiveHitShaderRecord{
           .hitShaderIndex = participantHitShaderIndex,
           .materialIndex = materialIndex == u32_max ? 0u : materialIndex,
+          .flags = participantFlags,
       };
       ++localPrimitiveIndex;
     }
@@ -1324,11 +1335,11 @@ buildRayPrimitiveHitShaderRecords(const SceneResourceTableUploadView &uploadView
   return records;
 }
 
-[[nodiscard]] u32 textureSlotForMaterialParameter(
-    const SceneResourceTable &resources,
-    const SceneResourceTableUploadView &uploadView,
-    const MaterialInstance &material, std::string_view parameterName,
-    u32 fallback) {
+[[nodiscard]] u32
+textureSlotForMaterialParameter(const SceneResourceTable &resources,
+                                const SceneResourceTableUploadView &uploadView,
+                                const MaterialInstance &material,
+                                std::string_view parameterName, u32 fallback) {
   const StringID parameterId{std::string(parameterName)};
   TextureHandle handle = material.getTextureHandle(parameterId);
   if (!handle.isValid()) {
@@ -1346,13 +1357,14 @@ buildRayPrimitiveHitShaderRecords(const SceneResourceTableUploadView &uploadView
   if (!handle.isValid()) {
     return fallback;
   }
-  const auto it = std::find_if(
-      uploadView.textureIndexByHandle.begin(), uploadView.textureIndexByHandle.end(),
-      [handle](const SceneResourceTextureUploadIndex &entry) {
-        return entry.handle == handle;
-      });
+  const auto it =
+      std::find_if(uploadView.textureIndexByHandle.begin(),
+                   uploadView.textureIndexByHandle.end(),
+                   [handle](const SceneResourceTextureUploadIndex &entry) {
+                     return entry.handle == handle;
+                   });
   return it == uploadView.textureIndexByHandle.end() ? fallback
-                                                      : it->typedIndex;
+                                                     : it->typedIndex;
 }
 
 [[nodiscard]] std::vector<RayMaterialRecord>
@@ -1362,7 +1374,8 @@ buildRayMaterialRecords(const SceneResourceTable &resources,
                         const RayProgramTable &table) {
   std::vector<RayMaterialRecord> records(
       std::max(uploadView.materialRefs.size(), uploadView.materials.size()));
-  for (u32 participantIndex = 0; participantIndex < compute.sceneParticipants.size();
+  for (u32 participantIndex = 0;
+       participantIndex < compute.sceneParticipants.size();
        ++participantIndex) {
     const RenderSceneParticipant &participant =
         compute.sceneParticipants[participantIndex];
@@ -1375,8 +1388,7 @@ buildRayMaterialRecords(const SceneResourceTable &resources,
     if (!material.has_value()) {
       continue;
     }
-    const auto hitShader =
-        findPrimitiveHitShader(table, participantIndex, 0u);
+    const auto hitShader = findPrimitiveHitShader(table, participantIndex, 0u);
     const u32 hitShaderIndex =
         hitShader.has_value() ? hitShader->get().hitShaderIndex : 0u;
     RayMaterialRecord record;
@@ -1384,9 +1396,9 @@ buildRayMaterialRecords(const SceneResourceTable &resources,
     const u32 white = textureSlotForMaterialParameter(
         resources, uploadView, material->get(), "baseColorTexture", 0u);
     record.baseColorTexture = white;
-    record.metallicRoughnessTexture = textureSlotForMaterialParameter(
-        resources, uploadView, material->get(), "metallicRoughnessTexture",
-        white);
+    record.metallicRoughnessTexture =
+        textureSlotForMaterialParameter(resources, uploadView, material->get(),
+                                        "metallicRoughnessTexture", white);
     record.normalTexture = textureSlotForMaterialParameter(
         resources, uploadView, material->get(), "normalTexture", white);
     record.occlusionTexture = textureSlotForMaterialParameter(
@@ -1433,15 +1445,15 @@ void appendRayProgramResources(const RenderWorkBuildContext &context,
       !descAlreadyHasDescriptor(desc, StringID("RayPrimitiveHitShaders"))) {
     const auto records = buildRayPrimitiveHitShaderRecords(
         uploadView, compute, *desc.rayProgramTable);
-    appendStorageIfConsumed(desc, resources, StringID("RayPrimitiveHitShaders"),
-                            copyBytes(std::span<const RayPrimitiveHitShaderRecord>(
-                                records.data(), records.size())));
+    appendStorageIfConsumed(
+        desc, resources, StringID("RayPrimitiveHitShaders"),
+        copyBytes(std::span<const RayPrimitiveHitShaderRecord>(
+            records.data(), records.size())));
   }
   if (shaderConsumesBinding(desc, StringID("RayMaterialRecords")) &&
       !descAlreadyHasDescriptor(desc, StringID("RayMaterialRecords"))) {
-    const auto records =
-        buildRayMaterialRecords(resources, uploadView, compute,
-                                *desc.rayProgramTable);
+    const auto records = buildRayMaterialRecords(resources, uploadView, compute,
+                                                 *desc.rayProgramTable);
     appendStorageIfConsumed(desc, resources, StringID("RayMaterialRecords"),
                             copyBytes(std::span<const RayMaterialRecord>(
                                 records.data(), records.size())));
@@ -1548,8 +1560,8 @@ void resolveReadbackContracts(const FramePass &pass,
         context.findRuntimeExtent(StringID(contract.extentFrom));
     if (!extent.has_value()) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
-             "readback '" + contract.name +
-                 "' requires runtime extent '" + contract.extentFrom + "'");
+             "readback '" + contract.name + "' requires runtime extent '" +
+                 contract.extentFrom + "'");
       continue;
     }
 
@@ -1562,8 +1574,8 @@ void resolveReadbackContracts(const FramePass &pass,
         .kind = contract.kind,
         .mediaType = contract.mediaType,
         .extent = *extent,
-        .resource = descriptor != nullptr ? descriptor->resource()
-                                          : GpuResourceRef{},
+        .resource =
+            descriptor != nullptr ? descriptor->resource() : GpuResourceRef{},
     });
   }
 }
@@ -1815,13 +1827,14 @@ void validateSurfaceLightingFeatureRead(const FramePass &pass,
   return parameter.value == "true" || parameter.value == "1";
 }
 
-[[nodiscard]] bool volatileFeatureBoolValue(
-    const RenderFeatureVolatileValue &value) {
+[[nodiscard]] bool
+volatileFeatureBoolValue(const RenderFeatureVolatileValue &value) {
   return value.value == "true" || value.value == "1";
 }
 
-[[nodiscard]] bool surfaceLightingIblEnabled(
-    const FramePass &pass, const RenderWorkBuildContext &context) {
+[[nodiscard]] bool
+surfaceLightingIblEnabled(const FramePass &pass,
+                          const RenderWorkBuildContext &context) {
   const auto runtimeValue = context.findFeatureValue(
       StringID("feature.surfaceLighting.enableIblLighting"));
   if (runtimeValue.has_value()) {
@@ -1886,7 +1899,7 @@ findPassHitShaderTableFeature(const FramePass &pass,
 
 [[nodiscard]] std::optional<std::reference_wrapper<const RayHitShaderProgram>>
 findHitShaderProgram(const RayProgramTable &table, StringID materialType,
-                    const ResourceUri &uri) {
+                     const ResourceUri &uri) {
   const std::string materialTypeText = stringIdText(materialType);
   const auto it = std::find_if(
       table.hitShaders.begin(), table.hitShaders.end(),
@@ -1896,8 +1909,7 @@ findHitShaderProgram(const RayProgramTable &table, StringID materialType,
         const bool materialTypeMatches =
             materialTypeText == hitShaderMaterialType ||
             materialTypeText.rfind(hitShaderMaterialType + "-", 0) == 0;
-        return materialTypeMatches &&
-               program.uri == uri;
+        return materialTypeMatches && program.uri == uri;
       });
   if (it == table.hitShaders.end()) {
     return std::nullopt;
@@ -1938,6 +1950,7 @@ void buildRayProgramTable(const FramePass &pass,
         .materialType = StringID(entry.materialType),
         .uri = entry.uri,
         .function = entry.function,
+        .castsShadow = entry.castsShadow,
     });
   }
 
@@ -1961,9 +1974,8 @@ void buildRayProgramTable(const FramePass &pass,
              "standard-pbr material is missing hit.radiance.uri");
       continue;
     }
-    const auto program =
-        findHitShaderProgram(table, participant.materialTypeSignature,
-                            hitUri->get());
+    const auto program = findHitShaderProgram(
+        table, participant.materialTypeSignature, hitUri->get());
     if (!program.has_value()) {
       reject(desc, RenderInputDiagnosticCode::MissingResource,
              "material hit.radiance.uri is not present in hitShaderTable");
@@ -1975,6 +1987,7 @@ void buildRayProgramTable(const FramePass &pass,
                               ? 0u
                               : participant.primitiveIndex,
         .hitShaderIndex = program->get().hitShaderIndex,
+        .castsShadow = program->get().castsShadow,
     });
   }
 
@@ -2046,8 +2059,9 @@ void rejectFatalPipelineFacts(RenderInputDesc &desc) {
       });
 }
 
-[[nodiscard]] bool materialTypeAllowed(const RenderSceneParticipant &participant,
-                                       const FramePass &pass) {
+[[nodiscard]] bool
+materialTypeAllowed(const RenderSceneParticipant &participant,
+                    const FramePass &pass) {
   if (pass.input.material.types.empty()) {
     return true;
   }
@@ -2151,11 +2165,12 @@ resolveVisibleMask(const Scene &scene, const FramePass &pass,
   }
   const SceneResourceTableUploadView uploadView =
       scene.resources().buildUploadView();
-  const auto objectIt = std::find_if(
-      uploadView.objectIndexByHandle.begin(), uploadView.objectIndexByHandle.end(),
-      [object](const SceneResourceObjectUploadIndex &entry) {
-        return entry.handle == object;
-      });
+  const auto objectIt =
+      std::find_if(uploadView.objectIndexByHandle.begin(),
+                   uploadView.objectIndexByHandle.end(),
+                   [object](const SceneResourceObjectUploadIndex &entry) {
+                     return entry.handle == object;
+                   });
   if (objectIt == uploadView.objectIndexByHandle.end()) {
     return 0u;
   }
@@ -2236,8 +2251,9 @@ void fillRawRenderableResources(const IRenderable &renderable,
   }
 }
 
-[[nodiscard]] StringID materialTypeSignatureFor(
-    const MaterialInstance &material, const RenderState &renderState) {
+[[nodiscard]] StringID
+materialTypeSignatureFor(const MaterialInstance &material,
+                         const RenderState &renderState) {
   const std::string &bsdfType = material.getBsdfType();
   const std::string normalizedType =
       (bsdfType.empty() ? std::string("<unspecified>") : bsdfType) + "-" +
@@ -2286,9 +2302,9 @@ selectResourceTableParticipants(const FramePass &pass,
 
     RenderSceneParticipant participant;
     participant.sourceRenderableIndex = static_cast<u32>(objectIndex);
-    participant.debugId =
-        object->get().debugId.id != 0 ? object->get().debugId
-                                      : StringID("offline.object");
+    participant.debugId = object->get().debugId.id != 0
+                              ? object->get().debugId
+                              : StringID("offline.object");
     participant.object = objectHandle;
     participant.mesh = object->get().mesh;
     participant.material = object->get().material;
@@ -2314,9 +2330,8 @@ selectResourceTableParticipants(const FramePass &pass,
       });
     }
 
-    if (applyInputFilters &&
-        (!objectClassAllowed(participant, pass) ||
-         !materialTypeAllowed(participant, pass))) {
+    if (applyInputFilters && (!objectClassAllowed(participant, pass) ||
+                              !materialTypeAllowed(participant, pass))) {
       continue;
     }
     participants.push_back(std::move(participant));
@@ -2342,8 +2357,7 @@ selectSceneParticipants(const FramePass &pass,
                         const RenderWorkBuildContext &context,
                         bool applyInputFilters) {
   if (!context.hasScene()) {
-    throw std::logic_error(
-        "RenderWorkCompiler scene input requires a scene");
+    throw std::logic_error("RenderWorkCompiler scene input requires a scene");
   }
 
   const Scene &scene = context.scene();
@@ -2390,9 +2404,8 @@ selectSceneParticipants(const FramePass &pass,
       fillSceneDrawCommand(scene, data, participant);
     }
 
-    if (applyInputFilters &&
-        (!objectClassAllowed(participant, pass) ||
-         !materialTypeAllowed(participant, pass))) {
+    if (applyInputFilters && (!objectClassAllowed(participant, pass) ||
+                              !materialTypeAllowed(participant, pass))) {
       continue;
     }
     participants.push_back(std::move(participant));
@@ -2433,8 +2446,8 @@ void appendParticipantToDrawInput(const RenderSceneParticipant &participant,
                            participant.drawCommands.end());
 }
 
-[[nodiscard]] bool computeInputRequestsSceneParticipants(
-    const RenderPassInputContract &input) {
+[[nodiscard]] bool
+computeInputRequestsSceneParticipants(const RenderPassInputContract &input) {
   return !input.object.renderClasses.empty() || !input.material.types.empty() ||
          !input.material.required || input.geometry.has_value();
 }
@@ -2654,17 +2667,13 @@ void RenderWorkCompiler::buildInputs(
       const auto extent =
           context.findRuntimeExtent(StringID(pass.compute->dispatchFrom));
       if (extent.has_value()) {
-        compute->groupCountX =
-            ceilDiv(extent->x, pass.compute->localSize.x);
-        compute->groupCountY =
-            ceilDiv(extent->y, pass.compute->localSize.y);
-        compute->groupCountZ =
-            ceilDiv(extent->z, pass.compute->localSize.z);
+        compute->groupCountX = ceilDiv(extent->x, pass.compute->localSize.x);
+        compute->groupCountY = ceilDiv(extent->y, pass.compute->localSize.y);
+        compute->groupCountZ = ceilDiv(extent->z, pass.compute->localSize.z);
       }
     }
     if (computeInputRequestsSceneParticipants(pass.input)) {
-      compute->sceneParticipants =
-          selectSceneParticipants(pass, context, true);
+      compute->sceneParticipants = selectSceneParticipants(pass, context, true);
     }
     outInputs.push_back(std::move(compute));
     return;

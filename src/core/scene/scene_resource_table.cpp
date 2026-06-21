@@ -166,8 +166,8 @@ DescriptorResourceRef makeRealtimeSceneTextureArray(
       return static_cast<u16>(sign | 0x7c00u);
     }
   }
-  return static_cast<u16>(
-      sign | (static_cast<u32>(exponent) << 10u) | (mantissa >> 13u));
+  return static_cast<u16>(sign | (static_cast<u32>(exponent) << 10u) |
+                          (mantissa >> 13u));
 }
 
 void writeHalfLe(std::vector<u8> &bytes, usize offset, float value) {
@@ -259,8 +259,8 @@ makeDiffuseShFromRadianceCubemap(const Texture &texture) {
     sum.y += halfBitsToFloat(readHalfLe(bytes + offset + 2u));
     sum.z += halfBitsToFloat(readHalfLe(bytes + offset + 4u));
   }
-  const float invCount = pixelCount > 0u ? 1.0f / static_cast<float>(pixelCount)
-                                         : 0.0f;
+  const float invCount =
+      pixelCount > 0u ? 1.0f / static_cast<float>(pixelCount) : 0.0f;
   payload.coefficients[0] =
       Vec3f{sum.x * invCount, sum.y * invCount, sum.z * invCount};
   return payload;
@@ -2499,8 +2499,8 @@ GpuResourceRef SceneResourceTable::upsertRealtimeSceneStorageResource(
     }
     auto *storage = dynamic_cast<SceneStorageBufferResource *>(resource.get());
     if (storage == nullptr || storage->getByteSize() != bytes.size()) {
-      resource = std::make_unique<SceneStorageBufferResource>(
-          bindingName, std::move(bytes));
+      resource = std::make_unique<SceneStorageBufferResource>(bindingName,
+                                                              std::move(bytes));
     } else {
       storage->updateBytes(std::move(bytes));
     }
@@ -2515,9 +2515,8 @@ GpuResourceRef SceneResourceTable::upsertRealtimeSceneStorageResource(
 
 void SceneResourceTable::refreshRealtimeScenePayloadResources(
     const SceneResourceTableUploadView &uploadView, bool forceAll) const {
-  const bool updateObjects =
-      forceAll || m_realtimeSceneObjectsPayloadDirty ||
-      m_realtimeSceneDescriptorPayloadsDirty;
+  const bool updateObjects = forceAll || m_realtimeSceneObjectsPayloadDirty ||
+                             m_realtimeSceneDescriptorPayloadsDirty;
   const bool updateDescriptorPayloads =
       forceAll || m_realtimeSceneDescriptorPayloadsDirty;
 
@@ -2530,11 +2529,9 @@ void SceneResourceTable::refreshRealtimeScenePayloadResources(
                                              copyBytes(uploadView.materials));
     (void)upsertRealtimeSceneStorageResource(
         StringID("SceneMaterialRefs"), copyBytes(uploadView.materialRefs));
-    (void)upsertRealtimeSceneStorageResource(
-        StringID("SceneSourceMaterialRecords"),
-        copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords));
     (void)upsertRealtimeSceneStorageResource(StringID("SceneDraws"),
                                              copyBytes(uploadView.draws));
+    m_realtimeSourceMaterialStorageResources.clear();
   }
 
   if (updateObjects) {
@@ -2543,6 +2540,65 @@ void SceneResourceTable::refreshRealtimeScenePayloadResources(
   if (updateDescriptorPayloads) {
     m_realtimeSceneDescriptorPayloadsDirty = false;
   }
+}
+
+GpuResourceRef
+SceneResourceTable::getRealtimeSceneSourceMaterialRecordsResource(
+    MaterialHandle material) const {
+  const SceneResourceTableUploadView uploadView = buildUploadView();
+  const auto materialRefIt = std::find_if(
+      uploadView.materialRefIndexByHandle.begin(),
+      uploadView.materialRefIndexByHandle.end(),
+      [material](const SceneResourceMaterialRefUploadIndex &entry) {
+        return entry.handle == material;
+      });
+  if (materialRefIt == uploadView.materialRefIndexByHandle.end() ||
+      materialRefIt->typedIndex >= uploadView.materialRefs.size()) {
+    return {};
+  }
+
+  const SceneGpuMaterialRefRecord &materialRef =
+      uploadView.materialRefs[materialRefIt->typedIndex];
+  if (materialRef.sourceStorageIndex >=
+      uploadView.sourceMaterialStorages.size()) {
+    return {};
+  }
+
+  const SceneSourceLocalMaterialStorageView &storage =
+      uploadView.sourceMaterialStorages[materialRef.sourceStorageIndex];
+  if (storage.recordOffset + storage.recordCount >
+      uploadView.sourceMaterialRecords.size()) {
+    return {};
+  }
+
+  std::vector<std::byte> bytes =
+      copySourceMaterialRecordBytes(uploadView.sourceMaterialRecords.subspan(
+          storage.recordOffset, storage.recordCount));
+
+  for (RealtimeSourceMaterialStorageResource &entry :
+       m_realtimeSourceMaterialStorageResources) {
+    if (entry.sourceStorageIndex != materialRef.sourceStorageIndex ||
+        !entry.resource) {
+      continue;
+    }
+    auto *buffer =
+        dynamic_cast<SceneStorageBufferResource *>(entry.resource.get());
+    if (buffer == nullptr || buffer->getByteSize() != bytes.size()) {
+      entry.resource = std::make_unique<SceneStorageBufferResource>(
+          StringID("SceneSourceMaterialRecords"), std::move(bytes));
+    } else {
+      buffer->updateBytes(std::move(bytes));
+    }
+    return GpuResourceRef{*entry.resource};
+  }
+
+  RealtimeSourceMaterialStorageResource next;
+  next.sourceStorageIndex = materialRef.sourceStorageIndex;
+  next.resource = std::make_unique<SceneStorageBufferResource>(
+      StringID("SceneSourceMaterialRecords"), std::move(bytes));
+  m_realtimeSourceMaterialStorageResources.push_back(std::move(next));
+  return GpuResourceRef{
+      *m_realtimeSourceMaterialStorageResources.back().resource};
 }
 
 DescriptorResourceList
@@ -2643,11 +2699,10 @@ void SceneResourceTable::updateSurfaceLightingIblReadiness() {
   bool environmentReady = false;
   bool standardPbrReady = false;
   if (m_activeIblEnvironment.has_value()) {
-    environmentReady = m_activeIblEnvironment->diffuseSh.isValid() &&
-                       m_activeIblEnvironment->specularPrefilteredCubemap
-                           .isValid();
-    standardPbrReady =
-        m_activeIblEnvironment->standardPbrBrdfLut.isValid();
+    environmentReady =
+        m_activeIblEnvironment->diffuseSh.isValid() &&
+        m_activeIblEnvironment->specularPrefilteredCubemap.isValid();
+    standardPbrReady = m_activeIblEnvironment->standardPbrBrdfLut.isValid();
   }
 
   bool changed = false;
@@ -2660,9 +2715,9 @@ void SceneResourceTable::updateSurfaceLightingIblReadiness() {
         (param.standardPbrIblReady != 0u) == standardPbrReady) {
       continue;
     }
-    resource.ubo->set(param.enableIblLighting != 0u,
-                      param.diffuseIblIntensity, param.specularIblIntensity,
-                      environmentReady, standardPbrReady);
+    resource.ubo->set(param.enableIblLighting != 0u, param.diffuseIblIntensity,
+                      param.specularIblIntensity, environmentReady,
+                      standardPbrReady);
     changed = true;
   }
   if (changed) {
@@ -2779,8 +2834,7 @@ SceneResourceTable::getIblEnvironmentResources() const {
     }
     const auto brdf =
         resolveConst<IblTexturePayloadResource, StandardPbrBrdfLutHandle>(
-            m_standardPbrBrdfLuts,
-            m_activeIblEnvironment->standardPbrBrdfLut);
+            m_standardPbrBrdfLuts, m_activeIblEnvironment->standardPbrBrdfLut);
     if (brdf.has_value() && brdf->get().sampler) {
       out.emplace_back(*brdf->get().sampler);
     }
@@ -2896,11 +2950,10 @@ SceneResourceTable::getSkyboxResources(RenderFeatureHandle feature) const {
   if (!feature.isValid()) {
     return out;
   }
-  auto it =
-      std::find_if(m_skyboxResources.begin(), m_skyboxResources.end(),
-                   [feature](const SkyboxFeatureResource &resource) {
-                     return resource.feature == feature;
-                   });
+  auto it = std::find_if(m_skyboxResources.begin(), m_skyboxResources.end(),
+                         [feature](const SkyboxFeatureResource &resource) {
+                           return resource.feature == feature;
+                         });
   if (it == m_skyboxResources.end()) {
     const auto resolved = resolve(feature);
     if (!resolved.has_value() || resolved->get().feature != "skybox") {
@@ -2933,11 +2986,10 @@ SceneResourceTable::getSkyboxResources(RenderFeatureHandle feature) const {
     const auto *color = findFeatureParameter(featurePayload, "color");
     const auto *intensity = findFeatureParameter(featurePayload, "intensity");
     const auto *rotation = findFeatureParameter(featurePayload, "rotation");
-    ubo->set(
-        color != nullptr ? parseFeatureVec3(*color)
-                         : Vec3f{1.0f, 1.0f, 1.0f},
-        intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
-        rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
+    ubo->set(color != nullptr ? parseFeatureVec3(*color)
+                              : Vec3f{1.0f, 1.0f, 1.0f},
+             intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
+             rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
 
     m_skyboxResources.push_back(SkyboxFeatureResource{
         .feature = feature,
@@ -2955,9 +3007,9 @@ SceneResourceTable::getSkyboxResources(RenderFeatureHandle feature) const {
   return out;
 }
 
-std::unique_ptr<SurfaceLightingData> makeSurfaceLightingResource(
-    const RenderFeature &feature, bool environmentReady,
-    bool standardPbrReady) {
+std::unique_ptr<SurfaceLightingData>
+makeSurfaceLightingResource(const RenderFeature &feature, bool environmentReady,
+                            bool standardPbrReady) {
   if (feature.feature != "surfaceLighting") {
     return nullptr;
   }
@@ -2985,8 +3037,7 @@ std::unique_ptr<SurfaceLightingData> makeSurfaceLightingResource(
   return ubo;
 }
 
-std::vector<GpuResourceRef>
-SceneResourceTable::getSurfaceLightingResources(
+std::vector<GpuResourceRef> SceneResourceTable::getSurfaceLightingResources(
     RenderFeatureHandle feature) const {
   if (!feature.isValid()) {
     return {};
@@ -4016,18 +4067,10 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     return static_cast<u32>(m_gpuSourceMaterialStorages.size() - 1u);
   };
 
-  struct PendingMaterialRefPatch final {
-    u32 materialRefIndex = u32_max;
-    u32 sourceStorageIndex = u32_max;
-    u32 sourceLocalMaterialIndex = u32_max;
-  };
-  std::vector<PendingMaterialRefPatch> pendingMaterialRefPatches;
-
   const auto ensureMaterialRecord =
       [this, &materialIndexToGpuRecord, &defaultTextureSlots,
        &textureSlotForUri, &textureHandleForMaterialParameter,
-       &ensureSourceStorage, &sourceMaterialRecordsByStorage,
-       &pendingMaterialRefPatches](
+       &ensureSourceStorage, &sourceMaterialRecordsByStorage](
           MaterialHandle handle) -> MaterialUploadRecordIndex {
     if (!isAlive(handle)) {
       return {};
@@ -4091,11 +4134,6 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
               .typedIndex = compact.materialRefIndex,
           });
       m_gpuMaterialRefs.push_back(SceneGpuMaterialRefRecord{
-          .sourceStorageIndex = sourceStorageIndex,
-          .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
-      });
-      pendingMaterialRefPatches.push_back(PendingMaterialRefPatch{
-          .materialRefIndex = compact.materialRefIndex,
           .sourceStorageIndex = sourceStorageIndex,
           .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
       });
@@ -4171,10 +4209,9 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
       primitiveRecord.indexOffset =
           meshRecord.indexOffset + triangleIndexOffset;
       primitiveRecord.meshIndex = meshRecordIndex;
-      primitiveRecord.materialIndex =
-          materialRecord.materialRefIndex != u32_max
-              ? materialRecord.materialRefIndex
-              : materialRecord.materialIndex;
+      primitiveRecord.materialIndex = materialRecord.materialRefIndex != u32_max
+                                          ? materialRecord.materialRefIndex
+                                          : materialRecord.materialIndex;
       primitiveRecord.objectIndex = objectRecordIndex;
       m_gpuPrimitives.push_back(primitiveRecord);
     }
@@ -4189,17 +4226,6 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     storage.recordCount = static_cast<u32>(records.size());
     m_gpuSourceMaterialRecords.insert(m_gpuSourceMaterialRecords.end(),
                                       records.begin(), records.end());
-  }
-
-  for (const PendingMaterialRefPatch &patch : pendingMaterialRefPatches) {
-    if (patch.materialRefIndex >= m_gpuMaterialRefs.size() ||
-        patch.sourceStorageIndex >= m_gpuSourceMaterialStorages.size()) {
-      continue;
-    }
-    const SceneSourceLocalMaterialStorageView &storage =
-        m_gpuSourceMaterialStorages[patch.sourceStorageIndex];
-    m_gpuMaterialRefs[patch.materialRefIndex].sourceLocalMaterialIndex =
-        storage.recordOffset + patch.sourceLocalMaterialIndex;
   }
 
   return makeView();

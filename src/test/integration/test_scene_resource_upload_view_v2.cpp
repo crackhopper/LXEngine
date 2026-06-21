@@ -2,6 +2,7 @@
 #include "core/asset/material_instance.hpp"
 #include "core/asset/mesh.hpp"
 #include "core/asset/render_effect.hpp"
+#include "core/frame_graph/scene_descriptor_resource_resolver.hpp"
 #include "core/resource/resource_metadata.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/ibl_bake_manifest.hpp"
@@ -488,7 +489,8 @@ void testRepeatedEnvironmentFeatureRegistrationReusesActiveIblResources() {
   EXPECT(firstHandle.isValid(), "environment lighting feature should register");
   const std::optional<ActiveIblEnvironmentResources> firstActive =
       table.activeIblEnvironment();
-  EXPECT(firstActive.has_value(), "textureCube environment should activate IBL");
+  EXPECT(firstActive.has_value(),
+         "textureCube environment should activate IBL");
   const u64 firstFeatureGeneration = table.featureGeneration();
 
   const RenderFeatureHandle secondHandle = table.registerRenderFeature(
@@ -622,14 +624,12 @@ void testIblDescriptorResourcesUseActiveBakePayloadsWhenActiveIblExists() {
 
   const std::vector<GpuResourceRef> resources =
       table.getIblEnvironmentResources();
-  const auto findBinding = [&](StringID bindingName)
-      -> const GpuResourceRef * {
-    const auto it =
-        std::find_if(resources.begin(), resources.end(),
-                     [&](const GpuResourceRef &resource) {
-                       return resource.isValid() &&
-                              resource.getBindingName() == bindingName;
-                     });
+  const auto findBinding = [&](StringID bindingName) -> const GpuResourceRef * {
+    const auto it = std::find_if(
+        resources.begin(), resources.end(),
+        [&](const GpuResourceRef &resource) {
+          return resource.isValid() && resource.getBindingName() == bindingName;
+        });
     return it == resources.end() ? nullptr : &*it;
   };
 
@@ -797,8 +797,8 @@ void testSceneLevelResourcesLeaveIblFallbacksToPassFeatureReads() {
                        });
   };
 
-  const DescriptorResourceList deferredResources = scene.getSceneLevelResources(
-      Pass_DeferredLighting, RenderTarget{});
+  const DescriptorResourceList deferredResources =
+      scene.getSceneLevelResources(Pass_DeferredLighting, RenderTarget{});
   EXPECT(!hasSamplerBinding(deferredResources, StringID("IrradianceMap")),
          "scene-level resources should leave IrradianceMap fallback to pass "
          "feature reads");
@@ -883,8 +883,9 @@ void testLiveCameraSceneLevelResourcesReuseStableCameraUbo() {
       secondCameraUbo != nullptr ? secondCameraUbo->getBackendCacheIdentity()
                                  : 0;
 
-  EXPECT(firstIdentity != 0 && secondIdentity == firstIdentity,
-         "live camera updates should reuse the same CameraUBO resource identity");
+  EXPECT(
+      firstIdentity != 0 && secondIdentity == firstIdentity,
+      "live camera updates should reuse the same CameraUBO resource identity");
   EXPECT(secondCameraUbo != nullptr && secondCameraUbo->isDirty(),
          "live camera updates should dirty the stable CameraUBO for upload");
 }
@@ -892,9 +893,8 @@ void testLiveCameraSceneLevelResourcesReuseStableCameraUbo() {
 void testRealtimeSceneObjectTransformUpdatesDirtyStablePayloadResource() {
   SceneResourceTable table;
   const MeshHandle mesh = table.registerMesh(makeTriangleMesh());
-  const MaterialHandle material =
-      table.registerMaterial(MaterialInstance::createUnique(
-          MaterialTemplate::create("matte")));
+  const MaterialHandle material = table.registerMaterial(
+      MaterialInstance::createUnique(MaterialTemplate::create("matte")));
 
   ObjectResource object;
   object.mesh = mesh;
@@ -916,8 +916,7 @@ void testRealtimeSceneObjectTransformUpdatesDirtyStablePayloadResource() {
       firstObjects->getBackendCacheIdentity();
   firstObjects->clearDirty();
 
-  const u64 beforeSelection =
-      table.descriptorResourceSelectionGeneration();
+  const u64 beforeSelection = table.descriptorResourceSelectionGeneration();
   const u64 beforeDescriptor = table.descriptorUploadGeneration();
   const u64 beforeVolatile = table.volatileUploadGeneration();
   const u64 beforeUpload = table.uploadGeneration();
@@ -1050,6 +1049,57 @@ private:
 IShaderSharedPtr shaderPayloadFixture() {
   return std::make_shared<TestShader>();
 }
+
+class SourceMaterialRecordsShader final : public IShader {
+public:
+  SourceMaterialRecordsShader() {
+    m_stages.push_back(
+        ShaderStageCode{ShaderStage::Fragment, std::vector<u32>{0x07230203u}});
+    m_bindings.push_back(ShaderResourceBinding{
+        .name = "SceneSourceMaterialRecords",
+        .set = 0,
+        .binding = 13,
+        .type = ShaderPropertyType::StorageBuffer,
+        .size = 16,
+        .stageFlags = ShaderStage::Fragment,
+    });
+  }
+
+  const std::vector<ShaderStageCode> &getAllStages() const override {
+    return m_stages;
+  }
+
+  const std::vector<ShaderResourceBinding> &
+  getReflectionBindings() const override {
+    return m_bindings;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(u32 set, u32 binding) const override {
+    for (const auto &candidate : m_bindings) {
+      if (candidate.set == set && candidate.binding == binding) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::reference_wrapper<const ShaderResourceBinding>>
+  findBinding(const std::string &name) const override {
+    for (const auto &candidate : m_bindings) {
+      if (candidate.name == name) {
+        return std::cref(candidate);
+      }
+    }
+    return std::nullopt;
+  }
+
+  usize getProgramHash() const override { return 2; }
+
+private:
+  std::vector<ShaderStageCode> m_stages;
+  std::vector<ShaderResourceBinding> m_bindings;
+};
 
 void testPackageReadyGraphExport() {
   SceneResourceTable table;
@@ -1376,11 +1426,11 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
              view.materialRefs[view.draws[0].materialRefIndex]
                      .sourceLocalMaterialIndex == 0 &&
              view.materialRefs[view.draws[1].materialRefIndex]
-                     .sourceLocalMaterialIndex == 2 &&
+                     .sourceLocalMaterialIndex == 0 &&
              view.materialRefs[view.draws[2].materialRefIndex]
                      .sourceLocalMaterialIndex == 1,
-         "material refs should point at source-storage ordered global "
-         "source material records");
+         "material refs should point at local records inside their source "
+         "storage");
 
   const SceneSourceLocalMaterialStorageView *matteStorage =
       findSourceStorage(view, matteSignature);
@@ -1404,6 +1454,70 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
   EXPECT(metalStorage != nullptr &&
              sourceRecordRangeHasContiguousLocalIndices(view, *metalStorage),
          "metal source-local range should contain contiguous local indices");
+}
+
+void testSourceMaterialDescriptorBindsPerSourceStorage() {
+  Scene scene("source-material-descriptor-test");
+  SceneResourceTable &table = scene.resources();
+  const MeshHandle firstMesh = table.registerMesh(makeTriangleMesh());
+  const MeshHandle secondMesh = table.registerMesh(makeTriangleMesh());
+
+  MaterialContractReflection large = makeMaterialContract(
+      "memory://materials/large.contract.glsl", "large", "large-reflect-v1");
+  large.storageFields.push_back(makeStorageField("baseColor", "baseColor"));
+  large.storageFields.push_back(
+      makeTextureSlotField("baseColorTexture", "baseColorTexture"));
+  MaterialContractReflection small = makeMaterialContract(
+      "memory://materials/small.contract.glsl", "small", "small-reflect-v1");
+  small.storageFields.push_back(
+      makeTextureSlotField("baseColorTexture", "baseColorTexture"));
+
+  const MaterialHandle largeMaterial =
+      table.registerMaterial(makeSourceMaterial(large));
+  const MaterialHandle smallMaterial =
+      table.registerMaterial(makeSourceMaterial(small));
+  registerObject(table, firstMesh, largeMaterial);
+  registerObject(table, secondMesh, smallMaterial);
+
+  const SceneResourceTableUploadView view = table.buildUploadView();
+  const SceneSourceLocalMaterialStorageView *largeStorage =
+      findSourceStorage(view, large.sourceSignature());
+  const SceneSourceLocalMaterialStorageView *smallStorage =
+      findSourceStorage(view, small.sourceSignature());
+  EXPECT(largeStorage != nullptr && smallStorage != nullptr,
+         "mixed material sources should create two storages");
+  EXPECT(
+      largeStorage != nullptr && smallStorage != nullptr &&
+          view.sourceMaterialRecords[largeStorage->recordOffset].bytes.size() !=
+              view.sourceMaterialRecords[smallStorage->recordOffset]
+                  .bytes.size(),
+      "test fixture requires different source record strides");
+
+  const IShaderSharedPtr shader =
+      std::make_shared<SourceMaterialRecordsShader>();
+  const DescriptorResourceList largeResources =
+      buildSceneMaterialDescriptorResources(table, largeMaterial, shader);
+  const DescriptorResourceList smallResources =
+      buildSceneMaterialDescriptorResources(table, smallMaterial, shader);
+  const IGpuResource *largeSourceRecords = findBindingResource(
+      largeResources, StringID("SceneSourceMaterialRecords"));
+  const IGpuResource *smallSourceRecords = findBindingResource(
+      smallResources, StringID("SceneSourceMaterialRecords"));
+
+  EXPECT(largeSourceRecords != nullptr,
+         "large material should bind source material records");
+  EXPECT(smallSourceRecords != nullptr,
+         "small material should bind source material records");
+  EXPECT(largeSourceRecords != nullptr && largeStorage != nullptr &&
+             largeSourceRecords->getByteSize() ==
+                 view.sourceMaterialRecords[largeStorage->recordOffset]
+                     .bytes.size(),
+         "large material descriptor should bind only the large source storage");
+  EXPECT(smallSourceRecords != nullptr && smallStorage != nullptr &&
+             smallSourceRecords->getByteSize() ==
+                 view.sourceMaterialRecords[smallStorage->recordOffset]
+                     .bytes.size(),
+         "small material descriptor should bind only the small source storage");
 }
 
 void testUploadViewRejectsSourceSignatureStorageLayoutConflict() {
@@ -1894,6 +2008,7 @@ int main() {
   testUploadViewGroupsSourceLocalMaterialsWithSameSignature();
   testUploadViewSplitsSourceLocalMaterialsBySignature();
   testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved();
+  testSourceMaterialDescriptorBindsPerSourceStorage();
   testUploadViewRejectsSourceSignatureStorageLayoutConflict();
   testUploadViewRejectsMaterialSourceSignatureMismatch();
   testUploadViewRejectsUnresolvedExplicitTextureSlot();

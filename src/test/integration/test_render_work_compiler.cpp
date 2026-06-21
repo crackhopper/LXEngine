@@ -4,13 +4,13 @@
 #include "core/frame_graph/graph_resource_registry.hpp"
 #include "core/frame_graph/render_input.hpp"
 #include "core/frame_graph/render_work_compiler.hpp"
-#include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "core/rhi/index_buffer.hpp"
 #include "core/rhi/vertex_buffer.hpp"
 #include "core/scene/components/material_component.hpp"
 #include "core/scene/components/mesh_component.hpp"
 #include "core/scene/scene.hpp"
 #include "core/scene/scene_gpu_records.hpp"
+#include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -30,7 +30,7 @@ namespace {
 
 int g_failures = 0;
 
-RenderFeature makeCompilerOfflineRayTracerFeature();
+RenderFeature makeCompilerOfflineRayTracerFeature(bool castsShadow = true);
 RenderFeature makeCompilerOfflineRayTracerFeatureWithAcceleration(
     RenderFeatureResourceImplementation implementation =
         RenderFeatureResourceImplementation::SoftwareBvh);
@@ -302,15 +302,15 @@ private:
 
 class ValidatedRenderable final : public IRenderable {
 public:
-  explicit ValidatedRenderable(StringID pass, std::string variantValue = "1",
-                               std::string materialTypeSignatureName =
-                                   "validated.renderable.material.type",
-                               std::string nodeName = "validated_renderable",
-                               std::vector<ShaderResourceBinding> bindings = {},
-                               std::optional<StringID> renderType = std::nullopt)
+  explicit ValidatedRenderable(
+      StringID pass, std::string variantValue = "1",
+      std::string materialTypeSignatureName =
+          "validated.renderable.material.type",
+      std::string nodeName = "validated_renderable",
+      std::vector<ShaderResourceBinding> bindings = {},
+      std::optional<StringID> renderType = std::nullopt)
       : m_pass(pass), m_nodeName(std::move(nodeName)),
-        m_debugId(StringID("debug." + m_nodeName)),
-        m_renderType(renderType) {
+        m_debugId(StringID("debug." + m_nodeName)), m_renderType(renderType) {
     m_vertexBuffer = VertexBuffer<VertexPos>::create(
         std::vector<VertexPos>{{{0, 0, 0}}, {{1, 0, 0}}, {{0, 1, 0}}});
     m_indexBuffer =
@@ -352,7 +352,9 @@ public:
   const VertexLayout &vertexLayout() const {
     return m_vertexBuffer->getLayout();
   }
-  void setMaterialHandle(MaterialHandle handle) { m_data.materialHandle = handle; }
+  void setMaterialHandle(MaterialHandle handle) {
+    m_data.materialHandle = handle;
+  }
 
   GpuResourceRef getVertexBuffer() const override {
     return GpuResourceRef{*m_vertexBuffer};
@@ -480,8 +482,8 @@ ShaderResourceBinding makeStorageBinding(std::string name, u32 binding) {
   };
 }
 
-IShaderSharedPtr makeOfflineRayComputeShaderWithSceneStorage(
-    u32 programHashSeed) {
+IShaderSharedPtr
+makeOfflineRayComputeShaderWithSceneStorage(u32 programHashSeed) {
   return std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{
           makeStorageBinding("ScenePositions", 0),
@@ -499,8 +501,7 @@ IShaderSharedPtr makeOfflineRayComputeShaderWithSceneStorage(
               .binding = 9,
               .type = ShaderPropertyType::StorageBuffer,
               .descriptorCount = 1,
-              .size =
-                  static_cast<u32>(sizeof(SceneGpuFrameParams)),
+              .size = static_cast<u32>(sizeof(SceneGpuFrameParams)),
           },
           makeStorageBinding("OutputPixels", 10),
           ShaderResourceBinding{
@@ -518,8 +519,9 @@ IShaderSharedPtr makeOfflineRayComputeShaderWithSceneStorage(
       std::vector<VertexInputAttribute>{});
 }
 
-MaterialInstanceSharedPtr makeOfflineStandardPbrSceneMaterial(
-    StringID passName, const IShaderSharedPtr &shader) {
+MaterialInstanceSharedPtr
+makeOfflineStandardPbrSceneMaterial(StringID passName,
+                                    const IShaderSharedPtr &shader) {
   ShaderProgramSet shaderProgram;
   shaderProgram.shaderName = "render_paths/OfflineRT/standard_pbr_primary_ray";
   shaderProgram.shader = shader;
@@ -532,9 +534,9 @@ MaterialInstanceSharedPtr makeOfflineStandardPbrSceneMaterial(
 
   auto material = MaterialInstance::create(materialTemplate);
   material->setBsdfType("standard-pbr");
-  material->setRadianceHitShaderUri(ResourceUri(
-      "assets://shaders/glsl/common/materials/hits/"
-      "standard_pbr_radiance.glsl"));
+  material->setRadianceHitShaderUri(
+      ResourceUri("assets://shaders/glsl/common/materials/hits/"
+                  "standard_pbr_radiance.glsl"));
   return material;
 }
 
@@ -725,9 +727,9 @@ void testOfflineDomainUsesRuntimeExtentForComputeDispatch() {
   if (inputs.empty()) {
     return;
   }
-  const auto *compute = dynamic_cast<const RenderComputeInput *>(inputs.front().get());
-  EXPECT(compute != nullptr,
-         "offline path should produce compute input");
+  const auto *compute =
+      dynamic_cast<const RenderComputeInput *>(inputs.front().get());
+  EXPECT(compute != nullptr, "offline path should produce compute input");
   if (compute == nullptr) {
     return;
   }
@@ -746,7 +748,8 @@ void testOfflineRenderPathGraphBuildsFrameGraphFromYamlAsset() {
       "assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml");
   LX_infra::RenderPathGraphResourceParser parser;
   const auto parsed = parser.parse(
-      ResourceUri("assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml"),
+      ResourceUri(
+          "assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml"),
       yaml);
   EXPECT(parsed.diagnostics.empty(),
          "offline render path graph asset should parse without diagnostics");
@@ -977,8 +980,8 @@ void testFullscreenDescUsesPreparedPassFactsAndGraphReads() {
   Scene scene("FullscreenPreparedFactsScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1036,8 +1039,8 @@ void testComputeDescUsesPreparedPassFacts() {
   Scene scene("ComputePreparedFactsScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1095,8 +1098,8 @@ void testRenderWorkCompilerRejectsMetadataOnlyBakeSourcePayload() {
   Scene scene("MetadataOnlyBakeSourceScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1132,9 +1135,8 @@ void testRenderWorkCompilerRejectsTexture2DForCubemapBakeSource() {
           ShaderStageCode{ShaderStage::Fragment,
                           std::vector<u32>{0x07230203, 52}},
       });
-  auto source =
-      makeTextureSampler(StringID("BakeEnvironmentSource"),
-                         TextureDimension::Texture2D);
+  auto source = makeTextureSampler(StringID("BakeEnvironmentSource"),
+                                   TextureDimension::Texture2D);
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
   passFacts.pipelineVariantKey = StringID("bake.environment.variant");
@@ -1150,8 +1152,8 @@ void testRenderWorkCompilerRejectsTexture2DForCubemapBakeSource() {
   Scene scene("Texture2DBakeSourceScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1184,9 +1186,8 @@ void testRenderWorkCompilerAcceptsTextureCubeBakeSourcePayload() {
           ShaderStageCode{ShaderStage::Fragment,
                           std::vector<u32>{0x07230203, 62}},
       });
-  auto source =
-      makeTextureSampler(StringID("BakeEnvironmentSource"),
-                         TextureDimension::TextureCube);
+  auto source = makeTextureSampler(StringID("BakeEnvironmentSource"),
+                                   TextureDimension::TextureCube);
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
   passFacts.pipelineVariantKey = StringID("bake.environment.variant");
@@ -1202,8 +1203,8 @@ void testRenderWorkCompilerAcceptsTextureCubeBakeSourcePayload() {
   Scene scene("TextureCubeBakeSourceScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1252,8 +1253,8 @@ void testRenderWorkCompilerRejectsBakeComputeReadbackWithoutDescriptor() {
   Scene scene("BakeComputeMissingReadbackScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1328,8 +1329,8 @@ void testRenderWorkCompilerResolvesMultipleReadbacksOnDesc() {
   Scene scene("BakeComputeReadbacksScene");
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1375,10 +1376,15 @@ void testSceneRenderableValidatedShaderFactsPreparePipelineDesc() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "validated renderable should produce one draw input");
@@ -1507,9 +1513,9 @@ void testComputeDispatchSelectsSceneParticipantsWithoutDrawInputs() {
       std::vector<ShaderResourceBinding>{}, StringID("mesh"));
   Scene scene("OfflineSceneParticipantSelection");
   auto material = makeSceneMaterial("standard-pbr");
-  material->setRadianceHitShaderUri(ResourceUri(
-      "assets://shaders/glsl/common/materials/hits/"
-      "standard_pbr_radiance.glsl"));
+  material->setRadianceHitShaderUri(
+      ResourceUri("assets://shaders/glsl/common/materials/hits/"
+                  "standard_pbr_radiance.glsl"));
   const MaterialHandle materialHandle =
       scene.resources().registerMaterial(material->cloneInstanceDataUnique());
   standardPbr->setMaterialHandle(materialHandle);
@@ -1544,8 +1550,8 @@ void testComputeDispatchSelectsSceneParticipantsWithoutDrawInputs() {
   pass.input.object.renderClasses = {"mesh"};
   pass.input.material.types = {"standard-pbr"};
   pass.input.material.required = true;
-  pass.reads.push_back(FrameGraphRead::sampled(
-      StringID("feature.offlineRayTracer")));
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
   addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
@@ -1589,8 +1595,82 @@ void testComputeDispatchSelectsSceneParticipantsWithoutDrawInputs() {
              "ray table should retain one standard-pbr hit group");
       EXPECT(descs.front().rayProgramTable->primitiveHitShaders.size() == 1,
              "ray table should derive one primitive hit group");
+      if (!descs.front().rayProgramTable->primitiveHitShaders.empty()) {
+        EXPECT(descs.front()
+                   .rayProgramTable->primitiveHitShaders.front()
+                   .castsShadow,
+               "standard-pbr hit group should cast shadows by default");
+      }
     }
   }
+}
+
+void testRayHitShaderTableCarriesShadowVisibility() {
+  const StringID passName("OfflinePrimaryRay");
+  auto standardPbr = std::make_shared<ValidatedRenderable>(
+      passName, "1", "standard-pbr", "helmet",
+      std::vector<ShaderResourceBinding>{}, StringID("mesh"));
+  Scene scene("OfflineRayShadowVisibilityScene");
+  auto material = makeSceneMaterial("standard-pbr");
+  material->setRadianceHitShaderUri(
+      ResourceUri("assets://shaders/glsl/common/materials/hits/"
+                  "standard_pbr_radiance.glsl"));
+  const MaterialHandle materialHandle =
+      scene.resources().registerMaterial(material->cloneInstanceDataUnique());
+  standardPbr->setMaterialHandle(materialHandle);
+  scene.addRenderable(standardPbr);
+  [[maybe_unused]] const RenderFeatureHandle featureHandle =
+      scene.resources().registerRenderFeature(
+          ResourceUri("memory://features/offline_ray_tracer"),
+          makeCompilerOfflineRayTracerFeature(false));
+
+  auto shader = std::make_shared<FakeShader>(
+      std::vector<ShaderResourceBinding>{},
+      std::vector<ShaderStageCode>{ShaderStageCode{
+          ShaderStage::Compute, std::vector<u32>{0x07230203, 46}}});
+  RenderWorkBuildContext::PassPreparationFacts passFacts;
+  passFacts.pass = passName;
+  passFacts.pipelineVariantKey = StringID("offline.primary.variant");
+  passFacts.shaderProgram.shaderName =
+      "render_paths/OfflineRT/standard_pbr_primary_ray";
+  passFacts.shaderProgram.shader = shader;
+  passFacts.shaderInfo = shader;
+
+  RenderWorkBuildContext::Options options;
+  options.visibleMask = VisibilityMask_All;
+  options.passPreparationFacts.push_back(passFacts);
+
+  FramePass pass;
+  pass.name = passName;
+  pass.stage = RenderPassStage::Compute;
+  pass.dispatch = RenderPassDispatch::Compute;
+  pass.input.kind = RenderPassInputKind::ComputeDispatch;
+  pass.input.object.renderClasses = {"mesh"};
+  pass.input.material.types = {"standard-pbr"};
+  pass.input.material.required = true;
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
+  pass.shaderUri =
+      ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
+
+  RenderWorkCompiler compiler;
+  std::vector<std::unique_ptr<RenderInput>> inputs;
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      RenderDomain::Offline, scene, std::move(options));
+  compiler.buildInputs(pass, context, inputs);
+  const auto descs = compiler.prepare(pass, context, inputs);
+
+  EXPECT(descs.size() == 1 && descs.front().accepted(),
+         "ray shadow visibility test should prepare one accepted desc");
+  if (descs.empty() || !descs.front().rayProgramTable.has_value() ||
+      descs.front().rayProgramTable->primitiveHitShaders.empty()) {
+    EXPECT(false, "ray program table should contain one primitive hit group");
+    return;
+  }
+  EXPECT(
+      !descs.front().rayProgramTable->primitiveHitShaders.front().castsShadow,
+      "hitShaderTable castsShadow=false should reach primitive hit groups");
 }
 
 void testOfflineComputeFallsBackToResourceTableWhenRenderablesDoNotMatch() {
@@ -1605,9 +1685,9 @@ void testOfflineComputeFallsBackToResourceTableWhenRenderablesDoNotMatch() {
       scene.resources().registerMesh(makeSceneTriangleMesh()->cloneUnique());
   auto material = makeSceneMaterial("standard-pbr");
   material->setBsdfType("standard-pbr");
-  material->setRadianceHitShaderUri(ResourceUri(
-      "assets://shaders/glsl/common/materials/hits/"
-      "standard_pbr_radiance.glsl"));
+  material->setRadianceHitShaderUri(
+      ResourceUri("assets://shaders/glsl/common/materials/hits/"
+                  "standard_pbr_radiance.glsl"));
   const MaterialHandle materialHandle =
       scene.resources().registerMaterial(material->cloneInstanceDataUnique());
   ObjectResource object;
@@ -1794,9 +1874,8 @@ void testComputeDispatchBuildsFeatureDeclaredSoftwareBvhResource() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(RenderDomain::Offline, *scene,
-                                       std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      RenderDomain::Offline, *scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1809,9 +1888,9 @@ void testComputeDispatchBuildsFeatureDeclaredSoftwareBvhResource() {
          "software BVH producer should satisfy SceneBvhNodes binding");
   EXPECT(hasDescriptorBindingName(descs.front(), StringID("SceneBvhNodes")),
          "software BVH producer should add SceneBvhNodes descriptor");
-  EXPECT(
-      hasResourceDependencyBindingName(descs.front(), StringID("SceneBvhNodes")),
-      "software BVH producer should add SceneBvhNodes resource dependency");
+  EXPECT(hasResourceDependencyBindingName(descs.front(),
+                                          StringID("SceneBvhNodes")),
+         "software BVH producer should add SceneBvhNodes resource dependency");
   EXPECT(descs.front().rayProgramTable.has_value(),
          "acceleration desc should still carry ray program table");
 }
@@ -1896,9 +1975,8 @@ void testComputeDispatchBuildsOfflineRayTracerSceneDescriptorsAndReadback() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(RenderDomain::Offline, *scene,
-                                       std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      RenderDomain::Offline, *scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -1926,9 +2004,8 @@ void testComputeDispatchBuildsOfflineRayTracerSceneDescriptorsAndReadback() {
   for (const char *binding :
        {"ScenePositions", "SceneAttributeStreams", "SceneAttributeValues",
         "SceneIndices", "SceneMeshes", "ScenePrimitives", "SceneObjects",
-        "SceneMaterials", "SceneBvhNodes", "SceneFrameParams",
-        "OutputPixels", "SceneTextures", "RayPrimitiveHitShaders",
-        "RayMaterialRecords"}) {
+        "SceneMaterials", "SceneBvhNodes", "SceneFrameParams", "OutputPixels",
+        "SceneTextures", "RayPrimitiveHitShaders", "RayMaterialRecords"}) {
     EXPECT(hasDescriptorBindingName(descs.front(), StringID(binding)),
            std::string("OfflineRT desc should bind ") + binding);
   }
@@ -1937,8 +2014,7 @@ void testComputeDispatchBuildsOfflineRayTracerSceneDescriptorsAndReadback() {
   if (!descs.front().readbacks.empty()) {
     EXPECT(descs.front().readbacks.front().binding == StringID("OutputPixels"),
            "OfflineRT readback should reference OutputPixels descriptor");
-    EXPECT(descs.front().readbacks.front().target ==
-               StringID("offline.output"),
+    EXPECT(descs.front().readbacks.front().target == StringID("offline.output"),
            "OfflineRT readback should retain offline.output target");
   }
 }
@@ -1988,9 +2064,8 @@ void testComputeDispatchRejectsUnsupportedFeatureAccelerationProducer() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(RenderDomain::Offline, *scene,
-                                       std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      RenderDomain::Offline, *scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2029,10 +2104,15 @@ void testSceneRenderableIncludesCameraSceneResourceBinding() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(!inputs.empty(),
          "active camera scene should still produce draw inputs");
@@ -2078,10 +2158,15 @@ void testSceneRenderableRejectsUnresolvedRequiredBinding() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "unresolved binding renderable should produce one input");
@@ -2125,10 +2210,15 @@ void testSceneRenderablePipelineKeyUsesMaterialVariantNotTypeSignature() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 2,
          "same material type variants should both produce draw inputs");
@@ -2238,7 +2328,7 @@ RenderFeature makeCompilerPassFeatureWithVolatileRuntimeField() {
   return feature;
 }
 
-RenderFeature makeCompilerOfflineRayTracerFeature() {
+RenderFeature makeCompilerOfflineRayTracerFeature(bool castsShadow) {
   RenderFeature feature;
   feature.name = "Offline Ray Tracer";
   feature.feature = "offlineRayTracer";
@@ -2252,10 +2342,10 @@ RenderFeature makeCompilerOfflineRayTracerFeature() {
   table.entries.push_back(RenderFeatureHitShaderTableEntry{
       .hitShaderIndex = 0,
       .materialType = "standard-pbr",
-      .uri = ResourceUri(
-          "assets://shaders/glsl/common/materials/hits/"
-          "standard_pbr_radiance.glsl"),
+      .uri = ResourceUri("assets://shaders/glsl/common/materials/hits/"
+                         "standard_pbr_radiance.glsl"),
       .function = "lxStandardPbrRadianceHit",
+      .castsShadow = castsShadow,
   });
   feature.hitShaderTable = std::move(table);
   return feature;
@@ -2271,12 +2361,13 @@ RenderFeature makeCompilerOfflineRayTracerFeatureWithAcceleration(
       .derived = true,
       .volatileRuntime = true,
       .source = "scene.geometry",
-      .output = RenderFeatureResourceOutput{
-          .kind = "storage-buffer",
-          .binding = "SceneBvhNodes",
-          .layout = "std430",
-          .elementType = "SceneSoftwareBvhNode",
-      },
+      .output =
+          RenderFeatureResourceOutput{
+              .kind = "storage-buffer",
+              .binding = "SceneBvhNodes",
+              .layout = "std430",
+              .elementType = "SceneSoftwareBvhNode",
+          },
       .required = true,
   };
   return feature;
@@ -2511,8 +2602,8 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2635,8 +2726,8 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2741,8 +2832,8 @@ void testRenderWorkCompilerSharesSurfaceLightingPayloadAcrossForwardAndDeferred(
   options.passPreparationFacts.push_back(
       makeSurfaceLightingPassFacts(deferredPass, deferredShader));
 
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   RenderWorkCompiler compiler;
 
   const auto compilePass = [&](const FramePass &pass) {
@@ -2809,8 +2900,8 @@ void testRenderWorkCompilerRejectsSurfaceLightingUboWithoutFeatureRead() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2847,8 +2938,8 @@ void testRenderWorkCompilerRejectsIblSurfaceLightingWithoutEnvironmentFeature() 
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2892,9 +2983,8 @@ void testRenderWorkCompilerUsesRuntimeSurfaceLightingIblSwitch() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene,
-                                       std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -2930,10 +3020,15 @@ void testSceneRenderableMissingRequiredMaterialProducesRejectedDesc() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "selected scene renderable should produce one input");
@@ -2973,10 +3068,15 @@ void testSceneRenderableMissingMaterialDoesNotUseSupportsPassAsSelection() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "missing material should be validated in prepare, not skipped by "
@@ -3025,10 +3125,15 @@ void testNoMaterialDebugRenderableAcceptedWithDrawPayload() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, *scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, *scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, *scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, *scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "debug no-material renderable should produce one input");
@@ -3081,10 +3186,15 @@ void testDebugObjectClassDoesNotRequireDebugOverlayPassName() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "debug object class should not require Pass_DebugOverlay name");
@@ -3121,10 +3231,15 @@ void testDebugMeshObjectClassAcceptsNoMaterialDebugRenderable() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.size() == 1,
          "debug.mesh object class should select debug-only renderable");
@@ -3173,7 +3288,9 @@ void testShadowPassNameDoesNotOverrideZeroVisibleMask() {
 
     RenderWorkCompiler compiler;
     std::vector<std::unique_ptr<RenderInput>> inputs;
-    compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+    compiler.buildInputs(pass,
+                         RenderWorkBuildContext::forScene(
+                             LX_core::RenderDomain::Realtime, scene, options),
                          inputs);
     return inputs.size();
   };
@@ -3208,7 +3325,10 @@ void testPassNameDoesNotCreateDefaultVisibilityWithoutCamera() {
 
     RenderWorkCompiler compiler;
     std::vector<std::unique_ptr<RenderInput>> inputs;
-    compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene), inputs);
+    compiler.buildInputs(pass,
+                         RenderWorkBuildContext::forScene(
+                             LX_core::RenderDomain::Realtime, scene),
+                         inputs);
     return inputs.size();
   };
 
@@ -3244,10 +3364,15 @@ void testUnsupportedObjectClassProducesRejectedDesc() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.empty(),
          "object filter mismatch should not enter scene-renderable batches");
@@ -3278,10 +3403,15 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
 
   RenderWorkCompiler compiler;
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  compiler.buildInputs(pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options),
+  compiler.buildInputs(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
                        inputs);
-  const auto descs = compiler.prepare(
-      pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
+  const auto descs =
+      compiler.prepare(pass,
+                       RenderWorkBuildContext::forScene(
+                           LX_core::RenderDomain::Realtime, scene, options),
+                       inputs);
 
   EXPECT(inputs.empty(),
          "material type mismatch should not enter scene-renderable batches");
@@ -3332,8 +3462,8 @@ FramePass makeSkyboxCompilerPass() {
   pass.dispatch = RenderPassDispatch::Fullscreen;
   pass.input.kind = RenderPassInputKind::FullscreenTriangle;
   pass.shaderUri = ResourceUri("render_paths/Skybox/skybox_background");
-  pass.reads.push_back(FrameGraphRead::sampled(
-      StringID("feature.skybox"), StringID{}));
+  pass.reads.push_back(
+      FrameGraphRead::sampled(StringID("feature.skybox"), StringID{}));
   addPassFeature(pass, "skybox", ResourceUri("memory://features/skybox"));
   return pass;
 }
@@ -3357,10 +3487,9 @@ void testRenderWorkCompilerAcceptsSkyboxFeatureBindings() {
   Scene scene("SkyboxCompilerScene");
   const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-          ResourceUri("memory://features/skybox"),
-          makeCompilerSkyboxFeature());
-  scene.resources().setSkyboxRuntimeState(SceneSkyboxRuntimeState{
-      .feature = featureHandle, .nodePresent = true});
+          ResourceUri("memory://features/skybox"), makeCompilerSkyboxFeature());
+  scene.resources().setSkyboxRuntimeState(
+      SceneSkyboxRuntimeState{.feature = featureHandle, .nodePresent = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -3384,8 +3513,8 @@ void testRenderWorkCompilerAcceptsSkyboxFeatureBindings() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -3393,12 +3522,10 @@ void testRenderWorkCompilerAcceptsSkyboxFeatureBindings() {
          "skybox feature fullscreen pass should produce one desc");
   if (!descs.empty()) {
     expectAcceptedDescHasBackendPipelineFacts(
-        descs.front(),
-        "skybox feature bindings should satisfy skybox shader");
+        descs.front(), "skybox feature bindings should satisfy skybox shader");
     EXPECT(hasDescriptorBindingName(descs.front(), StringID("SkyboxMap")),
            "accepted skybox desc should include SkyboxMap");
-    EXPECT(hasDescriptorBindingName(descs.front(),
-                                    StringID("SkyboxUBO")),
+    EXPECT(hasDescriptorBindingName(descs.front(), StringID("SkyboxUBO")),
            "accepted skybox desc should include SkyboxUBO");
   }
 }
@@ -3407,8 +3534,7 @@ void testRenderWorkCompilerRejectsSkyboxWithoutSkyboxNode() {
   Scene scene("SkyboxCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-          ResourceUri("memory://features/skybox"),
-          makeCompilerSkyboxFeature());
+          ResourceUri("memory://features/skybox"), makeCompilerSkyboxFeature());
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -3431,8 +3557,8 @@ void testRenderWorkCompilerRejectsSkyboxWithoutSkyboxNode() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -3454,8 +3580,7 @@ void testRenderWorkCompilerAllowsSkyboxReadWithoutShaderBindings() {
   Scene scene("SkyboxCompilerScene");
   [[maybe_unused]] const RenderFeatureHandle featureHandle =
       scene.resources().registerRenderFeature(
-          ResourceUri("memory://features/skybox"),
-          makeCompilerSkyboxFeature());
+          ResourceUri("memory://features/skybox"), makeCompilerSkyboxFeature());
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{},
@@ -3477,8 +3602,8 @@ void testRenderWorkCompilerAllowsSkyboxReadWithoutShaderBindings() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -3537,8 +3662,8 @@ void testRenderWorkCompilerRejectsMetadataOnlySkyboxFeature() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -3551,10 +3676,9 @@ void testRenderWorkCompilerRejectsMetadataOnlySkyboxFeature() {
                              RenderInputDiagnosticCode::MissingResource),
            "metadata-only skybox node feature should report "
            "MissingResource");
-    EXPECT(hasDiagnosticMessage(
-               descs.front(),
-               "feature.skybox RenderFeature payload is "
-               "unresolved"),
+    EXPECT(hasDiagnosticMessage(descs.front(),
+                                "feature.skybox RenderFeature payload is "
+                                "unresolved"),
            "metadata-only skybox node feature diagnostic should name "
            "unresolved payload");
   }
@@ -3567,14 +3691,12 @@ void testRenderWorkCompilerRejectsWrongLiveSkyboxFeature() {
   wrongFeature.feature = "toneMapping";
   const RenderFeatureHandle wrongFeatureHandle =
       scene.resources().registerRenderFeature(
-          ResourceUri("memory://features/not_skybox"),
-          std::move(wrongFeature));
+          ResourceUri("memory://features/not_skybox"), std::move(wrongFeature));
   EXPECT(wrongFeatureHandle.isValid(),
          "wrong live RenderFeature fixture should register");
 
-  scene.resources().setSkyboxRuntimeState(
-      SceneSkyboxRuntimeState{.feature = wrongFeatureHandle,
-                              .nodePresent = true});
+  scene.resources().setSkyboxRuntimeState(SceneSkyboxRuntimeState{
+      .feature = wrongFeatureHandle, .nodePresent = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -3597,8 +3719,8 @@ void testRenderWorkCompilerRejectsWrongLiveSkyboxFeature() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -3608,9 +3730,8 @@ void testRenderWorkCompilerRejectsWrongLiveSkyboxFeature() {
     EXPECT(!descs.front().accepted(),
            "wrong live skybox node feature must not be accepted");
     EXPECT(hasDiagnosticMessage(
-               descs.front(),
-               "scene skybox node RenderFeature payload is not "
-               "skybox"),
+               descs.front(), "scene skybox node RenderFeature payload is not "
+                              "skybox"),
            "wrong live skybox node feature diagnostic should name the "
            "feature mismatch");
   }
@@ -3622,8 +3743,8 @@ void testRenderWorkCompilerRejectsMissingSkyboxUboMember() {
       scene.resources().registerRenderFeature(
           ResourceUri("memory://features/skybox"),
           makeCompilerSkyboxFeature(/*includeColor=*/false));
-  scene.resources().setSkyboxRuntimeState(SceneSkyboxRuntimeState{
-      .feature = featureHandle, .nodePresent = true});
+  scene.resources().setSkyboxRuntimeState(
+      SceneSkyboxRuntimeState{.feature = featureHandle, .nodePresent = true});
 
   auto shader = std::make_shared<FakeShader>(
       std::vector<ShaderResourceBinding>{makeTextureCubeBinding("SkyboxMap"),
@@ -3646,8 +3767,8 @@ void testRenderWorkCompilerRejectsMissingSkyboxUboMember() {
   RenderWorkCompiler compiler;
   FramePass pass = makeSkyboxCompilerPass();
   std::vector<std::unique_ptr<RenderInput>> inputs;
-  const RenderWorkBuildContext context =
-      RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, std::move(options));
+  const RenderWorkBuildContext context = RenderWorkBuildContext::forScene(
+      LX_core::RenderDomain::Realtime, scene, std::move(options));
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
@@ -4352,6 +4473,7 @@ int main() {
   testSceneRenderableValidatedShaderFactsPreparePipelineDesc();
   testSceneRenderableMaterialBatchingGroupsInputsByMaterialType();
   testComputeDispatchSelectsSceneParticipantsWithoutDrawInputs();
+  testRayHitShaderTableCarriesShadowVisibility();
   testOfflineComputeFallsBackToResourceTableWhenRenderablesDoNotMatch();
   testComputeDispatchRejectsMaterialHitUriMissingFromHitTable();
   testComputeDispatchBuildsFeatureDeclaredSoftwareBvhResource();

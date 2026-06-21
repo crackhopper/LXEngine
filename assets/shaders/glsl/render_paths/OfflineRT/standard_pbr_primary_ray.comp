@@ -59,7 +59,7 @@ struct lxSceneBvhNode {
 struct lxRayPrimitiveHitShaderRecord {
   uint hitShaderIndex;
   uint materialIndex;
-  uint reserved0;
+  uint flags;
   uint reserved1;
 };
 
@@ -348,8 +348,10 @@ bool intersectAabb(vec3 origin, vec3 invDir, vec3 bmin, vec3 bmax,
   return hi >= lo;
 }
 
-bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
-                out HitAttributes hitAttributes) {
+const uint LX_RAY_PRIMITIVE_CASTS_SHADOW = 1u;
+
+bool traceScene(vec3 origin, vec3 dir, float maxT, bool shadowRay,
+                out float hitT, out HitAttributes hitAttributes) {
   hitT = maxT;
   hitAttributes.normal = vec3(0.0, 1.0, 0.0);
   hitAttributes.tangent = vec3(1.0, 0.0, 0.0);
@@ -380,6 +382,11 @@ bool traceScene(vec3 origin, vec3 dir, float maxT, out float hitT,
       for (uint i = 0u; i < triCount; ++i) {
         uint primitiveIndex = leftFirst + i;
         if (primitiveIndex >= params.primitiveCount) {
+          continue;
+        }
+        if (shadowRay &&
+            (rayPrimitiveHitShaders[primitiveIndex].flags &
+             LX_RAY_PRIMITIVE_CASTS_SHADOW) == 0u) {
           continue;
         }
         float t;
@@ -421,7 +428,7 @@ mat3 makeTangentFrame(HitAttributes hit) {
 vec3 shade(vec3 origin, vec3 dir) {
   float hitT;
   HitAttributes hit;
-  if (!traceScene(origin, dir, 1.0e30, hitT, hit)) {
+  if (!traceScene(origin, dir, 1.0e30, false, hitT, hit)) {
     if (params.compareMode == 1u) {
       return vec3(0.0);
     }
@@ -451,7 +458,7 @@ vec3 shade(vec3 origin, vec3 dir) {
   float shadowT;
   HitAttributes shadowHit;
   bool occluded = params.shadowsEnabled != 0u &&
-                  traceScene(hitPos + N * 0.002, L, 1.0e30, shadowT,
+                  traceScene(hitPos + N * 0.002, L, 1.0e30, true, shadowT,
                              shadowHit);
   float visibility = occluded ? 0.0 : 1.0;
 

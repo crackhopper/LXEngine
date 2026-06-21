@@ -42,6 +42,7 @@ set(LXE_EDITOR_SOURCES
   runtime/scene_interaction_controller.cpp
   runtime/scene_runtime.cpp
   runtime/scene_view_rect.cpp
+  runtime/window_shortcuts.cpp
   render/editor_render_view.cpp
   ui/gizmo_adapter.cpp
   ui/ui_overlay.cpp

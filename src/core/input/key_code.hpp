@@ -19,8 +19,8 @@ enum class KeyCode : u16 {
   // 方向
   Left, Right, Up, Down,
 
-  // 功能键（Phase 1 只到 F4）
-  F1, F2, F3, F4,
+  // 功能键
+  F1, F2, F3, F4, F11,
 
   Count
 };

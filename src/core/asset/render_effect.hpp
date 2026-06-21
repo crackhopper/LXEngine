@@ -228,6 +228,7 @@ struct RenderFeatureHitShaderTableEntry final {
   std::string materialType;
   ResourceUri uri;
   std::string function;
+  bool castsShadow = true;
 };
 
 struct RenderFeatureHitShaderTable final {

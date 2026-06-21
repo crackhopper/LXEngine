@@ -7,6 +7,7 @@ set(TEST_INTEGRATION_EXE_LIST
   test_frame_graph_executor
   test_lxe_editor_render_debug_dump
   test_lxe_editor_source_boundary
+  test_lxe_editor_window_shortcuts
   test_material_source_variant_pipeline
   test_render_path_graph_pass_contract
   test_render_resource_parsers
@@ -52,6 +53,7 @@ endforeach()
 
 if(TARGET ${LXE_EDITOR_LIB})
   target_link_libraries(test_lxe_editor_render_debug_dump PRIVATE ${LXE_EDITOR_LIB})
+  target_link_libraries(test_lxe_editor_window_shortcuts PRIVATE ${LXE_EDITOR_LIB})
   target_link_libraries(test_scene_bake_cache PRIVATE ${LXE_EDITOR_LIB})
   target_link_libraries(test_vulkan_ibl_bake PRIVATE ${LXE_EDITOR_LIB})
 endif()

@@ -224,6 +224,14 @@ struct Window::Impl {
       glfwMaximizeWindow(window);
     }
   }
+
+  void setMaximized(const bool maximized) {
+    if (maximized) {
+      glfwMaximizeWindow(window);
+    } else {
+      glfwRestoreWindow(window);
+    }
+  }
 };
 
 void Window::Initialize() {}
@@ -359,6 +367,10 @@ Window::getUsableBoundsForPlacement(
 
 void Window::applyPlacement(const LX_core::WindowPlacement& placement) {
   pImpl->applyPlacement(placement);
+}
+
+void Window::setMaximized(const bool maximized) {
+  pImpl->setMaximized(maximized);
 }
 
 void* Window::getNativeHandle() const {

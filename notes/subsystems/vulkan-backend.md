@@ -28,7 +28,18 @@
 - 物理设备选择现在按“先判定功能是否满足，再按设备类型偏好排序”处理；独显优先，但集显/虚拟 GPU 只要满足队列、扩展和 surface 要求也允许启动
 - descriptor 路由按 binding name，不按硬编码 slot 枚举
 - scene-level UBO、RenderFeature UBO、IBL bake resources 和 material resources 已经在 `RenderInputDesc.bindingPlan` 中合并好，backend 按 binding name 录制 descriptor
+- Material v2 source records 不是一个可被所有 shader variant 共享解释的全局
+  struct 数组。Realtime raster pass 必须按当前 material source/layout 绑定对应的
+  `SceneSourceMaterialRecords` storage；`SceneMaterialRefs` 可以全局共享，但
+  source records buffer 必须匹配当前 shader variant 的 struct stride。
 - 离线 compute 路径上传 `SceneResourceTableUploadView` 导出的统一 `SceneGpu*` SSBO，并把 `SceneSoftwareBvh` 作为派生加速 buffer；backend 不创建第二份 scene IR
+- OfflineRT 的 `all` batching 依赖 shader 自己定义的统一 ray tracing ABI，例如
+  primitive/material records、hit shader table 和 `hitShaderIndex`。这条规则不能
+  反推到 Forward/Deferred raster shader；raster material shader 没有函数指针，
+  只能读取自己的 material source layout。
+- OfflineRT 的 shadow 可见性来自 hit shader table 派生出的 per-primitive flags，
+  例如 `castsShadow: false`。backend 只按 `RayPrimitiveHitShaders` record 执行，
+  不按 scene 节点名、材质名或资源路径写特殊分支。
 - `VulkanResourceManager` 不直接持有 pipeline map，而是委托给 `PipelineCache`；graphics 和 compute 都通过 `getOrCreatePipeline(desc)` 返回 `VulkanPipelineRef`
 - `VulkanResourceManager` 现在按 `IGpuResource::getBackendCacheIdentity()` 做 cache key，资源身份来自显式 backend cache identity
 - GPU 资源缓存带短暂闲置宽限期：资源漏同步一帧不会立刻销毁重建，但长期不用仍会被 `collectGarbage()` 回收
@@ -102,6 +113,24 @@ render debug dump shadow.cascade0 data/debug/dump/<name>.bmp
 | hardware-ray-tracing | 未实现；未来应创建 BLAS/TLAS/SBT 并复用同一份 scene GPU 记录和 ray program table feature | `SceneResourceTable` + hardware RT feature |
 
 OfflineRT 的 descriptor contract 使用统一 block 名：`ScenePositions`、`SceneAttributeStreams`、`SceneAttributeValues`、`SceneIndices`、`SceneMeshes`、`ScenePrimitives`、`SceneObjects`、`SceneMaterials`、`SceneBvhNodes`、`SceneFrameParams` 和 output/readback resource。这些名字由 shader reflection、render feature parser、work compiler 和 executor validation 共同保护。
+
+## Editor 与 Offline 只能在输出端分叉
+
+editor live、`--realtime-render --profile` 和 `lxe_offline_render` 都应该把同一个 scene/resource table 与 RenderPathGraph 交给 FrameGraph/RenderWorkCompiler。它们可以因为输出端不同而分叉：
+
+| 路径 | 允许不同的部分 | 不允许不同的部分 |
+|---|---|---|
+| editor live | swapchain target、UI overlay、窗口尺寸、实时 camera UBO | scene 解析、RenderPathGraph、material/source storage 绑定、feature 资源语义 |
+| realtime profile export | offscreen target、profile resolution、文件导出 | pass 筛选、material batching、IBL/skybox feature 语义 |
+| offline render | readback/output profile、headless device 生命周期 | scene/resource table、graph source/target 语义、shader/material ABI |
+
+调试时如果 editor 与 offline/profile 画面不同，优先检查它们是否真的加载了同一 scene、同一 output profile/render path graph、同一 feature 资源。不能用一个路径的成功证明另一个路径正确；也不能通过在 editor 或 offline 某一边写临时代码来“补齐”另一边的行为。
+
+## Skybox 与 IBL 的 backend 边界
+
+finite skybox 不属于 backend 特殊通道。它是普通 scene renderable：mesh、material、draw command、material source records、depth 都按普通物体处理。backend 不应该因为节点名、mesh 路径或 skybox mode 去改材质贴图绑定。
+
+infinite skybox 是 graph/render-feature 背景通道。Forward 类 graph 用 fullscreen background pass 采样 `feature.skybox` 资源；OfflineRT 在 ray miss 时采样对应资源。surface IBL 仍由 `feature.environmentLighting` 控制。是否显示背景与是否计算 IBL 必须在 RenderPathGraph 中分别声明，backend 不从 scene 节点隐式开关 IBL。
 
 ## 从哪里进入源码
 

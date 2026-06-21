@@ -144,9 +144,7 @@ bool parseBoolScalar(ParsedRenderFeatureResource &result,
   return false;
 }
 
-bool kindAllowsUri(const std::string &kind) {
-  return kind == "textureCube";
-}
+bool kindAllowsUri(const std::string &kind) { return kind == "textureCube"; }
 
 std::vector<std::string>
 parseScalarStringSequence(ParsedRenderFeatureResource &result,
@@ -220,8 +218,7 @@ parseResourceApi(ParsedRenderFeatureResource &result,
 std::optional<LX_core::RenderFeatureResourceImplementation>
 parseResourceImplementation(ParsedRenderFeatureResource &result,
                             const LX_core::ResourceUri &uri,
-                            const YAML::Node &node,
-                            const std::string &field) {
+                            const YAML::Node &node, const std::string &field) {
   if (!node || !node.IsScalar()) {
     addDiagnostic(result, uri, field, "missing required field");
     return std::nullopt;
@@ -246,10 +243,10 @@ bool isIblBakeOutputResourceName(const std::string &name) {
 
 bool isSystemOwnedResourceBinding(const std::string &binding) {
   static constexpr const char *kSystemOwnedBindings[] = {
-      "SceneObjects",    "SceneDraws",          "SceneMaterials",
-      "SceneTextures",   "SceneMaterialRefs",   "SceneSourceMaterialRecords",
-      "SceneGeometry",   "SceneMeshlets",       "SceneLights",
-      "SceneAttributes", "ScenePrimitiveData",  "PrimitiveHitShaders",
+      "SceneObjects",    "SceneDraws",         "SceneMaterials",
+      "SceneTextures",   "SceneMaterialRefs",  "SceneSourceMaterialRecords",
+      "SceneGeometry",   "SceneMeshlets",      "SceneLights",
+      "SceneAttributes", "ScenePrimitiveData", "PrimitiveHitShaders",
   };
   return std::find(std::begin(kSystemOwnedBindings),
                    std::end(kSystemOwnedBindings),
@@ -307,8 +304,7 @@ void parseRenderFeatureResources(ParsedRenderFeatureResource &result,
     const auto api =
         parseResourceApi(result, uri, resourceNode["api"], field + ".api");
     const auto implementation = parseResourceImplementation(
-        result, uri, resourceNode["implementation"],
-        field + ".implementation");
+        result, uri, resourceNode["implementation"], field + ".implementation");
     if (api.has_value()) {
       requirement.api = *api;
     }
@@ -316,8 +312,7 @@ void parseRenderFeatureResources(ParsedRenderFeatureResource &result,
       requirement.implementation = *implementation;
     }
     if (!resourceNode["function"] || !resourceNode["function"].IsScalar()) {
-      addDiagnostic(result, uri, field + ".function",
-                    "missing required field");
+      addDiagnostic(result, uri, field + ".function", "missing required field");
     } else {
       requirement.function = resourceNode["function"].as<std::string>();
       if (requirement.function != "buildSceneAcceleration") {
@@ -358,8 +353,7 @@ void parseRenderFeatureResources(ParsedRenderFeatureResource &result,
 
     const YAML::Node output = resourceNode["output"];
     if (!output || !output.IsMap()) {
-      addDiagnostic(result, uri, field + ".output",
-                    "missing required field");
+      addDiagnostic(result, uri, field + ".output", "missing required field");
     } else {
       for (auto outputField = output.begin(); outputField != output.end();
            ++outputField) {
@@ -392,7 +386,8 @@ void parseRenderFeatureResources(ParsedRenderFeatureResource &result,
         requirement.output.layout = output["layout"].as<std::string>();
       }
       if (output["elementType"]) {
-        requirement.output.elementType = output["elementType"].as<std::string>();
+        requirement.output.elementType =
+            output["elementType"].as<std::string>();
       }
       if (isSystemOwnedResourceBinding(requirement.output.binding)) {
         addDiagnostic(result, uri, field + ".output.binding",
@@ -406,7 +401,8 @@ void parseRenderFeatureResources(ParsedRenderFeatureResource &result,
                       "software-bvh resource output must be storage-buffer");
       }
       if (requirement.implementation ==
-              LX_core::RenderFeatureResourceImplementation::HardwareRayTracing &&
+              LX_core::RenderFeatureResourceImplementation::
+                  HardwareRayTracing &&
           requirement.output.kind != "acceleration-structure") {
         addDiagnostic(
             result, uri, field + ".output.kind",
@@ -507,8 +503,8 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
           continue;
         }
         const std::string key = entryField->first.as<std::string>();
-        if (key == "hitShaderIndex" || key == "materialType" ||
-            key == "uri" || key == "function") {
+        if (key == "hitShaderIndex" || key == "materialType" || key == "uri" ||
+            key == "function" || key == "castsShadow") {
           continue;
         }
         addDiagnostic(result, uri, field + "." + key,
@@ -516,9 +512,8 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
       }
 
       LX_core::RenderFeatureHitShaderTableEntry entry;
-      const auto hitShaderIndex =
-          parseU32Scalar(result, uri, entryNode["hitShaderIndex"],
-                         field + ".hitShaderIndex");
+      const auto hitShaderIndex = parseU32Scalar(
+          result, uri, entryNode["hitShaderIndex"], field + ".hitShaderIndex");
       if (hitShaderIndex.has_value()) {
         entry.hitShaderIndex = *hitShaderIndex;
         if (std::find(hitShaderIndices.begin(), hitShaderIndices.end(),
@@ -550,6 +545,10 @@ void parseRenderFeatureHitShaderTable(ParsedRenderFeatureResource &result,
                       "missing required field");
       } else {
         entry.function = entryNode["function"].as<std::string>();
+      }
+      if (entryNode["castsShadow"]) {
+        entry.castsShadow = parseBoolScalar(
+            result, uri, entryNode["castsShadow"], field + ".castsShadow");
       }
       table.entries.push_back(std::move(entry));
     }

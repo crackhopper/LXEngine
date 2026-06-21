@@ -37,6 +37,7 @@
 #include "editor/runtime/scene_interaction_controller.hpp"
 #include "editor/runtime/scene_runtime.hpp"
 #include "editor/runtime/selection_camera_input.hpp"
+#include "editor/runtime/window_shortcuts.hpp"
 #include "editor/project/realtime_render_profile.hpp"
 #include "editor/ui/ui_overlay.hpp"
 
@@ -1261,6 +1262,7 @@ int main(int argc, char **argv) {
     });
 
     auto input = window->getInputState();
+    demo::WindowShortcutController windowShortcuts;
 
     loop.setUpdateHook([&](LX_core::Scene &, const LX_core::Clock &clock) {
       if (closePrompt.confirmedClose) {
@@ -1285,6 +1287,7 @@ int main(int argc, char **argv) {
       const bool wantsKeyboard = io && io->get().WantCaptureKeyboard;
       const bool wantsMouse = io && io->get().WantCaptureMouse;
 
+      windowShortcuts.update(*window, *input, wantsKeyboard);
       if (!wantsKeyboard) {
         ui.handleHotkeys(*input);
       }

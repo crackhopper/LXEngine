@@ -280,6 +280,14 @@ struct Window::Impl {
       SDL_MaximizeWindow(window);
     }
   }
+
+  void setMaximized(const bool maximized) {
+    if (maximized) {
+      SDL_MaximizeWindow(window);
+    } else {
+      SDL_RestoreWindow(window);
+    }
+  }
 };
 
 void Window::Initialize() {}
@@ -400,6 +408,10 @@ Window::getUsableBoundsForPlacement(
 
 void Window::applyPlacement(const LX_core::WindowPlacement& placement) {
   pImpl->applyPlacement(placement);
+}
+
+void Window::setMaximized(const bool maximized) {
+  pImpl->setMaximized(maximized);
 }
 
 void* Window::getNativeHandle() const {

@@ -56,10 +56,9 @@ bool renderPassHasSource(const LX_core::RenderPassNode &pass,
 
 bool renderPathGraphHasPass(const LX_core::RenderPathGraph &graph,
                             const std::string &passId) {
-  return std::any_of(graph.passes.begin(), graph.passes.end(),
-                     [&](const LX_core::RenderPassNode &pass) {
-                       return pass.id == passId;
-                     });
+  return std::any_of(
+      graph.passes.begin(), graph.passes.end(),
+      [&](const LX_core::RenderPassNode &pass) { return pass.id == passId; });
 }
 
 class FakeShader final : public LX_core::IShader {
@@ -600,9 +599,8 @@ void testForwardPassRenderFeatureAssetParses() {
          "forwardPass should declare Forward pbr shader ABI owner");
   EXPECT(feature.parameters.size() == 7,
          "forwardPass should declare flow switches and volatile IBL fields");
-  for (const char *name :
-       {"render_skybox", "enable_tonemapping", "enable_gamma",
-        "enable_direct_lighting"}) {
+  for (const char *name : {"render_skybox", "enable_tonemapping",
+                           "enable_gamma", "enable_direct_lighting"}) {
     EXPECT(feature.parameters.find(name) != feature.parameters.end(),
            std::string("forwardPass should declare ") + name);
     if (feature.parameters.find(name) != feature.parameters.end()) {
@@ -688,8 +686,7 @@ void testOfflineRayTracerRenderFeatureAssetParses() {
     EXPECT(resource.implementation ==
                LX_core::RenderFeatureResourceImplementation::SoftwareBvh,
            "offlineRayTracer should use software BVH in this slice");
-    EXPECT(resource.derived,
-           "acceleration resource should be marked derived");
+    EXPECT(resource.derived, "acceleration resource should be marked derived");
     EXPECT(resource.volatileRuntime,
            "acceleration resource should be marked volatile");
     EXPECT(resource.source == "scene.selection",
@@ -702,8 +699,7 @@ void testOfflineRayTracerRenderFeatureAssetParses() {
            "software BVH should retain output layout");
     EXPECT(resource.output.elementType == "LxSceneBvhNode",
            "software BVH should retain node element type");
-    EXPECT(resource.required,
-           "acceleration resource should be required");
+    EXPECT(resource.required, "acceleration resource should be required");
   }
 
   EXPECT(feature.hitShaderTable.has_value(),
@@ -722,27 +718,31 @@ void testOfflineRayTracerRenderFeatureAssetParses() {
     for (const auto &entry : table.entries) {
       if (entry.materialType == "standard-pbr") {
         foundStandardPbr = true;
-        EXPECT(entry.hitShaderIndex == 0,
-               "standard-pbr radiance hit shader should use hit shader index 0");
-        EXPECT(entry.uri ==
-                   LX_core::ResourceUri(
-                       "assets://shaders/glsl/common/materials/hits/"
-                       "standard_pbr_radiance.glsl"),
+        EXPECT(
+            entry.hitShaderIndex == 0,
+            "standard-pbr radiance hit shader should use hit shader index 0");
+        EXPECT(entry.uri == LX_core::ResourceUri(
+                                "assets://shaders/glsl/common/materials/hits/"
+                                "standard_pbr_radiance.glsl"),
                "standard-pbr hit shader entry should retain material hit URI");
         EXPECT(entry.function == "lxHitStandardPbrRadiance",
                "standard-pbr hit shader entry should retain function name");
+        EXPECT(entry.castsShadow,
+               "standard-pbr hit shader entry should cast shadows by default");
       }
       if (entry.materialType == "unlit-texture") {
         foundUnlitTexture = true;
-        EXPECT(entry.hitShaderIndex == 1,
-               "unlit-texture radiance hit shader should use hit shader index 1");
-        EXPECT(entry.uri ==
-                   LX_core::ResourceUri(
-                       "assets://shaders/glsl/common/materials/hits/"
-                       "unlit_texture_radiance.glsl"),
+        EXPECT(
+            entry.hitShaderIndex == 1,
+            "unlit-texture radiance hit shader should use hit shader index 1");
+        EXPECT(entry.uri == LX_core::ResourceUri(
+                                "assets://shaders/glsl/common/materials/hits/"
+                                "unlit_texture_radiance.glsl"),
                "unlit-texture hit shader entry should retain material hit URI");
         EXPECT(entry.function == "lxHitUnlitTextureRadiance",
                "unlit-texture hit shader entry should retain function name");
+        EXPECT(!entry.castsShadow,
+               "unlit-texture hit shader entry should opt out of shadow rays");
       }
     }
     EXPECT(foundStandardPbr,
@@ -1616,8 +1616,7 @@ void testMaterialParserRejectsUnsupportedHitPayloadKeys() {
   const auto parsed = parser.parse(table, materialUri, badText);
   EXPECT(parsed.instance == nullptr,
          "unsupported hit payload should fail material parsing");
-  EXPECT(hasDiagnosticContaining(parsed,
-                                 "unsupported material hit payload"),
+  EXPECT(hasDiagnosticContaining(parsed, "unsupported material hit payload"),
          "diagnostic should name unsupported hit payload keys");
 }
 
@@ -1640,8 +1639,7 @@ void testMaterialParserRejectsUnsupportedRadianceHitFields() {
   const auto parsed = parser.parse(table, materialUri, badText);
   EXPECT(parsed.instance == nullptr,
          "unsupported radiance hit field should fail material parsing");
-  EXPECT(hasDiagnosticContaining(parsed,
-                                 "unsupported radiance hit field"),
+  EXPECT(hasDiagnosticContaining(parsed, "unsupported radiance hit field"),
          "diagnostic should reject unsupported radiance hit fields");
 }
 
@@ -1652,8 +1650,7 @@ void testStandardPbrRadianceHitShaderSourceMarker() {
          "hit shader source should carry the source-text marker");
   EXPECT(source.find("payload: radiance") != std::string::npos,
          "hit shader marker should document the radiance payload");
-  EXPECT(source.find("function: lxHitStandardPbrRadiance") !=
-             std::string::npos,
+  EXPECT(source.find("function: lxHitStandardPbrRadiance") != std::string::npos,
          "hit shader marker should document the dispatch function");
   EXPECT(source.find("lxHitStandardPbrRadiance(") != std::string::npos,
          "hit shader source should define the documented function");
@@ -1677,16 +1674,18 @@ void testUnlitTextureRadianceHitShaderSourceMarker() {
 }
 
 void testOfflinePrimaryRayShaderSourceMarker() {
-  const std::string source = readTextFile(
-      "assets/shaders/glsl/render_paths/OfflineRT/"
-      "standard_pbr_primary_ray.comp");
-  EXPECT(source.find("source-text: OfflineRT standard-pbr primary ray shader") !=
-             std::string::npos,
-         "primary ray shader should carry the source-text marker");
+  const std::string source =
+      readTextFile("assets/shaders/glsl/render_paths/OfflineRT/"
+                   "standard_pbr_primary_ray.comp");
+  EXPECT(
+      source.find("source-text: OfflineRT standard-pbr primary ray shader") !=
+          std::string::npos,
+      "primary ray shader should carry the source-text marker");
   EXPECT(source.find("SceneBvhNodes") != std::string::npos,
          "primary ray shader should declare the software BVH binding");
-  EXPECT(source.find("RayPrimitiveHitShaders") != std::string::npos,
-         "primary ray shader must consume hitShaderTable primitive hit shaders");
+  EXPECT(
+      source.find("RayPrimitiveHitShaders") != std::string::npos,
+      "primary ray shader must consume hitShaderTable primitive hit shaders");
   EXPECT(source.find("lxDispatchRadianceHit") != std::string::npos,
          "primary ray shader must dispatch through the RenderFeature hit "
          "shader table");
@@ -1709,10 +1708,9 @@ void testOfflinePrimaryRayShaderSourceMarker() {
 
 void testOfflineRayTracerHitShaderTableMatchesPrimaryRayDispatchSwitch() {
   LX_infra::RenderFeatureResourceParser parser;
-  const auto parsed =
-      parser.parse("assets/effects/offline_ray_tracer.render-feature.yaml",
-                   readTextFile(
-                       "assets/effects/offline_ray_tracer.render-feature.yaml"));
+  const auto parsed = parser.parse(
+      "assets/effects/offline_ray_tracer.render-feature.yaml",
+      readTextFile("assets/effects/offline_ray_tracer.render-feature.yaml"));
   EXPECT(parsed.renderFeature.has_value(),
          "offlineRayTracer feature should parse for hit dispatch audit");
   if (!parsed.renderFeature.has_value() ||
@@ -1720,9 +1718,9 @@ void testOfflineRayTracerHitShaderTableMatchesPrimaryRayDispatchSwitch() {
     return;
   }
 
-  const std::string source = readTextFile(
-      "assets/shaders/glsl/render_paths/OfflineRT/"
-      "standard_pbr_primary_ray.comp");
+  const std::string source =
+      readTextFile("assets/shaders/glsl/render_paths/OfflineRT/"
+                   "standard_pbr_primary_ray.comp");
   EXPECT(source.find("lxDispatchRadianceHit(") != std::string::npos,
          "primary ray shader should define the hitShaderTable dispatch "
          "function");
@@ -1778,10 +1776,10 @@ void testDefaultRenderPathGraphAssetParses() {
                graph.passes[1].input.material.types.end(),
            "default Forward pass should accept generated unlit texture room "
            "draws");
-    for (const char *source : {"feature.forwardPass", "feature.skybox",
-                               "feature.environmentLighting",
-                               "feature.surfaceLighting",
-                               "feature.toneMapping"}) {
+    for (const char *source :
+         {"feature.forwardPass", "feature.skybox",
+          "feature.environmentLighting", "feature.surfaceLighting",
+          "feature.toneMapping"}) {
       EXPECT(renderPassHasSource(graph.passes[1], source),
              std::string("default Forward pass should consume ") + source);
     }
@@ -1857,8 +1855,7 @@ void testDefaultDeferredRenderPathGraphAssetParses() {
                graph.passes[1].input.material.types.end(),
            "default deferred GBuffer pass should not accept environment-box "
            "until deferred background participates in the lighting pass");
-    for (const char *source : {"feature.toneMapping",
-                               "feature.surfaceLighting",
+    for (const char *source : {"feature.toneMapping", "feature.surfaceLighting",
                                "feature.environmentLighting"}) {
       EXPECT(renderPassHasSource(graph.passes[2], source),
              std::string("default DeferredLighting pass should consume ") +
@@ -1900,8 +1897,7 @@ void testSurfaceLightingRenderPathAssetsDeclareBakeFacts() {
        "DeferredLighting"},
       {"assets/render_paths/deferred_bloom.render-path.yaml",
        "DeferredLighting"},
-      {"assets/render_paths/debug_color_transfer.render-path.yaml",
-       "Forward"},
+      {"assets/render_paths/debug_color_transfer.render-path.yaml", "Forward"},
   };
 
   LX_infra::RenderPathGraphResourceParser parser;
@@ -1922,18 +1918,18 @@ void testSurfaceLightingRenderPathAssetsDeclareBakeFacts() {
            std::string(asset.path) +
                " should not add a separate ForwardIblLighting pass");
 
-    const auto pass = std::find_if(
-        graph.passes.begin(), graph.passes.end(),
-        [&](const LX_core::RenderPassNode &candidate) {
-          return candidate.id == asset.featurePass;
-        });
+    const auto pass =
+        std::find_if(graph.passes.begin(), graph.passes.end(),
+                     [&](const LX_core::RenderPassNode &candidate) {
+                       return candidate.id == asset.featurePass;
+                     });
     if (pass == graph.passes.end()) {
       EXPECT(false, std::string(asset.path) + " should contain pass " +
                         asset.featurePass);
       continue;
     }
-    for (const char *source : {"feature.surfaceLighting",
-                               "feature.environmentLighting"}) {
+    for (const char *source :
+         {"feature.surfaceLighting", "feature.environmentLighting"}) {
       EXPECT(renderPassHasSource(*pass, source),
              std::string(asset.path) + " " + asset.featurePass +
                  " should consume " + source);
@@ -2448,9 +2444,9 @@ parameters:
          "unsupported feature resource API and implementation should fail");
   EXPECT(hasDiagnosticContaining(parsed, "resources.acceleration.api"),
          "diagnostic should reject unsupported API");
-  EXPECT(hasDiagnosticContaining(parsed,
-                                 "resources.acceleration.implementation"),
-         "diagnostic should reject unsupported implementation");
+  EXPECT(
+      hasDiagnosticContaining(parsed, "resources.acceleration.implementation"),
+      "diagnostic should reject unsupported implementation");
   EXPECT(hasDiagnosticContaining(parsed, "resources.acceleration.function"),
          "diagnostic should reject unsupported function");
 }
@@ -2487,8 +2483,7 @@ parameters:
   EXPECT(parsed.diagnostics.empty(),
          "hardware-rt acceleration shape should not emit diagnostics");
   if (parsed.renderFeature.has_value()) {
-    const auto &resource =
-        parsed.renderFeature->resources.at("acceleration");
+    const auto &resource = parsed.renderFeature->resources.at("acceleration");
     EXPECT(resource.implementation ==
                LX_core::RenderFeatureResourceImplementation::HardwareRayTracing,
            "hardware-rt implementation enum should be retained");
@@ -2565,9 +2560,9 @@ parameters:
   EXPECT(!parsed.renderFeature.has_value(),
          "system-owned scene/material bindings should not be feature "
          "resources");
-  EXPECT(hasDiagnosticContaining(parsed,
-                                 "resources.acceleration.output.binding"),
-         "diagnostic should name the system-owned binding");
+  EXPECT(
+      hasDiagnosticContaining(parsed, "resources.acceleration.output.binding"),
+      "diagnostic should name the system-owned binding");
 }
 
 void testRenderFeatureRejectsDuplicateHitShaderTableEntries() {
@@ -3803,9 +3798,10 @@ editor:
 
   const auto graph = parsed.editorRealtimeRenderPathGraph();
   EXPECT(graph.has_value(), "scene editor render path graph should parse");
-  EXPECT(graph.value_or("") ==
-             "assets/render_paths/helmet_skybox_forward_editor.render-path.yaml",
-         "scene editor render path graph should preserve URI");
+  EXPECT(
+      graph.value_or("") ==
+          "assets/render_paths/helmet_skybox_forward_editor.render-path.yaml",
+      "scene editor render path graph should preserve URI");
 
   const std::filesystem::path path =
       std::filesystem::temp_directory_path() /

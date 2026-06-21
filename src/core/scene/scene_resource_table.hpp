@@ -295,6 +295,8 @@ public:
                               StringID pass) const;
   [[nodiscard]] DescriptorResourceList
   getRealtimeSceneDescriptorResources() const;
+  [[nodiscard]] GpuResourceRef
+  getRealtimeSceneSourceMaterialRecordsResource(MaterialHandle material) const;
   void refreshDirtyRealtimeScenePayloadResources() const;
   void setIblEnvironmentResources(IblEnvironmentResources resources);
   [[nodiscard]] IblEnvironmentActivationResult
@@ -566,6 +568,12 @@ private:
   mutable std::vector<SourceLocalMaterialRecord> m_gpuSourceMaterialRecords;
   mutable std::vector<SceneSourceLocalMaterialStorageView>
       m_gpuSourceMaterialStorages;
+  struct RealtimeSourceMaterialStorageResource final {
+    u32 sourceStorageIndex = u32_max;
+    std::unique_ptr<IGpuResource> resource;
+  };
+  mutable std::vector<RealtimeSourceMaterialStorageResource>
+      m_realtimeSourceMaterialStorageResources;
   mutable std::vector<std::reference_wrapper<const CombinedTextureSampler>>
       m_gpuTextures;
   mutable std::vector<std::reference_wrapper<const CameraResource>>

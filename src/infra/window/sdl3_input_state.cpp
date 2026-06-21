@@ -66,6 +66,7 @@ static KeyCode mapSdlScancode(SDL_Scancode sc) {
   case SDL_SCANCODE_F2:     return KeyCode::F2;
   case SDL_SCANCODE_F3:     return KeyCode::F3;
   case SDL_SCANCODE_F4:     return KeyCode::F4;
+  case SDL_SCANCODE_F11:    return KeyCode::F11;
   default: return KeyCode::Unknown;
   }
 }

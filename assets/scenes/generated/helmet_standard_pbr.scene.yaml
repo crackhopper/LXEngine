@@ -14,32 +14,32 @@ scene:
     forward_no_ibl:
       camera: /game_cam
       renderPathGraph: assets/render_paths/forward_offline_direct.render-path.yaml
-      width: 192
-      height: 192
+      width: 960
+      height: 540
       outputFormat: exr-png
       outDir: artifacts/reference/damaged_helmet_forward_no_ibl
       backgroundColor: [0.0, 0.0, 0.0]
     ibl_only:
       camera: /game_cam
       renderPathGraph: assets/render_paths/forward_offline_ibl_only.render-path.yaml
-      width: 192
-      height: 192
+      width: 960
+      height: 540
       outputFormat: exr-png
       outDir: artifacts/reference/damaged_helmet_ibl_only
       backgroundColor: [0.0, 0.0, 0.0]
     forward_ibl:
       camera: /game_cam
       renderPathGraph: assets/render_paths/forward_offline_direct_ibl.render-path.yaml
-      width: 192
-      height: 192
+      width: 960
+      height: 540
       outputFormat: exr-png
       outDir: artifacts/reference/damaged_helmet_forward_ibl
       backgroundColor: [0.0, 0.0, 0.0]
     raytrace:
       camera: /game_cam
       renderPathGraph: assets/render_paths/offline_standard_pbr_raytrace.render-path.yaml
-      width: 192
-      height: 192
+      width: 960
+      height: 540
       outputFormat: exr-png
       outDir: artifacts/reference/damaged_helmet_raytrace
       backgroundColor: [0.0, 0.0, 0.0]

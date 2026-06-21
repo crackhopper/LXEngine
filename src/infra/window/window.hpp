@@ -45,6 +45,7 @@ public:
   getUsableBoundsForPlacement(
       const LX_core::WindowPlacement& placement) const override;
   void applyPlacement(const LX_core::WindowPlacement& placement) override;
+  void setMaximized(bool maximized) override;
 
   void* getNativeHandle() const override;
 

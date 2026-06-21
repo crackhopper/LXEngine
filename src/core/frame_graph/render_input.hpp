@@ -81,18 +81,20 @@ struct RayHitShaderProgram final {
   StringID materialType;
   ResourceUri uri;
   std::string function;
+  bool castsShadow = true;
 };
 
 struct PrimitiveHitShader final {
   u32 participantIndex = 0;
   u32 primitiveIndex = 0;
   u32 hitShaderIndex = 0;
+  bool castsShadow = true;
 };
 
 struct alignas(16) RayPrimitiveHitShaderRecord final {
   u32 hitShaderIndex = 0;
   u32 materialIndex = 0;
-  u32 reserved0 = 0;
+  u32 flags = 1u;
   u32 reserved1 = 0;
 };
 

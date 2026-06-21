@@ -101,6 +101,30 @@ void appendRenderableSystemResources(
   }
 }
 
+void appendSourceMaterialRecordsResource(DescriptorResourceList &out,
+                                         const SceneResourceTable &resources,
+                                         const MaterialInstance &material,
+                                         MaterialHandle materialHandle,
+                                         const IShaderSharedPtr &shader) {
+  if (!shader || !material.getMaterialContractReflection().has_value()) {
+    return;
+  }
+  const bool consumesSourceRecords =
+      std::any_of(shader->getReflectionBindings().begin(),
+                  shader->getReflectionBindings().end(),
+                  [](const ShaderResourceBinding &binding) {
+                    return binding.name == "SceneSourceMaterialRecords";
+                  });
+  if (!consumesSourceRecords) {
+    return;
+  }
+  const GpuResourceRef resource =
+      resources.getRealtimeSceneSourceMaterialRecordsResource(materialHandle);
+  if (resource.isValid()) {
+    out.emplace_back(resource.get());
+  }
+}
+
 } // namespace
 
 DescriptorResourceList
@@ -110,6 +134,8 @@ buildSceneMaterialDescriptorResources(const SceneResourceTable &resources,
   DescriptorResourceList out;
   if (const auto resolved = resources.resolve(material)) {
     appendSortedSceneMaterialResources(out, resolved->get(), shader, resources);
+    appendSourceMaterialRecordsResource(out, resources, resolved->get(),
+                                        material, shader);
   }
   return out;
 }
@@ -122,6 +148,9 @@ buildSceneDescriptorResources(const SceneDescriptorResourceContext &context) {
     appendSortedSceneMaterialResources(out, material->get(),
                                        context.renderable.shaderInfo,
                                        context.scene.resources());
+    appendSourceMaterialRecordsResource(
+        out, context.scene.resources(), material->get(),
+        context.renderable.materialHandle, context.renderable.shaderInfo);
   }
   appendRenderableSystemResources(out, context.renderable);
 

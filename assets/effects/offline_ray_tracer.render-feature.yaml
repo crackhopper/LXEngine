@@ -16,6 +16,7 @@ hitShaderTable:
       materialType: unlit-texture
       uri: assets://shaders/glsl/common/materials/hits/unlit_texture_radiance.glsl
       function: lxHitUnlitTextureRadiance
+      castsShadow: false
 parameters:
   samples:
     kind: u32

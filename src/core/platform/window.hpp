@@ -150,6 +150,7 @@ public:
     return getUsableBounds();
   }
   virtual void applyPlacement(const WindowPlacement& placement) = 0;
+  virtual void setMaximized(bool maximized) = 0;
 
   /**
    * @brief Returns the underlying native window handle as an opaque pointer.

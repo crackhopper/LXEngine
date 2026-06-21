@@ -56,6 +56,24 @@ pass 节点同时声明 `stage`、`dispatch`、`shader`、`input`、`sources`、
 
 所以多 pass 不是“一个 draw 内部循环多个 pass”，而是“同一个 renderable 在不同 pass 下产生不同 input”。Fullscreen/post pass 没有 mesh draw；offline compute pass 没有 graphics vertex/index 输入。
 
+## Batching 不能抹掉材质布局
+
+我们可以把 material batching 想成把同一种工艺的零件放到同一条输送带上。输送带可以合并很多 object，但前提是这些 object 使用同一种 shader source layout。`standard-pbr`、`unlit-texture` 这类 Material v2 source contract 会生成不同的 `SceneSourceMaterialRecords` 结构；shader variant 编译后只知道自己的结构 stride，不能拿同一个 SSBO 数组去解释另一种结构。
+
+因此，batching mode 的含义是架构约束，不是单纯性能提示：
+
+| batching mode | 适用场景 | 资源绑定规则 |
+|---|---|---|
+| `none` | 调试或极窄路径 | 每个 renderable 单独生成 draw input，仍必须绑定自己的 material source layout |
+| `material` | Forward/Deferred 等 raster pass 的常规路径 | 按 material source/type 分 batch；每个 batch 使用对应 shader variant，并绑定对应 source-material storage |
+| `all` | OfflineRT 这类 shader 内有统一运行时分发表的路径 | shader 自己定义统一 table，例如 hit shader table、material record table、`hitShaderIndex`；不能让普通 raster shader 用一个 layout 读所有材质 |
+
+这里的“统一 batching”不等于“统一 source-material array”。Raster Forward shader 通过 `LX_MATERIAL_CONTRACT_SOURCE` include 某个具体 material contract，它只能读取这个 contract 对应的 `SceneSourceMaterialRecords`。如果把不同 layout 的 records 拼成一个全局数组，再让某个 raster shader variant 读取，就会用错误 stride 解释数据，典型表现是一个材质读到另一个材质的 texture slot。
+
+OfflineRT 的 `compute-dispatch` 是另一条语义。它可以把场景整体打包为 `all`，但前提是 ray tracing shader 明确定义统一的运行时分发表：primitive/material record、`hitShaderIndex`、hit shader table，以及 shader 内部的 switch/dispatch 逻辑。这个全局表是 OfflineRT shader ABI 的一部分，不是 raster material source ABI 的替代品。
+
+hit shader table 还承载 ray visibility 语义。比如 `castsShadow: false` 会被编译为 per-primitive ray record flags，让 shadow ray 跳过该 hit group，而 primary/secondary radiance ray 仍然可以命中它。finite skybox 使用普通 `unlit-texture` 材质显示环境时，就应该通过这种 hit table 语义表达“不参与直接光 shadow occlusion”，而不是在 C++ 或 shader 中检查节点名、mesh 路径或材质名。
+
 ## SceneNode 先提供可验证事实
 
 对象进入 render input 前需要先被验证成 pass 可消费的事实：
@@ -71,6 +89,19 @@ pass 节点同时声明 `stage`、`dispatch`、`shader`、`input`、`sources`、
 | material/feature-owned resource 是否齐全 | shader 需要的 envelope 或 feature 参数必须真实注册 |
 
 校验成功后，节点缓存 pass 数据；`RenderWorkCompiler` 只消费这些已经通过验证的事实和 scene upload view。
+
+## Skybox 是两种不同输入
+
+skybox 的名字容易让人把两条路径混在一起。当前我们必须按 scene 节点语义区分：
+
+| skybox mode | 在场景中的身份 | 渲染方式 | 和 IBL 的关系 |
+|---|---|---|---|
+| finite | 普通 scene geometry：mesh + material | 进入 `scene-renderables`，像其他物体一样走 material、batching、depth | 不自动提供 IBL；它只是一个可见模型 |
+| infinite | 背景/环境输入：没有几何体 | 由 RenderFeature + fullscreen background pass，或 OfflineRT ray miss 采样 | 可与 IBL 共用同一环境贴图资产，但是否给 surface 做 IBL 由 render path 的 `feature.environmentLighting` 决定 |
+
+finite skybox 不能在 C++ 中走特殊贴图逻辑。它的材质如果是 `unlit-texture`，就必须完全按普通 `unlit-texture` material contract 解析、上传、分 batch 和绑定。infinite skybox 也不能通过额外塞一个 scene mesh 节点来模拟；它应该由 scene 的 skybox 节点提供事实，由 render path graph 显式引用对应 skybox render feature。
+
+IBL lighting 与可见背景不是同一件事。一个 render path 可以只显示 infinite skybox 背景而不做 surface IBL，也可以做 surface IBL 而不显示背景；这两个行为必须由 graph 中的 `feature.skybox` / `SkyboxBackground` pass 与 `feature.environmentLighting` 分别表达。不能从“场景里有 skybox 节点”推断 surface IBL，也不能因为调试背景而把 editor graph 的 IBL 关闭。
 
 ## RenderWorkCompiler 是 per-pass 的
 
