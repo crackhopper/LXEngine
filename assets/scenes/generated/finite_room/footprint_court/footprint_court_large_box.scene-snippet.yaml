@@ -1,0 +1,13 @@
+- nodeName: footprint_court_finite_box
+  name: footprint_court_finite_box
+  transform:
+    translation: [0.0, 0.0, 0.0]
+    rotation: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.0, 1.0, 1.0]
+  visibilityMask: 4294967295
+  skybox:
+    mode: finite
+    mesh:
+      uri: footprint_court_large_box.obj
+    material:
+      uri: footprint_court_large_box_unlit.material

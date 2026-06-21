@@ -824,7 +824,8 @@ VulkanPreparedFramePassRecordStats recordPreparedFramePassWork(
     target.commandBuffer->bindResources(*target.resourceManager, pipeline,
                                         input, desc);
     ++stats.boundInputCount;
-    target.commandBuffer->executeRenderInput(input, desc);
+    target.commandBuffer->executeRenderInput(*target.resourceManager, input,
+                                             desc);
     ++stats.executedInputCount;
   }
   return stats;

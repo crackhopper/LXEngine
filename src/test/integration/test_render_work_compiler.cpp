@@ -34,6 +34,8 @@ RenderFeature makeCompilerOfflineRayTracerFeature();
 RenderFeature makeCompilerOfflineRayTracerFeatureWithAcceleration(
     RenderFeatureResourceImplementation implementation =
         RenderFeatureResourceImplementation::SoftwareBvh);
+void addPassFeature(FramePass &pass, std::string slot, ResourceUri uri);
+void addOfflineRayTracerPassFeature(FramePass &pass);
 
 #define EXPECT(cond, msg)                                                      \
   do {                                                                         \
@@ -67,6 +69,18 @@ concept HasShaderInfo = requires(T value) { value.shaderInfo; };
 
 template <typename T>
 concept HasVertexLayout = requires(T value) { value.vertexLayout; };
+
+void addPassFeature(FramePass &pass, std::string slot, ResourceUri uri) {
+  pass.features.push_back(RenderPathFeatureDependency{
+      .slot = std::move(slot),
+      .uri = std::move(uri),
+  });
+}
+
+void addOfflineRayTracerPassFeature(FramePass &pass) {
+  addPassFeature(pass, "offlineRayTracer",
+                 ResourceUri("memory://features/offline_ray_tracer"));
+}
 
 template <typename T>
 concept HasRenderState = requires(T value) { value.renderState; };
@@ -1449,30 +1463,34 @@ void testSceneRenderableMaterialBatchingGroupsInputsByMaterialType() {
   compiler.buildInputs(pass, context, inputs);
   const auto descs = compiler.prepare(pass, context, inputs);
 
-  EXPECT(inputs.size() == 3,
-         "material batching should retain every selected renderable input");
-  EXPECT(descs.size() == 3,
-         "material batching should prepare one desc per selected renderable");
-  if (inputs.size() != 3 || descs.size() != 3) {
+  EXPECT(inputs.size() == 2,
+         "material batching should produce one input per material group");
+  EXPECT(descs.size() == 2,
+         "material batching should prepare one desc per material group");
+  if (inputs.size() != 2 || descs.size() != 2) {
     return;
   }
 
   const auto *first = dynamic_cast<const RenderDrawInput *>(inputs[0].get());
   const auto *second = dynamic_cast<const RenderDrawInput *>(inputs[1].get());
-  const auto *third = dynamic_cast<const RenderDrawInput *>(inputs[2].get());
-  EXPECT(first != nullptr && second != nullptr && third != nullptr,
+  EXPECT(first != nullptr && second != nullptr,
          "material batching should still produce draw inputs for raster");
-  if (first == nullptr || second == nullptr || third == nullptr) {
+  if (first == nullptr || second == nullptr) {
     return;
   }
   EXPECT(first->materialTypeSignature == StringID("material.alpha"),
          "material batching should sort alpha group first");
-  EXPECT(second->materialTypeSignature == StringID("material.beta") &&
-             third->materialTypeSignature == StringID("material.beta"),
-         "material batching should group equal material signatures together");
-  EXPECT(second->debugId == StringID("debug.beta_first") &&
-             third->debugId == StringID("debug.beta_second"),
-         "material batching should be stable within a material group");
+  EXPECT(second->materialTypeSignature == StringID("material.beta"),
+         "material batching should group beta renderables into one input");
+  EXPECT(first->drawCommands.size() == 1,
+         "single alpha material group should carry one draw command");
+  EXPECT(second->drawCommands.size() == 2,
+         "beta material group should carry both draw commands");
+  if (second->drawCommands.size() == 2) {
+    EXPECT(second->drawCommands[0].indexCount == 3 &&
+               second->drawCommands[1].indexCount == 3,
+           "material batch should preserve draw command geometry");
+  }
   for (const RenderInputDesc &desc : descs) {
     EXPECT(desc.accepted(),
            "material batched scene draw should remain executable");
@@ -1528,6 +1546,7 @@ void testComputeDispatchSelectsSceneParticipantsWithoutDrawInputs() {
   pass.input.material.required = true;
   pass.reads.push_back(FrameGraphRead::sampled(
       StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
 
@@ -1630,6 +1649,7 @@ void testOfflineComputeFallsBackToResourceTableWhenRenderablesDoNotMatch() {
   pass.input.material.required = true;
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
 
@@ -1704,6 +1724,7 @@ void testComputeDispatchRejectsMaterialHitUriMissingFromHitTable() {
   pass.input.material.required = true;
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
 
@@ -1767,6 +1788,7 @@ void testComputeDispatchBuildsFeatureDeclaredSoftwareBvhResource() {
   pass.input.material.required = true;
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
 
@@ -1859,6 +1881,7 @@ void testComputeDispatchBuildsOfflineRayTracerSceneDescriptorsAndReadback() {
   };
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.readbacks.push_back(RenderPathReadbackContract{
       .name = "offline.output",
       .target = "offline.output",
@@ -1959,6 +1982,7 @@ void testComputeDispatchRejectsUnsupportedFeatureAccelerationProducer() {
   pass.input.material.required = true;
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.offlineRayTracer")));
+  addOfflineRayTracerPassFeature(pass);
   pass.shaderUri =
       ResourceUri("render_paths/OfflineRT/standard_pbr_primary_ray");
 
@@ -2346,6 +2370,8 @@ FramePass makeSurfaceLightingFullscreenPass(const char *name,
   pass.shaderUri = std::move(shaderUri);
   pass.reads.push_back(
       FrameGraphRead::sampled(StringID("feature.surfaceLighting"), StringID{}));
+  addPassFeature(pass, "surfaceLighting",
+                 ResourceUri("memory://features/surface_lighting"));
   return pass;
 }
 
@@ -2436,6 +2462,8 @@ void testRenderWorkCompilerResolvesPassFeatureSpecializationFromReflection() {
   pass.shaderUri = shaderUri;
   pass.reads.push_back(FrameGraphRead::sampled(
       StringID("feature.compilerPassFeature"), StringID{}));
+  addPassFeature(pass, "compilerPassFeature",
+                 ResourceUri("memory://features/compiler_pass_feature"));
 
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
@@ -2558,6 +2586,8 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
   pass.shaderUri = shaderUri;
   pass.reads.push_back(FrameGraphRead::sampled(
       StringID("feature.compilerPassFeature"), StringID{}));
+  addPassFeature(pass, "compilerPassFeature",
+                 ResourceUri("memory://features/compiler_pass_feature"));
 
   RenderWorkBuildContext::PassPreparationFacts passFacts;
   passFacts.pass = pass.name;
@@ -2586,8 +2616,7 @@ void testRenderWorkCompilerExcludesVolatilePassFieldsFromSpecialization() {
       descs.front().pipelineBuildDesc.specializationConstants;
   const auto hasSpecializationConstant = [&](const std::string &name) -> bool {
     const PassFeatureData *data =
-        scene.resources().findPassFeatureDataByFeatureName(
-            "compilerPassFeature");
+        scene.resources().findPassFeatureData(featureHandle);
     return data != nullptr &&
            std::any_of(data->specializationValues.begin(),
                        data->specializationValues.end(),
@@ -3220,21 +3249,9 @@ void testUnsupportedObjectClassProducesRejectedDesc() {
   const auto descs = compiler.prepare(
       pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
 
-  EXPECT(inputs.size() == 1,
-         "object filter mismatch should remain visible as an input");
-  EXPECT(descs.size() == 1, "object filter mismatch should produce desc");
-  if (descs.empty()) {
-    return;
-  }
-  EXPECT(!descs.front().accepted(),
-         "unsupported object class should not be accepted");
-  EXPECT(!descs.front().diagnostics.empty(),
-         "unsupported object class should carry diagnostic");
-  if (!descs.front().diagnostics.empty()) {
-    EXPECT(hasDiagnosticCode(descs.front(),
-                             RenderInputDiagnosticCode::ObjectClassRejected),
-           "diagnostic should be ObjectClassRejected");
-  }
+  EXPECT(inputs.empty(),
+         "object filter mismatch should not enter scene-renderable batches");
+  EXPECT(descs.empty(), "object filter mismatch should not prepare descs");
 }
 
 void testMaterialTypeFilterRejectsNoMaterialRenderable() {
@@ -3266,21 +3283,9 @@ void testMaterialTypeFilterRejectsNoMaterialRenderable() {
   const auto descs = compiler.prepare(
       pass, RenderWorkBuildContext::forScene(LX_core::RenderDomain::Realtime, scene, options), inputs);
 
-  EXPECT(inputs.size() == 1,
-         "material type mismatch should remain visible as an input");
-  EXPECT(descs.size() == 1, "material type mismatch should produce desc");
-  if (descs.empty()) {
-    return;
-  }
-  EXPECT(!descs.front().accepted(),
-         "material type filter should reject materialless renderable");
-  EXPECT(!descs.front().diagnostics.empty(),
-         "material type filter should carry diagnostic");
-  if (!descs.front().diagnostics.empty()) {
-    EXPECT(hasDiagnosticCode(descs.front(),
-                             RenderInputDiagnosticCode::MaterialTypeRejected),
-           "diagnostic should be MaterialTypeRejected");
-  }
+  EXPECT(inputs.empty(),
+         "material type mismatch should not enter scene-renderable batches");
+  EXPECT(descs.empty(), "material type mismatch should not prepare descs");
 }
 
 RenderFeature makeCompilerSkyboxFeature(bool includeColor = true) {
@@ -3329,6 +3334,7 @@ FramePass makeSkyboxCompilerPass() {
   pass.shaderUri = ResourceUri("render_paths/Skybox/skybox_background");
   pass.reads.push_back(FrameGraphRead::sampled(
       StringID("feature.skybox"), StringID{}));
+  addPassFeature(pass, "skybox", ResourceUri("memory://features/skybox"));
   return pass;
 }
 

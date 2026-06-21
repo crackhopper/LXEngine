@@ -60,9 +60,24 @@ def parse_args() -> argparse.Namespace:
         description="Convert an HDR KTX2 cubemap into a finite unlit room asset."
     )
     parser.add_argument("--input", required=True, type=Path)
-    parser.add_argument("--bounds", required=True, type=float, nargs=6)
+    size = parser.add_mutually_exclusive_group(required=True)
+    size.add_argument(
+        "--bounds",
+        type=float,
+        nargs=6,
+        metavar=("XMIN", "XMAX", "YMIN", "YMAX", "ZMIN", "ZMAX"),
+    )
+    size.add_argument(
+        "--scale",
+        type=float,
+        help="half extent for a centered finite skybox cube",
+    )
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--name", required=True)
+    parser.add_argument(
+        "--node-name",
+        help="scene node name written into the generated finite skybox snippet",
+    )
     parser.add_argument("--tone-map", required=True, choices=("aces", "reinhard"))
     parser.add_argument("--exposure", required=True, type=float)
     return parser.parse_args()
@@ -80,8 +95,24 @@ def validate_args(args: argparse.Namespace) -> Bounds:
         fail("--name must be a non-empty file stem without path separators")
     if not math.isfinite(args.exposure) or args.exposure < 0.0:
         fail("--exposure must be a finite non-negative number")
+    if args.node_name is not None and (
+        not args.node_name or any(part in args.node_name for part in ("/", "\\"))
+    ):
+        fail("--node-name must be a non-empty scene node name without path separators")
 
-    bounds = Bounds(*args.bounds)
+    if args.scale is not None:
+        if not math.isfinite(args.scale) or args.scale <= 0.0:
+            fail("--scale must be a finite positive number")
+        bounds = Bounds(
+            -args.scale,
+            args.scale,
+            -args.scale,
+            args.scale,
+            -args.scale,
+            args.scale,
+        )
+    else:
+        bounds = Bounds(*args.bounds)
     if not bounds.xmin < bounds.xmax:
         fail("--bounds requires xmin < xmax")
     if not bounds.ymin < bounds.ymax:
@@ -308,21 +339,23 @@ def write_material(path: Path, name: str) -> None:
     )
 
 
-def write_scene_snippet(path: Path, name: str) -> None:
+def write_scene_snippet(path: Path, name: str, node_name: str) -> None:
     path.write_text(
         "\n".join(
             [
-                "- nodeName: finite_neutral_room",
-                "  name: finite_neutral_room",
+                f"- nodeName: {node_name}",
+                f"  name: {node_name}",
                 "  transform:",
                 "    translation: [0.0, 0.0, 0.0]",
                 "    rotation: [1.0, 0.0, 0.0, 0.0]",
                 "    scale: [1.0, 1.0, 1.0]",
                 "  visibilityMask: 4294967295",
-                "  mesh:",
-                f"    uri: {name}.obj",
-                "  material:",
-                f"    uri: {name}_unlit.material",
+                "  skybox:",
+                "    mode: finite",
+                "    mesh:",
+                f"      uri: {name}.obj",
+                "    material:",
+                f"      uri: {name}_unlit.material",
                 "",
             ]
         ),
@@ -346,7 +379,11 @@ def main() -> int:
 
     write_obj(output_dir / f"{args.name}.obj", args.name, bounds)
     write_material(output_dir / f"{args.name}_unlit.material", args.name)
-    write_scene_snippet(output_dir / f"{args.name}.scene-snippet.yaml", args.name)
+    write_scene_snippet(
+        output_dir / f"{args.name}.scene-snippet.yaml",
+        args.name,
+        args.node_name or f"finite_{args.name}",
+    )
     atlas.save(texture_dir / f"{args.name}_srgb.png")
     return 0
 

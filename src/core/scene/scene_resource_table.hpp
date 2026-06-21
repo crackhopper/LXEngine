@@ -128,6 +128,7 @@ struct PassFeatureSpecializationValue final {
 };
 
 struct PassFeatureData final {
+  RenderFeatureHandle feature;
   std::string featureName;
   ResourceUri shaderUri;
   std::vector<PassFeatureSpecializationValue> specializationValues;
@@ -275,7 +276,7 @@ public:
   [[nodiscard]] std::optional<TextureHandle>
   findTexture(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
-  findRenderFeatureByFeatureName(std::string_view feature) const;
+  findRenderFeatureByUri(const ResourceUri &uri) const;
   [[nodiscard]] std::optional<RenderFeatureHandle>
   findRenderFeatureByMetadataHandle(ResourceIdentityHandle handle) const;
   [[nodiscard]] std::optional<RenderPathGraphHandle>
@@ -283,7 +284,7 @@ public:
   [[nodiscard]] std::optional<ShaderHandle>
   findShader(const ResourceUri &uri) const;
   [[nodiscard]] const PassFeatureData *
-  findPassFeatureDataByFeatureName(std::string_view feature) const;
+  findPassFeatureData(RenderFeatureHandle feature) const;
   [[nodiscard]] GpuResourceRef getCameraUboResource(CameraHandle handle) const;
   [[nodiscard]] GpuResourceRef
   buildRenderCameraUboResource(const CameraResource &camera) const;
@@ -307,10 +308,10 @@ public:
   void registerEnvironmentLightingResources(const RenderFeature &feature);
   [[nodiscard]] std::vector<GpuResourceRef>
   getEnvironmentLightingResources() const;
-  void registerSkyboxResources(const RenderFeature &feature);
-  [[nodiscard]] std::vector<GpuResourceRef> getSkyboxResources() const;
-  void registerSurfaceLightingResources(const RenderFeature &feature);
-  [[nodiscard]] std::vector<GpuResourceRef> getSurfaceLightingResources() const;
+  [[nodiscard]] std::vector<GpuResourceRef>
+  getSkyboxResources(RenderFeatureHandle feature) const;
+  [[nodiscard]] std::vector<GpuResourceRef>
+  getSurfaceLightingResources(RenderFeatureHandle feature) const;
   void setEnvironmentRuntimeState(SceneEnvironmentRuntimeState state);
   [[nodiscard]] std::optional<SceneEnvironmentRuntimeState>
   environmentRuntimeState() const;
@@ -497,7 +498,8 @@ private:
   void advanceGraphGeneration();
   void advanceResourceGeneration();
   void advanceFeatureGeneration();
-  void registerPassFeatureSpecializationData(const RenderFeature &feature,
+  void registerPassFeatureSpecializationData(RenderFeatureHandle handle,
+                                             const RenderFeature &feature,
                                              const IShader &shader);
 
   std::vector<Entry<GeometryStorage>> m_geometryStorage;
@@ -521,10 +523,18 @@ private:
   CombinedTextureSamplerSharedPtr m_builtinEnvironmentLightingSkyboxMap;
   std::optional<TextureHandle> m_environmentLightingTexture;
   EnvironmentLightingDataUniquePtr m_environmentLightingUbo;
-  CombinedTextureSamplerSharedPtr m_builtinSkyboxMap;
-  std::optional<TextureHandle> m_skyboxTexture;
-  SkyboxDataUniquePtr m_skyboxUbo;
-  SurfaceLightingDataUniquePtr m_surfaceLightingUbo;
+  struct SkyboxFeatureResource final {
+    RenderFeatureHandle feature;
+    CombinedTextureSamplerSharedPtr skyboxMap;
+    SkyboxDataUniquePtr ubo;
+  };
+  mutable std::vector<SkyboxFeatureResource> m_skyboxResources;
+  struct SurfaceLightingFeatureResource final {
+    RenderFeatureHandle feature;
+    SurfaceLightingDataUniquePtr ubo;
+  };
+  mutable std::vector<SurfaceLightingFeatureResource>
+      m_surfaceLightingResources;
   std::optional<SceneEnvironmentRuntimeState> m_environmentRuntimeState;
   std::optional<SceneSkyboxRuntimeState> m_skyboxRuntimeState;
   std::vector<RenderFeatureHandle> m_environmentIblBakeRequests;

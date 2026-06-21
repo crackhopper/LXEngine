@@ -12,6 +12,10 @@ public:
   ResourceUri(std::string uri);
   ResourceUri(const char *uri);
   ResourceUri(std::string_view uri);
+  ResourceUri(const ResourceUri &) = default;
+  ResourceUri(ResourceUri &&) noexcept = default;
+  ResourceUri &operator=(const ResourceUri &) = default;
+  ResourceUri &operator=(ResourceUri &&) noexcept = default;
 
   [[nodiscard]] static ResourceUri canonicalize(std::string_view ownerUri,
                                                 std::string_view uri);

@@ -164,7 +164,8 @@ void validateAttachmentResourceFlow(const RenderPathGraph &graphAsset,
   }
 }
 
-FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
+FramePass makeFramePass(const RenderPathGraph &graphAsset,
+                        const RenderPassNode &node, FrameGraphPhase phase,
                         u32 stableOrder) {
   FramePass pass;
   pass.name = StringID(node.id);
@@ -191,6 +192,13 @@ FramePass makeFramePass(const RenderPassNode &node, FrameGraphPhase phase,
   pass.readbacks = node.readbacks;
   pass.renderState = node.renderState;
   pass.renderPathNodeSignature = getRenderPathNodeSignature(node);
+  pass.features.reserve(graphAsset.features.size());
+  for (const RenderPathFeatureDependency &feature : graphAsset.features) {
+    pass.features.push_back(RenderPathFeatureDependency{
+        .slot = feature.slot,
+        .uri = ResourceUri(feature.uri.string()),
+    });
+  }
   return pass;
 }
 
@@ -271,8 +279,8 @@ buildFrameGraphFromRenderPathGraph(const RenderPathGraph &graphAsset,
   u32 stableOrder = 0;
   for (const RenderPassNode &node : graphAsset.passes) {
     validateRenderPathPassNode(graphAsset, node);
-    graph.addPass(
-        makeFramePass(node, FrameGraphPhase::Material, stableOrder++));
+    graph.addPass(makeFramePass(graphAsset, node, FrameGraphPhase::Material,
+                                stableOrder++));
   }
   const CompiledFrameGraph compiled = graph.compile(registry);
   if (!compiled.isValid()) {

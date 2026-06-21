@@ -57,7 +57,8 @@ public:
                      VulkanPipelineRef pipeline, const RenderInput &input,
                      const RenderInputDesc &desc);
 
-  void executeRenderInput(const RenderInput &input,
+  void executeRenderInput(VulkanResourceManager &resourceManager,
+                          const RenderInput &input,
                           const RenderInputDesc &desc);
 
   void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size,
@@ -124,6 +125,9 @@ private:
                           const RenderInputDesc &desc);
   void bindRenderInputGeometry(VulkanResourceManager &resourceManager,
                                const RenderInput &input);
+  void bindDrawCommandGeometry(VulkanResourceManager &resourceManager,
+                               const RenderDrawInput &draw,
+                               const RenderDrawCommand &command);
 
   VkCommandBuffer m_handle = VK_NULL_HANDLE;
   VulkanDevice &m_device;

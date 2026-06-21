@@ -21,15 +21,27 @@ bool isTruthyBoolValue(std::string value) {
   return value == "true" || value == "1" || value == "yes" || value == "on";
 }
 
-bool forwardPassManualGammaEnabled(const SceneResourceTable &resources) {
-  const auto featureHandle =
-      resources.findRenderFeatureByFeatureName("forwardPass");
+bool forwardPassManualGammaEnabled(const RenderPathGraph &graph,
+                                   const SceneResourceTable &resources) {
+  const auto dependency =
+      std::find_if(graph.features.begin(), graph.features.end(),
+                   [](const RenderPathFeatureDependency &candidate) {
+                     return candidate.slot == "forwardPass";
+                   });
+  if (dependency == graph.features.end()) {
+    return false;
+  }
+
+  const auto featureHandle = resources.findRenderFeatureByUri(dependency->uri);
   if (!featureHandle.has_value()) {
     return false;
   }
 
   const auto feature = resources.resolve(*featureHandle);
   if (!feature.has_value()) {
+    return false;
+  }
+  if (feature->get().feature != "forwardPass") {
     return false;
   }
 
@@ -117,7 +129,7 @@ validateRenderPathFeatureCombination(const RenderPathGraph &graph,
   std::vector<RenderPathFeatureValidationDiagnostic> diagnostics;
 
   if (forwardWritesSrgbTarget(graph, frameGraph) &&
-      forwardPassManualGammaEnabled(resources)) {
+      forwardPassManualGammaEnabled(graph, resources)) {
     diagnostics.push_back(RenderPathFeatureValidationDiagnostic{
         .message = "FATAL: sRGB target must not use manual gamma",
         .fatal = true,

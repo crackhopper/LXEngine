@@ -2771,6 +2771,12 @@ void testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget() {
   LX_core::RenderPathGraph graph;
   graph.name = "InvalidForwardSrgbGamma";
   graph.renderPath = LX_core::RenderPath::Forward;
+  const LX_core::ResourceUri forwardFeatureUri(
+      "memory://effects/forward_pass.render-feature.yaml");
+  graph.features.push_back(LX_core::RenderPathFeatureDependency{
+      .slot = "forwardPass",
+      .uri = forwardFeatureUri,
+  });
 
   LX_core::RenderPassNode forwardPass;
   forwardPass.id = "Forward";
@@ -2814,10 +2820,8 @@ void testRenderPathFeatureValidationRejectsManualGammaOnSrgbForwardTarget() {
       .required = true,
   };
   const LX_core::RenderFeatureHandle featureHandle =
-      resources.registerRenderFeature(
-          LX_core::ResourceUri(
-              "memory://effects/forward_pass.render-feature.yaml"),
-          std::move(forwardFeature));
+      resources.registerRenderFeature(forwardFeatureUri,
+                                      std::move(forwardFeature));
   EXPECT(featureHandle.isValid(),
          "test forwardPass feature should register before validation");
 
@@ -3505,12 +3509,12 @@ passes:
     rendering:
       mode: dynamic
       attachments:
-        - target: hdr.color
+        - target: debug.overlay
           format: RGBA16Float
           samples: 1
           layers: 1
     sources: [gbuffer.albedo]
-    targets: [hdr.color]
+    targets: [debug.overlay]
     renderState:
       cullMode: Back
       depthTest: true
@@ -3529,7 +3533,7 @@ passes:
           format: BGRA8
           samples: 1
           layers: 1
-    sources: [hdr.color]
+    sources: [debug.overlay]
     targets: [swapchain.color]
     renderState:
       cullMode: Back
@@ -3565,12 +3569,12 @@ passes:
     rendering:
       mode: dynamic
       attachments:
-        - target: bloom.blur_h
+        - target: bloom.blurH
           format: RGBA16Float
           samples: 1
           layers: 1
     sources: [bloom.threshold]
-    targets: [bloom.blur_h]
+    targets: [bloom.blurH]
     renderState:
       cullMode: Back
       depthTest: true
@@ -3585,12 +3589,12 @@ passes:
     rendering:
       mode: dynamic
       attachments:
-        - target: bloom.blur_v
+        - target: bloom.blur
           format: RGBA16Float
           samples: 1
           layers: 1
-    sources: [bloom.blur_h]
-    targets: [bloom.blur_v]
+    sources: [bloom.blurH]
+    targets: [bloom.blur]
     renderState:
       cullMode: Back
       depthTest: true

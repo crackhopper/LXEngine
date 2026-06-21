@@ -26,8 +26,6 @@
 #include "infra/shader_compiler/compiled_shader.hpp"
 #include "infra/shader_compiler/shader_reflector.hpp"
 #include "infra/resource_parsers/material_source_variant_resolver.hpp"
-#include "infra/resource_parsers/render_feature_resource_parser.hpp"
-#include "infra/resource_parsers/render_path_graph_resource_parser.hpp"
 #include "infra/resource_parsers/render_resource_scene_parser_adapters.hpp"
 #include "infra/resource_parsers/scene_resource_parser_registry.hpp"
 #include "infra/window/window.hpp"
@@ -52,7 +50,6 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
-#include <iterator>
 #include <limits>
 #include <optional>
 #include <sstream>
@@ -119,121 +116,72 @@ loadRuntimeGraphicsShaderPayload(const LX_core::ResourceUri &shaderUri) {
 }
 
 LX_core::RenderPathGraph
-loadRenderPathGraphAsset(std::string_view assetPath,
+loadRenderPathGraphAsset(LX_core::Scene &scene, std::string_view assetPath,
                          LX_core::RenderPath expectedRenderPath) {
-  const std::string assetPathText(assetPath);
-  const auto graphPath = resolveRuntimePath(assetPathText);
-  std::ifstream file(graphPath);
-  if (!file.is_open()) {
-    throw std::runtime_error("failed to open RenderPathGraph asset: " +
-                             graphPath.string());
-  }
-
-  const std::string yamlText((std::istreambuf_iterator<char>(file)),
-                             std::istreambuf_iterator<char>());
-  LX_infra::RenderPathGraphResourceParser parser;
-  auto parsed = parser.parse(assetPathText, yamlText);
-  if (!parsed.renderPathGraph.has_value()) {
-    std::string message = "RenderPathGraph asset did not parse: ";
-    message += assetPathText;
+  LX_infra::SceneResourceParserRegistry registry;
+  LX_infra::registerRenderResourceParsers(registry);
+  const LX_core::ResourceUri graphUri{std::string(assetPath)};
+  const LX_infra::ParsedSceneResource parsed = registry.parse(
+      scene.resources(), LX_core::SceneResourceType::RenderPathGraph, graphUri,
+      LX_infra::SceneResourceParseContext{
+          .ownerUri = LX_core::ResourceUri("realtime-render://frame-graph")});
+  if (!parsed.identity.isValid() ||
+      parsed.metadata.state == LX_core::ResourceState::Failed) {
+    std::string message =
+        "failed to load realtime RenderPathGraph '" + graphUri.string() + "'";
     for (const std::string &diagnostic : parsed.diagnostics) {
       message += "\n  ";
       message += diagnostic;
     }
     throw std::runtime_error(message);
   }
-  if (parsed.renderPathGraph->renderPath != expectedRenderPath) {
+
+  const auto graphHandle =
+      scene.resources().findRenderPathGraphByMetadataHandle(parsed.identity);
+  if (!graphHandle.has_value()) {
+    throw std::runtime_error("realtime RenderPathGraph did not register "
+                             "payload for '" +
+                             graphUri.string() + "'");
+  }
+  const auto graph = scene.resources().resolve(*graphHandle);
+  if (!graph.has_value()) {
+    throw std::runtime_error("realtime RenderPathGraph payload is not "
+                             "resolvable for '" +
+                             graphUri.string() + "'");
+  }
+  if (graph->get().renderPath != expectedRenderPath) {
     throw std::runtime_error("RenderPathGraph asset declares the wrong "
                              "renderPath: " +
-                             assetPathText);
+                             graphUri.string());
   }
-  return std::move(*parsed.renderPathGraph);
+  return graph->get();
 }
 
-void applyToneMappingFeatureSettingsFromGraphAsset(
-    std::string_view graphAssetPath, const LX_core::RenderPathGraph &graph,
+void applyToneMappingFeatureSettings(
+    const LX_core::SceneResourceTable &resources,
+    const LX_core::RenderPathGraph &graph,
     LX_core::backend::VulkanPostProcessSettings &settings) {
-  const std::string graphAssetPathText(graphAssetPath);
   for (const auto &featureDependency : graph.features) {
     if (featureDependency.slot != "toneMapping") {
       continue;
     }
-
-    const auto graphPath = resolveRuntimePath(graphAssetPathText);
-    const std::string &featureUri = featureDependency.uri.string();
-    auto featurePath = graphPath.parent_path() / std::filesystem::path(featureUri);
-    if (!std::filesystem::exists(featurePath) &&
-        graphAssetPath.starts_with("assets/") &&
-        featureUri.find("://") == std::string::npos) {
-      featurePath = resolveRuntimePath(std::filesystem::path("assets") /
-                                       std::filesystem::path(featureUri));
+    const auto handle = resources.findRenderFeatureByUri(featureDependency.uri);
+    if (!handle.has_value()) {
+      throw std::runtime_error("toneMapping RenderFeature was not registered: " +
+                               featureDependency.uri.string());
     }
-    std::ifstream file(featurePath);
-    if (!file.is_open()) {
-      throw std::runtime_error(
-          "failed to open toneMapping RenderFeature asset: " +
-          featurePath.string());
+    const auto feature = resources.resolve(*handle);
+    if (!feature.has_value()) {
+      throw std::runtime_error("toneMapping RenderFeature payload is not "
+                               "resolvable: " +
+                               featureDependency.uri.string());
     }
-
-    const std::string yamlText((std::istreambuf_iterator<char>(file)),
-                               std::istreambuf_iterator<char>());
-    LX_infra::RenderFeatureResourceParser parser;
-    auto parsed = parser.parse(featurePath.string(), yamlText);
-    if (!parsed.renderFeature.has_value()) {
-      std::string message = "toneMapping RenderFeature asset did not parse: ";
-      message += featurePath.string();
-      for (const std::string &diagnostic : parsed.diagnostics) {
-        message += "\n  ";
-        message += diagnostic;
-      }
-      throw std::runtime_error(message);
-    }
-
-    const auto exposureIt = parsed.renderFeature->parameters.find("exposure");
-    if (exposureIt != parsed.renderFeature->parameters.end() &&
+    const auto exposureIt = feature->get().parameters.find("exposure");
+    if (exposureIt != feature->get().parameters.end() &&
         !exposureIt->second.value.empty()) {
       settings.exposure = std::stof(exposureIt->second.value);
     }
     return;
-  }
-}
-
-std::filesystem::path resolveGraphFeatureAssetPath(std::string_view graphAssetPath,
-                                                   const std::string &featureUri) {
-  const std::string graphAssetPathText(graphAssetPath);
-  const auto graphPath = resolveRuntimePath(graphAssetPathText);
-  auto featurePath = graphPath.parent_path() / std::filesystem::path(featureUri);
-  if (!std::filesystem::exists(featurePath) &&
-      graphAssetPath.starts_with("assets/") &&
-      featureUri.find("://") == std::string::npos) {
-    featurePath = resolveRuntimePath(std::filesystem::path("assets") /
-                                     std::filesystem::path(featureUri));
-  }
-  return featurePath;
-}
-
-void registerRenderFeatureDependenciesFromGraphAsset(
-    LX_core::Scene &scene, std::string_view graphAssetPath,
-    const LX_core::RenderPathGraph &graph) {
-  LX_infra::SceneResourceParserRegistry registry;
-  LX_infra::registerRenderResourceParsers(registry);
-  for (const auto &featureDependency : graph.features) {
-    const std::filesystem::path featurePath = resolveGraphFeatureAssetPath(
-        graphAssetPath, featureDependency.uri.string());
-    const auto parsed = registry.parse(
-        scene.resources(), LX_core::SceneResourceType::RenderFeature,
-        LX_core::ResourceUri(featurePath.generic_string()),
-        LX_infra::SceneResourceParseContext{});
-    if (!parsed.identity.isValid() ||
-        parsed.metadata.state == LX_core::ResourceState::Failed) {
-      std::string message = "RenderFeature asset did not load: ";
-      message += featurePath.string();
-      for (const std::string &diagnostic : parsed.diagnostics) {
-        message += "\n  ";
-        message += diagnostic;
-      }
-      throw std::runtime_error(message);
-    }
   }
 }
 
@@ -1933,12 +1881,11 @@ public:
                      ? kDefaultDeferredBloomRenderPathGraphAsset
                      : kDefaultDeferredRenderPathGraphAsset);
       const LX_core::RenderPathGraph deferredRenderPathGraph =
-          loadRenderPathGraphAsset(deferredGraphAsset,
+          loadRenderPathGraphAsset(*m_scene, deferredGraphAsset,
                                    LX_core::RenderPath::Deferred);
-      applyToneMappingFeatureSettingsFromGraphAsset(
-          deferredGraphAsset, deferredRenderPathGraph, m_postProcessSettings);
-      registerRenderFeatureDependenciesFromGraphAsset(
-          *m_scene, deferredGraphAsset, deferredRenderPathGraph);
+      applyToneMappingFeatureSettings(m_scene->resources(),
+                                      deferredRenderPathGraph,
+                                      m_postProcessSettings);
       if (!hasViewSelectedGraph) {
         const std::vector<LX_core::StringID> deferredPasses =
             m_postProcessSettings.bloomEnabled
@@ -1978,12 +1925,11 @@ public:
                      ? kDefaultForwardBloomRenderPathGraphAsset
                      : kDefaultForwardRenderPathGraphAsset);
       const LX_core::RenderPathGraph forwardRenderPathGraph =
-          loadRenderPathGraphAsset(forwardGraphAsset,
+          loadRenderPathGraphAsset(*m_scene, forwardGraphAsset,
                                    LX_core::RenderPath::Forward);
-      applyToneMappingFeatureSettingsFromGraphAsset(
-          forwardGraphAsset, forwardRenderPathGraph, m_postProcessSettings);
-      registerRenderFeatureDependenciesFromGraphAsset(
-          *m_scene, forwardGraphAsset, forwardRenderPathGraph);
+      applyToneMappingFeatureSettings(m_scene->resources(),
+                                      forwardRenderPathGraph,
+                                      m_postProcessSettings);
       if (!hasViewSelectedGraph) {
         const std::vector<LX_core::StringID> forwardPasses{
             LX_core::Pass_Shadow, LX_core::Pass_Forward, LX_core::Pass_Bloom,
@@ -3381,8 +3327,7 @@ private:
                            : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     info.loadOp = readOnly ? VK_ATTACHMENT_LOAD_OP_LOAD
                            : dynamicLoadOpForWrite(*write);
-    info.storeOp = readOnly ? VK_ATTACHMENT_STORE_OP_DONT_CARE
-                            : VK_ATTACHMENT_STORE_OP_STORE;
+    info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     info.clearValue.depthStencil = {1.0f, 0};
     return info;
   }

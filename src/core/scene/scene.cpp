@@ -283,41 +283,6 @@ Scene::getSceneLevelResources(StringID pass, const RenderTarget &target) const {
   if (sceneLights.isValid()) {
     out.emplace_back(sceneLights.get());
   }
-  for (const GpuResourceRef &resource :
-       m_resources.getEnvironmentLightingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getSkyboxResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource :
-       m_resources.getSurfaceLightingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  if (pass == Pass_DeferredLighting) {
-    for (const GpuResourceRef &resource :
-         m_resources.getIblEnvironmentResources()) {
-      if (resource.isValid()) {
-        out.emplace_back(resource.get());
-      }
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getToneMappingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getBloomResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
 
   return out;
 }
@@ -368,33 +333,6 @@ Scene::getSceneLevelResources(StringID pass,
       m_resources.buildSceneLightsUboResource(m_lightHandles, pass);
   if (sceneLights.isValid()) {
     out.emplace_back(sceneLights.get());
-  }
-  for (const GpuResourceRef &resource :
-       m_resources.getEnvironmentLightingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getSkyboxResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource :
-       m_resources.getSurfaceLightingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getToneMappingResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
-  }
-  for (const GpuResourceRef &resource : m_resources.getBloomResources()) {
-    if (resource.isValid()) {
-      out.emplace_back(resource.get());
-    }
   }
   return out;
 }

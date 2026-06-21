@@ -51,6 +51,8 @@ struct RenderDrawCommand final {
   u32 firstIndex = 0;
   i32 vertexOffset = 0;
   u32 firstInstance = 0;
+  GpuResourceRef vertexBuffer;
+  GpuResourceRef indexBuffer;
 };
 
 struct RenderSceneParticipant final {

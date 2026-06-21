@@ -65,6 +65,7 @@ struct FramePass {
   RenderTargetDesc target;
   std::vector<FrameGraphRead> reads;
   std::vector<FrameGraphWrite> writes;
+  std::vector<RenderPathFeatureDependency> features;
   FrameGraphPhase phase = FrameGraphPhase::Material;
   u32 stableOrder = 0;
   ResourceUri shaderUri;

@@ -478,6 +478,33 @@ void VulkanCommandBuffer::bindRenderInputGeometry(
                        VK_INDEX_TYPE_UINT32);
 }
 
+void VulkanCommandBuffer::bindDrawCommandGeometry(
+    VulkanResourceManager &resourceManager, const RenderDrawInput &draw,
+    const RenderDrawCommand &command) {
+  const GpuResourceRef vertexBuffer =
+      command.vertexBuffer.isValid() ? command.vertexBuffer : draw.vertexBuffer;
+  const GpuResourceRef indexBuffer =
+      command.indexBuffer.isValid() ? command.indexBuffer : draw.indexBuffer;
+  if (!vertexBuffer.isValid() || !indexBuffer.isValid()) {
+    throw std::runtime_error("scene draw command missing geometry buffer");
+  }
+
+  auto vbOpt = resourceManager.getBuffer(vertexBuffer.getBackendCacheIdentity());
+  if (!vbOpt) {
+    throw std::runtime_error("scene draw command vertex buffer was not uploaded");
+  }
+  VkBuffer vbHandle = vbOpt->get().getHandle();
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(m_handle, 0, 1, &vbHandle, offsets);
+
+  auto ibOpt = resourceManager.getBuffer(indexBuffer.getBackendCacheIdentity());
+  if (!ibOpt) {
+    throw std::runtime_error("scene draw command index buffer was not uploaded");
+  }
+  vkCmdBindIndexBuffer(m_handle, ibOpt->get().getHandle(), 0,
+                       VK_INDEX_TYPE_UINT32);
+}
+
 void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
                                         VulkanGraphicsPipeline &pipeline,
                                         const RenderInput &input,
@@ -506,7 +533,8 @@ void VulkanCommandBuffer::bindResources(VulkanResourceManager &resourceManager,
              pipeline);
 }
 
-void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
+void VulkanCommandBuffer::executeRenderInput(VulkanResourceManager &resourceManager,
+                                             const RenderInput &input,
                                              const RenderInputDesc &desc) {
   if (!desc.accepted()) {
     return;
@@ -522,6 +550,7 @@ void VulkanCommandBuffer::executeRenderInput(const RenderInput &input,
       if (command.indexCount == 0 || command.instanceCount == 0) {
         continue;
       }
+      bindDrawCommandGeometry(resourceManager, *draw, command);
       vkCmdDrawIndexed(m_handle, command.indexCount, command.instanceCount,
                        command.firstIndex, command.vertexOffset,
                        command.firstInstance);

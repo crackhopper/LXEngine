@@ -89,12 +89,51 @@ class GenerateFiniteSkyboxRoomTest(unittest.TestCase):
         self.assertIn("textures/test_neutral_room_srgb.png", material_text)
 
         snippet_text = snippet.read_text(encoding="utf-8")
+        self.assertIn("nodeName: finite_test_neutral_room", snippet_text)
+        self.assertIn("skybox:", snippet_text)
+        self.assertIn("mode: finite", snippet_text)
         self.assertIn("test_neutral_room.obj", snippet_text)
         self.assertIn("test_neutral_room_unlit.material", snippet_text)
 
         with Image.open(png) as image:
             self.assertEqual(image.mode, "RGB")
             self.assertGreater(image.width, image.height)
+
+    def test_generates_centered_box_from_scale(self) -> None:
+        result = self._run_generator(
+            "--input",
+            "assets/env/khronos/neutral/ggx/specular.ktx2",
+            "--scale",
+            "30",
+            "--output-dir",
+            str(self.output_dir),
+            "--name",
+            "scaled_neutral_room",
+            "--node-name",
+            "finite_scaled_neutral_room",
+            "--tone-map",
+            "aces",
+            "--exposure",
+            "1.0",
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"generator failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+
+        obj_text = (self.output_dir / "scaled_neutral_room.obj").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("v 30 30 30", obj_text)
+        self.assertIn("v -30 -30 -30", obj_text)
+
+        snippet_text = (
+            self.output_dir / "scaled_neutral_room.scene-snippet.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("nodeName: finite_scaled_neutral_room", snippet_text)
+        self.assertIn("mode: finite", snippet_text)
 
     def test_helmet_scene_finite_room_references_resolve(self) -> None:
         scene = (

@@ -93,5 +93,5 @@ passes:
       cullMode: None
       depthTest: true
       depthWrite: false
-      depthOp: LessEqual
+      depthOp: Equal
       blendEnable: false

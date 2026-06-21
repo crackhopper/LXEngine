@@ -380,8 +380,10 @@ RenderFeature makeSurfaceLightingFeature() {
 }
 
 const SurfaceLightingData::Param *
-findSurfaceLightingParam(const SceneResourceTable &table) {
-  for (const GpuResourceRef &resource : table.getSurfaceLightingResources()) {
+findSurfaceLightingParam(const SceneResourceTable &table,
+                         RenderFeatureHandle feature) {
+  for (const GpuResourceRef &resource :
+       table.getSurfaceLightingResources(feature)) {
     if (resource.isValid() &&
         resource.getBindingName() == StringID("SurfaceLightingUBO") &&
         resource.get().getByteSize() == sizeof(SurfaceLightingData::Param)) {
@@ -435,7 +437,8 @@ void testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl() {
       makeSurfaceLightingFeature());
   EXPECT(surfaceHandle.isValid(), "surface lighting feature should register");
 
-  const SurfaceLightingData::Param *before = findSurfaceLightingParam(table);
+  const SurfaceLightingData::Param *before =
+      findSurfaceLightingParam(table, surfaceHandle);
   EXPECT(before != nullptr, "surface lighting UBO should exist before env");
   if (before != nullptr) {
     EXPECT(before->environmentIblReady == 0u,
@@ -458,7 +461,8 @@ void testEnvironmentFeatureHdrTextureCubeActivatesSurfaceLightingIbl() {
   EXPECT(uploadView.activeIblGeneration != 0u,
          "live HDR textureCube environment feature should activate IBL");
 
-  const SurfaceLightingData::Param *after = findSurfaceLightingParam(table);
+  const SurfaceLightingData::Param *after =
+      findSurfaceLightingParam(table, surfaceHandle);
   EXPECT(after != nullptr, "surface lighting UBO should remain available");
   if (after != nullptr) {
     EXPECT(after->environmentIblReady == 1u,
@@ -726,7 +730,8 @@ void testSurfaceLightingReadinessFollowsActiveIblActivation() {
       makeSurfaceLightingFeature());
   EXPECT(featureHandle.isValid(), "surface lighting feature should register");
 
-  const SurfaceLightingData::Param *before = findSurfaceLightingParam(table);
+  const SurfaceLightingData::Param *before =
+      findSurfaceLightingParam(table, featureHandle);
   EXPECT(before != nullptr, "surface lighting UBO should be exported");
   if (before != nullptr) {
     EXPECT(before->enableIblLighting == 1u,
@@ -741,7 +746,8 @@ void testSurfaceLightingReadinessFollowsActiveIblActivation() {
       table.activateIblEnvironment(iblActivationPayloadFixture(5));
   EXPECT(activated.ok, "complete active IBL payload should activate");
 
-  const SurfaceLightingData::Param *after = findSurfaceLightingParam(table);
+  const SurfaceLightingData::Param *after =
+      findSurfaceLightingParam(table, featureHandle);
   EXPECT(after != nullptr, "surface lighting UBO should remain exported");
   if (after != nullptr) {
     EXPECT(after->enableIblLighting == 1u,
@@ -764,7 +770,8 @@ void testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration() {
       makeSurfaceLightingFeature());
   EXPECT(featureHandle.isValid(), "surface lighting feature should register");
 
-  const SurfaceLightingData::Param *param = findSurfaceLightingParam(table);
+  const SurfaceLightingData::Param *param =
+      findSurfaceLightingParam(table, featureHandle);
   EXPECT(param != nullptr, "surface lighting UBO should be exported");
   if (param != nullptr) {
     EXPECT(param->environmentIblReady == 1u,
@@ -776,7 +783,7 @@ void testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration() {
   }
 }
 
-void testSceneLevelResourcesIncludeIblSamplerFallbacks() {
+void testSceneLevelResourcesLeaveIblFallbacksToPassFeatureReads() {
   Scene scene("SceneLevelIblFallbacks");
   const auto hasSamplerBinding = [](const DescriptorResourceList &resources,
                                     StringID bindingName) {
@@ -792,12 +799,15 @@ void testSceneLevelResourcesIncludeIblSamplerFallbacks() {
 
   const DescriptorResourceList deferredResources = scene.getSceneLevelResources(
       Pass_DeferredLighting, RenderTarget{});
-  EXPECT(hasSamplerBinding(deferredResources, StringID("IrradianceMap")),
-         "scene-level resources should include IrradianceMap fallback");
-  EXPECT(hasSamplerBinding(deferredResources, StringID("PrefilteredEnvMap")),
-         "scene-level resources should include PrefilteredEnvMap fallback");
-  EXPECT(hasSamplerBinding(deferredResources, StringID("BrdfLut")),
-         "scene-level resources should include BrdfLut fallback");
+  EXPECT(!hasSamplerBinding(deferredResources, StringID("IrradianceMap")),
+         "scene-level resources should leave IrradianceMap fallback to pass "
+         "feature reads");
+  EXPECT(!hasSamplerBinding(deferredResources, StringID("PrefilteredEnvMap")),
+         "scene-level resources should leave PrefilteredEnvMap fallback to "
+         "pass feature reads");
+  EXPECT(!hasSamplerBinding(deferredResources, StringID("BrdfLut")),
+         "scene-level resources should leave BrdfLut fallback to pass feature "
+         "reads");
 
   const DescriptorResourceList forwardResources =
       scene.getSceneLevelResources(Pass_Forward, RenderTarget{});
@@ -1366,10 +1376,11 @@ void testUploadViewSourceLocalMaterialRangesAreNotLegacyInterleaved() {
              view.materialRefs[view.draws[0].materialRefIndex]
                      .sourceLocalMaterialIndex == 0 &&
              view.materialRefs[view.draws[1].materialRefIndex]
-                     .sourceLocalMaterialIndex == 0 &&
+                     .sourceLocalMaterialIndex == 2 &&
              view.materialRefs[view.draws[2].materialRefIndex]
                      .sourceLocalMaterialIndex == 1,
-         "source-local indices should be assigned inside each source storage");
+         "material refs should point at source-storage ordered global "
+         "source material records");
 
   const SceneSourceLocalMaterialStorageView *matteStorage =
       findSourceStorage(view, matteSignature);
@@ -1875,7 +1886,7 @@ int main() {
   testDefaultSceneResourceTableExportsIblSamplerFallbacks();
   testSurfaceLightingReadinessFollowsActiveIblActivation();
   testSurfaceLightingReadinessUsesAlreadyActiveIblOnRegistration();
-  testSceneLevelResourcesIncludeIblSamplerFallbacks();
+  testSceneLevelResourcesLeaveIblFallbacksToPassFeatureReads();
   testForwardSceneLevelResourcesIncludeZeroLightUboWithoutLights();
   testLiveCameraSceneLevelResourcesReuseStableCameraUbo();
   testRealtimeSceneObjectTransformUpdatesDirtyStablePayloadResource();

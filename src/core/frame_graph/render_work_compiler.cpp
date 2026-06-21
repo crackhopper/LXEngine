@@ -321,6 +321,97 @@ featureNameFromGraphResource(StringID resource) {
   return resourceName.substr(kPrefix.size());
 }
 
+[[nodiscard]] const RenderPathFeatureDependency *
+findPassFeatureDependency(const FramePass &pass, std::string_view featureName) {
+  const auto it = std::find_if(
+      pass.features.begin(), pass.features.end(),
+      [&](const RenderPathFeatureDependency &dependency) {
+        return dependency.slot == featureName;
+      });
+  return it == pass.features.end() ? nullptr : &*it;
+}
+
+struct ResolvedPassFeature final {
+  RenderFeatureHandle handle;
+  std::reference_wrapper<const RenderFeature> feature;
+};
+
+[[nodiscard]] std::optional<ResolvedPassFeature>
+resolvePassFeature(const FramePass &pass, const SceneResourceTable &resources,
+                   std::string_view featureName) {
+  const RenderPathFeatureDependency *dependency =
+      findPassFeatureDependency(pass, featureName);
+  if (dependency == nullptr) {
+    return std::nullopt;
+  }
+  const auto handle = resources.findRenderFeatureByUri(dependency->uri);
+  if (!handle.has_value()) {
+    return std::nullopt;
+  }
+  const auto feature = resources.resolve(*handle);
+  if (!feature.has_value()) {
+    return std::nullopt;
+  }
+  if (feature->get().feature != featureName) {
+    return std::nullopt;
+  }
+  return ResolvedPassFeature{.handle = *handle, .feature = std::cref(feature->get())};
+}
+
+[[nodiscard]] bool passReadsSource(const FramePass &pass,
+                                   std::string_view source) {
+  const StringID sourceId{std::string(source)};
+  return std::any_of(pass.reads.begin(), pass.reads.end(),
+                     [&](const FrameGraphRead &read) {
+                       return read.resource == sourceId;
+                     });
+}
+
+void appendValidResources(DescriptorResourceList &out,
+                          std::vector<GpuResourceRef> resources) {
+  for (const GpuResourceRef &resource : resources) {
+    if (resource.isValid()) {
+      out.emplace_back(resource.get());
+    }
+  }
+}
+
+void appendPassFeatureSceneResources(DescriptorResourceList &out,
+                                     const SceneResourceTable &resources,
+                                     const FramePass &pass) {
+  for (const FrameGraphRead &read : pass.reads) {
+    const auto featureName = featureNameFromGraphResource(read.resource);
+    if (!featureName.has_value()) {
+      continue;
+    }
+    if (*featureName == "environmentLighting") {
+      appendValidResources(out, resources.getEnvironmentLightingResources());
+    } else if (*featureName == "skybox") {
+      const auto feature = resolvePassFeature(pass, resources, *featureName);
+      if (feature.has_value()) {
+        std::vector<GpuResourceRef> featureResources =
+            resources.getSkyboxResources(feature->handle);
+        appendValidResources(out, std::move(featureResources));
+      }
+    } else if (*featureName == "surfaceLighting") {
+      const auto feature = resolvePassFeature(pass, resources, *featureName);
+      if (feature.has_value()) {
+        std::vector<GpuResourceRef> featureResources =
+            resources.getSurfaceLightingResources(feature->handle);
+        appendValidResources(out, std::move(featureResources));
+      }
+    } else if (*featureName == "toneMapping") {
+      appendValidResources(out, resources.getToneMappingResources());
+    } else if (*featureName == "bloom") {
+      appendValidResources(out, resources.getBloomResources());
+    }
+  }
+  if (passReadsSource(pass, "scene.environmentBake") ||
+      passReadsSource(pass, "scene.materialIblBake")) {
+    appendValidResources(out, resources.getIblEnvironmentResources());
+  }
+}
+
 [[nodiscard]] std::vector<ShaderSpecializationConstant>
 collectPassFeatureSpecializationConstants(
     const FramePass &pass, const RenderWorkBuildContext &context) {
@@ -340,12 +431,13 @@ collectPassFeatureSpecializationConstants(
                   *featureName) != resolvedFeatures.end()) {
       continue;
     }
-    const PassFeatureData *data =
-        resources.findPassFeatureDataByFeatureName(*featureName);
-    if (data == nullptr) {
+    const auto feature = resolvePassFeature(pass, resources, *featureName);
+    if (!feature.has_value()) {
       continue;
     }
-    if (data->shaderUri != pass.shaderUri) {
+    const PassFeatureData *data =
+        resources.findPassFeatureData(feature->handle);
+    if (data == nullptr || data->shaderUri != pass.shaderUri) {
       continue;
     }
     resolvedFeatures.emplace_back(*featureName);
@@ -370,14 +462,21 @@ collectSceneLevelResourcesForPass(const RenderWorkBuildContext &context,
   }
 
   const Scene &scene = context.scene();
+  const SceneResourceTable &resources = scene.resources();
   const auto &options = context.options();
   if (options.cameraResource.has_value()) {
-    return scene.getSceneLevelResources(pass.name, *options.cameraResource);
+    DescriptorResourceList out =
+        scene.getSceneLevelResources(pass.name, *options.cameraResource);
+    appendPassFeatureSceneResources(out, resources, pass);
+    return out;
   }
 
   const RenderTarget sceneResourceTarget =
       options.sceneResourceTarget.value_or(RenderTarget(pass.target));
-  return scene.getSceneLevelResources(pass.name, sceneResourceTarget);
+  DescriptorResourceList out =
+      scene.getSceneLevelResources(pass.name, sceneResourceTarget);
+  appendPassFeatureSceneResources(out, resources, pass);
+  return out;
 }
 
 void appendDerivedFeatureResourcesForPass(const FramePass &pass,
@@ -400,20 +499,16 @@ void appendDerivedFeatureResourcesForPass(const FramePass &pass,
     }
     resolvedFeatures.emplace_back(*featureName);
 
-    const auto handle = resources.findRenderFeatureByFeatureName(*featureName);
-    if (!handle.has_value()) {
-      continue;
-    }
-    const auto feature = resources.resolve(*handle);
+    const auto feature = resolvePassFeature(pass, resources, *featureName);
     if (!feature.has_value()) {
       continue;
     }
 
-    for (const auto &[resourceName, resource] : feature->get().resources) {
+    for (const auto &[resourceName, resource] : feature->feature.get().resources) {
       std::string diagnostic;
       const auto result = RenderFeatureDerivedResourceProducerRegistry::build(
           RenderFeatureDerivedResourceRequest{
-              .feature = &feature->get(),
+              .feature = &feature->feature.get(),
               .resource = &resource,
               .sceneResources = &resources,
           },
@@ -630,6 +725,10 @@ void fillPreparedFacts(const FramePass &pass,
   desc.bindingPlan.descriptors = facts.descriptorResources;
   appendResourceDependency(desc.resourceDependencies, draw.vertexBuffer);
   appendResourceDependency(desc.resourceDependencies, draw.indexBuffer);
+  for (const RenderDrawCommand &command : draw.drawCommands) {
+    appendResourceDependency(desc.resourceDependencies, command.vertexBuffer);
+    appendResourceDependency(desc.resourceDependencies, command.indexBuffer);
+  }
   appendDescriptorResourceDependencies(desc.resourceDependencies,
                                        desc.bindingPlan.descriptors);
   if (!facts.shaderInfo) {
@@ -1740,7 +1839,7 @@ void validateSurfaceLightingFeatureRead(const FramePass &pass,
 }
 
 [[nodiscard]] bool surfaceLightingIblEnabled(
-    const RenderWorkBuildContext &context) {
+    const FramePass &pass, const RenderWorkBuildContext &context) {
   const auto runtimeValue = context.findFeatureValue(
       StringID("feature.surfaceLighting.enableIblLighting"));
   if (runtimeValue.has_value()) {
@@ -1750,18 +1849,13 @@ void validateSurfaceLightingFeatureRead(const FramePass &pass,
     return false;
   }
   const SceneResourceTable &resources = context.scene().resources();
-  const auto featureHandle =
-      resources.findRenderFeatureByFeatureName("surfaceLighting");
-  if (!featureHandle.has_value()) {
-    return false;
-  }
-  const auto feature = resources.resolve(*featureHandle);
+  const auto feature = resolvePassFeature(pass, resources, "surfaceLighting");
   if (!feature.has_value()) {
     return false;
   }
   const auto enableIblLighting =
-      feature->get().parameters.find("enableIblLighting");
-  if (enableIblLighting == feature->get().parameters.end()) {
+      feature->feature.get().parameters.find("enableIblLighting");
+  if (enableIblLighting == feature->feature.get().parameters.end()) {
     return false;
   }
   return featureBoolValue(enableIblLighting->second);
@@ -1777,7 +1871,7 @@ void validateSurfaceLightingIblBakeSources(
   if (!passUsesFeature(pass, "feature.surfaceLighting")) {
     return;
   }
-  if (!surfaceLightingIblEnabled(context)) {
+  if (!surfaceLightingIblEnabled(pass, context)) {
     return;
   }
   if (!passUsesSource(pass, "scene.environmentBake")) {
@@ -1804,13 +1898,10 @@ findPassHitShaderTableFeature(const FramePass &pass,
     if (!featureName.has_value()) {
       continue;
     }
-    const auto handle = resources.findRenderFeatureByFeatureName(*featureName);
-    if (!handle.has_value()) {
-      continue;
-    }
-    const auto feature = resources.resolve(*handle);
-    if (feature.has_value() && feature->get().hitShaderTable.has_value()) {
-      return std::cref(feature->get());
+    const auto feature = resolvePassFeature(pass, resources, *featureName);
+    if (feature.has_value() &&
+        feature->feature.get().hitShaderTable.has_value()) {
+      return std::cref(feature->feature.get());
     }
   }
   return std::nullopt;
@@ -2076,9 +2167,37 @@ resolveVisibleMask(const Scene &scene, const FramePass &pass,
   return objectResource->get().mesh;
 }
 
+[[nodiscard]] u32 sceneDrawIndexForObject(const Scene &scene,
+                                          ObjectHandle object) {
+  if (!object.isValid()) {
+    return 0u;
+  }
+  const SceneResourceTableUploadView uploadView =
+      scene.resources().buildUploadView();
+  const auto objectIt = std::find_if(
+      uploadView.objectIndexByHandle.begin(), uploadView.objectIndexByHandle.end(),
+      [object](const SceneResourceObjectUploadIndex &entry) {
+        return entry.handle == object;
+      });
+  if (objectIt == uploadView.objectIndexByHandle.end()) {
+    return 0u;
+  }
+  const auto drawIt = std::find_if(
+      uploadView.draws.begin(), uploadView.draws.end(),
+      [objectIndex = objectIt->typedIndex](const SceneGpuDrawRecord &draw) {
+        return draw.objectIndex == objectIndex;
+      });
+  if (drawIt == uploadView.draws.end()) {
+    return 0u;
+  }
+  return static_cast<u32>(std::distance(uploadView.draws.begin(), drawIt));
+}
+
 void fillSceneDrawCommand(const Scene &scene,
                           const ValidatedRenderablePassData &validatedData,
                           RenderSceneParticipant &participant) {
+  const u32 sceneDrawIndex =
+      sceneDrawIndexForObject(scene, validatedData.objectHandle);
   if (participant.indexBuffer.isValid()) {
     const auto *indexBuffer =
         dynamic_cast<const IndexBuffer *>(&participant.indexBuffer.get());
@@ -2086,7 +2205,9 @@ void fillSceneDrawCommand(const Scene &scene,
       participant.drawCommands.push_back(RenderDrawCommand{
           .indexCount = static_cast<u32>(indexBuffer->indexCount()),
           .instanceCount = 1,
-          .firstInstance = 0,
+          .firstInstance = sceneDrawIndex,
+          .vertexBuffer = participant.vertexBuffer,
+          .indexBuffer = participant.indexBuffer,
       });
       return;
     }
@@ -2099,7 +2220,9 @@ void fillSceneDrawCommand(const Scene &scene,
           .indexCount = mesh->get().getIndexCount(),
           .instanceCount = 1,
           .firstIndex = mesh->get().getIndexOffset(),
-          .firstInstance = 0,
+          .firstInstance = sceneDrawIndex,
+          .vertexBuffer = participant.vertexBuffer,
+          .indexBuffer = participant.indexBuffer,
       });
       return;
     }
@@ -2130,6 +2253,8 @@ void fillRawRenderableResources(const IRenderable &renderable,
         .indexCount = static_cast<u32>(indexBuffer->indexCount()),
         .instanceCount = 1,
         .firstInstance = 0,
+        .vertexBuffer = participant.vertexBuffer,
+        .indexBuffer = participant.indexBuffer,
     });
   }
 }
@@ -2206,7 +2331,9 @@ selectResourceTableParticipants(const FramePass &pass,
           .indexCount = mesh->get().getIndexCount(),
           .instanceCount = 1,
           .firstIndex = mesh->get().getIndexOffset(),
-          .firstInstance = 0,
+          .firstInstance = static_cast<u32>(objectIndex),
+          .vertexBuffer = vertexBuffer,
+          .indexBuffer = indexBuffer,
       });
     }
 
@@ -2318,6 +2445,17 @@ void copyParticipantToDrawInput(const RenderSceneParticipant &participant,
   draw.drawCommands = participant.drawCommands;
 }
 
+void appendParticipantToDrawInput(const RenderSceneParticipant &participant,
+                                  RenderDrawInput &draw) {
+  if (draw.drawCommands.empty()) {
+    copyParticipantToDrawInput(participant, draw);
+    return;
+  }
+  draw.drawCommands.insert(draw.drawCommands.end(),
+                           participant.drawCommands.begin(),
+                           participant.drawCommands.end());
+}
+
 [[nodiscard]] bool computeInputRequestsSceneParticipants(
     const RenderPassInputContract &input) {
   return !input.object.renderClasses.empty() || !input.material.types.empty() ||
@@ -2328,23 +2466,48 @@ void buildSceneRenderableInputs(
     const FramePass &pass, const RenderWorkBuildContext &context,
     std::vector<std::unique_ptr<RenderInput>> &out) {
   const usize firstPassInput = out.size();
-  const bool applyInputFilters = context.domain() == RenderDomain::Offline;
   std::vector<RenderSceneParticipant> participants =
-      selectSceneParticipants(pass, context, applyInputFilters);
-  if (pass.input.batching.mode == RenderPassBatchingMode::Material) {
+      selectSceneParticipants(pass, context, true);
+
+  if (pass.input.batching.mode == RenderPassBatchingMode::None) {
+    for (const RenderSceneParticipant &participant : participants) {
+      auto draw = std::make_unique<RenderDrawInput>();
+      draw->source = RenderDrawInputSource::SceneRenderable;
+      draw->pass = pass.name;
+      copyParticipantToDrawInput(participant, *draw);
+      out.push_back(std::move(draw));
+    }
+  } else if (pass.input.batching.mode == RenderPassBatchingMode::Material) {
     std::stable_sort(participants.begin(), participants.end(),
                      [](const RenderSceneParticipant &lhs,
                         const RenderSceneParticipant &rhs) {
                        return stringIdText(lhs.materialTypeSignature) <
                               stringIdText(rhs.materialTypeSignature);
                      });
-  }
-  for (const RenderSceneParticipant &participant : participants) {
+    StringID currentMaterialType;
+    RenderDrawInput *currentDraw = nullptr;
+    for (const RenderSceneParticipant &participant : participants) {
+      if (currentDraw == nullptr ||
+          participant.materialTypeSignature != currentMaterialType) {
+        auto draw = std::make_unique<RenderDrawInput>();
+        draw->source = RenderDrawInputSource::SceneRenderable;
+        draw->pass = pass.name;
+        currentDraw = draw.get();
+        currentMaterialType = participant.materialTypeSignature;
+        out.push_back(std::move(draw));
+      }
+      appendParticipantToDrawInput(participant, *currentDraw);
+    }
+  } else {
     auto draw = std::make_unique<RenderDrawInput>();
     draw->source = RenderDrawInputSource::SceneRenderable;
     draw->pass = pass.name;
-    copyParticipantToDrawInput(participant, *draw);
-    out.push_back(std::move(draw));
+    for (const RenderSceneParticipant &participant : participants) {
+      appendParticipantToDrawInput(participant, *draw);
+    }
+    if (!draw->drawCommands.empty()) {
+      out.push_back(std::move(draw));
+    }
   }
 
   for (usize inputIndex = firstPassInput; inputIndex < out.size();

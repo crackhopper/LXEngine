@@ -1009,7 +1009,8 @@ void SceneResourceTable::markLightRuntimeDirty() {
 }
 
 void SceneResourceTable::registerPassFeatureSpecializationData(
-    const RenderFeature &feature, const IShader &shader) {
+    RenderFeatureHandle handle, const RenderFeature &feature,
+    const IShader &shader) {
   if (feature.level != RenderFeatureLevel::Pass) {
     return;
   }
@@ -1029,6 +1030,7 @@ void SceneResourceTable::registerPassFeatureSpecializationData(
   }
 
   PassFeatureData data;
+  data.feature = handle;
   data.featureName = feature.feature;
   data.shaderUri = feature.shader->uri;
   data.specializationValues.reserve(feature.parameters.size());
@@ -1073,7 +1075,7 @@ void SceneResourceTable::registerPassFeatureSpecializationData(
   const auto existing =
       std::find_if(m_passFeatureData.begin(), m_passFeatureData.end(),
                    [&](const PassFeatureData &candidate) {
-                     return candidate.featureName == data.featureName;
+                     return candidate.feature == data.feature;
                    });
   if (existing != m_passFeatureData.end()) {
     *existing = std::move(data);
@@ -1634,12 +1636,15 @@ SceneResourceTable::findTexture(const ResourceUri &uri) const {
 }
 
 std::optional<RenderFeatureHandle>
-SceneResourceTable::findRenderFeatureByFeatureName(
-    std::string_view feature) const {
+SceneResourceTable::findRenderFeatureByUri(const ResourceUri &uri) const {
   for (u32 i = 0; i < m_renderFeatures.size(); ++i) {
     const auto &entry = m_renderFeatures[i];
+    const ResourceMetadata *metadata =
+        findResourceMetadata(entry.metadataHandle);
     if (entry.state == SceneResourceEntryState::Alive && entry.resource &&
-        entry.resource->feature == feature) {
+        metadata != nullptr &&
+        metadata->type == SceneResourceType::RenderFeature &&
+        metadata->uri == uri) {
       return RenderFeatureHandle{i, entry.generation};
     }
   }
@@ -1689,11 +1694,11 @@ SceneResourceTable::findShader(const ResourceUri &uri) const {
   return std::nullopt;
 }
 
-const PassFeatureData *SceneResourceTable::findPassFeatureDataByFeatureName(
-    std::string_view feature) const {
+const PassFeatureData *
+SceneResourceTable::findPassFeatureData(RenderFeatureHandle feature) const {
   const auto it = std::find_if(
       m_passFeatureData.begin(), m_passFeatureData.end(),
-      [&](const PassFeatureData &data) { return data.featureName == feature; });
+      [&](const PassFeatureData &data) { return data.feature == feature; });
   return it == m_passFeatureData.end() ? nullptr : &*it;
 }
 
@@ -1760,8 +1765,6 @@ SceneResourceTable::registerRenderFeature(const ResourceUri &uri,
         loadOrGetResource(SceneResourceType::RenderFeature, uri);
     registerEnvironmentLightingResources(
         *m_renderFeatures[handle.index].resource);
-    registerSkyboxResources(*m_renderFeatures[handle.index].resource);
-    registerSurfaceLightingResources(*m_renderFeatures[handle.index].resource);
     registerToneMappingResources(*m_renderFeatures[handle.index].resource);
     registerBloomResources(*m_renderFeatures[handle.index].resource);
   }
@@ -2032,7 +2035,7 @@ SceneResourceTable::registerRenderPathGraph(const ResourceUri &uri,
       throw std::invalid_argument(
           missingShaderPayloadMessage(uri, feature.shader->uri));
     }
-    registerPassFeatureSpecializationData(feature,
+    registerPassFeatureSpecializationData(featureHandle, feature,
                                           *resolvedShader->get().payload);
   }
 
@@ -2637,10 +2640,6 @@ bool SceneResourceTable::validateActiveIblEnvironment(
 }
 
 void SceneResourceTable::updateSurfaceLightingIblReadiness() {
-  if (!m_surfaceLightingUbo) {
-    return;
-  }
-
   bool environmentReady = false;
   bool standardPbrReady = false;
   if (m_activeIblEnvironment.has_value()) {
@@ -2651,17 +2650,24 @@ void SceneResourceTable::updateSurfaceLightingIblReadiness() {
         m_activeIblEnvironment->standardPbrBrdfLut.isValid();
   }
 
-  auto &param = m_surfaceLightingUbo->param;
-  if ((param.environmentIblReady != 0u) == environmentReady &&
-      (param.standardPbrIblReady != 0u) == standardPbrReady) {
-    return;
+  bool changed = false;
+  for (SurfaceLightingFeatureResource &resource : m_surfaceLightingResources) {
+    if (!resource.ubo) {
+      continue;
+    }
+    auto &param = resource.ubo->param;
+    if ((param.environmentIblReady != 0u) == environmentReady &&
+        (param.standardPbrIblReady != 0u) == standardPbrReady) {
+      continue;
+    }
+    resource.ubo->set(param.enableIblLighting != 0u,
+                      param.diffuseIblIntensity, param.specularIblIntensity,
+                      environmentReady, standardPbrReady);
+    changed = true;
   }
-
-  m_surfaceLightingUbo->set(param.enableIblLighting != 0u,
-                            param.diffuseIblIntensity,
-                            param.specularIblIntensity, environmentReady,
-                            standardPbrReady);
-  markDescriptorUploadDirty();
+  if (changed) {
+    markDescriptorUploadDirty();
+  }
 }
 
 IblEnvironmentActivationResult SceneResourceTable::activateIblEnvironment(
@@ -2884,66 +2890,76 @@ SceneResourceTable::getEnvironmentLightingResources() const {
   return out;
 }
 
-void SceneResourceTable::registerSkyboxResources(const RenderFeature &feature) {
-  if (feature.feature != "skybox") {
-    return;
-  }
-
-  const auto *environmentMap = findFeatureParameter(feature, "environmentMap");
-  if (environmentMap == nullptr || environmentMap->uri.empty()) {
-    m_builtinSkyboxMap.reset();
-    m_skyboxTexture.reset();
-    m_skyboxUbo.reset();
-    markDescriptorUploadDirty();
-    return;
-  }
-
-  m_builtinSkyboxMap.reset();
-  m_skyboxTexture.reset();
-  if (environmentMap->uri == ResourceUri("builtin:env/white_cube")) {
-    m_builtinSkyboxMap = makeBuiltinWhiteEnvironmentCube();
-    m_builtinSkyboxMap->setBindingName(StringID("SkyboxMap"));
-    m_builtinSkyboxMap->setDirty();
-  } else if (const auto texture = findTexture(environmentMap->uri)) {
-    auto resolved = resolve(*texture);
-    if (resolved.has_value()) {
-      resolved->get().setBindingName(StringID("SkyboxMap"));
-      m_skyboxTexture = *texture;
-    }
-  }
-
-  auto ubo = std::make_unique<SkyboxData>();
-  const auto *color = findFeatureParameter(feature, "color");
-  const auto *intensity = findFeatureParameter(feature, "intensity");
-  const auto *rotation = findFeatureParameter(feature, "rotation");
-  ubo->set(color != nullptr ? parseFeatureVec3(*color)
-                            : Vec3f{1.0f, 1.0f, 1.0f},
-           intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
-           rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
-  m_skyboxUbo = std::move(ubo);
-  markDescriptorUploadDirty();
-}
-
-std::vector<GpuResourceRef> SceneResourceTable::getSkyboxResources() const {
+std::vector<GpuResourceRef>
+SceneResourceTable::getSkyboxResources(RenderFeatureHandle feature) const {
   std::vector<GpuResourceRef> out;
-  if (m_builtinSkyboxMap) {
-    out.emplace_back(*m_builtinSkyboxMap);
-  } else if (m_skyboxTexture.has_value()) {
-    auto resolved = resolve(*m_skyboxTexture);
-    if (resolved.has_value()) {
-      out.emplace_back(resolved->get());
-    }
+  if (!feature.isValid()) {
+    return out;
   }
-  if (m_skyboxUbo) {
-    out.emplace_back(*m_skyboxUbo);
+  auto it =
+      std::find_if(m_skyboxResources.begin(), m_skyboxResources.end(),
+                   [feature](const SkyboxFeatureResource &resource) {
+                     return resource.feature == feature;
+                   });
+  if (it == m_skyboxResources.end()) {
+    const auto resolved = resolve(feature);
+    if (!resolved.has_value() || resolved->get().feature != "skybox") {
+      return out;
+    }
+    const RenderFeature &featurePayload = resolved->get();
+    const auto *environmentMap =
+        findFeatureParameter(featurePayload, "environmentMap");
+    if (environmentMap == nullptr || environmentMap->uri.empty()) {
+      return out;
+    }
+
+    CombinedTextureSamplerSharedPtr skyboxMap;
+    if (environmentMap->uri == ResourceUri("builtin:env/white_cube")) {
+      skyboxMap = makeBuiltinWhiteEnvironmentCube();
+    } else if (const auto texture = findTexture(environmentMap->uri)) {
+      auto resolvedTexture = resolve(*texture);
+      if (resolvedTexture.has_value()) {
+        skyboxMap = std::make_shared<CombinedTextureSampler>(
+            resolvedTexture->get().texture());
+      }
+    }
+    if (!skyboxMap) {
+      return out;
+    }
+    skyboxMap->setBindingName(StringID("SkyboxMap"));
+    skyboxMap->setDirty();
+
+    auto ubo = std::make_unique<SkyboxData>();
+    const auto *color = findFeatureParameter(featurePayload, "color");
+    const auto *intensity = findFeatureParameter(featurePayload, "intensity");
+    const auto *rotation = findFeatureParameter(featurePayload, "rotation");
+    ubo->set(
+        color != nullptr ? parseFeatureVec3(*color)
+                         : Vec3f{1.0f, 1.0f, 1.0f},
+        intensity != nullptr ? parseFeatureFloat(*intensity, 1.0f) : 1.0f,
+        rotation != nullptr ? parseFeatureFloat(*rotation, 0.0f) : 0.0f);
+
+    m_skyboxResources.push_back(SkyboxFeatureResource{
+        .feature = feature,
+        .skyboxMap = std::move(skyboxMap),
+        .ubo = std::move(ubo),
+    });
+    it = m_skyboxResources.end() - 1;
+  }
+  if (it->skyboxMap) {
+    out.emplace_back(*it->skyboxMap);
+  }
+  if (it->ubo) {
+    out.emplace_back(*it->ubo);
   }
   return out;
 }
 
-void SceneResourceTable::registerSurfaceLightingResources(
-    const RenderFeature &feature) {
+std::unique_ptr<SurfaceLightingData> makeSurfaceLightingResource(
+    const RenderFeature &feature, bool environmentReady,
+    bool standardPbrReady) {
   if (feature.feature != "surfaceLighting") {
-    return;
+    return nullptr;
   }
 
   auto ubo = std::make_unique<SurfaceLightingData>();
@@ -2964,20 +2980,49 @@ void SceneResourceTable::registerSurfaceLightingResources(
            specularIblIntensity != nullptr
                ? parseFeatureFloat(*specularIblIntensity, 1.0f)
                : 1.0f,
-           parseFeatureBool(environmentIblReady, false),
-           parseFeatureBool(standardPbrIblReady, false));
-  m_surfaceLightingUbo = std::move(ubo);
-  updateSurfaceLightingIblReadiness();
-  markDescriptorUploadDirty();
+           parseFeatureBool(environmentIblReady, false) || environmentReady,
+           parseFeatureBool(standardPbrIblReady, false) || standardPbrReady);
+  return ubo;
 }
 
 std::vector<GpuResourceRef>
-SceneResourceTable::getSurfaceLightingResources() const {
-  std::vector<GpuResourceRef> out;
-  if (m_surfaceLightingUbo) {
-    out.emplace_back(*m_surfaceLightingUbo);
+SceneResourceTable::getSurfaceLightingResources(
+    RenderFeatureHandle feature) const {
+  if (!feature.isValid()) {
+    return {};
   }
-  return out;
+  auto it = std::find_if(
+      m_surfaceLightingResources.begin(), m_surfaceLightingResources.end(),
+      [feature](const SurfaceLightingFeatureResource &resource) {
+        return resource.feature == feature;
+      });
+  if (it == m_surfaceLightingResources.end()) {
+    const auto resolved = resolve(feature);
+    if (!resolved.has_value()) {
+      return {};
+    }
+    const bool environmentReady =
+        m_activeIblEnvironment.has_value() &&
+        m_activeIblEnvironment->diffuseSh.isValid() &&
+        m_activeIblEnvironment->specularPrefilteredCubemap.isValid();
+    const bool standardPbrReady =
+        m_activeIblEnvironment.has_value() &&
+        m_activeIblEnvironment->standardPbrBrdfLut.isValid();
+    auto ubo = makeSurfaceLightingResource(resolved->get(), environmentReady,
+                                           standardPbrReady);
+    if (!ubo) {
+      return {};
+    }
+    m_surfaceLightingResources.push_back(SurfaceLightingFeatureResource{
+        .feature = feature,
+        .ubo = std::move(ubo),
+    });
+    it = std::prev(m_surfaceLightingResources.end());
+  }
+  if (!it->ubo) {
+    return {};
+  }
+  return {GpuResourceRef{*it->ubo}};
 }
 
 void SceneResourceTable::setEnvironmentRuntimeState(
@@ -3971,10 +4016,18 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     return static_cast<u32>(m_gpuSourceMaterialStorages.size() - 1u);
   };
 
+  struct PendingMaterialRefPatch final {
+    u32 materialRefIndex = u32_max;
+    u32 sourceStorageIndex = u32_max;
+    u32 sourceLocalMaterialIndex = u32_max;
+  };
+  std::vector<PendingMaterialRefPatch> pendingMaterialRefPatches;
+
   const auto ensureMaterialRecord =
       [this, &materialIndexToGpuRecord, &defaultTextureSlots,
        &textureSlotForUri, &textureHandleForMaterialParameter,
-       &ensureSourceStorage, &sourceMaterialRecordsByStorage](
+       &ensureSourceStorage, &sourceMaterialRecordsByStorage,
+       &pendingMaterialRefPatches](
           MaterialHandle handle) -> MaterialUploadRecordIndex {
     if (!isAlive(handle)) {
       return {};
@@ -4038,6 +4091,11 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
               .typedIndex = compact.materialRefIndex,
           });
       m_gpuMaterialRefs.push_back(SceneGpuMaterialRefRecord{
+          .sourceStorageIndex = sourceStorageIndex,
+          .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
+      });
+      pendingMaterialRefPatches.push_back(PendingMaterialRefPatch{
+          .materialRefIndex = compact.materialRefIndex,
           .sourceStorageIndex = sourceStorageIndex,
           .sourceLocalMaterialIndex = sourceLocalMaterialIndex,
       });
@@ -4131,6 +4189,17 @@ SceneResourceTableUploadView SceneResourceTable::buildUploadView() const {
     storage.recordCount = static_cast<u32>(records.size());
     m_gpuSourceMaterialRecords.insert(m_gpuSourceMaterialRecords.end(),
                                       records.begin(), records.end());
+  }
+
+  for (const PendingMaterialRefPatch &patch : pendingMaterialRefPatches) {
+    if (patch.materialRefIndex >= m_gpuMaterialRefs.size() ||
+        patch.sourceStorageIndex >= m_gpuSourceMaterialStorages.size()) {
+      continue;
+    }
+    const SceneSourceLocalMaterialStorageView &storage =
+        m_gpuSourceMaterialStorages[patch.sourceStorageIndex];
+    m_gpuMaterialRefs[patch.materialRefIndex].sourceLocalMaterialIndex =
+        storage.recordOffset + patch.sourceLocalMaterialIndex;
   }
 
   return makeView();
